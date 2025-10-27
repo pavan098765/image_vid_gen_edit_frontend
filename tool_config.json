@@ -1,0 +1,1020 @@
+{
+  "categories": [
+    {
+      "title": "🎨 Image Editing",
+      "accent": "#8B5CF6",
+      "tools": [
+        {
+          "name": "Flux Kontext Edit",
+          "icon": "sparkles",
+          "caps": [
+            "Image → Image"
+          ],
+          "type": "generic",
+          "model": "flux_kontext_dev",
+          "inputs": [
+            {
+              "id": "prompt",
+              "type": "text",
+              "label": "Edit Prompt"
+            },
+            {
+              "id": "init_image",
+              "type": "image",
+              "label": "Upload Image",
+              "min": 1,
+              "max": 1
+            },
+            {
+              "id": "scale_factor",
+              "type": "slider",
+              "label": "Scale Factor",
+              "min": 1,
+              "max": 4,
+              "default": 1
+            }
+          ],
+          "elements": [
+            {
+              "type": "image_upload",
+              "input_ref": "init_image"
+            },
+            {
+              "type": "image_preview",
+              "input_ref": "init_image"
+            },
+            {
+              "type": "prompt",
+              "input_ref": "prompt"
+            },
+            {
+              "type": "upscale",
+              "input_ref": "scale_factor"
+            },
+            {
+              "type": "generate_button"
+            },
+            {
+              "type": "output_preview"
+            }
+          ],
+          "params": {
+            "steps": 28,
+            "guidance_scale": 3.0,
+            "seed": "random",
+            "negative_prompt": "blurry, distorted, lowres"
+          },
+          "outputType": "image"
+        },
+        {
+          "name": "Qwen Image Edit",
+          "icon": "edit3",
+          "caps": [
+            "Image → Image"
+          ],
+          "type": "generic",
+          "model": "qwen_image_edit",
+          "inputs": [
+            {
+              "id": "prompt",
+              "type": "text",
+              "label": "Edit Prompt"
+            },
+            {
+              "id": "init_image",
+              "type": "image",
+              "label": "Upload Image",
+              "min": 1,
+              "max": 1
+            },
+            {
+              "id": "scale_factor",
+              "type": "slider",
+              "label": "Scale Factor",
+              "min": 1,
+              "max": 4,
+              "default": 1
+            }
+          ],
+          "elements": [
+            {
+              "type": "image_upload",
+              "input_ref": "init_image"
+            },
+            {
+              "type": "image_preview",
+              "input_ref": "init_image"
+            },
+            {
+              "type": "prompt",
+              "input_ref": "prompt"
+            },
+            {
+              "type": "upscale",
+              "input_ref": "scale_factor"
+            },
+            {
+              "type": "generate_button"
+            },
+            {
+              "type": "output_preview"
+            }
+          ],
+          "params": {
+            "steps": 8,
+            "guidance_scale": 3.0,
+            "seed": "random"
+          },
+          "outputType": "image"
+        },
+        {
+          "name": "Qwen Image Edit 2509",
+          "icon": "images",
+          "caps": [
+            "Multi-Image Edit (up to 3)"
+          ],
+          "type": "generic",
+          "model": "qwen_image_edit_2509",
+          "inputs": [
+            {
+              "id": "prompt",
+              "type": "text",
+              "label": "Describe the edit"
+            },
+            {
+              "id": "images",
+              "type": "image",
+              "label": "Select up to 3 Images",
+              "min": 1,
+              "max": 3
+            },
+            {
+              "id": "scale_factor",
+              "type": "slider",
+              "label": "Scale Factor",
+              "min": 1,
+              "max": 4,
+              "default": 1
+            }
+          ],
+          "elements": [
+            {
+              "type": "image_upload",
+              "input_ref": "images"
+            },
+            {
+              "type": "image_preview",
+              "input_ref": "images"
+            },
+            {
+              "type": "prompt",
+              "input_ref": "prompt"
+            },
+            {
+              "type": "upscale",
+              "input_ref": "scale_factor"
+            },
+            {
+              "type": "generate_button"
+            },
+            {
+              "type": "output_preview"
+            }
+          ],
+          "params": {
+            "steps": 8,
+            "guidance_scale": 3.0,
+            "seed": "random"
+          },
+          "outputType": "image"
+        },
+        {
+          "name": "Background Remover",
+          "icon": "scissors",
+          "caps": [
+            "Image → Transparent"
+          ],
+          "type": "generic",
+          "model": "background_remover",
+          "inputs": [
+            {
+              "id": "image",
+              "type": "image",
+              "label": "Upload Image",
+              "min": 1,
+              "max": 1
+            }
+          ],
+          "elements": [
+            {
+              "type": "image_upload",
+              "input_ref": "image"
+            },
+            {
+              "type": "image_preview",
+              "input_ref": "image"
+            },
+            {
+              "type": "generate_button"
+            },
+            {
+              "type": "output_preview"
+            }
+          ],
+          "params": {
+            "mode": "remove_bg"
+          },
+          "outputType": "image"
+        },
+        {
+          "name": "LaMa Inpainter",
+          "icon": "eraser",
+          "caps": [
+            "Small Edits",
+            "Remove Objects"
+          ],
+          "type": "generic",
+          "model": "lama_inpainter",
+          "inputs": [
+            {
+              "id": "image",
+              "type": "image",
+              "label": "Upload Image",
+              "min": 1,
+              "max": 1
+            },
+            {
+              "id": "mask",
+              "type": "image",
+              "label": "Mask (white=replace)"
+            }
+          ],
+          "elements": [
+            {
+              "type": "image_upload",
+              "input_ref": "image"
+            },
+            {
+              "type": "painter",
+              "input_ref": "mask"
+            },
+            {
+              "type": "image_preview",
+              "input_ref": "image"
+            },
+            {
+              "type": "generate_button"
+            },
+            {
+              "type": "output_preview"
+            }
+          ],
+          "params": {
+            "mode": "inpaint",
+            "strength": 0.9
+          },
+          "outputType": "image"
+        }
+      ]
+    },
+    {
+      "title": "🧠 Diffusion Models",
+      "accent": "#10B981",
+      "tools": [
+        {
+          "name": "Stable Diffusion 1.5",
+          "icon": "flaskConical",
+          "caps": [
+            "Text → Image",
+            "Image → Image",
+            "Inpainting"
+          ],
+          "type": "generic",
+          "model": "sd15",
+          "inputs": [
+            {
+              "id": "prompt",
+              "type": "text",
+              "label": "Prompt"
+            },
+            {
+              "id": "init_image",
+              "type": "image",
+              "label": "Initial Image",
+              "min": 0,
+              "max": 1
+            },
+            {
+              "id": "mask",
+              "type": "image",
+              "label": "Mask Image"
+            },
+            {
+              "id": "scale_factor",
+              "type": "slider",
+              "label": "Scale Factor",
+              "min": 1,
+              "max": 4,
+              "default": 1
+            }
+          ],
+          "modes": {
+            "text_to_image": {
+              "label": "Text → Image",
+              "elements": [
+                {
+                  "type": "prompt",
+                  "input_ref": "prompt"
+                },
+                {
+                  "type": "upscale",
+                  "input_ref": "scale_factor"
+                },
+                {
+                  "type": "generate_button"
+                },
+                {
+                  "type": "output_preview"
+                }
+              ]
+            },
+            "image_to_image": {
+              "label": "Image → Image",
+              "elements": [
+                {
+                  "type": "image_upload",
+                  "input_ref": "init_image"
+                },
+                {
+                  "type": "image_preview",
+                  "input_ref": "init_image"
+                },
+                {
+                  "type": "prompt",
+                  "input_ref": "prompt"
+                },
+                {
+                  "type": "upscale",
+                  "input_ref": "scale_factor"
+                },
+                {
+                  "type": "generate_button"
+                },
+                {
+                  "type": "output_preview"
+                }
+              ]
+            },
+            "inpainting": {
+              "label": "Inpainting",
+              "elements": [
+                {
+                  "type": "image_upload",
+                  "input_ref": "init_image"
+                },
+                {
+                  "type": "painter",
+                  "input_ref": "mask"
+                },
+                {
+                  "type": "image_preview",
+                  "input_ref": "init_image"
+                },
+                {
+                  "type": "prompt",
+                  "input_ref": "prompt"
+                },
+                {
+                  "type": "generate_button"
+                },
+                {
+                  "type": "output_preview"
+                }
+              ]
+            }
+          },
+          "params": {
+            "steps": 30,
+            "guidance_scale": 7.5,
+            "strength": 0.8,
+            "seed": "random"
+          },
+          "outputType": "image"
+        },
+        {
+          "name": "Stable Diffusion 3.5",
+          "icon": "microscope",
+          "caps": [
+            "Text → Image",
+            "Image → Image",
+            "Inpainting"
+          ],
+          "type": "generic",
+          "model": "sd35",
+          "inputs": [
+            {
+              "id": "prompt",
+              "type": "text",
+              "label": "Prompt"
+            },
+            {
+              "id": "init_image",
+              "type": "image",
+              "label": "Initial Image",
+              "min": 0,
+              "max": 1
+            },
+            {
+              "id": "mask",
+              "type": "image",
+              "label": "Mask Image"
+            },
+            {
+              "id": "scale_factor",
+              "type": "slider",
+              "label": "Scale Factor",
+              "min": 1,
+              "max": 4,
+              "default": 1
+            }
+          ],
+          "modes": {
+            "text_to_image": {
+              "label": "Text → Image",
+              "elements": [
+                {
+                  "type": "prompt",
+                  "input_ref": "prompt"
+                },
+                {
+                  "type": "upscale",
+                  "input_ref": "scale_factor"
+                },
+                {
+                  "type": "generate_button"
+                },
+                {
+                  "type": "output_preview"
+                }
+              ]
+            },
+            "image_to_image": {
+              "label": "Image → Image",
+              "elements": [
+                {
+                  "type": "image_upload",
+                  "input_ref": "init_image"
+                },
+                {
+                  "type": "image_preview",
+                  "input_ref": "init_image"
+                },
+                {
+                  "type": "prompt",
+                  "input_ref": "prompt"
+                },
+                {
+                  "type": "upscale",
+                  "input_ref": "scale_factor"
+                },
+                {
+                  "type": "generate_button"
+                },
+                {
+                  "type": "output_preview"
+                }
+              ]
+            },
+            "inpainting": {
+              "label": "Inpainting",
+              "elements": [
+                {
+                  "type": "image_upload",
+                  "input_ref": "init_image"
+                },
+                {
+                  "type": "painter",
+                  "input_ref": "mask"
+                },
+                {
+                  "type": "image_preview",
+                  "input_ref": "init_image"
+                },
+                {
+                  "type": "prompt",
+                  "input_ref": "prompt"
+                },
+                {
+                  "type": "generate_button"
+                },
+                {
+                  "type": "output_preview"
+                }
+              ]
+            }
+          },
+          "params": {
+            "steps": 40,
+            "guidance_scale": 8.0,
+            "strength": 0.85,
+            "seed": "random"
+          },
+          "outputType": "image"
+        },
+        {
+          "name": "Stable Diffusion XL",
+          "icon": "eye",
+          "caps": [
+            "Text → Image",
+            "Image → Image",
+            "Inpainting"
+          ],
+          "type": "generic",
+          "model": "sdxl",
+          "inputs": [
+            {
+              "id": "prompt",
+              "type": "text",
+              "label": "Prompt"
+            },
+            {
+              "id": "init_image",
+              "type": "image",
+              "label": "Initial Image",
+              "min": 0,
+              "max": 1
+            },
+            {
+              "id": "mask",
+              "type": "image",
+              "label": "Mask Image"
+            },
+            {
+              "id": "scale_factor",
+              "type": "slider",
+              "label": "Scale Factor",
+              "min": 1,
+              "max": 4,
+              "default": 1
+            }
+          ],
+          "modes": {
+            "text_to_image": {
+              "label": "Text → Image",
+              "elements": [
+                {
+                  "type": "prompt",
+                  "input_ref": "prompt"
+                },
+                {
+                  "type": "upscale",
+                  "input_ref": "scale_factor"
+                },
+                {
+                  "type": "generate_button"
+                },
+                {
+                  "type": "output_preview"
+                }
+              ]
+            },
+            "image_to_image": {
+              "label": "Image → Image",
+              "elements": [
+                {
+                  "type": "image_upload",
+                  "input_ref": "init_image"
+                },
+                {
+                  "type": "image_preview",
+                  "input_ref": "init_image"
+                },
+                {
+                  "type": "prompt",
+                  "input_ref": "prompt"
+                },
+                {
+                  "type": "upscale",
+                  "input_ref": "scale_factor"
+                },
+                {
+                  "type": "generate_button"
+                },
+                {
+                  "type": "output_preview"
+                }
+              ]
+            },
+            "inpainting": {
+              "label": "Inpainting",
+              "elements": [
+                {
+                  "type": "image_upload",
+                  "input_ref": "init_image"
+                },
+                {
+                  "type": "painter",
+                  "input_ref": "mask"
+                },
+                {
+                  "type": "image_preview",
+                  "input_ref": "init_image"
+                },
+                {
+                  "type": "prompt",
+                  "input_ref": "prompt"
+                },
+                {
+                  "type": "generate_button"
+                },
+                {
+                  "type": "output_preview"
+                }
+              ]
+            }
+          },
+          "params": {
+            "steps": 50,
+            "guidance_scale": 8.5,
+            "strength": 0.85,
+            "seed": "random"
+          },
+          "outputType": "image"
+        },
+        {
+          "name": "Diffusion Outpaint",
+          "icon": "crop",
+          "caps": [
+            "Expand Image"
+          ],
+          "type": "generic",
+          "model": "diffusion_outpaint",
+          "inputs": [
+            {
+              "id": "image",
+              "type": "image",
+              "label": "Upload Image",
+              "min": 1,
+              "max": 1
+            },
+            {
+              "id": "prompt",
+              "type": "text",
+              "label": "Describe Expansion"
+            },
+            {
+              "id": "expand",
+              "type": "dropdown",
+              "label": "Expand Direction",
+              "options": [
+                "Top",
+                "Bottom",
+                "Left",
+                "Right",
+                "All Sides"
+              ]
+            }
+          ],
+          "elements": [
+            {
+              "type": "image_upload",
+              "input_ref": "image"
+            },
+            {
+              "type": "image_preview",
+              "input_ref": "image"
+            },
+            {
+              "type": "prompt",
+              "input_ref": "prompt"
+            },
+            {
+              "type": "dropdown",
+              "input_ref": "expand"
+            },
+            {
+              "type": "generate_button"
+            },
+            {
+              "type": "output_preview"
+            }
+          ],
+          "params": {
+            "outpaint_strength": 0.8,
+            "padding": 128
+          },
+          "outputType": "image"
+        }
+      ]
+    },
+    {
+      "title": "🎬 Video & Animation",
+      "accent": "#F59E0B",
+      "tools": [
+        {
+          "name": "WAN 2.1",
+          "icon": "video",
+          "caps": [
+            "Text → Video",
+            "Text → Image"
+          ],
+          "type": "generic",
+          "model": "wan2_1",
+          "inputs": [
+            {
+              "id": "prompt",
+              "type": "text",
+              "label": "Prompt"
+            }
+          ],
+          "modes": {
+            "text_to_video": {
+              "label": "Text → Video",
+              "elements": [
+                {
+                  "type": "prompt",
+                  "input_ref": "prompt"
+                },
+                {
+                  "type": "generate_button"
+                },
+                {
+                  "type": "output_preview"
+                }
+              ]
+            },
+            "text_to_image": {
+              "label": "Text → Image",
+              "elements": [
+                {
+                  "type": "prompt",
+                  "input_ref": "prompt"
+                },
+                {
+                  "type": "generate_button"
+                },
+                {
+                  "type": "output_preview"
+                }
+              ]
+            }
+          },
+          "params": {
+            "resolution": "512x512",
+            "duration": 4,
+            "fps": 24
+          },
+          "outputType": "video"
+        },
+        {
+          "name": "WAN 2.2",
+          "icon": "film",
+          "caps": [
+            "Text → Video",
+            "Image → Video",
+            "Text → Image"
+          ],
+          "type": "generic",
+          "model": "wan2_2",
+          "inputs": [
+            {
+              "id": "prompt",
+              "type": "text",
+              "label": "Prompt"
+            },
+            {
+              "id": "init_image",
+              "type": "image",
+              "label": "Initial Image (optional)",
+              "min": 0,
+              "max": 1
+            }
+          ],
+          "modes": {
+            "text_to_video": {
+              "label": "Text → Video",
+              "elements": [
+                {
+                  "type": "prompt",
+                  "input_ref": "prompt"
+                },
+                {
+                  "type": "generate_button"
+                },
+                {
+                  "type": "output_preview"
+                }
+              ]
+            },
+            "image_to_video": {
+              "label": "Image → Video",
+              "elements": [
+                {
+                  "type": "image_upload",
+                  "input_ref": "init_image"
+                },
+                {
+                  "type": "image_preview",
+                  "input_ref": "init_image"
+                },
+                {
+                  "type": "prompt",
+                  "input_ref": "prompt"
+                },
+                {
+                  "type": "generate_button"
+                },
+                {
+                  "type": "output_preview"
+                }
+              ]
+            },
+            "text_to_image": {
+              "label": "Text → Image",
+              "elements": [
+                {
+                  "type": "prompt",
+                  "input_ref": "prompt"
+                },
+                {
+                  "type": "generate_button"
+                },
+                {
+                  "type": "output_preview"
+                }
+              ]
+            }
+          },
+          "params": {
+            "resolution": "720p",
+            "duration": 5,
+            "fps": 24
+          },
+          "outputType": "video"
+        }
+      ]
+    },
+    {
+      "title": "🔍 Upscalers",
+      "accent": "#22D3EE",
+      "tools": [
+        {
+          "name": "Aura SR V2",
+          "icon": "zap",
+          "caps": [
+            "2× / 4×",
+            "Enhance"
+          ],
+          "type": "generic",
+          "model": "aurasrv2",
+          "inputs": [
+            {
+              "id": "image",
+              "type": "image",
+              "label": "Upload Image",
+              "min": 1,
+              "max": 1
+            },
+            {
+              "id": "scale_factor",
+              "type": "slider",
+              "label": "Scale Factor",
+              "min": 2,
+              "max": 4,
+              "default": 2
+            }
+          ],
+          "elements": [
+            {
+              "type": "image_upload",
+              "input_ref": "image"
+            },
+            {
+              "type": "image_preview",
+              "input_ref": "image"
+            },
+            {
+              "type": "upscale",
+              "input_ref": "scale_factor"
+            },
+            {
+              "type": "generate_button"
+            },
+            {
+              "type": "output_preview"
+            }
+          ],
+          "params": {
+            "mode": "superres",
+            "tile_size": 512
+          },
+          "outputType": "image"
+        },
+        {
+          "name": "Swin 2 SR",
+          "icon": "zap",
+          "caps": [
+            "2× / 4×",
+            "Sharpen"
+          ],
+          "type": "generic",
+          "model": "swin2sr",
+          "inputs": [
+            {
+              "id": "image",
+              "type": "image",
+              "label": "Upload Image",
+              "min": 1,
+              "max": 1
+            },
+            {
+              "id": "scale_factor",
+              "type": "slider",
+              "label": "Scale Factor",
+              "min": 2,
+              "max": 4,
+              "default": 2
+            }
+          ],
+          "elements": [
+            {
+              "type": "image_upload",
+              "input_ref": "image"
+            },
+            {
+              "type": "image_preview",
+              "input_ref": "image"
+            },
+            {
+              "type": "upscale",
+              "input_ref": "scale_factor"
+            },
+            {
+              "type": "generate_button"
+            },
+            {
+              "type": "output_preview"
+            }
+          ],
+          "params": {
+            "mode": "superres",
+            "tile_size": 512
+          },
+          "outputType": "image"
+        },
+        {
+          "name": "RealESRGAN",
+          "icon": "zap",
+          "caps": [
+            "2× / 4×",
+            "Enhance"
+          ],
+          "type": "generic",
+          "model": "realesrgan",
+          "inputs": [
+            {
+              "id": "image",
+              "type": "image",
+              "label": "Upload Image",
+              "min": 1,
+              "max": 1
+            },
+            {
+              "id": "scale_factor",
+              "type": "slider",
+              "label": "Scale Factor",
+              "min": 2,
+              "max": 4,
+              "default": 2
+            }
+          ],
+          "elements": [
+            {
+              "type": "image_upload",
+              "input_ref": "image"
+            },
+            {
+              "type": "image_preview",
+              "input_ref": "image"
+            },
+            {
+              "type": "upscale",
+              "input_ref": "scale_factor"
+            },
+            {
+              "type": "generate_button"
+            },
+            {
+              "type": "output_preview"
+            }
+          ],
+          "params": {
+            "mode": "superres",
+            "tile_size": 512
+          },
+          "outputType": "image"
+        }
+      ]
+    }
+  ]
+}

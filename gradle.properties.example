@@ -1,0 +1,7 @@
+# Example Gradle properties to force Gradle to use a specific JDK installation (useful when multiple JDKs are installed)
+# Copy this file to "gradle.properties" at the project root and update the path to your JDK 21 installation.
+
+# Replace the path below with your JDK 21 installation path, using forward slashes or escaped backslashes on Windows
+#org.gradle.java.home=C:/Program Files/Eclipse Adoptium/jdk-21.0.x
+
+# Other project-specific Gradle properties can go here.
