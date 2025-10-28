@@ -5,10 +5,10 @@ import 'dart:math';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_vid_gen_edit_frontend/core/services/notification_service.dart';
+import 'package:image_vid_gen_edit_frontend/core/services/polling_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_vid_gen_edit_frontend/core/services/file_service.dart';
 import 'package:crypto/crypto.dart';
@@ -78,7 +78,11 @@ class _GenericToolPageState extends State<GenericToolPage>
   String? _selectedModeKey;
   Uint8List? _resultData;
   String? _activeJobId;
-  Timer? _pollTimer;
+  // Timer? _pollTimer;
+  Timer? _timeoutTimer;
+  bool _fetchingResult = false;
+
+  StreamSubscription<Map<String, dynamic>>? _pollingSub;
 
   // Animations
   late AnimationController _pulseController;
@@ -96,9 +100,9 @@ class _GenericToolPageState extends State<GenericToolPage>
   static const String baseUrl = "https://genedit.mooo.com";
   static const String controllerUrl = "https://genedit.mooo.com";
   static const String controllerApiKey = "SECRETKEY";
-  static const String controllerSharedSecret = "SECRET";
-  static const int pollIntervalSec = 10;
-  static const int processingDurationSec = 120;
+  static const String controllerSharedSecret = "SECRETKEY";
+  // static const int pollIntervalSec = 10;
+  static const int processingDurationSec = 60;
 
   // Dynamic text & animations
   final List<String> _loadingTexts = [
@@ -153,9 +157,9 @@ class _GenericToolPageState extends State<GenericToolPage>
 
   final List<String> _stages = [
     "Analyzing",
-    "Enhancing",
+    "Editing",
     "Coloring",
-    "Detailing",
+    "Enhancing",
     "Finalizing"
   ];
 
@@ -203,6 +207,38 @@ class _GenericToolPageState extends State<GenericToolPage>
       duration: const Duration(seconds: processingDurationSec),
     );
 
+    _progressController.addStatusListener((status) async {
+      if (status == AnimationStatus.completed && mounted && _loading) {
+        // Trigger popup immediately when duration completes
+        if (_resultData == null && !_notifyLater) {
+          final choice = await _showTimeoutDialog();
+          if (choice == "notify") {
+            if (!mounted) return;
+            setState(() => _notifyLater = true);
+
+            final prefs = await SharedPreferences.getInstance();
+            if (_activeJobId != null) {
+              await prefs.setString("active_job_id", _activeJobId!);
+              await prefs.setBool("notify_requested", true);
+              // optional: keep pending download url if you already had one
+              final pending = prefs.getString("pending_download_url");
+              debugPrint(
+                  "Saved notify request for job=$_activeJobId pending=$pending");
+            }
+
+            // stop local page poller to avoid duplicate server requests
+            // _pollTimer?.cancel();
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text("You'll be notified once the result is ready."),
+              ),
+            );
+            Navigator.of(context).maybePop();
+          }
+        }
+      }
+    });
+
     _previewPageController = PageController();
 
     // Default mode
@@ -213,12 +249,57 @@ class _GenericToolPageState extends State<GenericToolPage>
     if (widget.restoreJobId != null) {
       _activeJobId = widget.restoreJobId;
       _loading = true;
-      _pollJobStatus(); // resume polling immediately
+      // _pollJobStatus(); // resume polling immediately
     }
 
     _sparkleController.addListener(() {
       if (mounted) setState(() {});
     });
+
+    // --- Start app-level poller and subscribe to its stream ---
+    try {
+      // ensure the app-level poller is running
+      PollingService.instance.start();
+      // subscribe to events
+      _pollingSub = PollingService.instance.onStatus.listen((event) async {
+        if (!mounted) return;
+        try {
+          final eventJobId = event['job_id'] as String?;
+          final status = ((event['status'] ?? '') as String).toLowerCase();
+          final downloadUrl = event['download_url'] as String?;
+          debugPrint(
+              'GenericToolPage: poller event job=$eventJobId status=$status');
+
+          // only respond if it's our active job
+          if (eventJobId == null || _activeJobId == null) return;
+          if (eventJobId != _activeJobId) return;
+
+          if (status == 'completed') {
+            // Use the same flow as when the page polls: call _fetchResult with the server data.
+            // your _fetchResult expects a Map with download_url at least
+            await _fetchResult(
+                {'download_url': downloadUrl, 'status': 'completed'});
+            // ensure local UI flags are reset
+            if (mounted) {
+              setState(() {
+                _loading = false;
+                _notifyLater = false;
+              });
+            }
+          } else if (status == 'failed') {
+            _onJobFailed(
+                (event['raw']?['error'])?.toString() ?? 'Unknown error');
+          } else {
+            // optional: you could update UI hints here
+          }
+        } catch (e) {
+          debugPrint(
+              'Error handling PollingService event in GenericToolPage: $e');
+        }
+      });
+    } catch (e) {
+      debugPrint('Failed to start/subscribe PollingService: $e');
+    }
 
     _restoreJobIfExists();
     debugPrint("🔧 Config for ${widget.config.model}");
@@ -231,9 +312,11 @@ class _GenericToolPageState extends State<GenericToolPage>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _pulseController.dispose();
+    _timeoutTimer?.cancel();
     _sparkleController.dispose();
     _progressController.dispose();
-    _pollTimer?.cancel();
+    _pollingSub?.cancel();
+    // _pollTimer?.cancel();
     _promptController.dispose();
     _previewPageController.dispose();
 
@@ -248,51 +331,124 @@ class _GenericToolPageState extends State<GenericToolPage>
     } else if (state == AppLifecycleState.resumed) {
       _pulseController.repeat(reverse: true);
       _sparkleController.repeat();
-      if (!_submittingJob && _activeJobId != null && _loading) {
-        _pollJobStatus();
-      }
+      // if (!_submittingJob && _activeJobId != null && _loading) {
+      //    _pollJobStatus();
+      // }
     }
   }
 
   // restore job state if interrupted
   Future<void> _restoreJobIfExists() async {
     final prefs = await SharedPreferences.getInstance();
-    final jobId = prefs.getString("active_job_id");
-    if (jobId == null) return;
+    final savedJobId = prefs.getString("active_job_id");
+    final pendingUrl = prefs.getString("pending_download_url");
+    final cached = prefs.getString("cached_result_bytes");
 
-    try {
-      final url = '$baseUrl/job_status?job_id=$jobId';
-      final payloadJson = jsonEncode({"job_id": jobId});
-      final signatureBytes = Hmac(sha256, utf8.encode(controllerSharedSecret))
-          .convert(utf8.encode(payloadJson));
-      final signature = "sha256=${signatureBytes.toString()}";
-      final headers = {
-        "Authorization": "Bearer $controllerApiKey",
-        "X-Signature": signature,
-      };
+    debugPrint(
+        "🔄 Restoring job state: jobId=$savedJobId, hasCached=${cached != null}, hasPendingUrl=${pendingUrl != null}");
 
-      final response = await http.get(Uri.parse(url), headers: headers);
-      if (response.statusCode != 200) {
-        await prefs.remove("active_job_id");
-        return;
-      }
-
-      final data = jsonDecode(response.body);
-      final status = data['status'];
-      if (status == 'running' || status == 'queued') {
+    // 1️⃣ If cached bytes exist → show result instantly
+    if (cached != null && cached.isNotEmpty) {
+      try {
+        final bytes = base64Decode(cached);
         setState(() {
-          _activeJobId = jobId;
-          _loading = true;
+          _resultData = bytes;
+          _loading = false;
+          _notifyLater = false;
         });
-        _progressController.forward(from: 0);
-        _startTextRotation();
-        _pollJobStatus();
-      } else {
+        debugPrint("✅ Loaded cached result instantly from PollingService");
+
+        // Clean up after showing
+        await prefs.remove("cached_result_bytes");
+        await prefs.remove("pending_download_url");
         await prefs.remove("active_job_id");
+        await prefs.remove("notify_requested");
+        return;
+      } catch (e) {
+        debugPrint("⚠️ Failed to decode cached result: $e");
+        // fall through to pending URL fallback
       }
-    } catch (e) {
-      debugPrint("Failed to restore job: $e");
     }
+
+    // 2️⃣ If pending download URL exists → fetch result normally
+    if (pendingUrl != null && pendingUrl.isNotEmpty) {
+      try {
+        debugPrint("🌐 Found pending URL — downloading result...");
+        await _fetchResult({
+          "download_url": pendingUrl,
+          "status": "completed",
+        });
+
+        // Clean up after successful fetch
+        await prefs.remove("pending_download_url");
+        await prefs.remove("cached_result_bytes");
+        await prefs.remove("active_job_id");
+        await prefs.remove("notify_requested");
+        debugPrint("✅ Restored from pending URL and cleaned up prefs");
+        return;
+      } catch (e) {
+        debugPrint("⚠️ Failed to download pending result: $e");
+      }
+    }
+
+    // 3️⃣ If no cached or pending result → check for active job still processing
+    if (savedJobId != null && savedJobId.isNotEmpty) {
+      setState(() {
+        _activeJobId = savedJobId;
+        _loading = true;
+        _notifyLater = prefs.getBool("notify_requested") ?? false;
+      });
+      debugPrint("⌛ Job still processing, jobId=$savedJobId");
+    } else {
+      debugPrint("ℹ️ No active or cached job to restore");
+    }
+  }
+
+  Future<String?> _showTimeoutDialog() async {
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: Colors.deepPurple.shade900.withOpacity(0.95),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          title: Row(
+            children: const [
+              Icon(Icons.hourglass_bottom, color: Colors.amberAccent),
+              SizedBox(width: 10),
+              Text("Still processing...",
+                  style: TextStyle(color: Colors.white)),
+            ],
+          ),
+          content: const Text(
+            "This job is taking longer than usual.\n\nWould you like to continue waiting or be notified once it's ready?",
+            style: TextStyle(color: Colors.white70),
+          ),
+          actionsAlignment: MainAxisAlignment.spaceBetween,
+          actions: [
+            TextButton(
+              child: const Text("Continue waiting",
+                  style: TextStyle(color: Colors.white)),
+              onPressed: () => Navigator.pop(context, "continue"),
+            ),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.notifications_active, size: 18),
+              label: const Text("Notify me later"),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.amberAccent,
+                foregroundColor: const ui.Color.fromARGB(255, 69, 62, 98),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: () => Navigator.pop(context, "notify"),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Widget _buildCard({required Widget child}) => Container(
@@ -367,27 +523,45 @@ class _GenericToolPageState extends State<GenericToolPage>
     final img = frame.image;
     int width = img.width;
     int height = img.height;
+
+    // ✅ 1. Scale down if larger than 1536 px in either dimension
     if (width > 1536 || height > 1536) {
       final scale = 1536 / max(width, height);
-      width = (width * scale).floor();
-      height = (height * scale).floor();
+      width = (width * scale).round();
+      height = (height * scale).round();
     }
-    width = (width ~/ 32) * 32;
-    height = (height ~/ 32) * 32;
+
+    // ✅ 2. Compute padding to reach next multiple of 32 (no cropping!)
+    int roundUp32(int x) => ((x + 31) ~/ 32) * 32;
+    final paddedW = roundUp32(width);
+    final paddedH = roundUp32(height);
 
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
-    canvas.drawImageRect(
-        img,
-        Rect.fromLTWH(0, 0, img.width.toDouble(), img.height.toDouble()),
-        Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
-        Paint());
-    final result = await recorder
+
+    // ✅ 3. Fill transparent background (or black if needed)
+    final paint = Paint()..color = const Color(0x00000000);
+    canvas.drawRect(
+        Rect.fromLTWH(0, 0, paddedW.toDouble(), paddedH.toDouble()), paint);
+
+    // ✅ 4. Center original image into padded canvas (no cropping)
+    final offsetX = (paddedW - width) / 2;
+    final offsetY = (paddedH - height) / 2;
+
+    final src =
+        Rect.fromLTWH(0, 0, img.width.toDouble(), img.height.toDouble());
+    final dst =
+        Rect.fromLTWH(offsetX, offsetY, width.toDouble(), height.toDouble());
+
+    canvas.drawImageRect(img, src, dst, Paint());
+
+    final finalImage = await recorder
         .endRecording()
-        .toImage(width, height)
+        .toImage(paddedW, paddedH)
         .then((v) => v.toByteData(format: ui.ImageByteFormat.png));
+
     img.dispose();
-    return result!.buffer.asUint8List();
+    return finalImage!.buffer.asUint8List();
   }
 
   // -----------------------------------------------
@@ -988,8 +1162,16 @@ class _GenericToolPageState extends State<GenericToolPage>
           _submittingJob = false;
         });
 
-        _pollJobStatus();
-        _startTimeoutCheck();
+        // Persist job info so PollingService picks it up
+        await prefs.setBool(
+            "notify_requested", false); // default - user didn't ask notify yet
+
+        // Ensure app poller is running (safe no-op if it's already started)
+        try {
+          PollingService.instance
+              .start(); // import PollingService at top of file
+        } catch (_) {}
+        // _pollJobStatus();
       } else {
         throw Exception("Server error ${resp.statusCode}");
       }
@@ -1004,109 +1186,48 @@ class _GenericToolPageState extends State<GenericToolPage>
     }
   }
 
-  void _startTimeoutCheck() {
-    // Wait for 2 minutes
-    Future.delayed(const Duration(minutes: 2), () async {
-      // Only trigger if still waiting and page is active
-      if (!mounted || !_loading || !_activeJobIdSet()) return;
-
-      final choice = await showDialog<String>(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) {
-          return AlertDialog(
-            backgroundColor: Colors.deepPurple.shade50,
-            title: const Text("Still processing..."),
-            content: const Text(
-              "This job is taking longer than usual.\n"
-              "Would you like to continue waiting or get notified later when it’s ready?",
-            ),
-            actions: [
-              TextButton(
-                child: const Text("Continue waiting"),
-                onPressed: () => Navigator.of(context).pop("continue"),
-              ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.deepPurple,
-                ),
-                child: const Text("Notify me later"),
-                onPressed: () => Navigator.of(context).pop("notify"),
-              ),
-            ],
-          );
-        },
-      );
-
-      if (choice == "notify") {
-        setState(() => _notifyLater = true);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("You'll be notified once the result is ready."),
-          ),
-        );
-        // let user freely navigate
-        Navigator.of(context).maybePop();
-      }
-    });
-  }
-
-  bool _activeJobIdSet() => _activeJobId != null && _activeJobId!.isNotEmpty;
-
-  void _pollJobStatus() {
-    if (_submittingJob) return;
-    _pollTimer?.cancel();
-
-    _pollTimer =
-        Timer.periodic(const Duration(seconds: pollIntervalSec), (_) async {
-      if (_activeJobId == null) return;
-      try {
-        final payloadJson = jsonEncode({"job_id": _activeJobId});
-        final sigBytes = Hmac(sha256, utf8.encode(controllerSharedSecret))
-            .convert(utf8.encode(payloadJson));
-        final sig = "sha256=${sigBytes.toString()}";
-
-        final headers = {
-          "Authorization": "Bearer $controllerApiKey",
-          "X-Signature": sig
-        };
-        final url = "$baseUrl/job_status?job_id=$_activeJobId";
-        final resp = await http.get(Uri.parse(url), headers: headers);
-        if (resp.statusCode != 200) return;
-
-        final data = jsonDecode(resp.body);
-        if (data["download_url"] != null) {
-          final prefs = await SharedPreferences.getInstance();
-          prefs.setString("pending_download_url", data["download_url"]);
-        }
-        final status = data["status"];
-        if (status == "completed") {
-          _pollTimer?.cancel();
-          _fetchResult(data);
-          if (_notifyLater) {
-            await _showNotification(_activeJobId!);
-          }
-        } else if (status == "failed") {
-          _pollTimer?.cancel();
-          _onJobFailed(data["error"] ?? "Unknown error");
-        }
-      } catch (e) {
-        debugPrint("pollJob error: $e");
-      }
-    });
-  }
+  // void _pollJobStatus() {
+  //   if (_submittingJob) return;
+  //   _pollTimer?.cancel();
+  //   _pollTimer =
+  //       Timer.periodic(const Duration(seconds: pollIntervalSec), (_) async {
+  //     if (_activeJobId == null) return;
+  //     try {
+  //       final payloadJson = jsonEncode({"job_id": _activeJobId});
+  //       final sigBytes = Hmac(sha256, utf8.encode(controllerSharedSecret))
+  //           .convert(utf8.encode(payloadJson));
+  //       final sig = "sha256=${sigBytes.toString()}";
+  //       final headers = {
+  //         "Authorization": "Bearer $controllerApiKey",
+  //         "X-Signature": sig
+  //       };
+  //       final url = "$baseUrl/job_status?job_id=$_activeJobId";
+  //       final resp = await http.get(Uri.parse(url), headers: headers);
+  //       if (resp.statusCode != 200) return;
+  //       final data = jsonDecode(resp.body);
+  //       if (data["download_url"] != null) {
+  //         final prefs = await SharedPreferences.getInstance();
+  //         prefs.setString("pending_download_url", data["download_url"]);
+  //       }
+  //       final status = data["status"];
+  //       if (status == "completed") {
+  //         _pollTimer?.cancel();
+  //         _fetchResult(data);
+  //         if (_notifyLater || !mounted) {
+  //           await _showNotification(_activeJobId!);
+  //         }
+  //       } else if (status == "failed") {
+  //         _pollTimer?.cancel();
+  //         _onJobFailed(data["error"] ?? "Unknown error");
+  //       }
+  //     } catch (e) {
+  //       debugPrint("pollJob error: $e");
+  //     }
+  //   });
+  // }
 
   Future<void> _showNotification(String jobId) async {
-    const androidDetails = AndroidNotificationDetails(
-      'job_results',
-      'AI Job Results',
-      channelDescription: 'Notifications for completed AI jobs',
-      importance: Importance.max,
-      priority: Priority.high,
-      icon: '@mipmap/ic_launcher',
-    );
-
-    NotificationService.showNotification(
+    await NotificationService.showNotification(
       title: "Processing Complete",
       body: "Tap to view your result",
       payload: jobId,
@@ -1114,6 +1235,8 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   Future<void> _fetchResult(Map<String, dynamic> data) async {
+    if (_fetchingResult) return;
+    _fetchingResult = true;
     try {
       String? downloadUrl = data["download_url"];
       if (downloadUrl == null) {
@@ -1139,7 +1262,20 @@ class _GenericToolPageState extends State<GenericToolPage>
       }
 
       final prefs = await SharedPreferences.getInstance();
+
+      final readyToNotify = prefs.getBool("ready_to_notify") ?? false;
+      if (readyToNotify) {
+        await NotificationService.showNotification(
+          title: "Processing Complete",
+          body: "Tap to view your result",
+          payload: _activeJobId ?? "",
+        );
+        await prefs.remove("ready_to_notify");
+      }
+
       await prefs.remove("active_job_id");
+      await prefs.remove("cached_result_bytes");
+      await prefs.remove("notify_requested");
       await prefs.remove("pending_download_url");
       await prefs.remove("selected_images");
       await prefs.remove("last_model");
@@ -1151,6 +1287,8 @@ class _GenericToolPageState extends State<GenericToolPage>
       debugPrint("✅ Result image fetched & displayed successfully");
     } catch (e) {
       _onJobFailed(e.toString());
+    } finally {
+      _fetchingResult = false;
     }
   }
 
@@ -1161,7 +1299,7 @@ class _GenericToolPageState extends State<GenericToolPage>
       _loading = false;
       _resultData = null;
     });
-    _pollTimer?.cancel();
+    // _pollTimer?.cancel();
   }
 
   // ----------------------------------------------------
@@ -1333,7 +1471,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                     style: const TextStyle(
                         color: Colors.white,
                         fontSize: 20,
-                        fontWeight: FontWeight.w600)),
+                        fontWeight: FontWeight.w500)),
               ),
               const SizedBox(height: 10),
               AnimatedSwitcher(
@@ -1348,7 +1486,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                     style: const TextStyle(
                         color: Colors.white70,
                         fontStyle: FontStyle.italic,
-                        fontSize: 16)),
+                        fontSize: 15)),
               ),
               const SizedBox(height: 25),
               SizedBox(
@@ -1416,16 +1554,14 @@ class _GenericToolPageState extends State<GenericToolPage>
               const SizedBox(height: 12),
               TextButton.icon(
                 onPressed: () {
-                  setState(() {
-                    _resultData = null;
-                    _inputs.clear();
-                    _promptController.clear();
-                    _upscaleEnabled = false;
-                    _scaleFactor = 2;
-                  });
+                  Navigator.of(context).pushReplacement(
+                    MaterialPageRoute(
+                      builder: (_) => GenericToolPage(config: widget.config),
+                    ),
+                  );
                 },
                 icon: const Icon(Icons.refresh, color: Colors.white),
-                label: const Text("Try Another",
+                label: const Text("Try Again",
                     style: TextStyle(color: Colors.white)),
               ),
               const SizedBox(height: 20),

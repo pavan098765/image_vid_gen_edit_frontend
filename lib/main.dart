@@ -1,6 +1,7 @@
 // lib/main.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:image_vid_gen_edit_frontend/core/services/polling_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/theme/app_theme.dart';
@@ -18,11 +19,12 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // ✅ Initialize the NotificationService
+  // ✅ Initialize the NotificationService
   await NotificationService.initialize(onTap: (response) async {
     if (response.payload != null && response.payload!.isNotEmpty) {
       final prefs = await SharedPreferences.getInstance();
 
-      // 🧠 Restore last used model config
+      // 🧠 Restore last used tool config
       final lastModel = prefs.getString("last_model");
       final lastParamsStr = prefs.getString("last_model_params");
       final lastInputsStr = prefs.getString("last_model_inputs");
@@ -33,8 +35,7 @@ Future<void> main() async {
         config = GenericToolConfig(
           title: lastTitle,
           model: lastModel,
-          params:
-              lastParamsStr != null ? jsonDecode(lastParamsStr) : const {},
+          params: lastParamsStr != null ? jsonDecode(lastParamsStr) : const {},
           inputs: lastInputsStr != null
               ? List<Map<String, dynamic>>.from(jsonDecode(lastInputsStr))
               : const [],
@@ -42,15 +43,40 @@ Future<void> main() async {
         );
       }
 
-      runApp(AICreativeStudio(
-        initialJobId: response.payload!,
-        restoredConfig: config,
-      ));
+      // ✅ 1️⃣ Check if PollingService already cached result
+      final cached = prefs.getString("cached_result_bytes");
+      if (cached != null && cached.isNotEmpty && config != null) {
+        debugPrint("✅ Found cached result — opening instantly");
+        runApp(
+          AICreativeStudio(
+            initialJobId: response.payload!,
+            restoredConfig: config,
+          ),
+        );
+        return;
+      }
+
+      // ✅ 2️⃣ If cached not found, fallback to pending URL
+      final pendingUrl = prefs.getString("pending_download_url");
+      if (pendingUrl != null && pendingUrl.isNotEmpty && config != null) {
+        debugPrint("ℹ️ Using pending download URL from prefs");
+        runApp(
+          AICreativeStudio(
+            initialJobId: response.payload!,
+            restoredConfig: config,
+          ),
+        );
+        return;
+      }
+
+      // ✅ 3️⃣ If nothing found, load normally
+      runApp(const AICreativeStudio());
     } else {
       runApp(const AICreativeStudio());
     }
   });
 
+  PollingService.instance.start();
   runApp(const AICreativeStudio());
 }
 

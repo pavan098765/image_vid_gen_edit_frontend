@@ -13,39 +13,57 @@ class NotificationService {
   static const InitializationSettings _initSettings =
       InitializationSettings(android: _initSettingsAndroid);
 
-  /// Call this from main()
-  static Future<void> initialize(
-      {Function(NotificationResponse)? onTap}) async {
+  static const AndroidNotificationChannel _channel = AndroidNotificationChannel(
+    'ai_jobs_channel', // must match your AndroidNotificationDetails ID
+    'AI Job Notifications',
+    description: 'Notifies when AI jobs complete',
+    importance: Importance.max,
+  );
+
+  /// 🔹 Call this once from main()
+  static Future<void> initialize({
+    Function(NotificationResponse)? onTap,
+  }) async {
     await _plugin.initialize(
       _initSettings,
       onDidReceiveNotificationResponse: onTap,
     );
+
+    // ✅ Explicitly create notification channel (important for Android 13+)
+    final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+
+    await androidPlugin?.createNotificationChannel(_channel);
+
+    // ✅ Ask for permission (Android 13+)
+    await androidPlugin?.requestNotificationsPermission();
   }
 
-  /// Simple notification with optional payload
+  /// 🔹 Show a simple notification
   static Future<void> showNotification({
     required String title,
     required String body,
     String? payload,
   }) async {
-    const AndroidNotificationDetails androidDetails =
-        AndroidNotificationDetails(
-      'ai_jobs_channel',
+    const androidDetails = AndroidNotificationDetails(
+      'ai_jobs_channel', // must match _channel.id
       'AI Job Notifications',
       channelDescription: 'Notifies when AI jobs complete',
       importance: Importance.max,
       priority: Priority.high,
+      playSound: true,
+      enableVibration: true,
       showWhen: true,
     );
 
-    const NotificationDetails platformDetails =
-        NotificationDetails(android: androidDetails);
+    const details = NotificationDetails(android: androidDetails);
+    final id = DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
     await _plugin.show(
-      0,
+      id, // notification ID
       title,
       body,
-      platformDetails,
+      details,
       payload: payload,
     );
   }

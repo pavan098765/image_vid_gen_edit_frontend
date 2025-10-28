@@ -36,11 +36,11 @@
           ],
           "elements": [
             {
-              "type": "image_upload",
+              "type": "image_preview",
               "input_ref": "init_image"
             },
             {
-              "type": "image_preview",
+              "type": "image_upload",
               "input_ref": "init_image"
             },
             {
@@ -98,11 +98,11 @@
           ],
           "elements": [
             {
-              "type": "image_upload",
+              "type": "image_preview",
               "input_ref": "init_image"
             },
             {
-              "type": "image_preview",
+              "type": "image_upload",
               "input_ref": "init_image"
             },
             {
@@ -159,11 +159,11 @@
           ],
           "elements": [
             {
-              "type": "image_upload",
+              "type": "image_preview",
               "input_ref": "images"
             },
             {
-              "type": "image_preview",
+              "type": "image_upload",
               "input_ref": "images"
             },
             {
@@ -207,12 +207,12 @@
           ],
           "elements": [
             {
-              "type": "image_upload",
-              "input_ref": "image"
+              "type": "image_preview",
+              "input_ref": "init_image"
             },
             {
-              "type": "image_preview",
-              "input_ref": "image"
+              "type": "image_upload",
+              "input_ref": "init_image"
             },
             {
               "type": "generate_button"
@@ -244,23 +244,23 @@
               "max": 1
             },
             {
-              "id": "mask",
+              "id": "mask_image",
               "type": "image",
               "label": "Mask (white=replace)"
             }
           ],
           "elements": [
             {
+              "type": "image_preview",
+              "input_ref": "init_image"
+            },
+            {
               "type": "image_upload",
-              "input_ref": "image"
+              "input_ref": "init_image"
             },
             {
               "type": "painter",
-              "input_ref": "mask"
-            },
-            {
-              "type": "image_preview",
-              "input_ref": "image"
+              "input_ref": "mask_image"
             },
             {
               "type": "generate_button"
@@ -305,7 +305,7 @@
               "max": 1
             },
             {
-              "id": "mask",
+              "id": "mask_image",
               "type": "image",
               "label": "Mask Image"
             },
@@ -342,13 +342,14 @@
               "label": "Image → Image",
               "elements": [
                 {
-                  "type": "image_upload",
-                  "input_ref": "init_image"
-                },
-                {
                   "type": "image_preview",
                   "input_ref": "init_image"
                 },
+                {
+                  "type": "image_upload",
+                  "input_ref": "init_image"
+                },
+                
                 {
                   "type": "prompt",
                   "input_ref": "prompt"
@@ -369,17 +370,18 @@
               "label": "Inpainting",
               "elements": [
                 {
+                  "type": "image_preview",
+                  "input_ref": "init_image"
+                },
+                {
                   "type": "image_upload",
                   "input_ref": "init_image"
                 },
                 {
                   "type": "painter",
-                  "input_ref": "mask"
+                  "input_ref": "mask_image"
                 },
-                {
-                  "type": "image_preview",
-                  "input_ref": "init_image"
-                },
+                
                 {
                   "type": "prompt",
                   "input_ref": "prompt"
@@ -425,7 +427,7 @@
               "max": 1
             },
             {
-              "id": "mask",
+              "id": "mask_image",
               "type": "image",
               "label": "Mask Image"
             },
@@ -461,12 +463,13 @@
             "image_to_image": {
               "label": "Image → Image",
               "elements": [
+                
                 {
-                  "type": "image_upload",
+                  "type": "image_preview",
                   "input_ref": "init_image"
                 },
                 {
-                  "type": "image_preview",
+                  "type": "image_upload",
                   "input_ref": "init_image"
                 },
                 {
@@ -489,17 +492,18 @@
               "label": "Inpainting",
               "elements": [
                 {
+                  "type": "image_preview",
+                  "input_ref": "init_image"
+                },
+                {
                   "type": "image_upload",
                   "input_ref": "init_image"
                 },
                 {
                   "type": "painter",
-                  "input_ref": "mask"
+                  "input_ref": "mask_image"
                 },
-                {
-                  "type": "image_preview",
-                  "input_ref": "init_image"
-                },
+                
                 {
                   "type": "prompt",
                   "input_ref": "prompt"
@@ -545,7 +549,7 @@
               "max": 1
             },
             {
-              "id": "mask",
+              "id": "mask_image",
               "type": "image",
               "label": "Mask Image"
             },
@@ -581,12 +585,13 @@
             "image_to_image": {
               "label": "Image → Image",
               "elements": [
+                
                 {
-                  "type": "image_upload",
+                  "type": "image_preview",
                   "input_ref": "init_image"
                 },
                 {
-                  "type": "image_preview",
+                  "type": "image_upload",
                   "input_ref": "init_image"
                 },
                 {
@@ -609,17 +614,18 @@
               "label": "Inpainting",
               "elements": [
                 {
+                  "type": "image_preview",
+                  "input_ref": "init_image"
+                },
+                {
                   "type": "image_upload",
                   "input_ref": "init_image"
                 },
                 {
                   "type": "painter",
-                  "input_ref": "mask"
+                  "input_ref": "mask_image"
                 },
-                {
-                  "type": "image_preview",
-                  "input_ref": "init_image"
-                },
+                
                 {
                   "type": "prompt",
                   "input_ref": "prompt"
@@ -677,13 +683,14 @@
           ],
           "elements": [
             {
-              "type": "image_upload",
-              "input_ref": "image"
+              "type": "image_preview",
+              "input_ref": "init_image"
             },
             {
-              "type": "image_preview",
-              "input_ref": "image"
+              "type": "image_upload",
+              "input_ref": "init_image"
             },
+            
             {
               "type": "prompt",
               "input_ref": "prompt"
@@ -809,12 +816,13 @@
             "image_to_video": {
               "label": "Image → Video",
               "elements": [
+                
                 {
-                  "type": "image_upload",
+                  "type": "image_preview",
                   "input_ref": "init_image"
                 },
                 {
-                  "type": "image_preview",
+                  "type": "image_upload",
                   "input_ref": "init_image"
                 },
                 {
@@ -885,13 +893,14 @@
             }
           ],
           "elements": [
-            {
-              "type": "image_upload",
-              "input_ref": "image"
-            },
+            
             {
               "type": "image_preview",
-              "input_ref": "image"
+              "input_ref": "init_image"
+            },
+            {
+              "type": "image_upload",
+              "input_ref": "init_image"
             },
             {
               "type": "upscale",
@@ -937,13 +946,14 @@
             }
           ],
           "elements": [
-            {
-              "type": "image_upload",
-              "input_ref": "image"
-            },
+            
             {
               "type": "image_preview",
-              "input_ref": "image"
+              "input_ref": "init_image"
+            },
+            {
+              "type": "image_upload",
+              "input_ref": "init_image"
             },
             {
               "type": "upscale",
@@ -989,13 +999,14 @@
             }
           ],
           "elements": [
-            {
-              "type": "image_upload",
-              "input_ref": "image"
-            },
+            
             {
               "type": "image_preview",
-              "input_ref": "image"
+              "input_ref": "init_image"
+            },
+            {
+              "type": "image_upload",
+              "input_ref": "init_image"
             },
             {
               "type": "upscale",
