@@ -1,9 +1,17 @@
 // lib/main.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:image_vid_gen_edit_frontend/core/services/polling_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+// Firebase imports
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+
+// Import the generated options file (created by flutterfire configure)
+import 'firebase_options.dart';
+
+// Existing imports
+import 'package:image_vid_gen_edit_frontend/core/services/polling_service.dart';
 import 'core/theme/app_theme.dart';
 import 'core/app_state.dart';
 import 'core/services/notification_service.dart';
@@ -15,82 +23,171 @@ import 'features/video_gen/video_gen_page.dart';
 import 'features/credits/credits_page.dart';
 import 'features/settings/settings_page.dart';
 
+// Global navigator key
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+// Queue for delayed navigations before MaterialApp mounts
+List<({String jobId, GenericToolConfig config})> _pendingNavigations = [];
+
+/// Background handler for FCM (runs in a background isolate when app is killed)
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  // Initialize Firebase in background isolate using the same options
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  // Use local notifications plugin to show a notification
+  await NotificationService.showNotification(
+    title: message.notification?.title ?? "Processing Complete.",
+    body: message.notification?.body ?? "Tap to view result.",
+    payload: message.data["job_id"] ?? "",
+  );
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // ✅ Initialize the NotificationService
-  // ✅ Initialize the NotificationService
+  // Initialize Firebase with generated options
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  debugPrint("✅ Firebase initialized");
+
+  // Register background handler for FCM
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
+  // Initialize local notification service (single call)
   await NotificationService.initialize(onTap: (response) async {
-    if (response.payload != null && response.payload!.isNotEmpty) {
+    try {
+      if (response.payload == null || response.payload!.isEmpty) return;
+      final jobId = response.payload!;
       final prefs = await SharedPreferences.getInstance();
+      final jobContextStr = prefs.getString("notify_job_$jobId");
+      if (jobContextStr == null) return;
 
-      // 🧠 Restore last used tool config
-      final lastModel = prefs.getString("last_model");
-      final lastParamsStr = prefs.getString("last_model_params");
-      final lastInputsStr = prefs.getString("last_model_inputs");
-      final lastTitle = prefs.getString("last_model_title") ?? "AI Tool";
+      final data = jsonDecode(jobContextStr);
+      final config = GenericToolConfig(
+        title: data["title"] ?? "AI Tool",
+        model: data["model"] ?? "unknown_model",
+        inputs: List<Map<String, dynamic>>.from(data["inputs"] ?? []),
+        params: Map<String, dynamic>.from(data["params"] ?? {}),
+        outputType: data["outputType"] ?? "image",
+      );
 
-      GenericToolConfig? config;
-      if (lastModel != null) {
-        config = GenericToolConfig(
-          title: lastTitle,
-          model: lastModel,
-          params: lastParamsStr != null ? jsonDecode(lastParamsStr) : const {},
-          inputs: lastInputsStr != null
-              ? List<Map<String, dynamic>>.from(jsonDecode(lastInputsStr))
-              : const [],
-          outputType: "image",
-        );
-      }
-
-      // ✅ 1️⃣ Check if PollingService already cached result
-      final cached = prefs.getString("cached_result_bytes");
-      if (cached != null && cached.isNotEmpty && config != null) {
-        debugPrint("✅ Found cached result — opening instantly");
-        runApp(
-          AICreativeStudio(
-            initialJobId: response.payload!,
-            restoredConfig: config,
-          ),
-        );
-        return;
-      }
-
-      // ✅ 2️⃣ If cached not found, fallback to pending URL
-      final pendingUrl = prefs.getString("pending_download_url");
-      if (pendingUrl != null && pendingUrl.isNotEmpty && config != null) {
-        debugPrint("ℹ️ Using pending download URL from prefs");
-        runApp(
-          AICreativeStudio(
-            initialJobId: response.payload!,
-            restoredConfig: config,
-          ),
-        );
-        return;
-      }
-
-      // ✅ 3️⃣ If nothing found, load normally
-      runApp(const AICreativeStudio());
-    } else {
-      runApp(const AICreativeStudio());
+      _openJobFromNotification(jobId, config);
+    } catch (e) {
+      debugPrint("⚠️ Notification tap restore failed: $e");
     }
   });
+  debugPrint("✅ Local NotificationService initialized");
 
-  PollingService.instance.start();
-  runApp(const AICreativeStudio());
-}
+  // FCM instance & permission
+  final fcm = FirebaseMessaging.instance;
+  await fcm.requestPermission(alert: true, badge: true, sound: true);
 
-class AICreativeStudio extends StatelessWidget {
-  final String? initialJobId;
-  final GenericToolConfig? restoredConfig;
+  // Store FCM token locally
+  final token = await fcm.getToken();
+  debugPrint("🔑 FCM Token: $token");
+  final prefs = await SharedPreferences.getInstance();
+  if (token != null) await prefs.setString("fcm_token", token);
 
-  const AICreativeStudio({
-    super.key,
-    this.initialJobId,
-    this.restoredConfig,
+  // Foreground messages -> show via local notifications
+  FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+    debugPrint("📩 Foreground FCM: ${message.notification?.title}");
+    NotificationService.showNotification(
+      title: message.notification?.title ?? "Processing Complete",
+      body: message.notification?.body ?? "Tap to view your result.",
+      payload: message.data["job_id"] ?? "",
+    );
   });
 
-  /// Main app pages
+  // When user taps an FCM notification while app was backgrounded (not killed)
+  FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) async {
+    final jobId = message.data["job_id"];
+    if (jobId == null || jobId.isEmpty) return;
+
+    final jobContextStr = prefs.getString("notify_job_$jobId");
+    if (jobContextStr == null) return;
+
+    final data = jsonDecode(jobContextStr);
+    final config = GenericToolConfig(
+      title: data["title"] ?? "AI Tool",
+      model: data["model"] ?? "unknown_model",
+      inputs: List<Map<String, dynamic>>.from(data["inputs"] ?? []),
+      params: Map<String, dynamic>.from(data["params"] ?? {}),
+      outputType: data["outputType"] ?? "image",
+    );
+
+    _openJobFromNotification(jobId, config);
+  });
+
+  // If app was killed and opened from notification, getInitialMessage()
+  final initialMessage = await FirebaseMessaging.instance.getInitialMessage();
+  if (initialMessage != null && initialMessage.data["job_id"] != null) {
+    final jobId = initialMessage.data["job_id"];
+    final jobContextStr = prefs.getString("notify_job_$jobId");
+    if (jobContextStr != null) {
+      final data = jsonDecode(jobContextStr);
+      final config = GenericToolConfig(
+        title: data["title"] ?? "AI Tool",
+        model: data["model"] ?? "unknown_model",
+        inputs: List<Map<String, dynamic>>.from(data["inputs"] ?? []),
+        params: Map<String, dynamic>.from(data["params"] ?? {}),
+        outputType: data["outputType"] ?? "image",
+      );
+      // queue navigation until UI exists
+      _pendingNavigations.add((jobId: jobId, config: config));
+    }
+  }
+
+  // Start polling service (safe to call; it's idempotent)
+  PollingService.instance.start();
+  debugPrint("✅ PollingService started");
+
+  // Launch app once
+  runApp(const AICreativeStudio());
+  debugPrint("✅ runApp() executed");
+
+  // Execute queued navigations after first frame
+  WidgetsBinding.instance.addPostFrameCallback((_) async {
+    await Future.delayed(const Duration(milliseconds: 500));
+    if (_pendingNavigations.isNotEmpty && navigatorKey.currentState != null) {
+      for (final item in _pendingNavigations) {
+        debugPrint("🎯 Executing queued navigation for job=${item.jobId}");
+        navigatorKey.currentState!.push(
+          MaterialPageRoute(
+            builder: (_) => GenericToolPage(
+              config: item.config,
+              restoreJobId: item.jobId,
+            ),
+          ),
+        );
+      }
+      _pendingNavigations.clear();
+    }
+  });
+}
+
+// Helper for both local + FCM notification opens
+void _openJobFromNotification(String jobId, GenericToolConfig config) {
+  final nav = navigatorKey.currentState;
+  if (nav == null) {
+    debugPrint("⚠️ Navigator not ready yet, queuing job=$jobId");
+    _pendingNavigations.add((jobId: jobId, config: config));
+    return;
+  }
+
+  debugPrint("🚀 Navigating to GenericToolPage for job=$jobId");
+  nav.push(
+    MaterialPageRoute(
+      builder: (_) => GenericToolPage(
+        config: config,
+        restoreJobId: jobId,
+      ),
+    ),
+  );
+}
+
+// Root App
+class AICreativeStudio extends StatelessWidget {
+  const AICreativeStudio({super.key});
+
   final List<Widget> _pages = const [
     EditorPage(),
     VideoGenPage(),
@@ -101,25 +198,12 @@ class AICreativeStudio extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ Case 1: Opened from notification (restore job)
-    if (initialJobId != null &&
-        initialJobId!.isNotEmpty &&
-        restoredConfig != null) {
-      return MaterialApp(
-        title: 'AI Creative Studio',
-        theme: AppTheme.darkTheme,
-        debugShowCheckedModeBanner: false,
-        home: GenericToolPage(
-          config: restoredConfig!,
-          restoreJobId: initialJobId,
-        ),
-      );
-    }
+    debugPrint("🟢 Building AICreativeStudio widget");
 
-    // ✅ Case 2: Normal app launch
     return MaterialApp(
       title: 'AI Creative Studio',
       theme: AppTheme.darkTheme,
+      navigatorKey: navigatorKey,
       debugShowCheckedModeBanner: false,
       home: Scaffold(
         body: SafeArea(

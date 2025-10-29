@@ -587,9 +587,9 @@ class _UpscalePageState extends State<UpscalePage>
             ],
           ),
           const SizedBox(height: 20),
-          Text(
+          const Text(
             "Upscale Factor",
-            style: const TextStyle(color: Colors.white, fontSize: 16),
+            style: TextStyle(color: Colors.white, fontSize: 16),
           ),
           const SizedBox(height: 10),
           Row(

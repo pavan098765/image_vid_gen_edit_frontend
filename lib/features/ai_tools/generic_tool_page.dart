@@ -12,6 +12,7 @@ import 'package:image_vid_gen_edit_frontend/core/services/polling_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_vid_gen_edit_frontend/core/services/file_service.dart';
 import 'package:crypto/crypto.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 /// --------------------------------------
 ///  GENERIC TOOL PAGE (Dynamic Version)
@@ -97,7 +98,6 @@ class _GenericToolPageState extends State<GenericToolPage>
   final TextEditingController _promptController = TextEditingController();
 
   // HMAC config
-  static const String baseUrl = "https://genedit.mooo.com";
   static const String controllerUrl = "https://genedit.mooo.com";
   static const String controllerApiKey = "SECRETKEY";
   static const String controllerSharedSecret = "SECRETKEY";
@@ -175,6 +175,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   String _currentFunFact = "";
   String _currentAiChat = "";
   final Random _rand = Random();
+  bool _restoringInProgress = false;
 
   // Dynamic element cache
   List<Map<String, dynamic>> get _currentElements {
@@ -217,13 +218,37 @@ class _GenericToolPageState extends State<GenericToolPage>
             setState(() => _notifyLater = true);
 
             final prefs = await SharedPreferences.getInstance();
+
             if (_activeJobId != null) {
-              await prefs.setString("active_job_id", _activeJobId!);
-              await prefs.setBool("notify_requested", true);
+              final jobId = _activeJobId!;
+              // 🧠 Build per-job context
+              final jobContext = {
+                "model": widget.config.model,
+                "title": widget.config.title,
+                "inputs": widget.config.inputs,
+                "params": widget.config.params,
+                "outputType": widget.config.outputType,
+              };
+
+              // ✅ Store under unique key per job
+              await prefs.setString(
+                  "notify_job_$jobId", jsonEncode(jobContext));
+
+              // ✅ Track active notify jobs
+              final activeJobs = prefs.getStringList("notify_jobs_list") ?? [];
+              if (!activeJobs.contains(jobId)) {
+                activeJobs.add(jobId);
+                await prefs.setStringList("notify_jobs_list", activeJobs);
+              }
+
+              await prefs.setBool("notify_requested_$jobId", true);
+              await prefs.setString("active_job_id", jobId);
+
               // optional: keep pending download url if you already had one
               final pending = prefs.getString("pending_download_url");
               debugPrint(
                   "Saved notify request for job=$_activeJobId pending=$pending");
+              debugPrint("💾 Saved notify-later context for job=$jobId");
             }
 
             // stop local page poller to avoid duplicate server requests
@@ -331,23 +356,114 @@ class _GenericToolPageState extends State<GenericToolPage>
     } else if (state == AppLifecycleState.resumed) {
       _pulseController.repeat(reverse: true);
       _sparkleController.repeat();
-      // if (!_submittingJob && _activeJobId != null && _loading) {
-      //    _pollJobStatus();
-      // }
+
+      // ✅ Re-attach polling if we were mid-loading
+      if (_activeJobId != null && _loading && !_fetchingResult) {
+        debugPrint("🔁 Resuming job polling after resume");
+        PollingService.instance.start();
+      }
     }
   }
 
-  // restore job state if interrupted
+  Future<void> _waitForNetworkThenRetry(String payloadJson) async {
+    if (_restoringInProgress) return;
+    _restoringInProgress = true;
+    final connectivity = Connectivity();
+    final current = await connectivity.checkConnectivity();
+
+    if (current != ConnectivityResult.none) {
+      debugPrint("🌐 Network available, retrying submit immediately...");
+      await _retrySubmit(payloadJson);
+      _restoringInProgress = false;
+      return;
+    }
+
+    // else wait until connectivity resumes
+    debugPrint("📴 Offline — waiting for network to restore submission...");
+    final sub = connectivity.onConnectivityChanged.listen(null);
+    sub.onData((result) async {
+      if (result != ConnectivityResult.none) {
+        await sub.cancel();
+        debugPrint("🌐 Network restored — retrying job submit...");
+        await _retrySubmit(payloadJson);
+      }
+    });
+  }
+
+  Future<void> _retrySubmit(String payloadJson) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final sigBytes = Hmac(sha256, utf8.encode(controllerSharedSecret))
+          .convert(utf8.encode(payloadJson));
+      final signature = "sha256=${sigBytes.toString()}";
+
+      final headers = {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer $controllerApiKey",
+        "X-Signature": signature,
+      };
+
+      final resp = await http
+          .post(Uri.parse('$controllerUrl/submit'),
+              headers: headers, body: payloadJson)
+          .timeout(const Duration(seconds: 20));
+
+      if (resp.statusCode == 200) {
+        final data = jsonDecode(resp.body);
+        final jobId = data["job_id"];
+        final downloadUrl = data["download_url"];
+
+        await prefs.setString("active_job_id", jobId ?? "");
+        await prefs.remove("job_submitting");
+        await prefs.remove("pending_payload");
+
+        if (mounted) {
+          setState(() {
+            _activeJobId = jobId;
+            _loading = true;
+          });
+        }
+
+        if (downloadUrl != null) {
+          await prefs.setString("pending_download_url", downloadUrl);
+        }
+
+        PollingService.instance.start();
+        debugPrint("✅ Retried submit successfully for job $jobId");
+      } else {
+        throw Exception("Server responded ${resp.statusCode}");
+      }
+    } catch (e) {
+      debugPrint("⚠️ Retry submit failed: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Retry failed: $e")),
+      );
+    }
+  }
+
+  // 🧠 Restores previous job or submission state safely and intelligently
   Future<void> _restoreJobIfExists() async {
     final prefs = await SharedPreferences.getInstance();
+
     final savedJobId = prefs.getString("active_job_id");
     final pendingUrl = prefs.getString("pending_download_url");
     final cached = prefs.getString("cached_result_bytes");
 
-    debugPrint(
-        "🔄 Restoring job state: jobId=$savedJobId, hasCached=${cached != null}, hasPendingUrl=${pendingUrl != null}");
+    final wasSubmitting = prefs.getBool("job_submitting") ?? false;
+    final pendingPayload = prefs.getString("pending_payload");
 
-    // 1️⃣ If cached bytes exist → show result instantly
+    final lastStatus = prefs.getString("job_last_status");
+
+    debugPrint(
+      "🔄 Restoring job state: "
+      "jobId=$savedJobId, "
+      "wasSubmitting=$wasSubmitting, "
+      "hasCached=${cached != null}, "
+      "hasPendingUrl=${pendingUrl != null}, "
+      "lastStatus=$lastStatus",
+    );
+
+    // ✅ 1️⃣ If cached result exists → show instantly
     if (cached != null && cached.isNotEmpty) {
       try {
         final bytes = base64Decode(cached);
@@ -356,21 +472,25 @@ class _GenericToolPageState extends State<GenericToolPage>
           _loading = false;
           _notifyLater = false;
         });
+
         debugPrint("✅ Loaded cached result instantly from PollingService");
 
-        // Clean up after showing
+        // Clean all flags (job is done)
         await prefs.remove("cached_result_bytes");
         await prefs.remove("pending_download_url");
         await prefs.remove("active_job_id");
         await prefs.remove("notify_requested");
+        await prefs.remove("job_submitting");
+        await prefs.remove("pending_payload");
+        await prefs.remove("job_last_status");
         return;
       } catch (e) {
         debugPrint("⚠️ Failed to decode cached result: $e");
-        // fall through to pending URL fallback
+        // continue to next fallback
       }
     }
 
-    // 2️⃣ If pending download URL exists → fetch result normally
+    // ✅ 2️⃣ If pending download URL exists → fetch result
     if (pendingUrl != null && pendingUrl.isNotEmpty) {
       try {
         debugPrint("🌐 Found pending URL — downloading result...");
@@ -379,29 +499,62 @@ class _GenericToolPageState extends State<GenericToolPage>
           "status": "completed",
         });
 
-        // Clean up after successful fetch
+        // Clean flags after successful fetch
         await prefs.remove("pending_download_url");
         await prefs.remove("cached_result_bytes");
         await prefs.remove("active_job_id");
         await prefs.remove("notify_requested");
+        await prefs.remove("job_submitting");
+        await prefs.remove("pending_payload");
+        await prefs.remove("job_last_status");
         debugPrint("✅ Restored from pending URL and cleaned up prefs");
         return;
       } catch (e) {
         debugPrint("⚠️ Failed to download pending result: $e");
+        // continue fallback
       }
     }
 
-    // 3️⃣ If no cached or pending result → check for active job still processing
+    // ✅ 3️⃣ If active job still processing → resume polling, not resubmit
     if (savedJobId != null && savedJobId.isNotEmpty) {
+      debugPrint(
+          "⏳ Job still processing, resuming polling for jobId=$savedJobId");
       setState(() {
         _activeJobId = savedJobId;
         _loading = true;
         _notifyLater = prefs.getBool("notify_requested") ?? false;
       });
-      debugPrint("⌛ Job still processing, jobId=$savedJobId");
-    } else {
-      debugPrint("ℹ️ No active or cached job to restore");
+
+      PollingService.instance.start(); // safely idempotent
+      return;
     }
+
+    // ✅ 4️⃣ Only if job_id is missing but we were submitting → retry submission
+    if (wasSubmitting && pendingPayload != null && pendingPayload.isNotEmpty) {
+      // Avoid retry if last status shows completion/failure
+      if (lastStatus == "completed" || lastStatus == "failed") {
+        debugPrint(
+            "🛑 Skipping stale submission restore (job already finished).");
+        await prefs.remove("job_submitting");
+        await prefs.remove("pending_payload");
+        await prefs.remove("job_last_status");
+        return;
+      }
+
+      debugPrint(
+          "📦 No active job found — restoring interrupted submission...");
+      setState(() => _loading = true);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("⏳ Restoring interrupted submission...")),
+      );
+
+      await _waitForNetworkThenRetry(pendingPayload);
+      return;
+    }
+
+    // ✅ 5️⃣ Nothing to restore
+    debugPrint("ℹ️ No active, cached, or pending job to restore");
   }
 
   Future<String?> _showTimeoutDialog() async {
@@ -413,8 +566,8 @@ class _GenericToolPageState extends State<GenericToolPage>
           backgroundColor: Colors.deepPurple.shade900.withOpacity(0.95),
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-          title: Row(
-            children: const [
+          title: const Row(
+            children: [
               Icon(Icons.hourglass_bottom, color: Colors.amberAccent),
               SizedBox(width: 10),
               Text("Still processing...",
@@ -780,7 +933,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                 style: TextStyle(color: Colors.white)),
             value: _upscaleEnabled,
             onChanged: (v) => setState(() => _upscaleEnabled = v),
-            activeColor: Colors.deepPurpleAccent,
+            activeThumbColor: Colors.deepPurpleAccent,
             contentPadding: EdgeInsets.zero,
           ),
           if (_upscaleEnabled)
@@ -935,7 +1088,7 @@ class _GenericToolPageState extends State<GenericToolPage>
         padding: const EdgeInsets.symmetric(vertical: 12),
         child: ElevatedButton.icon(
           icon: const Icon(Icons.flash_on),
-          label: Text("Generate ✨"),
+          label: const Text("Generate ✨"),
           onPressed: _runJob,
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.deepPurple,
@@ -1079,6 +1232,7 @@ class _GenericToolPageState extends State<GenericToolPage>
       // -------------------------
       // Merge static params
       // -------------------------
+      final prefs = await SharedPreferences.getInstance();
       final params = {...?widget.config.params, ...encoded};
       params.forEach((k, v) {
         if (v == "random") params[k] = Random().nextInt(99999999);
@@ -1087,6 +1241,9 @@ class _GenericToolPageState extends State<GenericToolPage>
       // -------------------------
       // Build payload (prompt top-level)
       // -------------------------
+
+      final fcmToken = prefs.getString("fcm_token");
+
       final payload = <String, dynamic>{
         "model": widget.config.model,
         if (promptForPayload != null && promptForPayload.isNotEmpty)
@@ -1094,6 +1251,7 @@ class _GenericToolPageState extends State<GenericToolPage>
         else if (_hasPrompt)
           "prompt": "Enhance this image creatively.",
         "params": params,
+        "fcm_token": fcmToken,
       };
 
       final payloadJson = jsonEncode(payload);
@@ -1112,6 +1270,9 @@ class _GenericToolPageState extends State<GenericToolPage>
       // -------------------------
       // SUBMIT JOB
       // -------------------------
+      await prefs.setBool("job_submitting", true);
+      await prefs.setString("pending_payload", payloadJson);
+
       final resp = await http.post(Uri.parse('$controllerUrl/submit'),
           headers: headers, body: payloadJson);
 
@@ -1123,6 +1284,8 @@ class _GenericToolPageState extends State<GenericToolPage>
 
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString("active_job_id", jobId);
+        await prefs.remove("job_submitting");
+        await prefs.remove("pending_payload");
 
         // 🧠 Save last used model config for auto-restore later
         await prefs.setString("last_model", widget.config.model);
@@ -1186,63 +1349,16 @@ class _GenericToolPageState extends State<GenericToolPage>
     }
   }
 
-  // void _pollJobStatus() {
-  //   if (_submittingJob) return;
-  //   _pollTimer?.cancel();
-  //   _pollTimer =
-  //       Timer.periodic(const Duration(seconds: pollIntervalSec), (_) async {
-  //     if (_activeJobId == null) return;
-  //     try {
-  //       final payloadJson = jsonEncode({"job_id": _activeJobId});
-  //       final sigBytes = Hmac(sha256, utf8.encode(controllerSharedSecret))
-  //           .convert(utf8.encode(payloadJson));
-  //       final sig = "sha256=${sigBytes.toString()}";
-  //       final headers = {
-  //         "Authorization": "Bearer $controllerApiKey",
-  //         "X-Signature": sig
-  //       };
-  //       final url = "$baseUrl/job_status?job_id=$_activeJobId";
-  //       final resp = await http.get(Uri.parse(url), headers: headers);
-  //       if (resp.statusCode != 200) return;
-  //       final data = jsonDecode(resp.body);
-  //       if (data["download_url"] != null) {
-  //         final prefs = await SharedPreferences.getInstance();
-  //         prefs.setString("pending_download_url", data["download_url"]);
-  //       }
-  //       final status = data["status"];
-  //       if (status == "completed") {
-  //         _pollTimer?.cancel();
-  //         _fetchResult(data);
-  //         if (_notifyLater || !mounted) {
-  //           await _showNotification(_activeJobId!);
-  //         }
-  //       } else if (status == "failed") {
-  //         _pollTimer?.cancel();
-  //         _onJobFailed(data["error"] ?? "Unknown error");
-  //       }
-  //     } catch (e) {
-  //       debugPrint("pollJob error: $e");
-  //     }
-  //   });
-  // }
-
-  Future<void> _showNotification(String jobId) async {
-    await NotificationService.showNotification(
-      title: "Processing Complete",
-      body: "Tap to view your result",
-      payload: jobId,
-    );
-  }
-
   Future<void> _fetchResult(Map<String, dynamic> data) async {
     if (_fetchingResult) return;
     _fetchingResult = true;
+
     try {
       String? downloadUrl = data["download_url"];
-      if (downloadUrl == null) {
-        final prefs = await SharedPreferences.getInstance();
-        downloadUrl = prefs.getString("pending_download_url");
-      }
+      final prefs = await SharedPreferences.getInstance();
+
+      // 🔹 Fallback if download URL not in data
+      downloadUrl ??= prefs.getString("pending_download_url");
       if (downloadUrl == null || downloadUrl.isEmpty) {
         throw Exception("Missing download URL");
       }
@@ -1254,6 +1370,7 @@ class _GenericToolPageState extends State<GenericToolPage>
       }
 
       final bytes = resp.bodyBytes;
+
       if (mounted) {
         setState(() {
           _resultData = bytes;
@@ -1261,29 +1378,52 @@ class _GenericToolPageState extends State<GenericToolPage>
         });
       }
 
-      final prefs = await SharedPreferences.getInstance();
+      final jobId = _activeJobId;
 
-      final readyToNotify = prefs.getBool("ready_to_notify") ?? false;
+      // 🔹 Check if this job was marked for notification
+      bool readyToNotify = false;
+      if (jobId != null) {
+        readyToNotify = prefs.getBool("notify_requested_$jobId") ?? false;
+      }
+
+      // 🔔 Show notification if needed
       if (readyToNotify) {
         await NotificationService.showNotification(
           title: "Processing Complete",
-          body: "Tap to view your result",
-          payload: _activeJobId ?? "",
+          body: "Tap to view your result.",
+          payload: jobId ?? "",
         );
-        await prefs.remove("ready_to_notify");
+        await prefs.remove("notify_requested_$jobId");
+        debugPrint("🔔 Notification shown for completed job $jobId");
       }
 
+      // 🔹 Cleanup: Remove per-job context and metadata
+      if (jobId != null) {
+        await prefs.remove("notify_job_$jobId");
+        await prefs.remove("notify_requested_$jobId");
+
+        final activeJobs = prefs.getStringList("notify_jobs_list") ?? [];
+        if (activeJobs.contains(jobId)) {
+          activeJobs.remove(jobId);
+          await prefs.setStringList("notify_jobs_list", activeJobs);
+        }
+
+        debugPrint("🧹 Cleaned up job context for job=$jobId");
+      }
+
+      // 🔹 Cleanup generic temp keys (safe even if reused for other jobs)
       await prefs.remove("active_job_id");
       await prefs.remove("cached_result_bytes");
-      await prefs.remove("notify_requested");
       await prefs.remove("pending_download_url");
       await prefs.remove("selected_images");
-      await prefs.remove("last_model");
-      await prefs.remove("last_model_params");
-      await prefs.remove("last_model_inputs");
+      await prefs.remove("job_submitting");
+      await prefs.remove("pending_payload");
+      await prefs.remove("ready_to_notify");
 
+      // Keep job-independent config keys intact (e.g. last_model)
       _progressController.stop();
       _progressController.reset();
+
       debugPrint("✅ Result image fetched & displayed successfully");
     } catch (e) {
       _onJobFailed(e.toString());
@@ -1384,7 +1524,6 @@ class _GenericToolPageState extends State<GenericToolPage>
                         for (final input in widget.config.inputs) {
                           if (input['type'] == 'image') {
                             final id = input['id'];
-                            _inputs[id] ??= null;
                             debugPrint(
                                 "🔄 Mode switch: initialized image input '$id'");
                           }
@@ -1554,11 +1693,13 @@ class _GenericToolPageState extends State<GenericToolPage>
               const SizedBox(height: 12),
               TextButton.icon(
                 onPressed: () {
-                  Navigator.of(context).pushReplacement(
-                    MaterialPageRoute(
-                      builder: (_) => GenericToolPage(config: widget.config),
-                    ),
-                  );
+                  Future.microtask(() {
+                    Navigator.of(context).pushReplacement(
+                      MaterialPageRoute(
+                        builder: (_) => GenericToolPage(config: widget.config),
+                      ),
+                    );
+                  });
                 },
                 icon: const Icon(Icons.refresh, color: Colors.white),
                 label: const Text("Try Again",
@@ -1606,7 +1747,7 @@ class _SparklePainter extends CustomPainter {
 
       final glowPaint = Paint()
         ..color = col.withOpacity((alpha * 0.6).clamp(0.05, 0.6))
-        ..maskFilter = ui.MaskFilter.blur(ui.BlurStyle.normal, 8)
+        ..maskFilter = const ui.MaskFilter.blur(ui.BlurStyle.normal, 8)
         ..blendMode = BlendMode.plus
         ..isAntiAlias = true;
 

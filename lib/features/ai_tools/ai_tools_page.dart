@@ -346,10 +346,10 @@ class _ToolCardState extends State<_ToolCard> {
           colors: _hover
               ? [
                   accent.withOpacity(0.1),
-                  scheme.surfaceVariant.withOpacity(0.08)
+                  scheme.surfaceContainerHighest.withOpacity(0.08)
                 ]
               : [
-                  scheme.surfaceVariant.withOpacity(0.03),
+                  scheme.surfaceContainerHighest.withOpacity(0.03),
                   scheme.surface.withOpacity(0.02)
                 ],
           begin: Alignment.topLeft,

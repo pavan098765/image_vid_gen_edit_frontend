@@ -58,13 +58,16 @@ class _EditorPageState extends State<EditorPage> {
                   ),
                 ),
                 ListTile(
-                  leading: const Icon(Icons.photo_library, color: Colors.white70),
-                  title: const Text('Gallery', style: TextStyle(color: Colors.white)),
+                  leading:
+                      const Icon(Icons.photo_library, color: Colors.white70),
+                  title: const Text('Gallery',
+                      style: TextStyle(color: Colors.white)),
                   onTap: () => Navigator.pop(context, ImageSource.gallery),
                 ),
                 ListTile(
                   leading: const Icon(Icons.camera_alt, color: Colors.white70),
-                  title: const Text('Camera', style: TextStyle(color: Colors.white)),
+                  title: const Text('Camera',
+                      style: TextStyle(color: Colors.white)),
                   onTap: () => Navigator.pop(context, ImageSource.camera),
                 ),
                 const SizedBox(height: 8),
@@ -78,8 +81,12 @@ class _EditorPageState extends State<EditorPage> {
 
       final XFile? pickedFile = await _picker.pickImage(source: source);
       if (pickedFile != null) {
+        final bytes = await pickedFile.readAsBytes();
+        final tempFile =
+            await FileService.writeTempFile(bytes, pickedFile.name);
+
         setState(() {
-          _selectedImage = File(pickedFile.path);
+          _selectedImage = tempFile;
           _exportedImage = null;
           _lastEditCompleteAt = null;
         });
@@ -104,11 +111,13 @@ class _EditorPageState extends State<EditorPage> {
         content: const Text('Do you want to save your work before closing?'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(_EditorCloseAction.cancel),
+            onPressed: () =>
+                Navigator.of(context).pop(_EditorCloseAction.cancel),
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () => Navigator.of(context).pop(_EditorCloseAction.discard),
+            onPressed: () =>
+                Navigator.of(context).pop(_EditorCloseAction.discard),
             child: const Text('Discard'),
           ),
           ElevatedButton(
@@ -209,7 +218,8 @@ class _EditorPageState extends State<EditorPage> {
                       _lastEditCompleteAt = DateTime.now();
                       setState(() => _exportedImage = bytes);
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('✅ Image editing complete')),
+                        const SnackBar(
+                            content: Text('✅ Image editing complete')),
                       );
                     }
                   },
@@ -219,7 +229,8 @@ class _EditorPageState extends State<EditorPage> {
                   // or the user will press system back — both will be handled by WillPopScope above.
                   onCloseEditor: (_) {
                     // intentionally left minimal to avoid interfering with sub-tool navigation.
-                    debugPrint('pro_image_editor: onCloseEditor called (ignored here).');
+                    debugPrint(
+                        'pro_image_editor: onCloseEditor called (ignored here).');
                   },
                 ),
               ),
@@ -236,7 +247,8 @@ class _EditorPageState extends State<EditorPage> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => _ResultPreviewPage(imageBytes: _exportedImage!),
+                        builder: (_) =>
+                            _ResultPreviewPage(imageBytes: _exportedImage!),
                       ),
                     );
                   },
@@ -278,7 +290,8 @@ enum _EditorCloseAction { cancel, discard, save }
 
 class _ResultPreviewPage extends StatelessWidget {
   final Uint8List imageBytes;
-  const _ResultPreviewPage({Key? key, required this.imageBytes}) : super(key: key);
+  const _ResultPreviewPage({Key? key, required this.imageBytes})
+      : super(key: key);
 
   @override
   Widget build(BuildContext context) {

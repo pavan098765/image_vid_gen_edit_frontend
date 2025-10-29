@@ -269,7 +269,7 @@ class _ImageEditPageState extends State<ImageEditPage>
           });
         } else {
           final pickedFiles = await picker.pickMultiImage(imageQuality: 90);
-          if (pickedFiles == null || pickedFiles.isEmpty) return;
+          if (pickedFiles.isEmpty) return;
           final max = widget.config.maxImages;
           final limited = pickedFiles.take(max).toList();
           final bytesList = <Uint8List>[];
@@ -774,7 +774,7 @@ class _ImageEditPageState extends State<ImageEditPage>
             ),
             value: _scaleImage,
             onChanged: (v) => setState(() => _scaleImage = v),
-            activeColor: Colors.deepPurpleAccent,
+            activeThumbColor: Colors.deepPurpleAccent,
             contentPadding: EdgeInsets.zero,
           ),
 

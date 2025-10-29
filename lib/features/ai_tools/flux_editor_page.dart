@@ -668,7 +668,7 @@ class _FluxEditorPageState extends State<FluxEditorPage>
             ),
             value: _scaleImage,
             onChanged: (v) => setState(() => _scaleImage = v),
-            activeColor: Colors.deepPurpleAccent,
+            activeThumbColor: Colors.deepPurpleAccent,
             contentPadding: EdgeInsets.zero,
           ),
 
