@@ -4,11 +4,14 @@ import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_vid_gen_edit_frontend/core/app_state.dart';
 import 'package:image_vid_gen_edit_frontend/core/services/notification_service.dart';
 import 'package:image_vid_gen_edit_frontend/core/services/polling_service.dart';
+import 'package:image_vid_gen_edit_frontend/features/result_manager/result_manager_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_vid_gen_edit_frontend/core/services/file_service.dart';
 import 'package:crypto/crypto.dart';
@@ -75,20 +78,12 @@ class _GenericToolPageState extends State<GenericToolPage>
   final Map<String, dynamic> _inputs = {};
   bool _loading = false;
   bool _submittingJob = false;
-  bool _notifyLater = false;
   String? _selectedModeKey;
   Uint8List? _resultData;
   String? _activeJobId;
-  // Timer? _pollTimer;
-  Timer? _timeoutTimer;
   bool _fetchingResult = false;
 
   StreamSubscription<Map<String, dynamic>>? _pollingSub;
-
-  // Animations
-  late AnimationController _pulseController;
-  late AnimationController _sparkleController;
-  late AnimationController _progressController;
 
   // for multi-image preview
   int _previewPageIndex = 0;
@@ -101,80 +96,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   static const String controllerUrl = "https://genedit.mooo.com";
   static const String controllerApiKey = "SECRETKEY";
   static const String controllerSharedSecret = "SECRETKEY";
-  // static const int pollIntervalSec = 10;
-  static const int processingDurationSec = 60;
 
-  // Dynamic text & animations
-  final List<String> _loadingTexts = [
-    "✨ Processing input...",
-    "🎨 Merging creative decisions...",
-    "🧠 Tuning model parameters...",
-    "🔍 Checking details...",
-    "🌟 Finalizing output...",
-    "✨ Polishing pixels...",
-    "🎨 Asking AI gods for creative blessings...",
-    "🪄 Mixing colors from another dimension...",
-    "🔍 Looking for perfect lighting...",
-    "🧠 Teaching model some art sense...",
-    "🐢 Patience is an art too...",
-    "🌌 Summoning creative spirits...",
-    "🎶 Humming creativity tune...",
-  ];
-
-  final List<String> _funFacts = [
-    "The first digital image was created in 1957.",
-    "AI learns styles from examples.",
-    "A detailed prompt can yield clearer results.",
-    "Van Gogh sold only one painting in his life.",
-    "The word 'Pixel' means 'Picture Element'.",
-    "Monet painted the same scene over 250 times!",
-    "Cinematic lighting can double engagement.",
-  ];
-
-  final List<String> _aiChats = [
-    "🤖 Fine-tuning the output...",
-    "🪄 Blending textures...",
-    "💫 Adjusting color balance...",
-    "✨ Adding final touches...",
-    "🤖 Hmm… these colors are blending nicely.",
-    "🪄 I’m tweaking the lighting — almost perfect!",
-    "🎨 Ooo, this palette looks stunning already.",
-    "💫 Adding a bit of dreamlike glow…",
-    "✨ Fine-tuning those highlights!",
-    "🔥 I think you’ll love this one!",
-  ];
-
-  final List<String> _waitingMessages = [
-    "⏳ This is taking a bit longer — almost done!",
-    "🚀 Doing heavy-lift processing...",
-    "🔮 Precision adjustments underway...",
-    "⏳ Still cooking something special for you...",
-    "🚀 This one’s taking a little longer — hang tight!",
-    "✨ The AI is adding some finishing touches...",
-    "🔮 Complex masterpiece detected — stay with us!",
-    "🧘‍♂️ Patience level: Artist-grade!",
-  ];
-
-  final List<String> _stages = [
-    "Analyzing",
-    "Editing",
-    "Coloring",
-    "Enhancing",
-    "Finalizing"
-  ];
-
-  final List<IconData> _loadingIcons = [
-    Icons.auto_awesome,
-    Icons.stars_rounded,
-    Icons.bolt,
-    Icons.color_lens,
-  ];
-
-  int _loadingTextIndex = 0;
-  int _iconIndex = 0;
-  String _currentFunFact = "";
-  String _currentAiChat = "";
-  final Random _rand = Random();
   bool _restoringInProgress = false;
 
   // Dynamic element cache
@@ -197,73 +119,6 @@ class _GenericToolPageState extends State<GenericToolPage>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    _pulseController =
-        AnimationController(vsync: this, duration: const Duration(seconds: 2))
-          ..repeat(reverse: true);
-    _sparkleController =
-        AnimationController(vsync: this, duration: const Duration(seconds: 4))
-          ..repeat();
-    _progressController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: processingDurationSec),
-    );
-
-    _progressController.addStatusListener((status) async {
-      if (status == AnimationStatus.completed && mounted && _loading) {
-        // Trigger popup immediately when duration completes
-        if (_resultData == null && !_notifyLater) {
-          final choice = await _showTimeoutDialog();
-          if (choice == "notify") {
-            if (!mounted) return;
-            setState(() => _notifyLater = true);
-
-            final prefs = await SharedPreferences.getInstance();
-
-            if (_activeJobId != null) {
-              final jobId = _activeJobId!;
-              // 🧠 Build per-job context
-              final jobContext = {
-                "model": widget.config.model,
-                "title": widget.config.title,
-                "inputs": widget.config.inputs,
-                "params": widget.config.params,
-                "outputType": widget.config.outputType,
-              };
-
-              // ✅ Store under unique key per job
-              await prefs.setString(
-                  "notify_job_$jobId", jsonEncode(jobContext));
-
-              // ✅ Track active notify jobs
-              final activeJobs = prefs.getStringList("notify_jobs_list") ?? [];
-              if (!activeJobs.contains(jobId)) {
-                activeJobs.add(jobId);
-                await prefs.setStringList("notify_jobs_list", activeJobs);
-              }
-
-              await prefs.setBool("notify_requested_$jobId", true);
-              await prefs.setString("active_job_id", jobId);
-
-              // optional: keep pending download url if you already had one
-              final pending = prefs.getString("pending_download_url");
-              debugPrint(
-                  "Saved notify request for job=$_activeJobId pending=$pending");
-              debugPrint("💾 Saved notify-later context for job=$jobId");
-            }
-
-            // stop local page poller to avoid duplicate server requests
-            // _pollTimer?.cancel();
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text("You'll be notified once the result is ready."),
-              ),
-            );
-            Navigator.of(context).maybePop();
-          }
-        }
-      }
-    });
-
     _previewPageController = PageController();
 
     // Default mode
@@ -276,10 +131,6 @@ class _GenericToolPageState extends State<GenericToolPage>
       _loading = true;
       // _pollJobStatus(); // resume polling immediately
     }
-
-    _sparkleController.addListener(() {
-      if (mounted) setState(() {});
-    });
 
     // --- Start app-level poller and subscribe to its stream ---
     try {
@@ -308,7 +159,6 @@ class _GenericToolPageState extends State<GenericToolPage>
             if (mounted) {
               setState(() {
                 _loading = false;
-                _notifyLater = false;
               });
             }
           } else if (status == 'failed') {
@@ -336,12 +186,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _pulseController.dispose();
-    _timeoutTimer?.cancel();
-    _sparkleController.dispose();
-    _progressController.dispose();
     _pollingSub?.cancel();
-    // _pollTimer?.cancel();
     _promptController.dispose();
     _previewPageController.dispose();
 
@@ -351,12 +196,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused) {
-      _pulseController.stop();
-      _sparkleController.stop();
     } else if (state == AppLifecycleState.resumed) {
-      _pulseController.repeat(reverse: true);
-      _sparkleController.repeat();
-
       // ✅ Re-attach polling if we were mid-loading
       if (_activeJobId != null && _loading && !_fetchingResult) {
         debugPrint("🔁 Resuming job polling after resume");
@@ -470,7 +310,6 @@ class _GenericToolPageState extends State<GenericToolPage>
         setState(() {
           _resultData = bytes;
           _loading = false;
-          _notifyLater = false;
         });
 
         debugPrint("✅ Loaded cached result instantly from PollingService");
@@ -522,7 +361,6 @@ class _GenericToolPageState extends State<GenericToolPage>
       setState(() {
         _activeJobId = savedJobId;
         _loading = true;
-        _notifyLater = prefs.getBool("notify_requested") ?? false;
       });
 
       PollingService.instance.start(); // safely idempotent
@@ -555,53 +393,6 @@ class _GenericToolPageState extends State<GenericToolPage>
 
     // ✅ 5️⃣ Nothing to restore
     debugPrint("ℹ️ No active, cached, or pending job to restore");
-  }
-
-  Future<String?> _showTimeoutDialog() async {
-    return showDialog<String>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: Colors.deepPurple.shade900.withOpacity(0.95),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-          title: const Row(
-            children: [
-              Icon(Icons.hourglass_bottom, color: Colors.amberAccent),
-              SizedBox(width: 10),
-              Text("Still processing...",
-                  style: TextStyle(color: Colors.white)),
-            ],
-          ),
-          content: const Text(
-            "This job is taking longer than usual.\n\nWould you like to continue waiting or be notified once it's ready?",
-            style: TextStyle(color: Colors.white70),
-          ),
-          actionsAlignment: MainAxisAlignment.spaceBetween,
-          actions: [
-            TextButton(
-              child: const Text("Continue waiting",
-                  style: TextStyle(color: Colors.white)),
-              onPressed: () => Navigator.pop(context, "continue"),
-            ),
-            ElevatedButton.icon(
-              icon: const Icon(Icons.notifications_active, size: 18),
-              label: const Text("Notify me later"),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.amberAccent,
-                foregroundColor: const ui.Color.fromARGB(255, 69, 62, 98),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-              ),
-              onPressed: () => Navigator.pop(context, "notify"),
-            ),
-          ],
-        );
-      },
-    );
   }
 
   Widget _buildCard({required Widget child}) => Container(
@@ -1138,7 +929,6 @@ class _GenericToolPageState extends State<GenericToolPage>
   // ----------------------------------------------------
 
   Future<void> _runJob() async {
-    // attach prompt text to _inputs for UI use, but send top-level in payload
     String? prompt;
     if (_hasPrompt) {
       prompt = _promptController.text.trim();
@@ -1150,23 +940,105 @@ class _GenericToolPageState extends State<GenericToolPage>
       _inputs["scale_factor"] = _upscaleEnabled ? _scaleFactor : 1;
     }
 
-    setState(() {
-      _loading = true;
-      _loadingTextIndex = 0;
-      _iconIndex = 0;
-      _currentFunFact = _funFacts[_rand.nextInt(_funFacts.length)];
-      _currentAiChat = _aiChats[_rand.nextInt(_aiChats.length)];
-    });
+    // 🟣 Elegant animated progress dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 48),
+        child: Container(
+          padding: const EdgeInsets.all(28),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            gradient: LinearGradient(
+              colors: [
+                Colors.deepPurple.withOpacity(0.9),
+                Colors.black.withOpacity(0.85),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.deepPurpleAccent.withOpacity(0.4),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 🔮 Subtle animated progress ring
+              TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0, end: 1),
+                duration: const Duration(seconds: 1),
+                curve: Curves.easeInOut,
+                builder: (context, value, _) => Transform.scale(
+                  scale: 1 + value * 0.05,
+                  child: const CircularProgressIndicator(
+                    color: Colors.amberAccent,
+                    strokeWidth: 3,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 22),
 
-    _progressController.forward(from: 0);
-    _startTextRotation();
-    _submittingJob = true;
+              // 🧠 Main title
+              const Text(
+                "Submitting your job...",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.3,
+                ),
+              ),
+              const SizedBox(height: 10),
+
+              // 💬 Subtext
+              const Text(
+                "Hang tight while we queue and process your request.\n"
+                "Avoid pressing back or closing the app.",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 13.5,
+                  height: 1.4,
+                ),
+              ),
+              
+              const SizedBox(height: 16),
+
+              // ✨ Optional gentle shimmer or animated dots
+              TweenAnimationBuilder<int>(
+                tween: IntTween(begin: 0, end: 3),
+                duration: const Duration(milliseconds: 1200),
+                builder: (context, value, _) {
+                  final dots = "." * (value + 1);
+                  return Text(
+                    "Processing$dots",
+                    style: const TextStyle(
+                      color: Colors.amberAccent,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
 
     try {
-      // -------------------------
-      // ENCODE INPUTS
-      // -------------------------
+      // 🔹 Deep clone inputs
       final encoded = Map<String, dynamic>.from(_inputs);
+
+      // Encode image & list inputs
       for (final key in encoded.keys.toList()) {
         final val = encoded[key];
         if (val is Uint8List) {
@@ -1177,17 +1049,16 @@ class _GenericToolPageState extends State<GenericToolPage>
             continue;
           }
           if (val.first is Uint8List) {
-            final List<String> b64List =
-                val.map((e) => base64Encode(e as Uint8List)).toList();
-            encoded[key] = (b64List.length == 1) ? b64List.first : b64List;
+            encoded[key] = val.length == 1
+                ? base64Encode(val.first as Uint8List)
+                : val.map((e) => base64Encode(e as Uint8List)).toList();
           } else {
-            final listStr = List<String>.from(val);
-            encoded[key] = (listStr.length == 1) ? listStr.first : listStr;
+            encoded[key] = val.length == 1 ? val.first : val;
           }
         }
       }
 
-      // Extract prompt for payload (top-level)
+      // Extract & sanitize prompt
       String? promptForPayload;
       if (encoded.containsKey("prompt")) {
         final p = encoded.remove("prompt");
@@ -1195,9 +1066,7 @@ class _GenericToolPageState extends State<GenericToolPage>
       }
       if (prompt != null && prompt.isNotEmpty) promptForPayload = prompt;
 
-      // -------------------------
-      // OPTIONAL: infer image width/height for diffusion models
-      // -------------------------
+      // Attempt width/height inference
       try {
         final imgInput = widget.config.inputs
             .firstWhere((i) => i["type"] == "image", orElse: () => {});
@@ -1217,11 +1086,9 @@ class _GenericToolPageState extends State<GenericToolPage>
             final codec = await ui.instantiateImageCodec(firstImg);
             final frame = await codec.getNextFrame();
             final img = frame.image;
-            int width = img.width;
-            int height = img.height;
             int roundTo32(int x) => ((x / 32).round() * 32).clamp(32, 2048);
-            encoded["width"] = roundTo32(width);
-            encoded["height"] = roundTo32(height);
+            encoded["width"] = roundTo32(img.width);
+            encoded["height"] = roundTo32(img.height);
             img.dispose();
           }
         }
@@ -1229,123 +1096,94 @@ class _GenericToolPageState extends State<GenericToolPage>
         debugPrint("⚠️ Skipped width/height detection: $e");
       }
 
-      // -------------------------
-      // Merge static params
-      // -------------------------
+      // Merge params and randomize “random” fields
       final prefs = await SharedPreferences.getInstance();
       final params = {...?widget.config.params, ...encoded};
-      params.forEach((k, v) {
-        if (v == "random") params[k] = Random().nextInt(99999999);
-      });
+      params
+          .updateAll((k, v) => v == "random" ? Random().nextInt(99999999) : v);
 
-      // -------------------------
-      // Build payload (prompt top-level)
-      // -------------------------
+      // Get FCM token — ensures latest
+      String? fcmToken = prefs.getString("fcm_token");
+      if (fcmToken == null) {
+        fcmToken = await FirebaseMessaging.instance.getToken();
+        if (fcmToken != null) await prefs.setString("fcm_token", fcmToken);
+        debugPrint("🔑 Refreshed FCM token before submit: $fcmToken");
+      }
 
-      final fcmToken = prefs.getString("fcm_token");
-
+      // Build payload
       final payload = <String, dynamic>{
         "model": widget.config.model,
-        if (promptForPayload != null && promptForPayload.isNotEmpty)
+        if (promptForPayload?.isNotEmpty ?? false)
           "prompt": promptForPayload
         else if (_hasPrompt)
           "prompt": "Enhance this image creatively.",
         "params": params,
         "fcm_token": fcmToken,
       };
-
       final payloadJson = jsonEncode(payload);
 
-      // Sign request
+      // HMAC sign
       final sigBytes = Hmac(sha256, utf8.encode(controllerSharedSecret))
           .convert(utf8.encode(payloadJson));
       final signature = "sha256=${sigBytes.toString()}";
-
       final headers = {
         "Content-Type": "application/json",
         "Authorization": "Bearer $controllerApiKey",
         "X-Signature": signature
       };
 
-      // -------------------------
-      // SUBMIT JOB
-      // -------------------------
-      await prefs.setBool("job_submitting", true);
-      await prefs.setString("pending_payload", payloadJson);
-
+      // 🔹 Submit job
       final resp = await http.post(Uri.parse('$controllerUrl/submit'),
           headers: headers, body: payloadJson);
 
-      if (resp.statusCode == 200) {
-        final data = jsonDecode(resp.body);
-        final jobId = data["job_id"];
-        final downloadUrl = data["download_url"];
-        if (jobId == null) throw Exception("No job_id returned from submit");
+      if (mounted) Navigator.pop(context); // Close dialog
 
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString("active_job_id", jobId);
-        await prefs.remove("job_submitting");
-        await prefs.remove("pending_payload");
-
-        // 🧠 Save last used model config for auto-restore later
-        await prefs.setString("last_model", widget.config.model);
-        if (widget.config.params != null) {
-          await prefs.setString(
-              "last_model_params", jsonEncode(widget.config.params));
-        }
-        if (widget.config.inputs.isNotEmpty) {
-          await prefs.setString(
-              "last_model_inputs", jsonEncode(widget.config.inputs));
-        }
-
-        if (downloadUrl != null &&
-            downloadUrl is String &&
-            downloadUrl.isNotEmpty) {
-          await prefs.setString("pending_download_url", downloadUrl);
-        }
-
-        // Save selected images
-        final savedImages = <String>[];
-        for (final input in widget.config.inputs) {
-          if (input['type'] == 'image') {
-            final id = input['id'];
-            if (encoded.containsKey(id)) {
-              final v = encoded[id];
-              if (v is String) savedImages.add(v);
-              if (v is List) savedImages.addAll(List<String>.from(v));
-            }
-          }
-        }
-        if (savedImages.isNotEmpty) {
-          await prefs.setStringList("selected_images", savedImages);
-        }
-
-        setState(() {
-          _activeJobId = jobId;
-          _submittingJob = false;
-        });
-
-        // Persist job info so PollingService picks it up
-        await prefs.setBool(
-            "notify_requested", false); // default - user didn't ask notify yet
-
-        // Ensure app poller is running (safe no-op if it's already started)
-        try {
-          PollingService.instance
-              .start(); // import PollingService at top of file
-        } catch (_) {}
-        // _pollJobStatus();
-      } else {
-        throw Exception("Server error ${resp.statusCode}");
+      if (resp.statusCode != 200) {
+        throw Exception("Server error ${resp.statusCode}: ${resp.body}");
       }
+
+      final data = jsonDecode(resp.body);
+      final jobId = data["job_id"];
+      if (jobId == null) throw Exception("No job_id returned from submit");
+
+      // ✅ Add to local list
+      jobListNotifier.value = [
+        JobModel(
+          jobId: jobId,
+          title: widget.config.title,
+          model: widget.config.model,
+          outputType: widget.config.outputType,
+        ),
+        ...jobListNotifier.value,
+      ];
+
+      // ✅ Persist context for FCM taps
+      final jobContext = {
+        "title": widget.config.title,
+        "model": widget.config.model,
+        "inputs": widget.config.inputs,
+        "params": widget.config.params,
+        "outputType": widget.config.outputType,
+      };
+      await prefs.setString("notify_job_$jobId", jsonEncode(jobContext));
+
+      // ✅ Navigate to results manager
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const ResultManagerPage()),
+        );
+      }
+
+      debugPrint("✅ Job submitted successfully: $jobId");
     } catch (e) {
-      debugPrint("Submit failed: $e");
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text("Error: $e")));
-      setState(() {
-        _loading = false;
-        _submittingJob = false;
-      });
+      if (mounted) Navigator.pop(context);
+      debugPrint("❌ Job submission failed: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error submitting job: $e")),
+        );
+      }
     }
   }
 
@@ -1421,8 +1259,6 @@ class _GenericToolPageState extends State<GenericToolPage>
       await prefs.remove("ready_to_notify");
 
       // Keep job-independent config keys intact (e.g. last_model)
-      _progressController.stop();
-      _progressController.reset();
 
       debugPrint("✅ Result image fetched & displayed successfully");
     } catch (e) {
@@ -1443,27 +1279,6 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   // ----------------------------------------------------
-  // ⏱️ TEXT ROTATION + LOADING ANIMATION
-  // ----------------------------------------------------
-  void _startTextRotation() async {
-    while (_loading && mounted) {
-      await Future.delayed(const Duration(seconds: 5));
-      if (!_loading) break;
-      setState(() {
-        _loadingTextIndex = (_loadingTextIndex + 1) % _loadingTexts.length;
-        _iconIndex = (_iconIndex + 1) % _loadingIcons.length;
-        if (_rand.nextBool()) {
-          _currentFunFact = _funFacts[_rand.nextInt(_funFacts.length)];
-          _currentAiChat = "";
-        } else {
-          _currentAiChat = _aiChats[_rand.nextInt(_aiChats.length)];
-          _currentFunFact = "";
-        }
-      });
-    }
-  }
-
-  // ----------------------------------------------------
   // 🖼️ BUILD UI — Scaffold + Mode Selector + Dynamic Elements
   // ----------------------------------------------------
   @override
@@ -1473,14 +1288,9 @@ class _GenericToolPageState extends State<GenericToolPage>
         title: Text(widget.config.title),
         backgroundColor: Colors.deepPurple,
       ),
-      body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 400),
-        child: _loading
-            ? _buildLoadingScreen()
-            : (_resultData != null
-                ? _buildResultScreen()
-                : _buildDynamicInputScreen()),
-      ),
+      body: _resultData != null
+          ? _buildResultScreen()
+          : _buildDynamicInputScreen(),
     );
   }
 
@@ -1548,107 +1358,6 @@ class _GenericToolPageState extends State<GenericToolPage>
   // ----------------------------------------------------
   // 💫 LOADING SCREEN
   // ----------------------------------------------------
-  String _formatRemainingTime() {
-    final remaining =
-        ((1.0 - _progressController.value) * processingDurationSec).ceil();
-    final m = (remaining ~/ 60).toString().padLeft(2, "0");
-    final s = (remaining % 60).toString().padLeft(2, "0");
-    return "$m:$s left";
-  }
-
-  Widget _buildStageIndicator() {
-    final v = _progressController.value;
-    int active = (v * _stages.length).clamp(0, _stages.length - 1).floor();
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(_stages.length, (i) {
-        final activeColor =
-            i <= active ? Colors.white : Colors.white.withOpacity(0.3);
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 6),
-          child: Column(
-            children: [
-              Icon(Icons.circle, size: 10, color: activeColor),
-              const SizedBox(height: 4),
-              Text(_stages[i],
-                  style: TextStyle(color: activeColor, fontSize: 11)),
-            ],
-          ),
-        );
-      }),
-    );
-  }
-
-  Widget _buildLoadingScreen() {
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        Container(color: Colors.black.withOpacity(0.8)),
-        BackdropFilter(
-            filter: ui.ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-            child: Container(color: Colors.transparent)),
-        Positioned.fill(
-          child: IgnorePointer(
-              child: CustomPaint(
-                  painter: _SparklePainter(_sparkleController.value))),
-        ),
-        Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ScaleTransition(
-                scale: Tween(begin: 0.9, end: 1.15).animate(CurvedAnimation(
-                    parent: _pulseController, curve: Curves.easeInOut)),
-                child: Icon(_loadingIcons[_iconIndex],
-                    color: Colors.white, size: 90),
-              ),
-              const SizedBox(height: 22),
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 600),
-                child: Text(_loadingTexts[_loadingTextIndex],
-                    key: ValueKey<int>(_loadingTextIndex),
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w500)),
-              ),
-              const SizedBox(height: 10),
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 600),
-                child: Text(
-                    _currentAiChat.isNotEmpty
-                        ? _currentAiChat
-                        : "💡 $_currentFunFact",
-                    key: ValueKey<String>(_currentAiChat.isNotEmpty
-                        ? _currentAiChat
-                        : _currentFunFact),
-                    style: const TextStyle(
-                        color: Colors.white70,
-                        fontStyle: FontStyle.italic,
-                        fontSize: 15)),
-              ),
-              const SizedBox(height: 25),
-              SizedBox(
-                width: 260,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
-                  child: LinearProgressIndicator(
-                      value: _progressController.value,
-                      backgroundColor: Colors.white24,
-                      valueColor: const AlwaysStoppedAnimation(Colors.white)),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(_formatRemainingTime(),
-                  style: const TextStyle(color: Colors.white70)),
-              const SizedBox(height: 10),
-              _buildStageIndicator(),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
 
   // ----------------------------------------------------
   // 🌈 RESULT SCREEN
@@ -1712,58 +1421,6 @@ class _GenericToolPageState extends State<GenericToolPage>
       ),
     );
   }
-}
-
-// ------------------ SPARKLE EFFECT ------------------
-class _SparklePainter extends CustomPainter {
-  final double progress;
-  _SparklePainter(this.progress);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    const int numSparkles = 24;
-    final baseColor =
-        Color.lerp(Colors.deepPurpleAccent, Colors.amberAccent, progress)!;
-    final rnd = Random((progress * 1000).toInt());
-
-    for (int i = 0; i < numSparkles; i++) {
-      final phase = (progress + i / numSparkles) % 1.0;
-      final eased = Curves.easeOut.transform(1.0 - phase);
-
-      final xBase = size.width * (i / (numSparkles - 1));
-      final xJitter = (rnd.nextDouble() * 40 - 20) * (0.6 + 0.4 * eased);
-      final dx = (xBase + xJitter).clamp(0.0, size.width);
-      final dy = (size.height * (1.0 - eased)).clamp(0.0, size.height);
-
-      final coreRadius = (1.0 + rnd.nextDouble() * 2.5) * (0.6 + 1.4 * eased);
-      final glowRadius = coreRadius * (2.5 + rnd.nextDouble() * 1.5);
-      final alpha = ((0.25 + rnd.nextDouble() * 0.6) * (0.8 + 0.2 * eased))
-          .clamp(0.05, 1.0);
-
-      final baseHsv = HSVColor.fromColor(baseColor);
-      final hue = (baseHsv.hue + i * 6) % 360;
-      final col =
-          HSVColor.fromAHSV(1.0, hue, baseHsv.saturation * 0.95, 1.0).toColor();
-
-      final glowPaint = Paint()
-        ..color = col.withOpacity((alpha * 0.6).clamp(0.05, 0.6))
-        ..maskFilter = const ui.MaskFilter.blur(ui.BlurStyle.normal, 8)
-        ..blendMode = BlendMode.plus
-        ..isAntiAlias = true;
-
-      final corePaint = Paint()
-        ..color = col.withOpacity((alpha * 1.0).clamp(0.2, 1.0))
-        ..blendMode = BlendMode.plus
-        ..isAntiAlias = true;
-
-      canvas.drawCircle(Offset(dx, dy), glowRadius, glowPaint);
-      canvas.drawCircle(Offset(dx, dy), coreRadius, corePaint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _SparklePainter oldDelegate) =>
-      oldDelegate.progress != progress;
 }
 
 // ------------------ MASK EDITOR ------------------

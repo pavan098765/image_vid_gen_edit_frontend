@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_vid_gen_edit_frontend/core/app_state.dart';
+import 'package:image_vid_gen_edit_frontend/features/result_manager/result_manager_page.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_vid_gen_edit_frontend/features/ai_tools/generic_tool_page.dart';
@@ -102,23 +104,51 @@ class AiToolsPage extends StatefulWidget {
   State<AiToolsPage> createState() => _AiToolsPageState();
 }
 
-class _AiToolsPageState extends State<AiToolsPage> {
+class _AiToolsPageState extends State<AiToolsPage>
+    with SingleTickerProviderStateMixin {
   late Future<ToolConfig> _futureConfig;
   static const String cacheKey = "cached_tool_config_v1";
   static const String cacheDateKey = "cached_tool_config_date_v1";
   static const String configUrl =
       "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/tool_config.json";
 
+  late AnimationController _glowController;
+  bool _hasUnseenCompleted = false;
+
   @override
   void initState() {
     super.initState();
     _futureConfig = _loadToolConfig();
+
+    // 🔮 Glow animation controller
+    _glowController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 3),
+    )..repeat(reverse: true);
+
+    // Listen to completed jobs
+    jobListNotifier.addListener(_checkCompletedJobs);
+  }
+
+  void _checkCompletedJobs() {
+    final completedCount =
+        jobListNotifier.value.where((j) => j.status == 'completed').length;
+    setState(() {
+      _hasUnseenCompleted = completedCount > 0;
+    });
+  }
+
+  @override
+  void dispose() {
+    _glowController.dispose();
+    jobListNotifier.removeListener(_checkCompletedJobs);
+    super.dispose();
   }
 
   Future<ToolConfig> _loadToolConfig() async {
     final prefs = await SharedPreferences.getInstance();
-    final today = DateTime.now().toIso8601String().substring(0, 10);
-    final lastFetchedDate = prefs.getString(cacheDateKey);
+    final today = DateTime.now().toUtc().toIso8601String().substring(0, 10);
+    final lastFetchedDate = prefs.getString(cacheDateKey)?.substring(0, 10);
     final cachedData = prefs.getString(cacheKey);
 
     if (lastFetchedDate == today && cachedData != null) {
@@ -165,6 +195,126 @@ class _AiToolsPageState extends State<AiToolsPage> {
             color: scheme.onSurface,
           ),
         ),
+        actions: [
+          // 💎 Credits Chip
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: ValueListenableBuilder<int>(
+              valueListenable: userCreditsNotifier,
+              builder: (_, credits, __) => Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.deepPurple.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.deepPurpleAccent, width: 1),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(LucideIcons.gem, color: Colors.amber, size: 18),
+                    const SizedBox(width: 6),
+                    Text(
+                      "$credits",
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          // 🔮 Results Button (Badge + Glow)
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: ValueListenableBuilder<List<JobModel>>(
+              valueListenable: jobListNotifier,
+              builder: (_, jobs, __) {
+                final completedCount =
+                    jobs.where((j) => j.status == 'completed').length;
+
+                // 🌈 Animated glow gradient
+                final glow = LinearGradient(
+                  colors: [
+                    Colors.purpleAccent.withOpacity(0.2),
+                    Colors.blueAccent.withOpacity(0.3),
+                    Colors.pinkAccent.withOpacity(0.25),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  stops: [
+                    _glowController.value * 0.5,
+                    0.5 + _glowController.value * 0.3,
+                    1.0
+                  ],
+                );
+
+                return Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    // Glow effect on icon
+                    ShaderMask(
+                      shaderCallback: (rect) =>
+                          glow.createShader(rect), // animate shimmer
+                      blendMode: _hasUnseenCompleted
+                          ? BlendMode.srcATop
+                          : BlendMode.dst, // visible only if unseen
+                      child: IconButton(
+                        tooltip: "View My Results",
+                        icon: const Icon(
+                          LucideIcons.activitySquare,
+                          color: Colors.white,
+                          size: 26,
+                        ),
+                        onPressed: () {
+                          // 🧠 When user opens results, clear unseen flag
+                          setState(() => _hasUnseenCompleted = false);
+
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const ResultManagerPage(),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+
+                    // 🔴 Red badge counter
+                    if (completedCount > 0)
+                      Positioned(
+                        right: 4,
+                        top: 6,
+                        child: AnimatedOpacity(
+                          duration: const Duration(milliseconds: 400),
+                          opacity: _hasUnseenCompleted ? 1.0 : 0.0,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: Colors.redAccent,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.black, width: 1),
+                            ),
+                            child: Text(
+                              completedCount.toString(),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ],
       ),
       body: FutureBuilder<ToolConfig>(
         future: _futureConfig,

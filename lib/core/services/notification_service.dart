@@ -1,5 +1,6 @@
 // lib/core/services/notification_service.dart
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter/foundation.dart';
 
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _plugin =
@@ -7,64 +8,79 @@ class NotificationService {
 
   static FlutterLocalNotificationsPlugin get plugin => _plugin;
 
-  static const AndroidInitializationSettings _initSettingsAndroid =
-      AndroidInitializationSettings('@mipmap/ic_launcher');
-
-  static const InitializationSettings _initSettings =
-      InitializationSettings(android: _initSettingsAndroid);
-
   static const AndroidNotificationChannel _channel = AndroidNotificationChannel(
-    'ai_jobs_channel', // must match your AndroidNotificationDetails ID
+    'ai_jobs_channel',
     'AI Job Notifications',
-    description: 'Notifies when AI jobs complete',
+    description: 'Notifies when AI jobs complete or fail.',
     importance: Importance.max,
+    playSound: true,
   );
 
-  /// 🔹 Call this once from main()
+  /// 🔹 Initialize notification plugin once
   static Future<void> initialize({
     Function(NotificationResponse)? onTap,
   }) async {
-    await _plugin.initialize(
-      _initSettings,
-      onDidReceiveNotificationResponse: onTap,
-    );
+    try {
+      const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+      const iosSettings = DarwinInitializationSettings();
 
-    // ✅ Explicitly create notification channel (important for Android 13+)
-    final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>();
+      const settings =
+          InitializationSettings(android: androidSettings, iOS: iosSettings);
 
-    await androidPlugin?.createNotificationChannel(_channel);
+      await _plugin.initialize(settings,
+          onDidReceiveNotificationResponse: onTap);
 
-    // ✅ Ask for permission (Android 13+)
-    await androidPlugin?.requestNotificationsPermission();
+      // ✅ Android channel
+      final androidImpl = _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      await androidImpl?.createNotificationChannel(_channel);
+
+      // ✅ Ask for runtime permission (Android 13+)
+      await androidImpl?.requestNotificationsPermission();
+
+      // ✅ iOS permission
+      await _plugin
+          .resolvePlatformSpecificImplementation<
+              IOSFlutterLocalNotificationsPlugin>()
+          ?.requestPermissions(alert: true, badge: true, sound: true);
+
+      debugPrint("✅ NotificationService initialized");
+    } catch (e) {
+      debugPrint("❌ NotificationService init failed: $e");
+    }
   }
 
-  /// 🔹 Show a simple notification
+  /// 🔹 Display a local notification
   static Future<void> showNotification({
     required String title,
     required String body,
     String? payload,
   }) async {
-    const androidDetails = AndroidNotificationDetails(
-      'ai_jobs_channel', // must match _channel.id
-      'AI Job Notifications',
-      channelDescription: 'Notifies when AI jobs complete',
-      importance: Importance.max,
-      priority: Priority.high,
-      playSound: true,
-      enableVibration: true,
-      showWhen: true,
-    );
+    try {
+      const androidDetails = AndroidNotificationDetails(
+        'ai_jobs_channel',
+        'AI Job Notifications',
+        channelDescription: 'Notifies when AI jobs complete',
+        importance: Importance.max,
+        priority: Priority.high,
+        playSound: true,
+        enableVibration: true,
+        showWhen: true,
+      );
 
-    const details = NotificationDetails(android: androidDetails);
-    final id = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      const iosDetails = DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+      );
 
-    await _plugin.show(
-      id, // notification ID
-      title,
-      body,
-      details,
-      payload: payload,
-    );
+      const details = NotificationDetails(android: androidDetails, iOS: iosDetails);
+      final id = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+
+      await _plugin.show(id, title, body, details, payload: payload?.toString(),);
+      debugPrint("🔔 Local notification shown: $title");
+    } catch (e) {
+      debugPrint("❌ showNotification failed: $e");
+    }
   }
 }
