@@ -3,8 +3,29 @@ import 'package:animated_text_kit/animated_text_kit.dart';
 import 'package:image_vid_gen_edit_frontend/core/app_state.dart';
 import 'package:image_vid_gen_edit_frontend/core/services/file_service.dart';
 
-class ResultManagerPage extends StatelessWidget {
+bool isResultManagerOpen = false;
+
+class ResultManagerPage extends StatefulWidget {
   const ResultManagerPage({super.key});
+
+  @override
+  State<ResultManagerPage> createState() => _ResultManagerPageState();
+}
+
+class _ResultManagerPageState extends State<ResultManagerPage> {
+  @override
+  void initState() {
+    super.initState();
+    isResultManagerOpen = true; // ✅ mark open
+    debugPrint("🟢 ResultManagerPage opened");
+  }
+
+  @override
+  void dispose() {
+    isResultManagerOpen = false; // ✅ mark closed
+    debugPrint("🔴 ResultManagerPage closed");
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -75,12 +96,12 @@ class JobCard extends StatelessWidget {
                             fontSize: 13,
                             fontWeight: FontWeight.w400,
                           ),
-                          speed: Duration(milliseconds: 80),
+                          speed: const Duration(milliseconds: 80),
                         ),
                       ],
                       repeatForever: true,
                       isRepeatingAnimation: true,
-                      pause: Duration(milliseconds: 500),
+                      pause: const Duration(milliseconds: 500),
                     ),
                   ),
                 ],

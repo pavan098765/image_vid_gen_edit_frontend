@@ -12,7 +12,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'firebase_options.dart';
 
 // Existing imports
-import 'package:image_vid_gen_edit_frontend/core/services/polling_service.dart';
+// import 'package:image_vid_gen_edit_frontend/core/services/polling_service.dart';
 import 'core/theme/app_theme.dart';
 import 'core/app_state.dart';
 import 'core/services/notification_service.dart';
@@ -32,17 +32,212 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 /// Stores tuple-like map {jobId, config}
 final List<Map<String, dynamic>> _pendingNavigations = [];
 
+// ----------------------
+// Helpers: apply and persist FCM updates
+// ----------------------
+
+/// Merge job entry into saved jobs in SharedPreferences by jobId.
+/// Also stores a per-job pending_download_url_<jobId> for safe retrieval.
+Future<void> _mergeAndPersistJobMap(Map<String, dynamic> jobMap) async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonStr = prefs.getString('jobs');
+    final existing = jsonStr == null
+        ? <Map<String, dynamic>>[]
+        : (jsonDecode(jsonStr) as List)
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+
+    final jobId = jobMap['job_id']?.toString();
+    if (jobId == null || jobId.isEmpty) return;
+
+    // Normalize fields we expect
+    final status = (jobMap['status'] ?? '').toString();
+    final downloadUrl = (jobMap['download_url'] ?? '').toString();
+
+    // Find existing index
+    final idx = existing.indexWhere((e) => e['jobId'] == jobId);
+    if (idx != -1) {
+      // update existing
+      final old = existing[idx];
+      existing[idx] = {
+        'jobId': jobId,
+        'title': old['title'] ?? old['jobId'], // preserve title if present
+        'model': old['model'] ?? old['model'],
+        'outputType': old['outputType'] ?? old['outputType'],
+        'downloadUrl':
+            downloadUrl.isNotEmpty ? downloadUrl : (old['downloadUrl'] ?? null),
+        'status': status.isNotEmpty ? status : (old['status'] ?? 'processing'),
+        'createdAt': old['createdAt'] ?? DateTime.now().toIso8601String(),
+      };
+    } else {
+      // create new entry (if we don't have a client-side record yet)
+      existing.add({
+        'jobId': jobId,
+        'title': jobMap['title'] ?? jobId,
+        'model': jobMap['model'] ?? 'unknown',
+        'outputType': jobMap['outputType'] ?? 'image',
+        'downloadUrl': downloadUrl.isNotEmpty ? downloadUrl : null,
+        'status': status.isNotEmpty ? status : 'processing',
+        'createdAt': DateTime.now().toIso8601String(),
+      });
+    }
+
+    // Save per-job download url if present
+    if (downloadUrl.isNotEmpty) {
+      await prefs.setString('pending_download_url_$jobId', downloadUrl);
+    }
+
+    // Persist the jobs array back
+    await prefs.setString('jobs', jsonEncode(existing));
+    debugPrint(
+        "💾 [FCM] merged job $jobId saved to prefs (status=${status}, url=${downloadUrl.isNotEmpty})");
+  } catch (e, st) {
+    debugPrint("⚠️ _mergeAndPersistJobMap failed: $e\n$st");
+  }
+}
+
+/// Convenience: load jobs from prefs into jobListNotifier (call after merging in background)
+Future<void> _reloadJobsToNotifier() async {
+  try {
+    await loadJobsFromPrefs(); // this assigns jobListNotifier.value
+    // optionally ensure each job keeps any per-job pending_download_url
+    final prefs = await SharedPreferences.getInstance();
+    final jobs = List<JobModel>.from(jobListNotifier.value);
+    bool changed = false;
+    for (var i = 0; i < jobs.length; i++) {
+      final job = jobs[i];
+      if (job.downloadUrl == null || job.downloadUrl!.isEmpty) {
+        final cached = prefs.getString('pending_download_url_${job.jobId}');
+        if (cached != null && cached.isNotEmpty) {
+          jobs[i] = JobModel(
+            jobId: job.jobId,
+            title: job.title,
+            model: job.model,
+            outputType: job.outputType,
+            downloadUrl: cached,
+            status: job.status,
+            createdAt: job.createdAt,
+          );
+          changed = true;
+        }
+      }
+    }
+    if (changed) {
+      jobListNotifier.value = jobs;
+      await saveJobsToPrefs();
+    }
+  } catch (e, st) {
+    debugPrint("⚠️ _reloadJobsToNotifier failed: $e\n$st");
+  }
+}
+
+/// Called from all FCM receivers (background/foreground). Accepts raw message map
+/// Expected keys: job_id, status, download_url, title, model, outputType (optional)
+Future<void> _applyFcmUpdate(Map<String, dynamic> data) async {
+  try {
+    if (data == null) return;
+    // Normalize expected fields
+    final jobId = (data['job_id'] ?? data['jobId'] ?? '').toString();
+    if (jobId.isEmpty) return;
+
+    // Merge into prefs
+    await _mergeAndPersistJobMap({
+      'job_id': jobId,
+      'status': data['status'] ?? '',
+      'download_url': data['download_url'] ?? data['downloadUrl'] ?? '',
+      'title': data['title'] ?? '',
+      'model': data['model'] ?? '',
+      'outputType': data['outputType'] ?? '',
+    });
+
+    // If app is in foreground (we have navigatorKey.currentContext), also reload notifier so UI updates immediately.
+    if (navigatorKey.currentState != null &&
+        navigatorKey.currentContext != null) {
+      await _reloadJobsToNotifier();
+    }
+  } catch (e, st) {
+    debugPrint("⚠️ _applyFcmUpdate failed: $e\n$st");
+  }
+}
+
 /// Background FCM handler (runs in a background isolate when app is killed)
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  // Initialize Firebase in background isolate using the same options
+  // initialize firebase in background isolate
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  // Show a local notification (payload is job_id)
-  await NotificationService.showNotification(
-    title: message.notification?.title ?? "Processing Complete.",
-    body: message.notification?.body ?? "Tap to view result.",
-    payload: message.data['job_id'] ?? '',
-  );
+  try {
+    final data = message.data ?? {};
+    final jobId = (data['job_id'] ?? '').toString();
+    const allowed = ['processing', 'completed', 'failed'];
+    final status = (data['status'] ?? '').toString().toLowerCase();
+    final normalizedStatus = allowed.contains(status) ? status : 'processing';
+
+    final downloadUrl =
+        (data['download_url'] ?? data['downloadUrl'] ?? '').toString();
+    final title = (data['title'] ?? '').toString();
+    final model = (data['model'] ?? '').toString();
+    final outputType = (data['outputType'] ?? '').toString();
+
+    if (jobId.isNotEmpty) {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonStr = prefs.getString('jobs');
+      final existing = jsonStr == null
+          ? <Map<String, dynamic>>[]
+          : (jsonDecode(jsonStr) as List)
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList();
+
+      final idx = existing.indexWhere((e) => e['jobId'] == jobId);
+      if (idx >= 0) {
+        final old = existing[idx];
+        existing[idx] = {
+          'jobId': jobId,
+          'title': old['title'] ?? title,
+          'model': old['model'] ?? model,
+          'outputType': old['outputType'] ?? outputType,
+          'downloadUrl': downloadUrl.isNotEmpty
+              ? downloadUrl
+              : (old['downloadUrl'] ?? null),
+          'status':
+              normalizedStatus.isNotEmpty ? normalizedStatus : (old['status'] ?? 'processing'),
+          'createdAt': old['createdAt'] ?? DateTime.now().toIso8601String(),
+        };
+      } else {
+        existing.insert(0, {
+          'jobId': jobId,
+          'title': title.isNotEmpty ? title : jobId,
+          'model': model.isNotEmpty ? model : 'unknown',
+          'outputType': outputType.isNotEmpty ? outputType : 'image',
+          'downloadUrl': downloadUrl.isNotEmpty ? downloadUrl : null,
+          'status': normalizedStatus.isNotEmpty ? normalizedStatus : 'processing',
+          'createdAt': DateTime.now().toIso8601String(),
+        });
+      }
+
+      // persist per-job download url key too (prevents global clobber)
+      if (downloadUrl.isNotEmpty) {
+        await prefs.setString('pending_download_url_$jobId', downloadUrl);
+      }
+
+      await prefs.setString('jobs', jsonEncode(existing));
+    }
+
+    // show a local notification so user sees it in system tray
+    await NotificationService.showNotification(
+      title: message.notification?.title ??
+          (message.data['status'] == 'completed'
+              ? 'Result ready'
+              : 'Job update'),
+      body: message.notification?.body ??
+          (message.data['status'] == 'completed'
+              ? 'Tap to view'
+              : 'Job status updated'),
+      payload: jobId,
+    );
+  } catch (e, st) {
+    debugPrint("⚠️ background handler error: $e\n$st");
+  }
 }
 
 Future<void> main() async {
@@ -64,6 +259,7 @@ Future<void> main() async {
   await NotificationService.initialize(onTap: (response) async {
     try {
       final jobId = response.payload;
+      await _refreshJobsAfterNotification();
       if (jobId == null || jobId.isEmpty) {
         _openResultManager();
         return;
@@ -103,33 +299,39 @@ Future<void> main() async {
   FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
     debugPrint("📩 FCM onMessage: ${message.messageId} data=${message.data}");
 
-    final jobId = message.data['job_id'] as String?;
-    final status = (message.data['status'] as String?)?.toLowerCase();
-    final downloadUrl = message.data['download_url'] as String?;
+    final data = message.data ?? {};
+    final jobId = (data['job_id'] ?? '').toString();
+    const allowed = ['processing', 'completed', 'failed'];
+    
+    final status = (data['status'] ?? '').toString().toLowerCase();
+    final normalizedStatus = allowed.contains(status) ? status : 'processing';
+    final downloadUrl =
+        (data['download_url'] ?? data['downloadUrl'] ?? '').toString();
+    final title = (data['title'] ?? '').toString();
+    final model = (data['model'] ?? '').toString();
+    final outputType = (data['outputType'] ?? '').toString();
 
-    // Update job list if present
-    if (jobId != null && jobId.isNotEmpty) {
-      final updated = <JobModel>[];
-      for (final job in jobListNotifier.value) {
-        if (job.jobId == jobId) {
-          updated.add(JobModel(
-            jobId: job.jobId,
-            title: job.title,
-            model: job.model,
-            outputType: job.outputType,
-            status: status ?? job.status,
-            downloadUrl: downloadUrl ?? job.downloadUrl,
-            createdAt: job.createdAt,
-          ));
-        } else {
-          updated.add(job);
-        }
+    if (jobId.isNotEmpty) {
+      // Update persisted job object and UI via helper (app_state)
+      await updateJobFields(
+        jobId: jobId,
+        status: normalizedStatus.isNotEmpty ? normalizedStatus : null,
+        downloadUrl: downloadUrl.isNotEmpty ? downloadUrl : null,
+        title: title.isNotEmpty ? title : null,
+        model: model.isNotEmpty ? model : null,
+        outputType: outputType.isNotEmpty ? outputType : null,
+      );
+
+      // Also persist per-job pending_download_url for background/cold-start correctness
+      if (downloadUrl.isNotEmpty) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('pending_download_url_$jobId', downloadUrl);
       }
-      jobListNotifier.value = List<JobModel>.from(updated);
-      debugPrint("✅ FCM update: Job $jobId → $status");
+
+      debugPrint(
+          "✅ FCM (foreground) applied job $jobId → $status (url=${downloadUrl.isNotEmpty})");
     }
 
-    // Show a local notification for foreground (since system may not)
     final notifTitle = message.notification?.title ??
         (status == 'completed' ? 'Result ready' : 'Job update');
     final notifBody = message.notification?.body ??
@@ -137,13 +339,13 @@ Future<void> main() async {
             ? 'Your AI result is ready — tap to view.'
             : 'Job status: $status');
 
+    // Show a local notification as well
     await NotificationService.showNotification(
       title: notifTitle,
       body: notifBody,
-      payload: jobId ?? '',
+      payload: jobId,
     );
 
-    // Also show an in-app SnackBar if nav is available
     if (navigatorKey.currentContext != null && status == 'completed') {
       ScaffoldMessenger.of(navigatorKey.currentContext!).showSnackBar(
         const SnackBar(
@@ -157,64 +359,69 @@ Future<void> main() async {
   // When user taps an FCM notification while app was backgrounded (not killed)
   FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) async {
     debugPrint("🔁 onMessageOpenedApp: ${message.data}");
-    final jobId = message.data['job_id'] as String?;
-    if (jobId == null || jobId.isEmpty) {
-      _openResultManager();
+    final data = message.data ?? {};
+    final jobId = (data['job_id'] ?? '').toString();
+
+    // Merge update (this updates persisted job and notifer)
+    const allowed = ['processing', 'completed', 'failed'];
+    final status = (data['status'] ?? '').toString().toLowerCase();
+    final normalizedStatus = allowed.contains(status) ? status : 'processing';
+    final downloadUrl =
+        (data['download_url'] ?? data['downloadUrl'] ?? '').toString();
+    await updateJobFields(
+      jobId: jobId,
+      status: normalizedStatus.isNotEmpty ? normalizedStatus : null,
+      downloadUrl: downloadUrl.isNotEmpty ? downloadUrl : null,
+    );
+
+    // Ensure UI has fresh data (jobListNotifier is updated by updateJobFields)
+    // Now navigate to result manager but avoid duplicates
+    if (isResultManagerOpen) {
+      // Already visible — nothing to push
+      debugPrint("🔁 ResultManager already open after onMessageOpenedApp");
       return;
     }
-
-    // Try to restore job context and open GenericToolPage (with restoreJobId)
-    final jobContextStr = prefs.getString("notify_job_$jobId");
-    if (jobContextStr != null) {
-      final data = jsonDecode(jobContextStr);
-      final config = GenericToolConfig(
-        title: data["title"] ?? "AI Tool",
-        model: data["model"] ?? "unknown_model",
-        inputs: List<Map<String, dynamic>>.from(data["inputs"] ?? []),
-        params: Map<String, dynamic>.from(data["params"] ?? {}),
-        outputType: data["outputType"] ?? "image",
-      );
-      _openJobFromNotification(jobId, config);
-      return;
-    }
-
-    // fallback
     _openResultManager();
   });
 
-  // If app was killed and opened from notification, queue navigation until UI ready
+// handle cold start
   final initialMessage = await FirebaseMessaging.instance.getInitialMessage();
-  if (initialMessage != null && initialMessage.data['job_id'] != null) {
-    final jobId = initialMessage.data['job_id'] as String;
-    final jobContextStr = prefs.getString("notify_job_$jobId");
-    if (jobContextStr != null) {
-      final data = jsonDecode(jobContextStr);
-      final config = GenericToolConfig(
-        title: data["title"] ?? "AI Tool",
-        model: data["model"] ?? "unknown_model",
-        inputs: List<Map<String, dynamic>>.from(data["inputs"] ?? []),
-        params: Map<String, dynamic>.from(data["params"] ?? {}),
-        outputType: data["outputType"] ?? "image",
-      );
-      _pendingNavigations.add({
-        "jobId": jobId,
-        "config": config,
-      });
-    } else {
-      // If no job context, just open result manager when ready
-      _pendingNavigations.add({
-        "jobId": jobId,
-        "config": null,
-      });
-    }
+  if (initialMessage != null) {
+    final data = initialMessage.data ?? {};
+    final jobId = (data['job_id'] ?? '').toString();
+    debugPrint("🟣 App launched from notification while killed: job=$jobId");
+
+    // merge update into persisted jobs
+    const allowed = ['processing', 'completed', 'failed'];
+    final status = (data['status'] ?? '').toString().toLowerCase();
+    final normalizedStatus = allowed.contains(status) ? status : 'processing';
+    final downloadUrl =
+        (data['download_url'] ?? data['downloadUrl'] ?? '').toString();
+    await updateJobFields(
+      jobId: jobId,
+      status: normalizedStatus.isNotEmpty ? normalizedStatus : null,
+      downloadUrl: downloadUrl.isNotEmpty ? downloadUrl : null,
+    );
+
+    // queue navigation to result manager (single instance)
+    _pendingNavigations.clear();
+    _pendingNavigations.add({
+      "jobId": null,
+      "config": null,
+    });
   }
 
   // Ensure poller runs (keeps UI in sync if notifications fail)
-  PollingService.instance.start();
-  debugPrint("✅ PollingService started");
+  //PollingService.instance.start();
+  //debugPrint("✅ PollingService started");
 
-  // Run app
-  runApp(const AICreativeStudio());
+  // 🟢 Wrap the app in lifecycle handler (so jobs auto-refresh when app resumes)
+  runApp(
+    AppLifecycleHandler(
+      child: const AICreativeStudio(),
+    ),
+  );
+
   debugPrint("✅ runApp() executed");
 
   // Execute queued navigations after first frame (UI ready)
@@ -245,9 +452,18 @@ Future<void> main() async {
   });
 }
 
+Future<void> _refreshJobsAfterNotification() async {
+  try {
+    debugPrint("🔄 Refreshing jobs after notification tap (FCM only)...");
+    await loadJobsFromPrefs(); // reloads jobListNotifier
+  } catch (e) {
+    debugPrint("⚠️ Failed to reload jobs: $e");
+  }
+}
+
 /// ✅ Simplified — Always open the unified Result Manager page
 ///
-void _openJobFromNotification(String jobId, GenericToolConfig? config) {
+void _openJobFromNotification(String jobId, GenericToolConfig? config) async {
   final nav = navigatorKey.currentState;
 
   if (nav == null) {
@@ -256,28 +472,17 @@ void _openJobFromNotification(String jobId, GenericToolConfig? config) {
     return;
   }
 
+  await _refreshJobsAfterNotification(); // 🆕 Force refresh on reopen
+
   debugPrint("🚀 Handling notification tap for job=$jobId");
 
-  // Check if current route is already ResultManagerPage
-  final canReuse = nav.canPop() &&
-      nav.context.widget is Navigator &&
-      nav.widget.runtimeType.toString().contains("ResultManagerPage");
-
-  if (canReuse) {
-    debugPrint("🔁 Already on ResultManagerPage — no new push");
-    selectedIndexNotifier.value = 0;
-    return;
-  }
-
-  // Otherwise push new page
+  // ✅ Optional: Highlight Results tab or reset to home
   selectedIndexNotifier.value = 0;
-  nav.pushAndRemoveUntil(
-    MaterialPageRoute(builder: (_) => const ResultManagerPage()),
-    (route) => route.isFirst, // clears duplicate layers above home
-  );
+  // ✅ Simplify route handling (next section)
+  _openOrReplaceResultManager();
 }
 
-void _openResultManager() {
+void _openResultManager() async {
   final nav = navigatorKey.currentState;
   if (nav == null) {
     debugPrint("⚠️ Navigator not ready yet, queueing ResultManagerPage");
@@ -285,50 +490,28 @@ void _openResultManager() {
     return;
   }
 
-  final currentRoute = ModalRoute.of(nav.context);
-  if (currentRoute?.settings.name == 'ResultManagerPage') {
-    debugPrint("🔁 Already on ResultManagerPage — skipping push");
+  await _refreshJobsAfterNotification(); // 🆕 Force refresh
+
+  _openOrReplaceResultManager();
+}
+
+void _openOrReplaceResultManager() {
+  final nav = navigatorKey.currentState;
+  if (nav == null) return;
+
+  if (isResultManagerOpen) {
+    debugPrint("🔁 ResultManagerPage already open — skipping navigation");
     return;
   }
 
-  nav.pushAndRemoveUntil(
+  debugPrint("➡️ Opening new ResultManagerPage");
+  nav.push(
     MaterialPageRoute(
       builder: (_) => const ResultManagerPage(),
       settings: const RouteSettings(name: 'ResultManagerPage'),
     ),
-    (route) => route.isFirst,
   );
 }
-
-// void _openJobFromNotification(String jobId, GenericToolConfig? config) {
-//   final nav = navigatorKey.currentState;
-
-//   if (nav == null) {
-//     debugPrint(
-//         "⚠️ Navigator not ready yet, queuing ResultManagerPage for job=$jobId");
-//     _pendingNavigations.add({"jobId": jobId, "config": config});
-//     return;
-//   }
-
-//   debugPrint("🚀 Navigating to ResultManagerPage for job=$jobId");
-
-//   // ✅ Keep main shell intact (with bottom nav)
-//   selectedIndexNotifier.value = 0; // or index of "Results" tab if exists
-//   nav.push(
-//     MaterialPageRoute(builder: (_) => const ResultManagerPage()),
-//   );
-// }
-
-// /// Open the unified Result Manager (if no specific job/context available)
-// void _openResultManager() {
-//   final nav = navigatorKey.currentState;
-//   if (nav == null) {
-//     debugPrint("⚠️ Navigator not ready yet, queueing ResultManagerPage");
-//     _pendingNavigations.add({"jobId": null, "config": null});
-//     return;
-//   }
-//   nav.push(MaterialPageRoute(builder: (_) => const ResultManagerPage()));
-// }
 
 // ----------------------------------------------------
 // Root App
@@ -388,4 +571,33 @@ class AICreativeStudio extends StatelessWidget {
       ),
     );
   }
+}
+
+// ----------------------------------------------------
+// Lifecycle handler to auto-refresh when app resumes
+// ----------------------------------------------------
+class AppLifecycleHandler extends StatefulWidget {
+  final Widget child;
+  const AppLifecycleHandler({required this.child, super.key});
+
+  @override
+  State<AppLifecycleHandler> createState() => _AppLifecycleHandlerState();
+}
+
+class _AppLifecycleHandlerState extends State<AppLifecycleHandler>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }

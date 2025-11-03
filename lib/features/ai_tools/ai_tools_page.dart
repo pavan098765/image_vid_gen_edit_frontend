@@ -187,12 +187,13 @@ class _AiToolsPageState extends State<AiToolsPage>
       appBar: AppBar(
         backgroundColor: scheme.surface,
         elevation: 0,
-        centerTitle: true,
+        centerTitle: false,
+        titleSpacing: 16,
         title: Text(
           "AI Tools",
           style: textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.bold,
-            color: scheme.onSurface,
+        fontWeight: FontWeight.bold,
+        color: scheme.onSurface,
           ),
         ),
         actions: [

@@ -48,15 +48,23 @@ class JobModel {
         'createdAt': createdAt.toIso8601String(),
       };
 
-  factory JobModel.fromJson(Map<String, dynamic> json) => JobModel(
-        jobId: json['jobId'],
-        title: json['title'],
-        model: json['model'],
-        outputType: json['outputType'],
-        downloadUrl: json['downloadUrl'],
-        status: json['status'],
-        createdAt: DateTime.tryParse(json['createdAt'] ?? '') ?? DateTime.now(),
-      );
+  factory JobModel.fromJson(Map<String, dynamic> json) {
+    String rawStatus =
+        (json['status'] ?? 'processing').toString().toLowerCase();
+    // Only allow 3 states
+    const allowed = ['processing', 'completed', 'failed'];
+    if (!allowed.contains(rawStatus)) rawStatus = 'processing';
+
+    return JobModel(
+      jobId: json['jobId'],
+      title: json['title'],
+      model: json['model'],
+      outputType: json['outputType'],
+      downloadUrl: json['downloadUrl'],
+      status: rawStatus,
+      createdAt: DateTime.tryParse(json['createdAt'] ?? '') ?? DateTime.now(),
+    );
+  }
 }
 
 /// Global list of jobs
@@ -72,6 +80,71 @@ Future<void> saveJobsToPrefs() async {
   } catch (e) {
     debugPrint("⚠️ Failed to save jobs: $e");
   }
+}
+
+/// Add a new job or update existing by jobId. Persists immediately.
+Future<void> addOrUpdateJob(JobModel job) async {
+  final list = List<JobModel>.from(jobListNotifier.value);
+  final idx = list.indexWhere((j) => j.jobId == job.jobId);
+  if (idx >= 0) {
+    list[idx] = job;
+  } else {
+    // Insert new job at front so it's visible
+    list.insert(0, job);
+  }
+  jobListNotifier.value = list;
+  await saveJobsToPrefs();
+}
+
+/// Update only specific fields for a job (status/downloadUrl/title/model optional).
+/// If job does not exist it creates a new one with defaults.
+Future<void> updateJobFields({
+  required String jobId,
+  String? status,
+  String? downloadUrl,
+  String? title,
+  String? model,
+  String? outputType,
+}) async {
+  final list = List<JobModel>.from(jobListNotifier.value);
+  final idx = list.indexWhere((j) => j.jobId == jobId);
+  if (idx >= 0) {
+    final old = list[idx];
+    list[idx] = JobModel(
+      jobId: old.jobId,
+      title: title ?? old.title,
+      model: model ?? old.model,
+      outputType: outputType ?? old.outputType,
+      downloadUrl: (downloadUrl != null && downloadUrl.isNotEmpty)
+          ? downloadUrl
+          : old.downloadUrl,
+      status: status ?? old.status,
+      createdAt: old.createdAt,
+    );
+    if (status != null) {
+      const allowed = ['processing', 'completed', 'failed'];
+      if (!allowed.contains(status.toLowerCase())) {
+        status = 'processing';
+      }
+    }
+  } else {
+    // create new fallback record
+    list.insert(
+      0,
+      JobModel(
+        jobId: jobId,
+        title: title ?? jobId,
+        model: model ?? 'unknown',
+        outputType: outputType ?? 'image',
+        downloadUrl: (downloadUrl != null && downloadUrl.isNotEmpty)
+            ? downloadUrl
+            : null,
+        status: status ?? 'processing',
+      ),
+    );
+  }
+  jobListNotifier.value = list;
+  await saveJobsToPrefs();
 }
 
 /// 🔄 Load jobs from SharedPreferences when app starts

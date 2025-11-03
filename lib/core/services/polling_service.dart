@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_vid_gen_edit_frontend/core/app_state.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'notification_service.dart';
 
@@ -78,12 +79,32 @@ class PollingService {
       final status = (data["status"] ?? "").toString().toLowerCase();
       String? downloadUrl = data["download_url"] as String?;
       if (downloadUrl != null && downloadUrl.isNotEmpty) {
-        await prefs.setString("pending_download_url", downloadUrl);
+        await prefs.setString("pending_download_url_$jobId", downloadUrl);
       } else {
-        downloadUrl = prefs.getString("pending_download_url");
+        downloadUrl = prefs.getString("pending_download_url_$jobId");
       }
 
       // --- 2️⃣ Emit event to UI
+
+      // ✅ Update jobListNotifier immediately (for in-app processing jobs)
+      final jobs = List<JobModel>.from(jobListNotifier.value);
+      final idx = jobs.indexWhere((j) => j.jobId == jobId);
+      if (idx != -1) {
+        final old = jobs[idx];
+        jobs[idx] = JobModel(
+          jobId: old.jobId,
+          title: old.title,
+          model: old.model,
+          outputType: old.outputType,
+          downloadUrl: (downloadUrl != null && downloadUrl.isNotEmpty)
+              ? downloadUrl
+              : old.downloadUrl,
+          status: status.isNotEmpty ? status : old.status,
+          createdAt: old.createdAt,
+        );
+        jobListNotifier.value = jobs;
+      }
+
       if (!_onStatus.isClosed) {
         _onStatus.add({
           "job_id": jobId,
@@ -138,6 +159,97 @@ class PollingService {
       debugPrint("PollingService tick error: $e\n$st");
     } finally {
       _isTicking = false;
+    }
+  }
+
+  /// ✅ Force-refresh all jobs currently in jobListNotifier
+  Future<void> refreshNow() async {
+    debugPrint("🟢 PollingService.refreshNow(): Refreshing all known jobs");
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      // get the entire job list from prefs
+      final jsonStr = prefs.getString('jobs');
+      if (jsonStr == null) {
+        debugPrint("ℹ️ No saved jobs to refresh");
+        return;
+      }
+
+      final list = (jsonDecode(jsonStr) as List)
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+
+      // refresh each job from backend
+      for (final job in list) {
+        final jobId = job["jobId"];
+        if (jobId == null) continue;
+
+        final payloadJson = jsonEncode({"job_id": jobId});
+        final sigBytes = Hmac(sha256, utf8.encode(controllerSharedSecret))
+            .convert(utf8.encode(payloadJson));
+        final sig = "sha256=${sigBytes.toString()}";
+
+        final headers = {
+          "Authorization": "Bearer $controllerApiKey",
+          "X-Signature": sig,
+        };
+
+        final url = "$baseUrl/job_status?job_id=$jobId";
+        final resp = await http
+            .get(Uri.parse(url), headers: headers)
+            .timeout(const Duration(seconds: 15));
+
+        if (resp.statusCode != 200) continue;
+
+        final data = jsonDecode(resp.body) as Map<String, dynamic>;
+        final status = (data["status"] ?? "").toString().toLowerCase();
+        String? downloadUrl = data["download_url"] as String?;
+
+        // ✅ Try cached downloadUrl if backend hasn’t sent one yet
+        if (downloadUrl == null || downloadUrl.isEmpty) {
+          final prefs = await SharedPreferences.getInstance();
+          final cachedUrl = prefs.getString("pending_download_url_$jobId");
+          if (cachedUrl != null && cachedUrl.isNotEmpty) {
+            downloadUrl = cachedUrl;
+          }
+        }
+
+        // ✅ Update jobListNotifier safely
+        final jobs = List<JobModel>.from(jobListNotifier.value);
+        final idx = jobs.indexWhere((j) => j.jobId == jobId);
+        if (idx != -1) {
+          final old = jobs[idx];
+
+          // ✅ Preserve old downloadUrl if new one is empty
+          final finalUrl = (downloadUrl != null && downloadUrl.isNotEmpty)
+              ? downloadUrl
+              : old.downloadUrl;
+
+          jobs[idx] = JobModel(
+            jobId: old.jobId,
+            title: old.title,
+            model: old.model,
+            outputType: old.outputType,
+            downloadUrl: finalUrl,
+            status: status.isNotEmpty ? status : old.status,
+            createdAt: old.createdAt,
+          );
+
+          // ✅ Persist this downloadUrl for next refresh
+          if (finalUrl != null && finalUrl.isNotEmpty) {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString("pending_download_url_$jobId", finalUrl);
+          }
+
+          debugPrint(
+              "✅ Refreshed job=$jobId → $status (url: ${finalUrl ?? 'none'})");
+        }
+        jobListNotifier.value = jobs;
+      }
+      await saveJobsToPrefs();
+    } catch (e, st) {
+      debugPrint("⚠️ PollingService.refreshNow() failed: $e\n$st");
     }
   }
 

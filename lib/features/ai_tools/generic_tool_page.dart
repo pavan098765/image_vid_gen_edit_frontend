@@ -10,7 +10,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_vid_gen_edit_frontend/core/app_state.dart';
 import 'package:image_vid_gen_edit_frontend/core/services/notification_service.dart';
-import 'package:image_vid_gen_edit_frontend/core/services/polling_service.dart';
+// import 'package:image_vid_gen_edit_frontend/core/services/polling_service.dart';
 import 'package:image_vid_gen_edit_frontend/features/result_manager/result_manager_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_vid_gen_edit_frontend/core/services/file_service.dart';
@@ -77,13 +77,11 @@ class _GenericToolPageState extends State<GenericToolPage>
   final picker = ImagePicker();
   final Map<String, dynamic> _inputs = {};
   bool _loading = false;
-  bool _submittingJob = false;
+  final bool _submittingJob = false;
   String? _selectedModeKey;
   Uint8List? _resultData;
   String? _activeJobId;
   bool _fetchingResult = false;
-
-  StreamSubscription<Map<String, dynamic>>? _pollingSub;
 
   // for multi-image preview
   int _previewPageIndex = 0;
@@ -129,51 +127,6 @@ class _GenericToolPageState extends State<GenericToolPage>
     if (widget.restoreJobId != null) {
       _activeJobId = widget.restoreJobId;
       _loading = true;
-      // _pollJobStatus(); // resume polling immediately
-    }
-
-    // --- Start app-level poller and subscribe to its stream ---
-    try {
-      // ensure the app-level poller is running
-      PollingService.instance.start();
-      // subscribe to events
-      _pollingSub = PollingService.instance.onStatus.listen((event) async {
-        if (!mounted) return;
-        try {
-          final eventJobId = event['job_id'] as String?;
-          final status = ((event['status'] ?? '') as String).toLowerCase();
-          final downloadUrl = event['download_url'] as String?;
-          debugPrint(
-              'GenericToolPage: poller event job=$eventJobId status=$status');
-
-          // only respond if it's our active job
-          if (eventJobId == null || _activeJobId == null) return;
-          if (eventJobId != _activeJobId) return;
-
-          if (status == 'completed') {
-            // Use the same flow as when the page polls: call _fetchResult with the server data.
-            // your _fetchResult expects a Map with download_url at least
-            await _fetchResult(
-                {'download_url': downloadUrl, 'status': 'completed'});
-            // ensure local UI flags are reset
-            if (mounted) {
-              setState(() {
-                _loading = false;
-              });
-            }
-          } else if (status == 'failed') {
-            _onJobFailed(
-                (event['raw']?['error'])?.toString() ?? 'Unknown error');
-          } else {
-            // optional: you could update UI hints here
-          }
-        } catch (e) {
-          debugPrint(
-              'Error handling PollingService event in GenericToolPage: $e');
-        }
-      });
-    } catch (e) {
-      debugPrint('Failed to start/subscribe PollingService: $e');
     }
 
     _restoreJobIfExists();
@@ -186,7 +139,6 @@ class _GenericToolPageState extends State<GenericToolPage>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _pollingSub?.cancel();
     _promptController.dispose();
     _previewPageController.dispose();
 
@@ -200,7 +152,6 @@ class _GenericToolPageState extends State<GenericToolPage>
       // ✅ Re-attach polling if we were mid-loading
       if (_activeJobId != null && _loading && !_fetchingResult) {
         debugPrint("🔁 Resuming job polling after resume");
-        PollingService.instance.start();
       }
     }
   }
@@ -268,7 +219,6 @@ class _GenericToolPageState extends State<GenericToolPage>
           await prefs.setString("pending_download_url", downloadUrl);
         }
 
-        PollingService.instance.start();
         debugPrint("✅ Retried submit successfully for job $jobId");
       } else {
         throw Exception("Server responded ${resp.statusCode}");
@@ -352,19 +302,6 @@ class _GenericToolPageState extends State<GenericToolPage>
         debugPrint("⚠️ Failed to download pending result: $e");
         // continue fallback
       }
-    }
-
-    // ✅ 3️⃣ If active job still processing → resume polling, not resubmit
-    if (savedJobId != null && savedJobId.isNotEmpty) {
-      debugPrint(
-          "⏳ Job still processing, resuming polling for jobId=$savedJobId");
-      setState(() {
-        _activeJobId = savedJobId;
-        _loading = true;
-      });
-
-      PollingService.instance.start(); // safely idempotent
-      return;
     }
 
     // ✅ 4️⃣ Only if job_id is missing but we were submitting → retry submission
@@ -940,6 +877,18 @@ class _GenericToolPageState extends State<GenericToolPage>
       _inputs["scale_factor"] = _upscaleEnabled ? _scaleFactor : 1;
     }
 
+    // 🕐 Dynamic message that changes after 45s
+    final ValueNotifier<String> dialogMessage = ValueNotifier<String>(
+      "Hang tight while we queue and process your request.\n"
+      "Avoid pressing back or closing the app.",
+    );
+
+    // 🔁 Track if 45 seconds have passed
+    Timer(const Duration(seconds: 45), () {
+      dialogMessage.value =
+          "Still working... It’s taking a bit longer than usual.\nPlease stay on this screen.";
+    });
+
     // 🟣 Elegant animated progress dialog
     showDialog(
       context: context,
@@ -970,7 +919,7 @@ class _GenericToolPageState extends State<GenericToolPage>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // 🔮 Subtle animated progress ring
+              // 🔮 Animated progress ring
               TweenAnimationBuilder<double>(
                 tween: Tween(begin: 0, end: 1),
                 duration: const Duration(seconds: 1),
@@ -985,7 +934,6 @@ class _GenericToolPageState extends State<GenericToolPage>
               ),
               const SizedBox(height: 22),
 
-              // 🧠 Main title
               const Text(
                 "Submitting your job...",
                 textAlign: TextAlign.center,
@@ -998,21 +946,23 @@ class _GenericToolPageState extends State<GenericToolPage>
               ),
               const SizedBox(height: 10),
 
-              // 💬 Subtext
-              const Text(
-                "Hang tight while we queue and process your request.\n"
-                "Avoid pressing back or closing the app.",
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 13.5,
-                  height: 1.4,
+              // 💬 Dynamic message (changes after 45 seconds)
+              ValueListenableBuilder<String>(
+                valueListenable: dialogMessage,
+                builder: (_, value, __) => Text(
+                  value,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 13.5,
+                    height: 1.4,
+                  ),
                 ),
               ),
-              
+
               const SizedBox(height: 16),
 
-              // ✨ Optional gentle shimmer or animated dots
+              // ✨ Animated dots
               TweenAnimationBuilder<int>(
                 tween: IntTween(begin: 0, end: 3),
                 duration: const Duration(milliseconds: 1200),
@@ -1034,155 +984,173 @@ class _GenericToolPageState extends State<GenericToolPage>
       ),
     );
 
-    try {
-      // 🔹 Deep clone inputs
-      final encoded = Map<String, dynamic>.from(_inputs);
-
-      // Encode image & list inputs
-      for (final key in encoded.keys.toList()) {
-        final val = encoded[key];
-        if (val is Uint8List) {
-          encoded[key] = base64Encode(val);
-        } else if (val is List) {
-          if (val.isEmpty) {
-            encoded.remove(key);
-            continue;
-          }
-          if (val.first is Uint8List) {
-            encoded[key] = val.length == 1
-                ? base64Encode(val.first as Uint8List)
-                : val.map((e) => base64Encode(e as Uint8List)).toList();
-          } else {
-            encoded[key] = val.length == 1 ? val.first : val;
-          }
-        }
-      }
-
-      // Extract & sanitize prompt
-      String? promptForPayload;
-      if (encoded.containsKey("prompt")) {
-        final p = encoded.remove("prompt");
-        if (p is String && p.isNotEmpty) promptForPayload = p;
-      }
-      if (prompt != null && prompt.isNotEmpty) promptForPayload = prompt;
-
-      // Attempt width/height inference
+    // 🔁 Retry logic (up to 3 attempts)
+    const int maxRetries = 3;
+    int attempt = 0;
+    while (attempt < maxRetries) {
+      attempt++;
       try {
-        final imgInput = widget.config.inputs
-            .firstWhere((i) => i["type"] == "image", orElse: () => {});
-        final id = imgInput["id"];
-        if (encoded.containsKey(id)) {
-          final imgVal = encoded[id];
-          Uint8List? firstImg;
-          if (imgVal is String) {
-            firstImg = base64Decode(imgVal);
-          } else if (imgVal is List &&
-              imgVal.isNotEmpty &&
-              imgVal.first is String) {
-            firstImg = base64Decode(imgVal.first);
-          }
+        // 🔹 Clone inputs
+        final encoded = Map<String, dynamic>.from(_inputs);
 
-          if (firstImg != null) {
-            final codec = await ui.instantiateImageCodec(firstImg);
-            final frame = await codec.getNextFrame();
-            final img = frame.image;
-            int roundTo32(int x) => ((x / 32).round() * 32).clamp(32, 2048);
-            encoded["width"] = roundTo32(img.width);
-            encoded["height"] = roundTo32(img.height);
-            img.dispose();
+        // Encode image & list inputs
+        for (final key in encoded.keys.toList()) {
+          final val = encoded[key];
+          if (val is Uint8List) {
+            encoded[key] = base64Encode(val);
+          } else if (val is List) {
+            if (val.isEmpty) {
+              encoded.remove(key);
+              continue;
+            }
+            if (val.first is Uint8List) {
+              encoded[key] = val.length == 1
+                  ? base64Encode(val.first as Uint8List)
+                  : val.map((e) => base64Encode(e as Uint8List)).toList();
+            } else {
+              encoded[key] = val.length == 1 ? val.first : val;
+            }
           }
         }
-      } catch (e) {
-        debugPrint("⚠️ Skipped width/height detection: $e");
-      }
 
-      // Merge params and randomize “random” fields
-      final prefs = await SharedPreferences.getInstance();
-      final params = {...?widget.config.params, ...encoded};
-      params
-          .updateAll((k, v) => v == "random" ? Random().nextInt(99999999) : v);
+        // Extract & sanitize prompt
+        String? promptForPayload;
+        if (encoded.containsKey("prompt")) {
+          final p = encoded.remove("prompt");
+          if (p is String && p.isNotEmpty) promptForPayload = p;
+        }
+        if (prompt != null && prompt.isNotEmpty) promptForPayload = prompt;
 
-      // Get FCM token — ensures latest
-      String? fcmToken = prefs.getString("fcm_token");
-      if (fcmToken == null) {
-        fcmToken = await FirebaseMessaging.instance.getToken();
-        if (fcmToken != null) await prefs.setString("fcm_token", fcmToken);
-        debugPrint("🔑 Refreshed FCM token before submit: $fcmToken");
-      }
+        // Attempt width/height inference
+        try {
+          final imgInput = widget.config.inputs
+              .firstWhere((i) => i["type"] == "image", orElse: () => {});
+          final id = imgInput["id"];
+          if (encoded.containsKey(id)) {
+            final imgVal = encoded[id];
+            Uint8List? firstImg;
+            if (imgVal is String) {
+              firstImg = base64Decode(imgVal);
+            } else if (imgVal is List &&
+                imgVal.isNotEmpty &&
+                imgVal.first is String) {
+              firstImg = base64Decode(imgVal.first);
+            }
 
-      // Build payload
-      final payload = <String, dynamic>{
-        "model": widget.config.model,
-        if (promptForPayload?.isNotEmpty ?? false)
-          "prompt": promptForPayload
-        else if (_hasPrompt)
-          "prompt": "Enhance this image creatively.",
-        "params": params,
-        "fcm_token": fcmToken,
-      };
-      final payloadJson = jsonEncode(payload);
+            if (firstImg != null) {
+              final codec = await ui.instantiateImageCodec(firstImg);
+              final frame = await codec.getNextFrame();
+              final img = frame.image;
+              int roundTo32(int x) => ((x / 32).round() * 32).clamp(32, 2048);
+              encoded["width"] = roundTo32(img.width);
+              encoded["height"] = roundTo32(img.height);
+              img.dispose();
+            }
+          }
+        } catch (e) {
+          debugPrint("⚠️ Skipped width/height detection: $e");
+        }
 
-      // HMAC sign
-      final sigBytes = Hmac(sha256, utf8.encode(controllerSharedSecret))
-          .convert(utf8.encode(payloadJson));
-      final signature = "sha256=${sigBytes.toString()}";
-      final headers = {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer $controllerApiKey",
-        "X-Signature": signature
-      };
+        // Merge params
+        final prefs = await SharedPreferences.getInstance();
+        final params = {...?widget.config.params, ...encoded};
+        params.updateAll(
+            (k, v) => v == "random" ? Random().nextInt(99999999) : v);
 
-      // 🔹 Submit job
-      final resp = await http.post(Uri.parse('$controllerUrl/submit'),
-          headers: headers, body: payloadJson);
+        // Get FCM token
+        String? fcmToken = prefs.getString("fcm_token");
+        if (fcmToken == null) {
+          fcmToken = await FirebaseMessaging.instance.getToken();
+          if (fcmToken != null) await prefs.setString("fcm_token", fcmToken);
+          debugPrint("🔑 Refreshed FCM token before submit: $fcmToken");
+        }
 
-      if (mounted) Navigator.pop(context); // Close dialog
+        // Build payload
+        final payload = <String, dynamic>{
+          "model": widget.config.model,
+          if (promptForPayload?.isNotEmpty ?? false)
+            "prompt": promptForPayload
+          else if (_hasPrompt)
+            "prompt": "Enhance this image creatively.",
+          "params": params,
+          "fcm_token": fcmToken,
+        };
+        final payloadJson = jsonEncode(payload);
 
-      if (resp.statusCode != 200) {
-        throw Exception("Server error ${resp.statusCode}: ${resp.body}");
-      }
+        // HMAC sign
+        final sigBytes = Hmac(sha256, utf8.encode(controllerSharedSecret))
+            .convert(utf8.encode(payloadJson));
+        final signature = "sha256=${sigBytes.toString()}";
+        final headers = {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer $controllerApiKey",
+          "X-Signature": signature
+        };
 
-      final data = jsonDecode(resp.body);
-      final jobId = data["job_id"];
-      if (jobId == null) throw Exception("No job_id returned from submit");
+        debugPrint("🚀 Submitting job (attempt $attempt/$maxRetries)");
+        final resp = await http
+            .post(Uri.parse('$controllerUrl/submit'),
+                headers: headers, body: payloadJson)
+            .timeout(const Duration(seconds: 60));
 
-      // ✅ Add to local list
-      jobListNotifier.value = [
-        JobModel(
+        if (resp.statusCode != 200) {
+          throw Exception("Server error ${resp.statusCode}: ${resp.body}");
+        }
+
+        if (mounted) Navigator.pop(context); // close dialog
+
+        final data = jsonDecode(resp.body);
+        final jobId = data["job_id"];
+        final downloadUrl = data["download_url"] ?? data["downloadUrl"];
+        if (jobId == null) throw Exception("No job_id returned from submit");
+
+// ✅ Create persistent job entry (single source of truth)
+        final newJob = JobModel(
           jobId: jobId,
           title: widget.config.title,
           model: widget.config.model,
           outputType: widget.config.outputType,
-        ),
-        ...jobListNotifier.value,
-      ];
-
-      // ✅ Persist context for FCM taps
-      final jobContext = {
-        "title": widget.config.title,
-        "model": widget.config.model,
-        "inputs": widget.config.inputs,
-        "params": widget.config.params,
-        "outputType": widget.config.outputType,
-      };
-      await prefs.setString("notify_job_$jobId", jsonEncode(jobContext));
-
-      // ✅ Navigate to results manager
-      if (mounted) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const ResultManagerPage()),
+          downloadUrl: downloadUrl, // may be null if not ready yet
+          status: 'processing',
         );
-      }
+        await addOrUpdateJob(newJob);
 
-      debugPrint("✅ Job submitted successfully: $jobId");
-    } catch (e) {
-      if (mounted) Navigator.pop(context);
-      debugPrint("❌ Job submission failed: $e");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error submitting job: $e")),
-        );
+        // ✅ Persist context for FCM taps
+        final jobContext = {
+          "title": widget.config.title,
+          "model": widget.config.model,
+          "inputs": widget.config.inputs,
+          "params": widget.config.params,
+          "outputType": widget.config.outputType,
+        };
+        await prefs.setString("notify_job_$jobId", jsonEncode(jobContext));
+
+        // ✅ Navigate to results manager
+        if (mounted) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const ResultManagerPage()),
+          );
+        }
+
+        debugPrint("✅ Job submitted successfully (attempt $attempt): $jobId");
+        return; // exit loop on success
+      } catch (e) {
+        debugPrint("❌ Job submission attempt $attempt failed: $e");
+        if (attempt >= maxRetries) {
+          if (mounted) Navigator.pop(context);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                  content: Text(
+                      "Error submitting job after $maxRetries retries: $e")),
+            );
+          }
+          return;
+        }
+
+        // Wait before retry
+        await Future.delayed(const Duration(seconds: 2));
       }
     }
   }
