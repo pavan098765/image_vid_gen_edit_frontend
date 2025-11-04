@@ -230,8 +230,12 @@ class FileService {
       if (savedPath != null) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('✅ File saved to: $savedPath'),
-            duration: const Duration(seconds: 3),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 6),
+        content: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: SelectableText('✅ File saved to: $savedPath'),
+        ),
           ),
         );
       }

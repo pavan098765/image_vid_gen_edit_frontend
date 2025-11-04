@@ -1,7 +1,10 @@
 // lib/main.dart
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_vid_gen_edit_frontend/core/services/file_service.dart';
+import 'package:image_vid_gen_edit_frontend/core/services/polling_service.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // Firebase imports
@@ -36,11 +39,11 @@ final List<Map<String, dynamic>> _pendingNavigations = [];
 // Helpers: apply and persist FCM updates
 // ----------------------
 
-/// Merge job entry into saved jobs in SharedPreferences by jobId.
-/// Also stores a per-job pending_download_url_<jobId> for safe retrieval.
 Future<void> _mergeAndPersistJobMap(Map<String, dynamic> jobMap) async {
   try {
     final prefs = await SharedPreferences.getInstance();
+    await prefs.reload(); // ✅ ensure latest copy before merge
+
     final jsonStr = prefs.getString('jobs');
     final existing = jsonStr == null
         ? <Map<String, dynamic>>[]
@@ -51,28 +54,24 @@ Future<void> _mergeAndPersistJobMap(Map<String, dynamic> jobMap) async {
     final jobId = jobMap['job_id']?.toString();
     if (jobId == null || jobId.isEmpty) return;
 
-    // Normalize fields we expect
     final status = (jobMap['status'] ?? '').toString();
     final downloadUrl = (jobMap['download_url'] ?? '').toString();
 
-    // Find existing index
     final idx = existing.indexWhere((e) => e['jobId'] == jobId);
     if (idx != -1) {
-      // update existing
       final old = existing[idx];
       existing[idx] = {
         'jobId': jobId,
-        'title': old['title'] ?? old['jobId'], // preserve title if present
-        'model': old['model'] ?? old['model'],
-        'outputType': old['outputType'] ?? old['outputType'],
+        'title': old['title'] ?? jobMap['title'] ?? jobId,
+        'model': old['model'] ?? jobMap['model'] ?? 'unknown',
+        'outputType': old['outputType'] ?? jobMap['outputType'] ?? 'image',
         'downloadUrl':
             downloadUrl.isNotEmpty ? downloadUrl : (old['downloadUrl'] ?? null),
         'status': status.isNotEmpty ? status : (old['status'] ?? 'processing'),
         'createdAt': old['createdAt'] ?? DateTime.now().toIso8601String(),
       };
     } else {
-      // create new entry (if we don't have a client-side record yet)
-      existing.add({
+      existing.insert(0, {
         'jobId': jobId,
         'title': jobMap['title'] ?? jobId,
         'model': jobMap['model'] ?? 'unknown',
@@ -83,50 +82,52 @@ Future<void> _mergeAndPersistJobMap(Map<String, dynamic> jobMap) async {
       });
     }
 
-    // Save per-job download url if present
     if (downloadUrl.isNotEmpty) {
       await prefs.setString('pending_download_url_$jobId', downloadUrl);
     }
 
-    // Persist the jobs array back
     await prefs.setString('jobs', jsonEncode(existing));
-    debugPrint(
-        "💾 [FCM] merged job $jobId saved to prefs (status=${status}, url=${downloadUrl.isNotEmpty})");
+    await prefs.reload(); // ✅ force disk write flush
+
+    debugPrint("💾 [FCM] job $jobId persisted (status=$status)");
   } catch (e, st) {
     debugPrint("⚠️ _mergeAndPersistJobMap failed: $e\n$st");
   }
 }
 
-/// Convenience: load jobs from prefs into jobListNotifier (call after merging in background)
+/// 🧠 Always reload jobs directly from the actual prefs file on disk.
+/// Works even if background isolate updated SharedPreferences.
 Future<void> _reloadJobsToNotifier() async {
   try {
-    await loadJobsFromPrefs(); // this assigns jobListNotifier.value
-    // optionally ensure each job keeps any per-job pending_download_url
     final prefs = await SharedPreferences.getInstance();
-    final jobs = List<JobModel>.from(jobListNotifier.value);
-    bool changed = false;
-    for (var i = 0; i < jobs.length; i++) {
-      final job = jobs[i];
-      if (job.downloadUrl == null || job.downloadUrl!.isEmpty) {
-        final cached = prefs.getString('pending_download_url_${job.jobId}');
-        if (cached != null && cached.isNotEmpty) {
-          jobs[i] = JobModel(
-            jobId: job.jobId,
-            title: job.title,
-            model: job.model,
-            outputType: job.outputType,
-            downloadUrl: cached,
-            status: job.status,
-            createdAt: job.createdAt,
-          );
-          changed = true;
-        }
-      }
+    await prefs.reload(); // ✅ Always refresh cache
+
+    // 🧩 Detect if background FCM updated while app minimized
+    final hasUpdate = prefs.getBool('has_fcm_update') ?? false;
+    if (hasUpdate) {
+      debugPrint("📦 Detected FCM background update — applying reload");
+      await prefs.remove('has_fcm_update');
     }
-    if (changed) {
-      jobListNotifier.value = jobs;
-      await saveJobsToPrefs();
+
+    final jsonStr = prefs.getString('jobs');
+    if (jsonStr == null) {
+      jobListNotifier.value = [];
+      debugPrint("📂 No jobs found — cleared");
+      return;
     }
+
+    final decoded = jsonDecode(jsonStr);
+    if (decoded is! List) {
+      debugPrint("⚠️ Invalid jobs list format");
+      return;
+    }
+
+    final list = decoded
+        .map((e) => JobModel.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
+
+    jobListNotifier.value = List<JobModel>.from(list);
+    debugPrint("✅ Reloaded ${list.length} jobs (after FCM check)");
   } catch (e, st) {
     debugPrint("⚠️ _reloadJobsToNotifier failed: $e\n$st");
   }
@@ -199,8 +200,9 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
           'downloadUrl': downloadUrl.isNotEmpty
               ? downloadUrl
               : (old['downloadUrl'] ?? null),
-          'status':
-              normalizedStatus.isNotEmpty ? normalizedStatus : (old['status'] ?? 'processing'),
+          'status': normalizedStatus.isNotEmpty
+              ? normalizedStatus
+              : (old['status'] ?? 'processing'),
           'createdAt': old['createdAt'] ?? DateTime.now().toIso8601String(),
         };
       } else {
@@ -210,7 +212,8 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
           'model': model.isNotEmpty ? model : 'unknown',
           'outputType': outputType.isNotEmpty ? outputType : 'image',
           'downloadUrl': downloadUrl.isNotEmpty ? downloadUrl : null,
-          'status': normalizedStatus.isNotEmpty ? normalizedStatus : 'processing',
+          'status':
+              normalizedStatus.isNotEmpty ? normalizedStatus : 'processing',
           'createdAt': DateTime.now().toIso8601String(),
         });
       }
@@ -221,7 +224,17 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       }
 
       await prefs.setString('jobs', jsonEncode(existing));
+      await prefs.setBool('has_fcm_update', true);
     }
+
+    await _applyFcmUpdate({
+      'job_id': jobId,
+      'status': normalizedStatus,
+      'download_url': downloadUrl,
+      'title': title,
+      'model': model,
+      'outputType': outputType,
+    });
 
     // show a local notification so user sees it in system tray
     await NotificationService.showNotification(
@@ -294,15 +307,15 @@ Future<void> main() async {
   });
 
   // ------------------------
-  // Foreground messages handler
-  // ------------------------
+// Foreground messages handler
+// ------------------------
   FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
     debugPrint("📩 FCM onMessage: ${message.messageId} data=${message.data}");
 
     final data = message.data ?? {};
     final jobId = (data['job_id'] ?? '').toString();
     const allowed = ['processing', 'completed', 'failed'];
-    
+
     final status = (data['status'] ?? '').toString().toLowerCase();
     final normalizedStatus = allowed.contains(status) ? status : 'processing';
     final downloadUrl =
@@ -312,26 +325,18 @@ Future<void> main() async {
     final outputType = (data['outputType'] ?? '').toString();
 
     if (jobId.isNotEmpty) {
-      // Update persisted job object and UI via helper (app_state)
-      await updateJobFields(
-        jobId: jobId,
-        status: normalizedStatus.isNotEmpty ? normalizedStatus : null,
-        downloadUrl: downloadUrl.isNotEmpty ? downloadUrl : null,
-        title: title.isNotEmpty ? title : null,
-        model: model.isNotEmpty ? model : null,
-        outputType: outputType.isNotEmpty ? outputType : null,
-      );
-
-      // Also persist per-job pending_download_url for background/cold-start correctness
-      if (downloadUrl.isNotEmpty) {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('pending_download_url_$jobId', downloadUrl);
-      }
-
-      debugPrint(
-          "✅ FCM (foreground) applied job $jobId → $status (url=${downloadUrl.isNotEmpty})");
+      // ✅ Update both prefs and notifier in one go
+      await _applyFcmUpdate({
+        'job_id': jobId,
+        'status': normalizedStatus,
+        'download_url': downloadUrl,
+        'title': title,
+        'model': model,
+        'outputType': outputType,
+      });
     }
 
+    // ✅ Show a local notification for user feedback
     final notifTitle = message.notification?.title ??
         (status == 'completed' ? 'Result ready' : 'Job update');
     final notifBody = message.notification?.body ??
@@ -339,13 +344,13 @@ Future<void> main() async {
             ? 'Your AI result is ready — tap to view.'
             : 'Job status: $status');
 
-    // Show a local notification as well
     await NotificationService.showNotification(
       title: notifTitle,
       body: notifBody,
       payload: jobId,
     );
 
+    // ✅ Optional in-app toast for user
     if (navigatorKey.currentContext != null && status == 'completed') {
       ScaffoldMessenger.of(navigatorKey.currentContext!).showSnackBar(
         const SnackBar(
@@ -355,6 +360,69 @@ Future<void> main() async {
       );
     }
   });
+
+  // ------------------------
+  // Foreground messages handler
+  // ------------------------
+  // FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
+  //   debugPrint("📩 FCM onMessage: ${message.messageId} data=${message.data}");
+
+  //   final data = message.data ?? {};
+  //   final jobId = (data['job_id'] ?? '').toString();
+  //   const allowed = ['processing', 'completed', 'failed'];
+
+  //   final status = (data['status'] ?? '').toString().toLowerCase();
+  //   final normalizedStatus = allowed.contains(status) ? status : 'processing';
+  //   final downloadUrl =
+  //       (data['download_url'] ?? data['downloadUrl'] ?? '').toString();
+  //   final title = (data['title'] ?? '').toString();
+  //   final model = (data['model'] ?? '').toString();
+  //   final outputType = (data['outputType'] ?? '').toString();
+
+  //   if (jobId.isNotEmpty) {
+  //     // Update persisted job object and UI via helper (app_state)
+  //     await updateJobFields(
+  //       jobId: jobId,
+  //       status: normalizedStatus.isNotEmpty ? normalizedStatus : null,
+  //       downloadUrl: downloadUrl.isNotEmpty ? downloadUrl : null,
+  //       title: title.isNotEmpty ? title : null,
+  //       model: model.isNotEmpty ? model : null,
+  //       outputType: outputType.isNotEmpty ? outputType : null,
+  //     );
+
+  //     // Also persist per-job pending_download_url for background/cold-start correctness
+  //     if (downloadUrl.isNotEmpty) {
+  //       final prefs = await SharedPreferences.getInstance();
+  //       await prefs.setString('pending_download_url_$jobId', downloadUrl);
+  //     }
+
+  //     debugPrint(
+  //         "✅ FCM (foreground) applied job $jobId → $status (url=${downloadUrl.isNotEmpty})");
+  //   }
+
+  //   final notifTitle = message.notification?.title ??
+  //       (status == 'completed' ? 'Result ready' : 'Job update');
+  //   final notifBody = message.notification?.body ??
+  //       (status == 'completed'
+  //           ? 'Your AI result is ready — tap to view.'
+  //           : 'Job status: $status');
+
+  //   // Show a local notification as well
+  //   await NotificationService.showNotification(
+  //     title: notifTitle,
+  //     body: notifBody,
+  //     payload: jobId,
+  //   );
+
+  //   if (navigatorKey.currentContext != null && status == 'completed') {
+  //     ScaffoldMessenger.of(navigatorKey.currentContext!).showSnackBar(
+  //       const SnackBar(
+  //         content: Text('✅ Your AI result is ready!'),
+  //         behavior: SnackBarBehavior.floating,
+  //       ),
+  //     );
+  //   }
+  // });
 
   // When user taps an FCM notification while app was backgrounded (not killed)
   FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) async {
@@ -455,7 +523,7 @@ Future<void> main() async {
 Future<void> _refreshJobsAfterNotification() async {
   try {
     debugPrint("🔄 Refreshing jobs after notification tap (FCM only)...");
-    await loadJobsFromPrefs(); // reloads jobListNotifier
+    await _reloadJobsToNotifier(); // reloads jobListNotifier
   } catch (e) {
     debugPrint("⚠️ Failed to reload jobs: $e");
   }
@@ -491,7 +559,7 @@ void _openResultManager() async {
   }
 
   await _refreshJobsAfterNotification(); // 🆕 Force refresh
-
+  selectedIndexNotifier.value = 2;
   _openOrReplaceResultManager();
 }
 
@@ -596,6 +664,21 @@ class _AppLifecycleHandlerState extends State<AppLifecycleHandler>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) async {
+    if (state == AppLifecycleState.resumed) {
+      debugPrint("🔁 App resumed — checking for FCM background updates");
+      // await Future.delayed(const Duration(milliseconds: 500));
+      // Always refresh jobs, but _reloadJobsToNotifier() now respects has_fcm_update
+      await _reloadJobsToNotifier();
+
+      // 🧠 Use PollingService to catch missed FCM updates (only for 'processing' jobs)
+      await PollingService.instance.refreshProcessingJobs();
+
+      debugPrint("✅ Jobs refreshed after resume");
+    }
   }
 
   @override

@@ -1,7 +1,10 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:animated_text_kit/animated_text_kit.dart';
 import 'package:image_vid_gen_edit_frontend/core/app_state.dart';
 import 'package:image_vid_gen_edit_frontend/core/services/file_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 bool isResultManagerOpen = false;
 
@@ -12,44 +15,115 @@ class ResultManagerPage extends StatefulWidget {
   State<ResultManagerPage> createState() => _ResultManagerPageState();
 }
 
-class _ResultManagerPageState extends State<ResultManagerPage> {
+class _ResultManagerPageState extends State<ResultManagerPage>
+    with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
     isResultManagerOpen = true; // ✅ mark open
+    WidgetsBinding.instance.addObserver(this);
     debugPrint("🟢 ResultManagerPage opened");
+    _refreshJobs(); // initial refresh on open
+    // 🧩 Also ensure latest FCM background writes are caught
+    SharedPreferences.getInstance().then((prefs) async {
+      await prefs.reload();
+    });
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     isResultManagerOpen = false; // ✅ mark closed
     debugPrint("🔴 ResultManagerPage closed");
     super.dispose();
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      debugPrint("🔁 ResultManagerPage resumed — refreshing jobs");
+      _refreshJobs();
+    }
+  }
+
+  Future<void> _refreshJobs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.reload(); // ✅ latest from disk
+      final jsonStr = prefs.getString('jobs');
+
+      if (jsonStr == null) {
+        jobListNotifier.value = [];
+        debugPrint("📂 No jobs found during refresh");
+        return;
+      }
+
+      final decoded = jsonDecode(jsonStr);
+      if (decoded is! List) {
+        debugPrint("⚠️ Invalid jobs format during refresh");
+        return;
+      }
+
+      final list = decoded
+          .map((e) => JobModel.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+      jobListNotifier.value = List<JobModel>.from(list);
+      debugPrint("✅ Refreshed ${list.length} jobs from prefs");
+    } catch (e, st) {
+      debugPrint("⚠️ ResultManagerPage refresh failed: $e\n$st");
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('My AI Jobs')),
-      body: ValueListenableBuilder<List<JobModel>>(
-        valueListenable: jobListNotifier,
-        builder: (_, jobs, __) {
-          if (jobs.isEmpty) {
-            return const Center(
-              child: Text(
-                'No jobs yet.',
-                style: TextStyle(color: Colors.white70),
-              ),
+      body: RefreshIndicator(
+        onRefresh: _refreshJobs, // 👈 pull-to-refresh logic
+        child: ValueListenableBuilder<List<JobModel>>(
+          valueListenable: jobListNotifier,
+          builder: (_, jobs, __) {
+            if (jobs.isEmpty) {
+              return const Center(
+                child: Text(
+                  'No jobs yet.',
+                  style: TextStyle(color: Colors.white70),
+                ),
+              );
+            }
+            return ListView.builder(
+              itemCount: jobs.length,
+              itemBuilder: (_, i) => JobCard(job: jobs[i]),
             );
-          }
-          return ListView.builder(
-            itemCount: jobs.length,
-            itemBuilder: (_, i) => JobCard(job: jobs[i]),
-          );
-        },
+          },
+        ),
       ),
     );
   }
+
+  // @override
+  // Widget build(BuildContext context) {
+  //   return Scaffold(
+  //     appBar: AppBar(title: const Text('My AI Jobs')),
+  //     body: ValueListenableBuilder<List<JobModel>>(
+  //       valueListenable: jobListNotifier,
+  //       builder: (_, jobs, __) {
+  //         if (jobs.isEmpty) {
+  //           return const Center(
+  //             child: Text(
+  //               'No jobs yet.',
+  //               style: TextStyle(color: Colors.white70),
+  //             ),
+  //           );
+  //         }
+  //         return ListView.builder(
+  //           itemCount: jobs.length,
+  //           itemBuilder: (_, i) => JobCard(job: jobs[i]),
+  //         );
+  //       },
+  //     ),
+  //   );
+  // }
 }
 
 class JobCard extends StatelessWidget {

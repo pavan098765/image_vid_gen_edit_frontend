@@ -1,6 +1,8 @@
 // lib/core/app_state.dart
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Global app-level selected index for the bottom navigation.
@@ -151,16 +153,30 @@ Future<void> updateJobFields({
 Future<void> loadJobsFromPrefs() async {
   try {
     final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
     final jsonStr = prefs.getString('jobs');
-    if (jsonStr == null) return;
+    if (jsonStr == null) {
+      jobListNotifier.value = [];
+      debugPrint("📂 No jobs found in prefs — cleared list");
+      return;
+    }
 
-    final list = (jsonDecode(jsonStr) as List)
+    final decoded = jsonDecode(jsonStr);
+    if (decoded is! List) {
+      debugPrint("⚠️ Invalid job list format");
+      return;
+    }
+
+    final list = decoded
         .map((e) => JobModel.fromJson(Map<String, dynamic>.from(e)))
         .toList();
-    jobListNotifier.value = list;
-    debugPrint("📂 Loaded ${list.length} jobs from prefs");
-  } catch (e) {
-    debugPrint("⚠️ Failed to load jobs: $e");
+
+    // 🧠 Always assign a new list object to trigger UI rebuild
+    jobListNotifier.value = List<JobModel>.from(list);
+
+    debugPrint("📂 Reloaded ${list.length} jobs from prefs");
+  } catch (e, st) {
+    debugPrint("⚠️ Failed to load jobs from prefs: $e\n$st");
   }
 }
 

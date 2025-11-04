@@ -11,6 +11,7 @@ import 'notification_service.dart';
 class PollingService {
   PollingService._();
   static final PollingService instance = PollingService._();
+  static final allowed = ["processing", "completed", "failed"];
 
   Timer? _timer;
   bool _running = false;
@@ -76,7 +77,10 @@ class PollingService {
       if (resp.statusCode != 200) return;
 
       final data = jsonDecode(resp.body) as Map<String, dynamic>;
-      final status = (data["status"] ?? "").toString().toLowerCase();
+      String status = (data["status"] ?? "").toString().toLowerCase();
+      if (!allowed.contains(status)) {
+        status = "processing";
+      }
       String? downloadUrl = data["download_url"] as String?;
       if (downloadUrl != null && downloadUrl.isNotEmpty) {
         await prefs.setString("pending_download_url_$jobId", downloadUrl);
@@ -203,7 +207,11 @@ class PollingService {
         if (resp.statusCode != 200) continue;
 
         final data = jsonDecode(resp.body) as Map<String, dynamic>;
-        final status = (data["status"] ?? "").toString().toLowerCase();
+        String status = (data["status"] ?? "").toString().toLowerCase();
+        const allowed = ["processing", "completed", "failed"];
+        if (!allowed.contains(status)) {
+          status = "processing";
+        }
         String? downloadUrl = data["download_url"] as String?;
 
         // ✅ Try cached downloadUrl if backend hasn’t sent one yet
@@ -250,6 +258,107 @@ class PollingService {
       await saveJobsToPrefs();
     } catch (e, st) {
       debugPrint("⚠️ PollingService.refreshNow() failed: $e\n$st");
+    }
+  }
+
+  /// ✅ Refresh only jobs still marked as "processing"
+  Future<void> refreshProcessingJobs() async {
+    debugPrint(
+        "🟢 PollingService.refreshProcessingJobs(): Refreshing active jobs only");
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      final jsonStr = prefs.getString('jobs');
+      if (jsonStr == null) {
+        debugPrint("ℹ️ No jobs found to refresh");
+        return;
+      }
+
+      final list = (jsonDecode(jsonStr) as List)
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+
+      // Only refresh jobs that are still processing
+      final processingJobs = list.where((job) {
+        final status = (job["status"] ?? "").toString().toLowerCase();
+        return status == "processing";
+      }).toList();
+
+      if (processingJobs.isEmpty) {
+        debugPrint("✅ No processing jobs found — nothing to refresh");
+        return;
+      }
+
+      debugPrint("🌐 Found ${processingJobs.length} processing jobs to check");
+
+      for (final job in processingJobs) {
+        final jobId = job["jobId"];
+        if (jobId == null) continue;
+
+        final payloadJson = jsonEncode({"job_id": jobId});
+        final sigBytes = Hmac(sha256, utf8.encode(controllerSharedSecret))
+            .convert(utf8.encode(payloadJson));
+        final sig = "sha256=${sigBytes.toString()}";
+
+        final headers = {
+          "Authorization": "Bearer $controllerApiKey",
+          "X-Signature": sig,
+        };
+
+        final url = "$baseUrl/job_status?job_id=$jobId";
+        final resp = await http
+            .get(Uri.parse(url), headers: headers)
+            .timeout(const Duration(seconds: 15));
+
+        if (resp.statusCode != 200) continue;
+
+        final data = jsonDecode(resp.body) as Map<String, dynamic>;
+        String status = (data["status"] ?? "").toString().toLowerCase();
+        const allowed = ["processing", "completed", "failed"];
+        if (!allowed.contains(status)) {
+          status = "processing";
+        }
+        String? downloadUrl = data["download_url"] as String?;
+
+        // Use cached URL if backend didn’t send one yet
+        if (downloadUrl == null || downloadUrl.isEmpty) {
+          final cached = prefs.getString("pending_download_url_$jobId");
+          if (cached != null && cached.isNotEmpty) downloadUrl = cached;
+        }
+
+        // Update the local notifier list
+        final jobs = List<JobModel>.from(jobListNotifier.value);
+        final idx = jobs.indexWhere((j) => j.jobId == jobId);
+        if (idx != -1) {
+          final old = jobs[idx];
+          final finalUrl = (downloadUrl != null && downloadUrl.isNotEmpty)
+              ? downloadUrl
+              : old.downloadUrl;
+
+          jobs[idx] = JobModel(
+            jobId: old.jobId,
+            title: old.title,
+            model: old.model,
+            outputType: old.outputType,
+            downloadUrl: finalUrl,
+            status: status.isNotEmpty ? status : old.status,
+            createdAt: old.createdAt,
+          );
+
+          if (finalUrl != null && finalUrl.isNotEmpty) {
+            await prefs.setString("pending_download_url_$jobId", finalUrl);
+          }
+
+          debugPrint(
+              "✅ Processing job=$jobId → $status (url: ${finalUrl ?? 'none'})");
+          jobListNotifier.value = jobs;
+        }
+      }
+
+      await saveJobsToPrefs();
+      debugPrint("✅ refreshProcessingJobs() completed successfully");
+    } catch (e, st) {
+      debugPrint("⚠️ PollingService.refreshProcessingJobs() failed: $e\n$st");
     }
   }
 
