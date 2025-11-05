@@ -664,8 +664,7 @@ class _UpscalePageState extends State<UpscalePage>
                 onPressed: () async {
                   final prefix = widget.config.model
                       .replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_');
-                  await FileService.saveFile(context, _resultImage!,
-                      prefix: prefix);
+                  await FileService.saveFile(context, _resultImage!);
                 },
                 icon: const Icon(Icons.download_rounded),
                 label: const Text("Save Image"),

@@ -1,17 +1,23 @@
 // lib/core/services/polling_service.dart
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_vid_gen_edit_frontend/core/app_state.dart';
+import 'package:image_vid_gen_edit_frontend/core/services/file_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'notification_service.dart';
+import 'package:image_vid_gen_edit_frontend/main.dart' show navigatorKey;
+
 
 class PollingService {
   PollingService._();
   static final PollingService instance = PollingService._();
   static final allowed = ["processing", "completed", "failed"];
+  static const int minPollIntervalSec = 20; // per-job cooldown
+  static const int maxJobAgeMinutes = 10; // skip very old jobs
 
   Timer? _timer;
   bool _running = false;
@@ -121,8 +127,39 @@ class PollingService {
       // --- 3️⃣ Handle status
       if (status == "completed") {
         if (downloadUrl == null || downloadUrl.isEmpty) return;
-
         debugPrint("PollingService: job completed, prefetching result...");
+
+        // 🔥 Auto-generate preview & save path to job
+        try {
+          final jobs = List<JobModel>.from(jobListNotifier.value);
+          final idx = jobs.indexWhere((j) => j.jobId == jobId);
+
+          if (idx != -1) {
+            final job = jobs[idx];
+
+            // If preview not already stored, fetch it
+            if (job.localFilePath == null ||
+                !(File(job.localFilePath!).existsSync())) {
+              final tempPath = await FileService.previewFileAndReturnPath(
+                navigatorKey.currentContext!, // ✅ safe global context
+                downloadUrl,
+                uniqueKey: jobId,
+              );
+
+              if (tempPath != null) {
+                job.localFilePath = tempPath;
+                await addOrUpdateJob(job);
+
+                // 🔔 force UI rebuild
+                jobListNotifier.value = List.from(jobListNotifier.value);
+
+                debugPrint("✅ Preview auto-downloaded for $jobId");
+              }
+            }
+          }
+        } catch (err) {
+          debugPrint("⚠️ Auto-preview failed for $jobId: $err");
+        }
 
         try {
           final res = await http.get(Uri.parse(downloadUrl));
@@ -267,6 +304,8 @@ class PollingService {
         "🟢 PollingService.refreshProcessingJobs(): Refreshing active jobs only");
     try {
       final prefs = await SharedPreferences.getInstance();
+      final now = DateTime.now();
+      final nowMs = now.millisecondsSinceEpoch;
 
       final jsonStr = prefs.getString('jobs');
       if (jsonStr == null) {
@@ -278,10 +317,19 @@ class PollingService {
           .map((e) => Map<String, dynamic>.from(e))
           .toList();
 
-      // Only refresh jobs that are still processing
+      // 🧩 Only refresh recent 'processing' jobs
       final processingJobs = list.where((job) {
         final status = (job["status"] ?? "").toString().toLowerCase();
-        return status == "processing";
+        if (status != "processing") return false;
+
+        final createdAt =
+            DateTime.tryParse(job["createdAt"] ?? "") ?? DateTime.now();
+        final ageMin = now.difference(createdAt).inMinutes;
+        if (ageMin > maxJobAgeMinutes) {
+          debugPrint("⏩ Skipping old job ${job["jobId"]} (${ageMin} min old)");
+          return false;
+        }
+        return true;
       }).toList();
 
       if (processingJobs.isEmpty) {
@@ -289,11 +337,21 @@ class PollingService {
         return;
       }
 
-      debugPrint("🌐 Found ${processingJobs.length} processing jobs to check");
+      debugPrint(
+          "🌐 Checking ${processingJobs.length} recent processing jobs...");
 
       for (final job in processingJobs) {
         final jobId = job["jobId"];
         if (jobId == null) continue;
+
+        // 🧠 Per-job throttle
+        final lastPollKey = "last_poll_$jobId";
+        final lastPollMs = prefs.getInt(lastPollKey) ?? 0;
+        if (nowMs - lastPollMs < minPollIntervalSec * 1000) {
+          debugPrint("⏩ Skipping $jobId (polled recently)");
+          continue;
+        }
+        await prefs.setInt(lastPollKey, nowMs);
 
         final payloadJson = jsonEncode({"job_id": jobId});
         final sigBytes = Hmac(sha256, utf8.encode(controllerSharedSecret))

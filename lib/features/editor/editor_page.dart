@@ -157,11 +157,7 @@ class _EditorPageState extends State<EditorPage> {
       return;
     }
 
-    final savedPath = await FileService.saveFile(
-      context,
-      _exportedImage!,
-      prefix: 'edit',
-    );
+    final savedPath = await FileService.saveFile(context, _exportedImage!);
 
     if (savedPath != null) {
       debugPrint('✅ Image saved at: $savedPath');

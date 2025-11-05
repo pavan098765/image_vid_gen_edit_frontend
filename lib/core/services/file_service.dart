@@ -3,9 +3,11 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_vid_gen_edit_frontend/core/app_state.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:crypto/crypto.dart';
+import 'package:uuid/uuid.dart';
 import 'package:gal/gal.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -13,6 +15,7 @@ class FileService {
   static bool _isSaving = false;
   static String? _lastSavedHash;
   static bool _cleanupStarted = false;
+  static bool _isPreviewOpen = false;
   static final Map<String, String> _previewCache =
       {}; // jobId/url → local file path
 
@@ -20,8 +23,8 @@ class FileService {
   static Future<String?> saveFile(
     BuildContext context,
     Uint8List bytes, {
+    String? customFileName, // 👈 NEW optional parameter
     String subfolder = 'AI_Creative_Studio',
-    String? prefix,
     String extension = 'png',
     bool showPreview = true,
   }) async {
@@ -52,15 +55,48 @@ class FileService {
         return null;
       }
 
-      final fileName =
-          '${prefix ?? 'file'}_${DateTime.now().millisecondsSinceEpoch}.$extension';
+      String fileName = (customFileName != null &&
+              customFileName.toLowerCase().endsWith('.$extension'))
+          ? customFileName
+          : _normalizeFileName(customFileName ?? const Uuid().v4(),
+              defaultExt: extension);
 
-      await Gal.putImageBytes(
-        bytes,
-        album: subfolder,
-        name: fileName,
-      );
+      // 🧩 Final sanity cleanup: if ".png.png" slipped in, fix it
+      fileName = fileName.replaceAll('.$extension.$extension', '.$extension');
+      debugPrint("File name to save: $fileName");
 
+      // ✅ Strip extension before passing to Gal (it auto-adds one for images)
+      final galName = fileName.replaceAll(RegExp('\\.$extension\$'), '');
+      debugPrint("🪄 Passing to Gal: $galName (extension: .$extension)");
+
+      if (extension.toLowerCase() == 'mp4') {
+        // --- Write bytes to a temp file named exactly `fileName` (including .mp4)
+        final tempDir = await getTemporaryDirectory();
+        final tempPath = '${tempDir.path}/$fileName';
+        final tempFile = File(tempPath);
+        await tempFile.writeAsBytes(bytes, flush: true);
+
+        // Call Gal.putVideo with the path (Gal expects a path and will copy it to gallery)
+        await Gal.putVideo(tempFile.path, album: subfolder);
+
+        // Optionally remove temp file after some delay or immediately
+        try {
+          if (await tempFile.exists()) {
+            await tempFile.delete();
+          }
+        } catch (e) {
+          debugPrint('⚠️ Failed to delete temp video file: $e');
+        }
+      } else {
+        // For images: pass name WITHOUT extension, Gal will append the extension itself
+        await Gal.putImageBytes(
+          bytes,
+          album: subfolder,
+          name: galName,
+        );
+      }
+
+      // ✅ Compute correct save path
       final Directory baseDir = Directory('/storage/emulated/0/Pictures');
       final saveDir = Directory('${baseDir.path}/$subfolder');
       final filePath = '${saveDir.path}/$fileName';
@@ -83,6 +119,50 @@ class FileService {
     }
   }
 
+  // ✅ Preview returning local path
+  static Future<String?> previewFileAndReturnPath(
+    BuildContext context,
+    String url, {
+    required String uniqueKey,
+  }) async {
+    try {
+      final tempFile = await _downloadPreviewFile(url, uniqueKey);
+      if (tempFile != null) {
+        _showImageDialog(context, tempFile.path);
+        return tempFile.path;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+// ✅ Internal preview download
+  static Future<File?> _downloadPreviewFile(
+      String url, String uniqueKey) async {
+    final response = await http.get(Uri.parse(url));
+    if (response.statusCode != 200) return null;
+    final fileName = _normalizeFileName(
+        'preview_${DateTime.now().millisecondsSinceEpoch}.png');
+
+    final file = await writeTempFile(response.bodyBytes, fileName);
+    _previewCache[uniqueKey] = file.path;
+    await _savePreviewCache();
+    return file;
+  }
+
+// ✅ Save an already-downloaded file to gallery (no re-download)
+  static Future<bool> saveExistingToGallery(
+    BuildContext context,
+    String path,
+  ) async {
+    try {
+      final bytes = await File(path).readAsBytes();
+      final saved = await saveFile(context, bytes);
+      return saved != null;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// 🖼️ Displays the preview image in a fullscreen dialog with zoom and close button
   static void _showImageDialog(BuildContext context, String filePath) {
     if (!File(filePath).existsSync()) {
@@ -92,33 +172,53 @@ class FileService {
       return;
     }
 
-    showDialog(
+    if (_isPreviewOpen) return; // 🚫 prevent double openings
+    _isPreviewOpen = true;
+
+    showGeneralDialog(
       context: context,
-      builder: (_) => Dialog(
-        backgroundColor: Colors.black,
-        insetPadding: const EdgeInsets.all(16),
-        child: Stack(
-          alignment: Alignment.topRight,
-          children: [
-            // 🖼️ Zoomable image
-            InteractiveViewer(
-              maxScale: 5.0,
-              minScale: 0.8,
-              child: Image.file(
-                File(filePath),
-                fit: BoxFit.contain,
+      barrierDismissible: false, // ⛔ no tap-outside close
+      barrierColor: Colors.black.withOpacity(0.95),
+      pageBuilder: (_, __, ___) {
+        return WillPopScope(
+          onWillPop: () async {
+            _isPreviewOpen = false;
+            return true;
+          },
+          child: Stack(
+            children: [
+              // 🖼️ Zoomable Image
+              Center(
+                child: InteractiveViewer(
+                  maxScale: 5,
+                  minScale: 0.7,
+                  child: Image.file(
+                    File(filePath),
+                    fit: BoxFit.contain,
+                  ),
+                ),
               ),
-            ),
-            // ❌ Close button
-            IconButton(
-              icon: const Icon(Icons.close, color: Colors.white),
-              tooltip: 'Close',
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-          ],
-        ),
-      ),
-    );
+
+              // ❌ Close button
+              Positioned(
+                top: 40,
+                right: 20,
+                child: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white, size: 32),
+                  onPressed: () {
+                    _isPreviewOpen = false;
+                    Navigator.of(context, rootNavigator: true).pop();
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    ).then((_) {
+      // Ensure flag resets even if system back triggered
+      _isPreviewOpen = false;
+    });
   }
 
   static Future<void> previewFile(BuildContext context, String url,
@@ -143,18 +243,8 @@ class FileService {
       }
 
       // ✅ Step 4: Create unique filename per job
-      final uri = Uri.parse(url);
-      final path = uri.path;
-      String extension = 'png'; // default
-
-      final segments = path.split('/');
-      final lastSegment = segments.isNotEmpty ? segments.last : '';
-
-      if (lastSegment.contains('.')) {
-        extension = lastSegment.split('.').last.split('?').first.toLowerCase();
-      }
-      final hash = sha1.convert(utf8.encode(cacheKey)).toString();
-      final fileName = 'preview_$hash.$extension';
+      final fileName = _normalizeFileName(
+          'preview_${DateTime.now().millisecondsSinceEpoch}.png');
 
       // ✅ Step 5: Save to temp folder
       final tempFile = await writeTempFile(response.bodyBytes, fileName);
@@ -170,6 +260,27 @@ class FileService {
             .showSnackBar(SnackBar(content: Text('Preview failed: $e')));
       }
     }
+  }
+
+  // ✅ Utility: sanitize and normalize file names
+  static String _normalizeFileName(String rawName,
+      {String defaultExt = "png"}) {
+    if (rawName.isEmpty) return "${const Uuid().v4()}.$defaultExt";
+
+    var name = rawName.trim().replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+
+    // Remove duplicate extensions like .png.png or .jpg.png
+    final repeatedExt = RegExp('(\\.' + RegExp.escape(defaultExt) + r')+$',
+        caseSensitive: false);
+    name = name.replaceAll(repeatedExt, '');
+
+    // If it already has some extension (e.g., .jpg), remove it and replace with .png
+    final extMatch = RegExp(r'\.[a-zA-Z0-9]+$').firstMatch(name);
+    if (extMatch != null) {
+      name = name.substring(0, name.length - extMatch.group(0)!.length);
+    }
+
+    return "$name.$defaultExt";
   }
 
   static Future<void> loadPreviewCache() async {
@@ -196,61 +307,121 @@ class FileService {
     }
   }
 
+  // ✅ Opens an already-downloaded file like preview
+  static Future<void> openLocalPreview(
+    BuildContext context,
+    String path,
+  ) async {
+    if (!File(path).existsSync()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("File not found")),
+      );
+      return;
+    }
+
+    _showImageDialog(context, path);
+  }
+
+  static String generateTimestampFilename(String prefix, String ext) {
+    final now = DateTime.now();
+    final formatted = "${now.year}${now.month.toString().padLeft(2, '0')}"
+        "${now.day.toString().padLeft(2, '0')}_"
+        "${now.hour.toString().padLeft(2, '0')}"
+        "${now.minute.toString().padLeft(2, '0')}"
+        "${now.second.toString().padLeft(2, '0')}";
+
+    return "${prefix}_$formatted.$ext";
+  }
+
+  static String _safeExtensionFromUrl(String url) {
+    final uri = Uri.tryParse(url);
+    final path = uri?.path ?? '';
+    final ext = path.split('.').last.toLowerCase();
+    if (ext.contains('png')) return 'png';
+    if (ext.contains('jpg') || ext.contains('jpeg')) return 'jpg';
+    if (ext.contains('mp4')) return 'mp4';
+    return 'png';
+  }
+
   /// 🧩 Download file (image/video) from [url] and save to gallery.
-  static Future<void> downloadFromUrl(
+  static Future<String?> downloadFromUrl(
     BuildContext context,
     String url, {
-    String? fileName,
+    String? suggestedFileName, // renamed param
     String subfolder = 'AI_Creative_Studio',
   }) async {
     try {
       final uri = Uri.parse(url);
-      final extension = uri.path
-          .split('.')
-          .last
-          .toLowerCase()
-          .replaceAll(RegExp(r'\?.*'), '');
-      final safeExt = (extension.isEmpty) ? 'png' : extension;
+      final safeExt = _safeExtensionFromUrl(url);
 
-      final request = http.Request('GET', uri);
-      final response = await request.send();
-
+      // Download bytes
+      final response = await http.get(uri);
       if (response.statusCode != 200) {
         throw Exception('Server responded ${response.statusCode}');
       }
 
-      final bytes = await response.stream.toBytes();
+      final bytes = response.bodyBytes;
+
+      // Always use uuid as base name
+      final uuid = const Uuid().v4();
+      final baseName = (suggestedFileName?.trim().isNotEmpty ?? false)
+          ? suggestedFileName!
+          : uuid;
+      final cleanName = _normalizeFileName(baseName, defaultExt: safeExt);
+
+      // Save file to gallery
       final savedPath = await saveFile(
         context,
         bytes,
-        prefix: fileName ?? 'download',
         extension: safeExt,
+        showPreview: true,
+        customFileName: cleanName,
       );
 
       if (savedPath != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 6),
-        content: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: SelectableText('✅ File saved to: $savedPath'),
-        ),
-          ),
-        );
+        // Link saved file to job if exists
+        final jobs = List<JobModel>.from(jobListNotifier.value);
+        final idx = jobs.indexWhere((j) => j.downloadUrl == url);
+        if (idx != -1) {
+          final job = jobs[idx];
+          job.localFilePath = savedPath;
+          jobs[idx] = job;
+          jobListNotifier.value = jobs;
+          await saveJobsToPrefs();
+          debugPrint("📸 Linked downloaded file to job ${job.jobId}");
+        }
+
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 6),
+              content: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: SelectableText('✅ File saved to: $savedPath'),
+              ),
+            ),
+          );
+        }
+        return savedPath;
       }
+      return null;
     } catch (e) {
       debugPrint('❌ Download failed: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Download failed: $e')),
-      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Download failed: $e')),
+        );
+      }
+      return null;
     }
   }
 
   /// Writes bytes to a temporary file (e.g., previews)
   static Future<File> writeTempFile(Uint8List bytes, String name) async {
     final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/$name');
+    final cleanName = _normalizeFileName(name);
+    final file = File('${dir.path}/$cleanName');
     await file.writeAsBytes(bytes);
 
     if (!_cleanupStarted) {
@@ -283,22 +454,19 @@ class FileService {
     }
   }
 
-  static Future<void> deleteJobFiles(String jobId) async {
+  static Future<void> deleteJobFiles(JobModel job) async {
     try {
-      final tempDir = await getTemporaryDirectory();
-      final hash = sha1.convert(utf8.encode(jobId)).toString();
-      final previewFile = File('${tempDir.path}/preview_$hash.png');
-
-      if (await previewFile.exists()) {
-        await previewFile.delete();
-        debugPrint('🗑️ Deleted preview file for job $jobId');
+      // delete preview/local file if exists
+      if (job.localFilePath != null && File(job.localFilePath!).existsSync()) {
+        await File(job.localFilePath!).delete();
+        debugPrint('🗑️ Deleted preview file: ${job.localFilePath}');
       }
 
-      // remove from in-memory + persisted cache
-      _previewCache.remove(jobId);
+      // remove preview cache entry
+      _previewCache.remove(job.jobId);
       await _savePreviewCache();
     } catch (e) {
-      debugPrint('⚠️ Failed to delete files for $jobId: $e');
+      debugPrint('⚠️ Failed to delete files for ${job.jobId}: $e');
     }
   }
 

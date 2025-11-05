@@ -28,6 +28,7 @@ class JobModel {
   String? downloadUrl;
   String status; // 'pending', 'processing', 'completed', 'failed'
   DateTime createdAt;
+  String? localFilePath; // store preview/download file path
 
   JobModel({
     required this.jobId,
@@ -37,6 +38,7 @@ class JobModel {
     this.downloadUrl,
     this.status = 'processing',
     DateTime? createdAt,
+    this.localFilePath, // store preview/download file path
   }) : createdAt = createdAt ?? DateTime.now();
 
   // --- JSON serialization helpers for SharedPreferences persistence ---
@@ -48,6 +50,7 @@ class JobModel {
         'downloadUrl': downloadUrl,
         'status': status,
         'createdAt': createdAt.toIso8601String(),
+        'localFilePath': localFilePath
       };
 
   factory JobModel.fromJson(Map<String, dynamic> json) {
@@ -65,12 +68,22 @@ class JobModel {
       downloadUrl: json['downloadUrl'],
       status: rawStatus,
       createdAt: DateTime.tryParse(json['createdAt'] ?? '') ?? DateTime.now(),
+      localFilePath: json['localFilePath'], // ✅ restore saved preview path
     );
   }
 }
 
 /// Global list of jobs
 final jobListNotifier = ValueNotifier<List<JobModel>>([]);
+
+Future<String> generateFriendlyJobName() async {
+  final now = DateTime.now();
+  final formatted = "${now.month.toString().padLeft(2, '0')}-"
+      "${now.day.toString().padLeft(2, '0')}-"
+      "${now.minute.toString().padLeft(2, '0')}-"
+      "${now.second.toString().padLeft(2, '0')}";
+  return "Job - $formatted";
+}
 
 /// 🚀 Save jobs to SharedPreferences (called automatically on changes)
 Future<void> saveJobsToPrefs() async {
@@ -91,9 +104,23 @@ Future<void> addOrUpdateJob(JobModel job) async {
   if (idx >= 0) {
     list[idx] = job;
   } else {
-    // Insert new job at front so it's visible
-    list.insert(0, job);
+    // ✅ Ensure friendly name if missing
+    String finalTitle = await generateFriendlyJobName();
+
+    final newJob = JobModel(
+      jobId: job.jobId,
+      title: finalTitle,
+      model: job.model,
+      outputType: job.outputType,
+      downloadUrl: job.downloadUrl,
+      status: job.status,
+      createdAt: job.createdAt,
+      localFilePath: job.localFilePath,
+    );
+
+    list.insert(0, newJob);
   }
+
   jobListNotifier.value = list;
   await saveJobsToPrefs();
 }
@@ -122,6 +149,7 @@ Future<void> updateJobFields({
           : old.downloadUrl,
       status: status ?? old.status,
       createdAt: old.createdAt,
+      localFilePath: old.localFilePath,
     );
     if (status != null) {
       const allowed = ['processing', 'completed', 'failed'];
@@ -135,7 +163,7 @@ Future<void> updateJobFields({
       0,
       JobModel(
         jobId: jobId,
-        title: title ?? jobId,
+        title: title ?? await generateFriendlyJobName(),
         model: model ?? 'unknown',
         outputType: outputType ?? 'image',
         downloadUrl: (downloadUrl != null && downloadUrl.isNotEmpty)

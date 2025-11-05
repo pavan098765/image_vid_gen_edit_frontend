@@ -753,8 +753,7 @@ class _FluxEditorPageState extends State<FluxEditorPage>
               const SizedBox(height: 25),
               ElevatedButton.icon(
                 onPressed: () async {
-                  await FileService.saveFile(context, _resultImage!,
-                      prefix: 'flux_result');
+                  await FileService.saveFile(context, _resultImage!);
                 },
                 icon: const Icon(Icons.download_rounded),
                 label: const Text("Save Image"),

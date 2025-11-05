@@ -847,9 +847,8 @@ class _GenericToolPageState extends State<GenericToolPage>
         const SizedBox(height: 20),
         ElevatedButton.icon(
           onPressed: () async {
-            final prefix =
-                widget.config.model.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_');
-            await FileService.saveFile(context, _resultData!, prefix: prefix);
+            widget.config.model.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_');
+            await FileService.saveFile(context, _resultData!);
           },
           icon: const Icon(Icons.download_rounded),
           label: const Text("Save Result"),
@@ -1104,10 +1103,13 @@ class _GenericToolPageState extends State<GenericToolPage>
         final downloadUrl = data["download_url"] ?? data["downloadUrl"];
         if (jobId == null) throw Exception("No job_id returned from submit");
 
-// ✅ Create persistent job entry (single source of truth)
+        // ✅ Create a meaningful job title
+        String title = await generateFriendlyJobName();
+
+        // ✅ Create persistent job entry (single source of truth)
         final newJob = JobModel(
           jobId: jobId,
-          title: widget.config.title,
+          title: title,
           model: widget.config.model,
           outputType: widget.config.outputType,
           downloadUrl: downloadUrl, // may be null if not ready yet
@@ -1358,8 +1360,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                 onPressed: () async {
                   final prefix = widget.config.model
                       .replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_');
-                  await FileService.saveFile(context, _resultData!,
-                      prefix: prefix);
+                  await FileService.saveFile(context, _resultData!);
                 },
                 icon: const Icon(Icons.download_rounded),
                 label: const Text("Save Result"),

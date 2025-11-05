@@ -361,69 +361,6 @@ Future<void> main() async {
     }
   });
 
-  // ------------------------
-  // Foreground messages handler
-  // ------------------------
-  // FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
-  //   debugPrint("📩 FCM onMessage: ${message.messageId} data=${message.data}");
-
-  //   final data = message.data ?? {};
-  //   final jobId = (data['job_id'] ?? '').toString();
-  //   const allowed = ['processing', 'completed', 'failed'];
-
-  //   final status = (data['status'] ?? '').toString().toLowerCase();
-  //   final normalizedStatus = allowed.contains(status) ? status : 'processing';
-  //   final downloadUrl =
-  //       (data['download_url'] ?? data['downloadUrl'] ?? '').toString();
-  //   final title = (data['title'] ?? '').toString();
-  //   final model = (data['model'] ?? '').toString();
-  //   final outputType = (data['outputType'] ?? '').toString();
-
-  //   if (jobId.isNotEmpty) {
-  //     // Update persisted job object and UI via helper (app_state)
-  //     await updateJobFields(
-  //       jobId: jobId,
-  //       status: normalizedStatus.isNotEmpty ? normalizedStatus : null,
-  //       downloadUrl: downloadUrl.isNotEmpty ? downloadUrl : null,
-  //       title: title.isNotEmpty ? title : null,
-  //       model: model.isNotEmpty ? model : null,
-  //       outputType: outputType.isNotEmpty ? outputType : null,
-  //     );
-
-  //     // Also persist per-job pending_download_url for background/cold-start correctness
-  //     if (downloadUrl.isNotEmpty) {
-  //       final prefs = await SharedPreferences.getInstance();
-  //       await prefs.setString('pending_download_url_$jobId', downloadUrl);
-  //     }
-
-  //     debugPrint(
-  //         "✅ FCM (foreground) applied job $jobId → $status (url=${downloadUrl.isNotEmpty})");
-  //   }
-
-  //   final notifTitle = message.notification?.title ??
-  //       (status == 'completed' ? 'Result ready' : 'Job update');
-  //   final notifBody = message.notification?.body ??
-  //       (status == 'completed'
-  //           ? 'Your AI result is ready — tap to view.'
-  //           : 'Job status: $status');
-
-  //   // Show a local notification as well
-  //   await NotificationService.showNotification(
-  //     title: notifTitle,
-  //     body: notifBody,
-  //     payload: jobId,
-  //   );
-
-  //   if (navigatorKey.currentContext != null && status == 'completed') {
-  //     ScaffoldMessenger.of(navigatorKey.currentContext!).showSnackBar(
-  //       const SnackBar(
-  //         content: Text('✅ Your AI result is ready!'),
-  //         behavior: SnackBarBehavior.floating,
-  //       ),
-  //     );
-  //   }
-  // });
-
   // When user taps an FCM notification while app was backgrounded (not killed)
   FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) async {
     debugPrint("🔁 onMessageOpenedApp: ${message.data}");
@@ -600,6 +537,7 @@ class AICreativeStudio extends StatelessWidget {
     debugPrint("🟢 Building AICreativeStudio widget");
 
     return MaterialApp(
+
       title: 'AI Creative Studio',
       theme: AppTheme.darkTheme,
       navigatorKey: navigatorKey,
