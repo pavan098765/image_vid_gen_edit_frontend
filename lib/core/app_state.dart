@@ -29,6 +29,7 @@ class JobModel {
   String status; // 'pending', 'processing', 'completed', 'failed'
   DateTime createdAt;
   String? localFilePath; // store preview/download file path
+  String? inputImagePath;
 
   JobModel({
     required this.jobId,
@@ -38,7 +39,8 @@ class JobModel {
     this.downloadUrl,
     this.status = 'processing',
     DateTime? createdAt,
-    this.localFilePath, // store preview/download file path
+    this.localFilePath,
+    this.inputImagePath,
   }) : createdAt = createdAt ?? DateTime.now();
 
   // --- JSON serialization helpers for SharedPreferences persistence ---
@@ -50,7 +52,8 @@ class JobModel {
         'downloadUrl': downloadUrl,
         'status': status,
         'createdAt': createdAt.toIso8601String(),
-        'localFilePath': localFilePath
+        'localFilePath': localFilePath,
+        'inputImagePath': inputImagePath,
       };
 
   factory JobModel.fromJson(Map<String, dynamic> json) {
@@ -69,6 +72,7 @@ class JobModel {
       status: rawStatus,
       createdAt: DateTime.tryParse(json['createdAt'] ?? '') ?? DateTime.now(),
       localFilePath: json['localFilePath'], // ✅ restore saved preview path
+      inputImagePath: json['inputImagePath'] as String?,
     );
   }
 }
@@ -78,11 +82,11 @@ final jobListNotifier = ValueNotifier<List<JobModel>>([]);
 
 Future<String> generateFriendlyJobName() async {
   final now = DateTime.now();
-  final formatted = "${now.month.toString().padLeft(2, '0')}-"
-      "${now.day.toString().padLeft(2, '0')}-"
-      "${now.minute.toString().padLeft(2, '0')}-"
+  final formatted = "${now.month.toString().padLeft(2, '0')}"
+      "${now.day.toString().padLeft(2, '0')}"
+      "${now.minute.toString().padLeft(2, '0')}"
       "${now.second.toString().padLeft(2, '0')}";
-  return "Job - $formatted";
+  return "Job-$formatted";
 }
 
 /// 🚀 Save jobs to SharedPreferences (called automatically on changes)
@@ -104,21 +108,7 @@ Future<void> addOrUpdateJob(JobModel job) async {
   if (idx >= 0) {
     list[idx] = job;
   } else {
-    // ✅ Ensure friendly name if missing
-    String finalTitle = await generateFriendlyJobName();
-
-    final newJob = JobModel(
-      jobId: job.jobId,
-      title: finalTitle,
-      model: job.model,
-      outputType: job.outputType,
-      downloadUrl: job.downloadUrl,
-      status: job.status,
-      createdAt: job.createdAt,
-      localFilePath: job.localFilePath,
-    );
-
-    list.insert(0, newJob);
+    list.insert(0, job);
   }
 
   jobListNotifier.value = list;

@@ -1,8 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
-import 'package:animated_text_kit/animated_text_kit.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:image_vid_gen_edit_frontend/core/app_state.dart';
 import 'package:image_vid_gen_edit_frontend/core/services/file_service.dart';
 import 'package:image_vid_gen_edit_frontend/core/services/polling_service.dart';
@@ -54,6 +55,11 @@ class _ResultManagerPageState extends State<ResultManagerPage>
     try {
       final prefs = await SharedPreferences.getInstance();
 
+      debugPrint("📂 Reloaded ${jobListNotifier.value.length} jobs from prefs");
+      for (final j in jobListNotifier.value) {
+        debugPrint(
+            "  • job=${j.jobId} inputImagePath=${j.inputImagePath} localFilePath=${j.localFilePath}");
+      }
       // ✅ Step 1: Reload what we already have on disk
       await prefs.reload();
       final localJson = prefs.getString('jobs');
@@ -201,9 +207,6 @@ class JobCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasPreview =
-        job.localFilePath != null && File(job.localFilePath!).existsSync();
-
     return InkWell(
       onTap: job.status == 'completed' ? () => _openPreview(context) : null,
       borderRadius: BorderRadius.circular(16),
@@ -212,24 +215,71 @@ class JobCard extends StatelessWidget {
         color: Colors.white10,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: ListTile(
+          // 🟣 THUMBNAIL AREA (fade between blurred + final)
           leading: ClipRRect(
             borderRadius: BorderRadius.circular(8),
-            child: (job.localFilePath != null &&
-                    File(job.localFilePath!).existsSync())
-                ? Image.file(
-                    File(job.localFilePath!),
-                    key: ValueKey(job.localFilePath), // ✅ force reload
-                    width: 52,
-                    height: 52,
-                    fit: BoxFit.cover,
-                  )
-                : Container(
-                    width: 52,
-                    height: 52,
-                    color: Colors.black26,
-                    child: const Icon(Icons.image, color: Colors.white54),
-                  ),
+            child: Builder(
+              builder: (_) {
+                final fileExists = job.localFilePath != null &&
+                    File(job.localFilePath!).existsSync();
+
+                return AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 400),
+                  switchInCurve: Curves.easeOut,
+                  switchOutCurve: Curves.easeIn,
+                  transitionBuilder: (child, animation) =>
+                      FadeTransition(opacity: animation, child: child),
+                  child: fileExists
+                      ? Image.file(
+                          File(job.localFilePath!),
+                          key: ValueKey(job.localFilePath),
+                          width: 52,
+                          height: 52,
+                          fit: BoxFit.cover,
+                        )
+                      : ((job.status == 'processing' ||
+                                  job.status == 'completed') &&
+                              (job.localFilePath == null ||
+                                  !File(job.localFilePath!).existsSync()) &&
+                              job.inputImagePath != null &&
+                              File(job.inputImagePath!).existsSync())
+                          ? Stack(
+                              key: const ValueKey('blurred'),
+                              children: [
+                                ImageFiltered(
+                                  imageFilter:
+                                      ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+                                  child: Image.file(
+                                    File(job.inputImagePath!),
+                                    width: 52,
+                                    height: 52,
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
+                                if (job.status == 'processing')
+                                  Positioned.fill(
+                                    child: Shimmer.fromColors(
+                                      baseColor: Colors.white24,
+                                      highlightColor: Colors.white70,
+                                      child: Container(color: Colors.white24),
+                                    ),
+                                  ),
+                              ],
+                            )
+                          : Container(
+                              key: const ValueKey('placeholder'),
+                              width: 52,
+                              height: 52,
+                              color: Colors.black26,
+                              child: const Icon(Icons.image,
+                                  color: Colors.white54),
+                            ),
+                );
+              },
+            ),
           ),
+
+          // 🟣 TITLE
           title: Text(
             job.title,
             style: const TextStyle(
@@ -237,36 +287,49 @@ class JobCard extends StatelessWidget {
               fontWeight: FontWeight.w500,
             ),
           ),
-          subtitle: job.status == 'processing'
-              ? const Row(
-                  children: [
-                    SizedBox(
-                      height: 16,
-                      width: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.blueAccent,
+
+          // 🟣 SUBTITLE AREA (fade between processing ↔ completed)
+          subtitle: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 350),
+            switchInCurve: Curves.easeOut,
+            switchOutCurve: Curves.easeIn,
+            transitionBuilder: (child, animation) =>
+                FadeTransition(opacity: animation, child: child),
+            child: job.status == 'processing'
+                ? const Row(
+                    key: ValueKey('processing'),
+                    children: [
+                      SizedBox(
+                        height: 16,
+                        width: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.blueAccent,
+                        ),
                       ),
+                      SizedBox(width: 10),
+                      Text(
+                        "PROCESSING...",
+                        style: TextStyle(
+                          color: Colors.blueAccent,
+                          fontSize: 13,
+                        ),
+                      )
+                    ],
+                  )
+                : Text(
+                    job.status.toUpperCase(),
+                    key: ValueKey(job.status),
+                    style: TextStyle(
+                      color: job.status == 'failed'
+                          ? Colors.redAccent
+                          : Colors.greenAccent,
+                      fontSize: 13,
                     ),
-                    SizedBox(width: 10),
-                    Text(
-                      "PROCESSING...",
-                      style: TextStyle(
-                        color: Colors.blueAccent,
-                        fontSize: 13,
-                      ),
-                    )
-                  ],
-                )
-              : Text(
-                  job.status.toUpperCase(),
-                  style: TextStyle(
-                    color: job.status == 'failed'
-                        ? Colors.redAccent
-                        : Colors.greenAccent,
-                    fontSize: 13,
                   ),
-                ),
+          ),
+
+          // 🟣 TRAILING BUTTONS
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [

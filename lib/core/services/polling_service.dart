@@ -11,7 +11,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'notification_service.dart';
 import 'package:image_vid_gen_edit_frontend/main.dart' show navigatorKey;
 
-
 class PollingService {
   PollingService._();
   static final PollingService instance = PollingService._();
@@ -111,6 +110,8 @@ class PollingService {
               : old.downloadUrl,
           status: status.isNotEmpty ? status : old.status,
           createdAt: old.createdAt,
+          inputImagePath: old.inputImagePath,
+          localFilePath: old.localFilePath,
         );
         jobListNotifier.value = jobs;
       }
@@ -137,6 +138,9 @@ class PollingService {
           if (idx != -1) {
             final job = jobs[idx];
 
+            // ✅ Preserve inputImagePath before starting preview fetch
+            final inputThumb = job.inputImagePath;
+
             // If preview not already stored, fetch it
             if (job.localFilePath == null ||
                 !(File(job.localFilePath!).existsSync())) {
@@ -148,13 +152,26 @@ class PollingService {
 
               if (tempPath != null) {
                 job.localFilePath = tempPath;
-                await addOrUpdateJob(job);
-
-                // 🔔 force UI rebuild
-                jobListNotifier.value = List.from(jobListNotifier.value);
-
-                debugPrint("✅ Preview auto-downloaded for $jobId");
               }
+
+              // ✅ Reinsert with preserved fields
+              final updatedJob = JobModel(
+                jobId: job.jobId,
+                title: job.title,
+                model: job.model,
+                outputType: job.outputType,
+                downloadUrl: job.downloadUrl ?? downloadUrl,
+                status: job.status,
+                createdAt: job.createdAt,
+                inputImagePath: inputThumb, // 🟣 ensure preserved
+                localFilePath: job.localFilePath,
+              );
+              await addOrUpdateJob(updatedJob);
+
+              // 🔔 force UI rebuild
+              jobListNotifier.value = List.from(jobListNotifier.value);
+
+              debugPrint("✅ Preview auto-downloaded for $jobId");
             }
           }
         } catch (err) {
@@ -279,6 +296,8 @@ class PollingService {
             downloadUrl: finalUrl,
             status: status.isNotEmpty ? status : old.status,
             createdAt: old.createdAt,
+            inputImagePath: old.inputImagePath,
+            localFilePath: old.localFilePath,
           );
 
           // ✅ Persist this downloadUrl for next refresh
@@ -393,6 +412,23 @@ class PollingService {
               ? downloadUrl
               : old.downloadUrl;
 
+          // 🟣 Preserve blurred input image if available
+          String? preservedInputPath = old.inputImagePath;
+          if (preservedInputPath == null || preservedInputPath.isEmpty) {
+            // try reload from prefs (in case it was saved there earlier)
+            final jobListJson = prefs.getString('jobs');
+            if (jobListJson != null) {
+              final decoded = jsonDecode(jobListJson) as List;
+              final found = decoded.firstWhere(
+                (e) => e['jobId'] == jobId,
+                orElse: () => {},
+              );
+              if (found is Map && found['inputImagePath'] != null) {
+                preservedInputPath = found['inputImagePath'];
+              }
+            }
+          }
+
           jobs[idx] = JobModel(
             jobId: old.jobId,
             title: old.title,
@@ -401,6 +437,8 @@ class PollingService {
             downloadUrl: finalUrl,
             status: status.isNotEmpty ? status : old.status,
             createdAt: old.createdAt,
+            inputImagePath: preservedInputPath, // ✅ guaranteed now
+            localFilePath: old.localFilePath,
           );
 
           if (finalUrl != null && finalUrl.isNotEmpty) {

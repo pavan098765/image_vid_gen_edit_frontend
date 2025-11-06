@@ -19,6 +19,8 @@ class FileService {
   static final Map<String, String> _previewCache =
       {}; // jobId/url → local file path
 
+  static Future<Directory> getTempDir() async => await getTemporaryDirectory();
+
   /// 🚀 Save raw bytes (image/video) to the gallery.
   static Future<String?> saveFile(
     BuildContext context,
@@ -109,10 +111,6 @@ class FileService {
       return filePath;
     } catch (e) {
       debugPrint('❌ Save error: $e');
-      if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Save failed: $e')));
-      }
       return null;
     } finally {
       _isSaving = false;

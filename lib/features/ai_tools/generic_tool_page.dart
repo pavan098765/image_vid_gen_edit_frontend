@@ -1,6 +1,7 @@
 // generic_tool_page.dart
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -362,7 +363,12 @@ class _GenericToolPageState extends State<GenericToolPage>
           return _resizeImageSafe(b);
         }));
 
-        if (mounted) setState(() => _inputs[id] = bytesList);
+        if (mounted) {
+          setState(() {
+            _inputs[id] = bytesList;
+            _inputs["${id}_path"] = limited.first.path; // 🆕
+          });
+        }
       } else {
         final file = await picker.pickImage(
             source: ImageSource.gallery, imageQuality: 85);
@@ -371,7 +377,12 @@ class _GenericToolPageState extends State<GenericToolPage>
         final bytes = await _resizeImageSafe(await file.readAsBytes());
 
         // 🔧 Normalize: always store as a list
-        if (mounted) setState(() => _inputs[id] = [bytes]);
+        if (mounted) {
+          setState(() {
+            _inputs[id] = [bytes];
+            _inputs["${id}_path"] = file.path; // 🆕 store original file path
+          });
+        }
       }
     } catch (e) {
       debugPrint("Gallery picker failed: $e");
@@ -390,7 +401,12 @@ class _GenericToolPageState extends State<GenericToolPage>
       final bytes = await _resizeImageSafe(await file.readAsBytes());
 
       // 🔧 Normalize: always store as a list
-      if (mounted) setState(() => _inputs[id] = [bytes]);
+      if (mounted) {
+        setState(() {
+          _inputs[id] = [bytes];
+          _inputs["${id}_path"] = file.path; // 🆕 store original file path
+        });
+      }
     } catch (e) {
       debugPrint("Camera image failed: $e");
       ScaffoldMessenger.of(context)
@@ -961,22 +977,22 @@ class _GenericToolPageState extends State<GenericToolPage>
 
               const SizedBox(height: 16),
 
-              // ✨ Animated dots
-              TweenAnimationBuilder<int>(
-                tween: IntTween(begin: 0, end: 3),
-                duration: const Duration(milliseconds: 1200),
-                builder: (context, value, _) {
-                  final dots = "." * (value + 1);
-                  return Text(
-                    "Processing$dots",
-                    style: const TextStyle(
-                      color: Colors.amberAccent,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  );
-                },
-              ),
+              // // ✨ Animated dots
+              // TweenAnimationBuilder<int>(
+              //   tween: IntTween(begin: 0, end: 3),
+              //   duration: const Duration(milliseconds: 1200),
+              //   builder: (context, value, _) {
+              //     final dots = "." * (value + 1);
+              //     return Text(
+              //       "Processing$dots",
+              //       style: const TextStyle(
+              //         color: Colors.amberAccent,
+              //         fontSize: 13,
+              //         fontWeight: FontWeight.w500,
+              //       ),
+              //     );
+              //   },
+              // ),
             ],
           ),
         ),
@@ -1102,10 +1118,38 @@ class _GenericToolPageState extends State<GenericToolPage>
         final jobId = data["job_id"];
         final downloadUrl = data["download_url"] ?? data["downloadUrl"];
         if (jobId == null) throw Exception("No job_id returned from submit");
-
         // ✅ Create a meaningful job title
         String title = await generateFriendlyJobName();
+        String? inputImageLocalPath;
 
+        try {
+          final imageInput = widget.config.inputs
+              .firstWhere((i) => i["type"] == "image", orElse: () => {});
+          if (imageInput.isNotEmpty) {
+            final id = imageInput["id"];
+            final data = _inputs[id];
+            if (data != null &&
+                data is List &&
+                data.isNotEmpty &&
+                data.first is Uint8List) {
+              final tmpDir = await FileService.getTempDir();
+              final thumbFile = File(
+                  '${tmpDir.path}/thumb_${DateTime.now().millisecondsSinceEpoch}.jpg');
+              await thumbFile.writeAsBytes(data.first as Uint8List,
+                  flush: true);
+              inputImageLocalPath = thumbFile.path;
+              debugPrint(
+                  "🖼️ Saved stable input preview: $inputImageLocalPath");
+            } else {
+              final existingPath = _inputs["${id}_path"];
+              if (existingPath != null && File(existingPath).existsSync()) {
+                inputImageLocalPath = existingPath;
+              }
+            }
+          }
+        } catch (e) {
+          debugPrint("⚠️ Could not save stable input preview: $e");
+        }
         // ✅ Create persistent job entry (single source of truth)
         final newJob = JobModel(
           jobId: jobId,
@@ -1114,9 +1158,18 @@ class _GenericToolPageState extends State<GenericToolPage>
           outputType: widget.config.outputType,
           downloadUrl: downloadUrl, // may be null if not ready yet
           status: 'processing',
+          inputImagePath: inputImageLocalPath,
         );
-        await addOrUpdateJob(newJob);
 
+        // 🟩 INSERT this block here
+        jobListNotifier.value = [newJob, ...jobListNotifier.value];
+        await saveJobsToPrefs(); // persist immediately
+
+        await addOrUpdateJob(newJob);
+        await saveJobsToPrefs();
+
+        debugPrint(
+            "💾 RAW jobs prefs after submit: ${prefs.getString('jobs')}");
         // ✅ Persist context for FCM taps
         final jobContext = {
           "title": widget.config.title,
@@ -1126,6 +1179,7 @@ class _GenericToolPageState extends State<GenericToolPage>
           "outputType": widget.config.outputType,
         };
         await prefs.setString("notify_job_$jobId", jsonEncode(jobContext));
+        await loadJobsFromPrefs(); // ✅ reload ensures fresh list
 
         // ✅ Navigate to results manager
         if (mounted) {

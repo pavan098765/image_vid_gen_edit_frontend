@@ -69,6 +69,8 @@ Future<void> _mergeAndPersistJobMap(Map<String, dynamic> jobMap) async {
             downloadUrl.isNotEmpty ? downloadUrl : (old['downloadUrl'] ?? null),
         'status': status.isNotEmpty ? status : (old['status'] ?? 'processing'),
         'createdAt': old['createdAt'] ?? DateTime.now().toIso8601String(),
+        'localFilePath': old['localFilePath'],
+        'inputImagePath': old['inputImagePath'],
       };
     } else {
       existing.insert(0, {
@@ -204,6 +206,8 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
               ? normalizedStatus
               : (old['status'] ?? 'processing'),
           'createdAt': old['createdAt'] ?? DateTime.now().toIso8601String(),
+          'localFilePath': old['localFilePath'],
+          'inputImagePath': old['inputImagePath'],
         };
       } else {
         existing.insert(0, {
@@ -537,7 +541,6 @@ class AICreativeStudio extends StatelessWidget {
     debugPrint("🟢 Building AICreativeStudio widget");
 
     return MaterialApp(
-
       title: 'AI Creative Studio',
       theme: AppTheme.darkTheme,
       navigatorKey: navigatorKey,
