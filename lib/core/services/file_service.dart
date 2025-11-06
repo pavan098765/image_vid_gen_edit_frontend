@@ -452,17 +452,32 @@ class FileService {
     }
   }
 
-  static Future<void> deleteJobFiles(JobModel job) async {
+  static Future<void> deleteJobFiles(
+    JobModel job, {
+    bool deleteGalleryFile = false, // 🆕 new parameter
+  }) async {
     try {
-      // delete preview/local file if exists
-      if (job.localFilePath != null && File(job.localFilePath!).existsSync()) {
-        await File(job.localFilePath!).delete();
-        debugPrint('🗑️ Deleted preview file: ${job.localFilePath}');
+      // 🗑️ Delete only preview/cache files always
+      if (_previewCache.containsKey(job.jobId)) {
+        final previewPath = _previewCache[job.jobId];
+        if (previewPath != null && File(previewPath).existsSync()) {
+          await File(previewPath).delete();
+          debugPrint('🧹 Deleted preview cache file: $previewPath');
+        }
+        _previewCache.remove(job.jobId);
+        await _savePreviewCache();
       }
 
-      // remove preview cache entry
-      _previewCache.remove(job.jobId);
-      await _savePreviewCache();
+      // 🗂️ Optionally delete gallery result if user checked box
+      if (deleteGalleryFile &&
+          job.localFilePath != null &&
+          File(job.localFilePath!).existsSync()) {
+        await File(job.localFilePath!).delete();
+        debugPrint('🗑️ Deleted result (gallery) file: ${job.localFilePath}');
+      }
+
+      debugPrint(
+          '✅ Job cleanup done (deleteGalleryFile=$deleteGalleryFile) for ${job.jobId}');
     } catch (e) {
       debugPrint('⚠️ Failed to delete files for ${job.jobId}: $e');
     }

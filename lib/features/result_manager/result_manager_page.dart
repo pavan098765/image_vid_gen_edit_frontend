@@ -357,38 +357,72 @@ class JobCard extends StatelessWidget {
                 icon: const Icon(Icons.delete, color: Colors.white70),
                 tooltip: 'Delete Job',
                 onPressed: () async {
+                  bool deleteGalleryFile = false;
+
                   final confirmed = await showDialog<bool>(
                     context: context,
-                    builder: (context) => AlertDialog(
-                      backgroundColor: Colors.grey[900],
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16)),
-                      title: const Text(
-                        'Delete this job?',
-                        style: TextStyle(
-                            color: Colors.white, fontWeight: FontWeight.bold),
-                      ),
-                      content: const Text(
-                        'This will permanently remove the result file.',
-                        style: TextStyle(color: Colors.white70),
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.of(context).pop(false),
-                          child: const Text('Cancel',
-                              style: TextStyle(color: Colors.blue)),
+                    builder: (context) {
+                      return StatefulBuilder(
+                        builder: (context, setState) => AlertDialog(
+                          backgroundColor: Colors.grey[900],
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16)),
+                          title: const Text(
+                            'Delete this job?',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold),
+                          ),
+                          content: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text(
+                                'This will remove this job from your list and delete cached files.',
+                                style: TextStyle(
+                                    color: Colors.white70, height: 1.4),
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  Checkbox(
+                                    value: deleteGalleryFile,
+                                    onChanged: (val) => setState(
+                                        () => deleteGalleryFile = val ?? false),
+                                    activeColor: Colors.redAccent,
+                                    side:
+                                        const BorderSide(color: Colors.white54),
+                                  ),
+                                  const Flexible(
+                                    child: Text(
+                                      'Also delete saved result file from gallery',
+                                      style: TextStyle(color: Colors.white70),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.of(context).pop(false),
+                              child: const Text('Cancel',
+                                  style: TextStyle(color: Colors.blue)),
+                            ),
+                            TextButton(
+                              onPressed: () => Navigator.of(context).pop(true),
+                              child: const Text('Delete',
+                                  style: TextStyle(color: Colors.redAccent)),
+                            ),
+                          ],
                         ),
-                        TextButton(
-                          onPressed: () => Navigator.of(context).pop(true),
-                          child: const Text('Delete',
-                              style: TextStyle(color: Colors.redAccent)),
-                        ),
-                      ],
-                    ),
+                      );
+                    },
                   );
 
                   if (confirmed == true) {
-                    await FileService.deleteJobFiles(job);
+                    await FileService.deleteJobFiles(job,
+                        deleteGalleryFile: deleteGalleryFile);
+
                     jobListNotifier.value = jobListNotifier.value
                         .where((j) => j.jobId != job.jobId)
                         .toList();
@@ -396,10 +430,12 @@ class JobCard extends StatelessWidget {
 
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('🗑️ Job deleted successfully'),
+                        SnackBar(
                           behavior: SnackBarBehavior.floating,
-                          duration: Duration(seconds: 2),
+                          duration: const Duration(seconds: 2),
+                          content: Text(deleteGalleryFile
+                              ? '🗑️ Job and result deleted'
+                              : '🧹 Job deleted (result kept)'),
                         ),
                       );
                     }
