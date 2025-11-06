@@ -314,18 +314,32 @@ class JobCard extends StatelessWidget {
                           color: Colors.blueAccent,
                           fontSize: 13,
                         ),
-                      )
+                      ),
                     ],
                   )
-                : Text(
-                    job.status.toUpperCase(),
-                    key: ValueKey(job.status),
-                    style: TextStyle(
-                      color: job.status == 'failed'
-                          ? Colors.redAccent
-                          : Colors.greenAccent,
-                      fontSize: 13,
-                    ),
+                : Row(
+                    key: ValueKey('completed_or_failed'),
+                    children: [
+                      Icon(
+                        job.status == 'failed'
+                            ? Icons.error_outline
+                            : Icons.check_circle,
+                        size: 16,
+                        color: job.status == 'failed'
+                            ? Colors.redAccent
+                            : Colors.greenAccent,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        job.status.toUpperCase(),
+                        style: TextStyle(
+                          color: job.status == 'failed'
+                              ? Colors.redAccent
+                              : Colors.greenAccent,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
                   ),
           ),
 
@@ -343,11 +357,53 @@ class JobCard extends StatelessWidget {
                 icon: const Icon(Icons.delete, color: Colors.white70),
                 tooltip: 'Delete Job',
                 onPressed: () async {
-                  await FileService.deleteJobFiles(job);
-                  jobListNotifier.value = jobListNotifier.value
-                      .where((j) => j.jobId != job.jobId)
-                      .toList();
-                  await saveJobsToPrefs();
+                  final confirmed = await showDialog<bool>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      backgroundColor: Colors.grey[900],
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16)),
+                      title: const Text(
+                        'Delete this job?',
+                        style: TextStyle(
+                            color: Colors.white, fontWeight: FontWeight.bold),
+                      ),
+                      content: const Text(
+                        'This will permanently remove the result file.',
+                        style: TextStyle(color: Colors.white70),
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(false),
+                          child: const Text('Cancel',
+                              style: TextStyle(color: Colors.blue)),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(true),
+                          child: const Text('Delete',
+                              style: TextStyle(color: Colors.redAccent)),
+                        ),
+                      ],
+                    ),
+                  );
+
+                  if (confirmed == true) {
+                    await FileService.deleteJobFiles(job);
+                    jobListNotifier.value = jobListNotifier.value
+                        .where((j) => j.jobId != job.jobId)
+                        .toList();
+                    await saveJobsToPrefs();
+
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('🗑️ Job deleted successfully'),
+                          behavior: SnackBarBehavior.floating,
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                    }
+                  }
                 },
               ),
             ],

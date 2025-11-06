@@ -130,6 +130,10 @@ Future<void> _reloadJobsToNotifier() async {
 
     jobListNotifier.value = List<JobModel>.from(list);
     debugPrint("✅ Reloaded ${list.length} jobs (after FCM check)");
+    for (final j in list) {
+      debugPrint(
+          "✅ Loaded ${j.jobId} input=${j.inputImagePath} local=${j.localFilePath}");
+    }
   } catch (e, st) {
     debugPrint("⚠️ _reloadJobsToNotifier failed: $e\n$st");
   }
@@ -166,7 +170,6 @@ Future<void> _applyFcmUpdate(Map<String, dynamic> data) async {
 
 /// Background FCM handler (runs in a background isolate when app is killed)
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  // initialize firebase in background isolate
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   try {
@@ -182,73 +185,77 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     final model = (data['model'] ?? '').toString();
     final outputType = (data['outputType'] ?? '').toString();
 
-    if (jobId.isNotEmpty) {
-      final prefs = await SharedPreferences.getInstance();
-      final jsonStr = prefs.getString('jobs');
-      final existing = jsonStr == null
-          ? <Map<String, dynamic>>[]
-          : (jsonDecode(jsonStr) as List)
-              .map((e) => Map<String, dynamic>.from(e))
-              .toList();
+    if (jobId.isEmpty) return;
 
-      final idx = existing.indexWhere((e) => e['jobId'] == jobId);
-      if (idx >= 0) {
-        final old = existing[idx];
-        existing[idx] = {
-          'jobId': jobId,
-          'title': old['title'] ?? title,
-          'model': old['model'] ?? model,
-          'outputType': old['outputType'] ?? outputType,
-          'downloadUrl': downloadUrl.isNotEmpty
-              ? downloadUrl
-              : (old['downloadUrl'] ?? null),
-          'status': normalizedStatus.isNotEmpty
-              ? normalizedStatus
-              : (old['status'] ?? 'processing'),
-          'createdAt': old['createdAt'] ?? DateTime.now().toIso8601String(),
-          'localFilePath': old['localFilePath'],
-          'inputImagePath': old['inputImagePath'],
-        };
-      } else {
-        existing.insert(0, {
-          'jobId': jobId,
-          'title': title.isNotEmpty ? title : jobId,
-          'model': model.isNotEmpty ? model : 'unknown',
-          'outputType': outputType.isNotEmpty ? outputType : 'image',
-          'downloadUrl': downloadUrl.isNotEmpty ? downloadUrl : null,
-          'status':
-              normalizedStatus.isNotEmpty ? normalizedStatus : 'processing',
-          'createdAt': DateTime.now().toIso8601String(),
-        });
-      }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.reload(); // ✅ ensure we have freshest data
 
-      // persist per-job download url key too (prevents global clobber)
-      if (downloadUrl.isNotEmpty) {
-        await prefs.setString('pending_download_url_$jobId', downloadUrl);
-      }
+    final jsonStr = prefs.getString('jobs');
+    final existing = jsonStr == null
+        ? <Map<String, dynamic>>[]
+        : (jsonDecode(jsonStr) as List)
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
 
-      await prefs.setString('jobs', jsonEncode(existing));
-      await prefs.setBool('has_fcm_update', true);
+    final idx = existing.indexWhere((e) => e['jobId'] == jobId);
+
+    if (idx >= 0) {
+      final old = existing[idx];
+
+      // 🧠 Preserve paths if they existed before
+      final preservedInputImagePath = old['inputImagePath'];
+      final preservedLocalPath = old['localFilePath'];
+
+      existing[idx] = {
+        'jobId': jobId,
+        'title': old['title'] ?? title,
+        'model': old['model'] ?? model,
+        'outputType': old['outputType'] ?? outputType,
+        'downloadUrl':
+            downloadUrl.isNotEmpty ? downloadUrl : (old['downloadUrl'] ?? null),
+        'status': normalizedStatus.isNotEmpty
+            ? normalizedStatus
+            : (old['status'] ?? 'processing'),
+        'createdAt': old['createdAt'] ?? DateTime.now().toIso8601String(),
+
+        // ✅ Preserve file paths even if isolate didn’t have them
+        'localFilePath': preservedLocalPath,
+        'inputImagePath': preservedInputImagePath,
+      };
+
+      debugPrint(
+          "🟣 [FCM isolate] Preserved inputImagePath for $jobId → $preservedInputImagePath");
+    } else {
+      // 🔹 New job record — no previous entry to merge from
+      existing.insert(0, {
+        'jobId': jobId,
+        'title': title.isNotEmpty ? title : jobId,
+        'model': model.isNotEmpty ? model : 'unknown',
+        'outputType': outputType.isNotEmpty ? outputType : 'image',
+        'downloadUrl': downloadUrl.isNotEmpty ? downloadUrl : null,
+        'status': normalizedStatus.isNotEmpty ? normalizedStatus : 'processing',
+        'createdAt': DateTime.now().toIso8601String(),
+        // keep null for these if truly new
+        'inputImagePath': null,
+        'localFilePath': null,
+      });
     }
 
-    await _applyFcmUpdate({
-      'job_id': jobId,
-      'status': normalizedStatus,
-      'download_url': downloadUrl,
-      'title': title,
-      'model': model,
-      'outputType': outputType,
-    });
+    // persist per-job download url key too (prevents global clobber)
+    if (downloadUrl.isNotEmpty) {
+      await prefs.setString('pending_download_url_$jobId', downloadUrl);
+    }
 
-    // show a local notification so user sees it in system tray
+    await prefs.setString('jobs', jsonEncode(existing));
+    await prefs.setBool('has_fcm_update', true);
+
+    // 🔔 Local notification for visibility
     await NotificationService.showNotification(
       title: message.notification?.title ??
-          (message.data['status'] == 'completed'
-              ? 'Result ready'
-              : 'Job update'),
+          (normalizedStatus == 'completed' ? 'Result ready' : 'Job update'),
       body: message.notification?.body ??
-          (message.data['status'] == 'completed'
-              ? 'Tap to view'
+          (normalizedStatus == 'completed'
+              ? 'Tap to view your result'
               : 'Job status updated'),
       payload: jobId,
     );
@@ -365,33 +372,71 @@ Future<void> main() async {
     }
   });
 
-  // When user taps an FCM notification while app was backgrounded (not killed)
   FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) async {
     debugPrint("🔁 onMessageOpenedApp: ${message.data}");
     final data = message.data ?? {};
     final jobId = (data['job_id'] ?? '').toString();
+    if (jobId.isEmpty) return;
 
-    // Merge update (this updates persisted job and notifer)
+    // Normalize values
     const allowed = ['processing', 'completed', 'failed'];
     final status = (data['status'] ?? '').toString().toLowerCase();
     final normalizedStatus = allowed.contains(status) ? status : 'processing';
     final downloadUrl =
         (data['download_url'] ?? data['downloadUrl'] ?? '').toString();
+
+    // 🧠 Preserve paths explicitly (optional but very safe)
+    final currentJob = jobListNotifier.value.firstWhere((j) => j.jobId == jobId,
+        orElse: () => JobModel(
+              jobId: jobId,
+              title: jobId,
+              model: 'unknown',
+              outputType: 'image',
+            ));
+
     await updateJobFields(
       jobId: jobId,
       status: normalizedStatus.isNotEmpty ? normalizedStatus : null,
       downloadUrl: downloadUrl.isNotEmpty ? downloadUrl : null,
+      inputImagePath: currentJob.inputImagePath,
+      localFilePath: currentJob.localFilePath,
     );
 
-    // Ensure UI has fresh data (jobListNotifier is updated by updateJobFields)
-    // Now navigate to result manager but avoid duplicates
+    // ✅ Refresh and navigate
     if (isResultManagerOpen) {
-      // Already visible — nothing to push
       debugPrint("🔁 ResultManager already open after onMessageOpenedApp");
       return;
     }
     _openResultManager();
   });
+
+  // // When user taps an FCM notification while app was backgrounded (not killed)
+  // FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) async {
+  //   debugPrint("🔁 onMessageOpenedApp: ${message.data}");
+  //   final data = message.data ?? {};
+  //   final jobId = (data['job_id'] ?? '').toString();
+
+  //   // Merge update (this updates persisted job and notifer)
+  //   const allowed = ['processing', 'completed', 'failed'];
+  //   final status = (data['status'] ?? '').toString().toLowerCase();
+  //   final normalizedStatus = allowed.contains(status) ? status : 'processing';
+  //   final downloadUrl =
+  //       (data['download_url'] ?? data['downloadUrl'] ?? '').toString();
+  //   await updateJobFields(
+  //     jobId: jobId,
+  //     status: normalizedStatus.isNotEmpty ? normalizedStatus : null,
+  //     downloadUrl: downloadUrl.isNotEmpty ? downloadUrl : null,
+  //   );
+
+  //   // Ensure UI has fresh data (jobListNotifier is updated by updateJobFields)
+  //   // Now navigate to result manager but avoid duplicates
+  //   if (isResultManagerOpen) {
+  //     // Already visible — nothing to push
+  //     debugPrint("🔁 ResultManager already open after onMessageOpenedApp");
+  //     return;
+  //   }
+  //   _openResultManager();
+  // });
 
 // handle cold start
   final initialMessage = await FirebaseMessaging.instance.getInitialMessage();
