@@ -25,7 +25,7 @@ class FileService {
   static Future<String?> saveFile(
     BuildContext context,
     Uint8List bytes, {
-    String? customFileName, // 👈 NEW optional parameter
+    String? customFileName,
     String subfolder = 'AI_Creative_Studio',
     String extension = 'png',
     bool showPreview = true,
