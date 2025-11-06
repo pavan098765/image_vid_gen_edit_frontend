@@ -1,8 +1,6 @@
 // lib/core/app_state.dart
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Global app-level selected index for the bottom navigation.
@@ -114,58 +112,6 @@ Future<void> addOrUpdateJob(JobModel job) async {
   jobListNotifier.value = list;
   await saveJobsToPrefs();
 }
-
-/// Update only specific fields for a job (status/downloadUrl/title/model optional).
-/// If job does not exist it creates a new one with defaults.
-// Future<void> updateJobFields({
-//   required String jobId,
-//   String? status,
-//   String? downloadUrl,
-//   String? title,
-//   String? model,
-//   String? outputType,
-// }) async {
-//   final list = List<JobModel>.from(jobListNotifier.value);
-//   final idx = list.indexWhere((j) => j.jobId == jobId);
-//   if (idx >= 0) {
-//     final old = list[idx];
-//     list[idx] = JobModel(
-//       jobId: old.jobId,
-//       title: title ?? old.title,
-//       model: model ?? old.model,
-//       outputType: outputType ?? old.outputType,
-//       downloadUrl: (downloadUrl != null && downloadUrl.isNotEmpty)
-//           ? downloadUrl
-//           : old.downloadUrl,
-//       status: status ?? old.status,
-//       createdAt: old.createdAt,
-//       localFilePath: old.localFilePath,
-//     );
-//     if (status != null) {
-//       const allowed = ['processing', 'completed', 'failed'];
-//       if (!allowed.contains(status.toLowerCase())) {
-//         status = 'processing';
-//       }
-//     }
-//   } else {
-//     // create new fallback record
-//     list.insert(
-//       0,
-//       JobModel(
-//         jobId: jobId,
-//         title: title ?? await generateFriendlyJobName(),
-//         model: model ?? 'unknown',
-//         outputType: outputType ?? 'image',
-//         downloadUrl: (downloadUrl != null && downloadUrl.isNotEmpty)
-//             ? downloadUrl
-//             : null,
-//         status: status ?? 'processing',
-//       ),
-//     );
-//   }
-//   jobListNotifier.value = list;
-//   await saveJobsToPrefs();
-// }
 
 /// Update only specific fields for a job (status/downloadUrl/title/model optional).
 /// If job does not exist it creates a new one with defaults.

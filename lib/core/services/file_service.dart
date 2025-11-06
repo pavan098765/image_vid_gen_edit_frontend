@@ -388,19 +388,6 @@ class FileService {
           await saveJobsToPrefs();
           debugPrint("📸 Linked downloaded file to job ${job.jobId}");
         }
-
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              behavior: SnackBarBehavior.floating,
-              duration: const Duration(seconds: 6),
-              content: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: SelectableText('✅ File saved to: $savedPath'),
-              ),
-            ),
-          );
-        }
         return savedPath;
       }
       return null;

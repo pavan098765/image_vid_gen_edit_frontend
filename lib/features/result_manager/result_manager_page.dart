@@ -427,18 +427,6 @@ class JobCard extends StatelessWidget {
                         .where((j) => j.jobId != job.jobId)
                         .toList();
                     await saveJobsToPrefs();
-
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          behavior: SnackBarBehavior.floating,
-                          duration: const Duration(seconds: 2),
-                          content: Text(deleteGalleryFile
-                              ? '🗑️ Job and result deleted'
-                              : '🧹 Job deleted (result kept)'),
-                        ),
-                      );
-                    }
                   }
                 },
               ),

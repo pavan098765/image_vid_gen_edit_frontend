@@ -1,10 +1,8 @@
 // lib/main.dart
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_vid_gen_edit_frontend/core/services/file_service.dart';
 import 'package:image_vid_gen_edit_frontend/core/services/polling_service.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // Firebase imports
@@ -15,7 +13,6 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'firebase_options.dart';
 
 // Existing imports
-// import 'package:image_vid_gen_edit_frontend/core/services/polling_service.dart';
 import 'core/theme/app_theme.dart';
 import 'core/app_state.dart';
 import 'core/services/notification_service.dart';
@@ -360,16 +357,6 @@ Future<void> main() async {
       body: notifBody,
       payload: jobId,
     );
-
-    // ✅ Optional in-app toast for user
-    if (navigatorKey.currentContext != null && status == 'completed') {
-      ScaffoldMessenger.of(navigatorKey.currentContext!).showSnackBar(
-        const SnackBar(
-          content: Text('✅ Your AI result is ready!'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    }
   });
 
   FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) async {
@@ -409,34 +396,6 @@ Future<void> main() async {
     }
     _openResultManager();
   });
-
-  // // When user taps an FCM notification while app was backgrounded (not killed)
-  // FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) async {
-  //   debugPrint("🔁 onMessageOpenedApp: ${message.data}");
-  //   final data = message.data ?? {};
-  //   final jobId = (data['job_id'] ?? '').toString();
-
-  //   // Merge update (this updates persisted job and notifer)
-  //   const allowed = ['processing', 'completed', 'failed'];
-  //   final status = (data['status'] ?? '').toString().toLowerCase();
-  //   final normalizedStatus = allowed.contains(status) ? status : 'processing';
-  //   final downloadUrl =
-  //       (data['download_url'] ?? data['downloadUrl'] ?? '').toString();
-  //   await updateJobFields(
-  //     jobId: jobId,
-  //     status: normalizedStatus.isNotEmpty ? normalizedStatus : null,
-  //     downloadUrl: downloadUrl.isNotEmpty ? downloadUrl : null,
-  //   );
-
-  //   // Ensure UI has fresh data (jobListNotifier is updated by updateJobFields)
-  //   // Now navigate to result manager but avoid duplicates
-  //   if (isResultManagerOpen) {
-  //     // Already visible — nothing to push
-  //     debugPrint("🔁 ResultManager already open after onMessageOpenedApp");
-  //     return;
-  //   }
-  //   _openResultManager();
-  // });
 
 // handle cold start
   final initialMessage = await FirebaseMessaging.instance.getInitialMessage();

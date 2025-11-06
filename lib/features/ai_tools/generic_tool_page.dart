@@ -11,7 +11,6 @@ import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_vid_gen_edit_frontend/core/app_state.dart';
 import 'package:image_vid_gen_edit_frontend/core/services/notification_service.dart';
-// import 'package:image_vid_gen_edit_frontend/core/services/polling_service.dart';
 import 'package:image_vid_gen_edit_frontend/features/result_manager/result_manager_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_vid_gen_edit_frontend/core/services/file_service.dart';
@@ -24,10 +23,8 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 ///  - Dynamically renders all UI elements & modes
 ///  - Keeps all animations, HMAC submit, job polling, etc.
 ///
-/// TODO: Bring sparkle effects from flux_editor to here - done
-/// TODO: Add blurred videos in background during loading/processing?
+///
 /// TODO: Add cancel job functionality?
-/// TODO: After 2 minutes, ask user if they want to continue waiting or notified later once done via notification - done
 /// TODO: Implement user feedback for long-running tasks
 /// TODO: Add retry button on job failure
 ///
@@ -976,23 +973,6 @@ class _GenericToolPageState extends State<GenericToolPage>
               ),
 
               const SizedBox(height: 16),
-
-              // // ✨ Animated dots
-              // TweenAnimationBuilder<int>(
-              //   tween: IntTween(begin: 0, end: 3),
-              //   duration: const Duration(milliseconds: 1200),
-              //   builder: (context, value, _) {
-              //     final dots = "." * (value + 1);
-              //     return Text(
-              //       "Processing$dots",
-              //       style: const TextStyle(
-              //         color: Colors.amberAccent,
-              //         fontSize: 13,
-              //         fontWeight: FontWeight.w500,
-              //       ),
-              //     );
-              //   },
-              // ),
             ],
           ),
         ),
@@ -1378,10 +1358,6 @@ class _GenericToolPageState extends State<GenericToolPage>
       ),
     );
   }
-
-  // ----------------------------------------------------
-  // 💫 LOADING SCREEN
-  // ----------------------------------------------------
 
   // ----------------------------------------------------
   // 🌈 RESULT SCREEN
