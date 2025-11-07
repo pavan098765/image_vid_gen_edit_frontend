@@ -473,11 +473,17 @@ class FileService {
 
   /// 🪄 Bottom sheet confirmation with preview + open option
   static void _showSavedBottomSheet(
-      BuildContext context, Uint8List bytes, String filePath, Uint8List? previewBytes) {
+    BuildContext context,
+    Uint8List bytes,
+    String filePath,
+    Uint8List? previewBytes,
+  ) {
+    final cs = Theme.of(context).colorScheme;
     final isVideo = filePath.toLowerCase().endsWith(".mp4");
+
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.black.withOpacity(0.9),
+      backgroundColor: cs.surface.withOpacity(0.98),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -500,10 +506,10 @@ class FileService {
                       : Container(
                           width: 60,
                           height: 60,
-                          color: Colors.white12,
-                          child: const Icon(
+                          color: cs.surfaceContainerHighest.withOpacity(0.10),
+                          child: Icon(
                             Icons.videocam,
-                            color: Colors.white,
+                            color: cs.onSurface,
                             size: 28,
                           ),
                         ))
@@ -515,18 +521,23 @@ class FileService {
                       filterQuality: FilterQuality.medium,
                     ),
             ),
-            title: const Text(
+            title: Text(
               '✅ Saved successfully!',
-              style:
-                  TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                color: cs.onSurface,
+                fontWeight: FontWeight.bold,
+              ),
             ),
             subtitle: Text(
               filePath,
-              style: const TextStyle(color: Colors.white70, fontSize: 12),
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
+                fontSize: 12,
+              ),
               overflow: TextOverflow.ellipsis,
             ),
             trailing: IconButton(
-              icon: const Icon(Icons.folder_open, color: Colors.white),
+              icon: Icon(Icons.folder_open, color: cs.primary),
               onPressed: () async => await OpenFilex.open(filePath),
             ),
           ),

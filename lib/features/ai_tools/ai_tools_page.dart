@@ -7,6 +7,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_vid_gen_edit_frontend/features/ai_tools/generic_tool_page.dart';
 
+
 // -------------------- MODEL CLASSES --------------------
 class ToolConfig {
   final List<ToolCategory> categories;
@@ -96,6 +97,7 @@ class ToolItem {
       };
 }
 
+
 // -------------------- MAIN PAGE --------------------
 class AiToolsPage extends StatefulWidget {
   const AiToolsPage({super.key});
@@ -120,13 +122,11 @@ class _AiToolsPageState extends State<AiToolsPage>
     super.initState();
     _futureConfig = _loadToolConfig();
 
-    // 🔮 Glow animation controller
     _glowController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 3),
     )..repeat(reverse: true);
 
-    // Listen to completed jobs
     jobListNotifier.addListener(_checkCompletedJobs);
   }
 
@@ -152,12 +152,11 @@ class _AiToolsPageState extends State<AiToolsPage>
     final cachedData = prefs.getString(cacheKey);
 
     if (lastFetchedDate == today && cachedData != null) {
-      debugPrint("📦 Using cached tool config for today ($today)");
+      debugPrint("📦 Using cached tool config");
       return ToolConfig.fromJson(jsonDecode(cachedData));
     }
 
     try {
-      debugPrint("🌐 Fetching new tool config...");
       final response = await http.get(Uri.parse(configUrl));
       if (response.statusCode == 200) {
         await prefs.setString(cacheKey, response.body);
@@ -167,59 +166,62 @@ class _AiToolsPageState extends State<AiToolsPage>
         throw Exception("Server error: ${response.statusCode}");
       }
     } catch (e) {
-      debugPrint("⚠️ Network failed: $e");
       if (cachedData != null) {
-        debugPrint("📦 Falling back to cached config");
         return ToolConfig.fromJson(jsonDecode(cachedData));
-      } else {
-        throw Exception("No internet and no cached data available");
       }
+      throw Exception("No internet and no cached data");
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
 
     return Scaffold(
-      backgroundColor: scheme.surface,
+      backgroundColor: cs.surface,
       appBar: AppBar(
-        backgroundColor: scheme.surface,
+        backgroundColor: cs.surface,
         elevation: 0,
         centerTitle: false,
         titleSpacing: 16,
         title: Text(
           "AI Tools",
-          style: textTheme.titleLarge?.copyWith(
-        fontWeight: FontWeight.bold,
-        color: scheme.onSurface,
+          style: tt.titleLarge?.copyWith(
+            fontWeight: FontWeight.w800,
+            color: cs.onSurface,
           ),
         ),
         actions: [
-          // 💎 Credits Chip
+          // ✅ Credits Chip (Option A - Primary Themed)
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: ValueListenableBuilder<int>(
               valueListenable: userCreditsNotifier,
               builder: (_, credits, __) => Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: Colors.deepPurple.withOpacity(0.2),
+                  color: cs.primaryContainer.withOpacity(0.85),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.deepPurpleAccent, width: 1),
+                  border: Border.all(
+                    color: cs.primary,
+                    width: 1.2,
+                  ),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(LucideIcons.gem, color: Colors.amber, size: 18),
+                    Icon(
+                      LucideIcons.gem,
+                      color: cs.primary,
+                      size: 18,
+                    ),
                     const SizedBox(width: 6),
                     Text(
                       "$credits",
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
+                      style: TextStyle(
+                        color: cs.onPrimaryContainer,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
                   ],
@@ -228,21 +230,19 @@ class _AiToolsPageState extends State<AiToolsPage>
             ),
           ),
 
-          // 🔮 Results Button (Badge + Glow)
+          // ✅ Results button (glowing)
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: ValueListenableBuilder<List<JobModel>>(
               valueListenable: jobListNotifier,
               builder: (_, jobs, __) {
-                final completedCount =
-                    jobs.where((j) => j.status == 'completed').length;
+                final count = jobs.where((j) => j.status == 'completed').length;
 
-                // 🌈 Animated glow gradient
                 final glow = LinearGradient(
                   colors: [
-                    Colors.purpleAccent.withOpacity(0.2),
-                    Colors.blueAccent.withOpacity(0.3),
-                    Colors.pinkAccent.withOpacity(0.25),
+                    cs.primary.withOpacity(0.25),
+                    cs.secondary.withOpacity(0.30),
+                    cs.primary.withOpacity(0.25),
                   ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
@@ -256,36 +256,29 @@ class _AiToolsPageState extends State<AiToolsPage>
                 return Stack(
                   clipBehavior: Clip.none,
                   children: [
-                    // Glow effect on icon
                     ShaderMask(
-                      shaderCallback: (rect) =>
-                          glow.createShader(rect), // animate shimmer
-                      blendMode: _hasUnseenCompleted
-                          ? BlendMode.srcATop
-                          : BlendMode.dst, // visible only if unseen
+                      shaderCallback: (rect) => glow.createShader(rect),
+                      blendMode:
+                          _hasUnseenCompleted ? BlendMode.srcATop : BlendMode.dst,
                       child: IconButton(
-                        tooltip: "View My Results",
-                        icon: const Icon(
+                        icon: Icon(
                           LucideIcons.activitySquare,
-                          color: Colors.white,
                           size: 26,
+                          color: cs.onSurface,
                         ),
+                        tooltip: "My Results",
                         onPressed: () {
-                          // 🧠 When user opens results, clear unseen flag
                           setState(() => _hasUnseenCompleted = false);
-
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) => const ResultManagerPage(),
-                            ),
+                                builder: (_) => const ResultManagerPage()),
                           );
                         },
                       ),
                     ),
 
-                    // 🔴 Red badge counter
-                    if (completedCount > 0)
+                    if (count > 0)
                       Positioned(
                         right: 4,
                         top: 6,
@@ -295,14 +288,15 @@ class _AiToolsPageState extends State<AiToolsPage>
                           child: Container(
                             padding: const EdgeInsets.all(4),
                             decoration: BoxDecoration(
-                              color: Colors.redAccent,
+                              color: cs.error,
                               shape: BoxShape.circle,
-                              border: Border.all(color: Colors.black, width: 1),
+                              border: Border.all(
+                                  color: cs.onError.withOpacity(0.5), width: 1),
                             ),
                             child: Text(
-                              completedCount.toString(),
-                              style: const TextStyle(
-                                color: Colors.white,
+                              count.toString(),
+                              style: TextStyle(
+                                color: cs.onError,
                                 fontSize: 10,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -317,6 +311,7 @@ class _AiToolsPageState extends State<AiToolsPage>
           ),
         ],
       ),
+
       body: FutureBuilder<ToolConfig>(
         future: _futureConfig,
         builder: (context, snapshot) {
@@ -326,64 +321,61 @@ class _AiToolsPageState extends State<AiToolsPage>
           if (snapshot.hasError) {
             return _buildErrorState(snapshot.error.toString());
           }
-          final config = snapshot.data!;
-          return _buildToolList(config, scheme, textTheme);
+          return _buildToolList(snapshot.data!, cs, tt);
         },
       ),
     );
   }
 
-  Widget _buildErrorState(String message) {
+  Widget _buildErrorState(String msg) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.cloud_off, size: 64, color: Colors.grey),
+            Icon(Icons.cloud_off, size: 64, color: cs.onSurface.withOpacity(0.50)),
             const SizedBox(height: 12),
-            const Text(
+            Text(
               "Unable to load tools",
-              style: TextStyle(
-                fontSize: 18,
+              style: tt.titleMedium?.copyWith(
                 fontWeight: FontWeight.bold,
-                color: Colors.white70,
+                color: cs.onSurface,
               ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             Text(
-              message,
-              style: const TextStyle(color: Colors.white54, fontSize: 14),
+              msg,
               textAlign: TextAlign.center,
+              style: tt.bodyMedium?.copyWith(
+                color: cs.onSurfaceVariant,
+              ),
             ),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: () =>
-                  setState(() => _futureConfig = _loadToolConfig()),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: () => setState(() => _futureConfig = _loadToolConfig()),
               icon: const Icon(Icons.refresh),
               label: const Text("Retry"),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.deepPurpleAccent,
-                foregroundColor: Colors.white,
-              ),
-            )
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildToolList(
-      ToolConfig config, ColorScheme scheme, TextTheme textTheme) {
+  Widget _buildToolList(ToolConfig config, ColorScheme cs, TextTheme tt) {
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
       itemCount: config.categories.length,
-      itemBuilder: (context, i) {
+      itemBuilder: (_, i) {
         final cat = config.categories[i];
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SizedBox(height: 16),
+            const SizedBox(height: 18),
             Row(
               children: [
                 Container(
@@ -397,14 +389,14 @@ class _AiToolsPageState extends State<AiToolsPage>
                 ),
                 Text(
                   cat.title,
-                  style: textTheme.titleMedium?.copyWith(
+                  style: tt.titleMedium?.copyWith(
                     color: cat.accent,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             GridView.builder(
               itemCount: cat.tools.length,
               shrinkWrap: true,
@@ -415,10 +407,8 @@ class _AiToolsPageState extends State<AiToolsPage>
                 mainAxisSpacing: 14,
                 childAspectRatio: 0.9,
               ),
-              itemBuilder: (context, j) {
-                final tool = cat.tools[j];
-                return _ToolCard(item: tool, accent: cat.accent);
-              },
+              itemBuilder: (_, j) =>
+                  _ToolCard(item: cat.tools[j], accent: cat.accent),
             ),
           ],
         );
@@ -426,6 +416,7 @@ class _AiToolsPageState extends State<AiToolsPage>
     );
   }
 }
+
 
 // -------------------- TOOL CARD --------------------
 class _ToolCard extends StatefulWidget {
@@ -480,8 +471,8 @@ class _ToolCardState extends State<_ToolCard> {
   Widget build(BuildContext context) {
     final item = widget.item;
     final accent = widget.accent;
-    final scheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 180),
@@ -490,18 +481,18 @@ class _ToolCardState extends State<_ToolCard> {
         border: Border.all(
           color: _hover
               ? accent.withOpacity(0.55)
-              : scheme.outline.withOpacity(0.25),
+              : cs.outline.withOpacity(0.25),
           width: 1.1,
         ),
         gradient: LinearGradient(
           colors: _hover
               ? [
-                  accent.withOpacity(0.1),
-                  scheme.surfaceContainerHighest.withOpacity(0.08)
+                  accent.withOpacity(0.10),
+                  cs.surfaceContainerHighest.withOpacity(0.08)
                 ]
               : [
-                  scheme.surfaceContainerHighest.withOpacity(0.03),
-                  scheme.surface.withOpacity(0.02)
+                  cs.surfaceContainerHighest.withOpacity(0.04),
+                  cs.surface.withOpacity(0.03)
                 ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -509,9 +500,10 @@ class _ToolCardState extends State<_ToolCard> {
         boxShadow: _hover
             ? [
                 BoxShadow(
-                    color: accent.withOpacity(0.22),
-                    offset: const Offset(0, 6),
-                    blurRadius: 16)
+                  color: accent.withOpacity(0.22),
+                  offset: const Offset(0, 6),
+                  blurRadius: 16,
+                )
               ]
             : [],
       ),
@@ -519,22 +511,21 @@ class _ToolCardState extends State<_ToolCard> {
         borderRadius: BorderRadius.circular(18),
         onHover: (v) => setState(() => _hover = v),
         onTap: () {
-          // ✅ All tools now handled by GenericToolPage
-          final page = GenericToolPage(
-            config: GenericToolConfig(
-              title: item.name,
-              model: item.model,
-              inputs: item.inputs ?? [],
-              params: item.params,
-              modes: item.modes,
-              elements: item.elements,
-              outputType: item.outputType ?? "image",
-            ),
-          );
-
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (_) => page),
+            MaterialPageRoute(
+              builder: (_) => GenericToolPage(
+                config: GenericToolConfig(
+                  title: item.name,
+                  model: item.model,
+                  inputs: item.inputs ?? [],
+                  params: item.params,
+                  modes: item.modes,
+                  elements: item.elements,
+                  outputType: item.outputType ?? "image",
+                ),
+              ),
+            ),
           );
         },
         child: Padding(
@@ -543,19 +534,19 @@ class _ToolCardState extends State<_ToolCard> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Icon(_resolveIcon(item.icon), color: accent, size: 40),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               Text(
                 item.name,
                 textAlign: TextAlign.center,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: textTheme.bodyMedium?.copyWith(
+                style: tt.bodyMedium?.copyWith(
                   fontWeight: FontWeight.w700,
-                  color: scheme.onSurface,
+                  color: cs.onSurface,
                   height: 1.18,
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               Wrap(
                 spacing: 6,
                 runSpacing: 4,
@@ -572,8 +563,7 @@ class _ToolCardState extends State<_ToolCard> {
                         child: Text(
                           cap,
                           maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: textTheme.labelSmall?.copyWith(
+                          style: tt.labelSmall?.copyWith(
                             color: accent.withOpacity(0.95),
                             fontSize: 11,
                             fontWeight: FontWeight.w600,

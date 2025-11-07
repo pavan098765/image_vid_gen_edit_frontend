@@ -1,166 +1,3 @@
-// import 'package:flutter/material.dart';
-// import 'package:google_fonts/google_fonts.dart';
-
-// class AppTheme {
-//   static ThemeData darkTheme = ThemeData(
-//     useMaterial3: true,
-//     brightness: Brightness.dark,
-//     colorScheme: ColorScheme.fromSeed(
-//       seedColor: Colors.indigo,
-//       brightness: Brightness.dark,
-//     ),
-//     scaffoldBackgroundColor: const Color(0xFF0E0E12),
-//     textTheme: GoogleFonts.poppinsTextTheme(
-//       const TextTheme(bodyMedium: TextStyle(color: Colors.white)),
-//     ),
-//     appBarTheme: const AppBarTheme(
-//       backgroundColor: Colors.transparent,
-//       elevation: 0,
-//     ),
-//   );
-// }
-
-//////==============================================================
-
-// import 'package:flutter/material.dart';
-// import 'package:google_fonts/google_fonts.dart';
-
-// class AppTheme {
-//   static ThemeData modernDark = ThemeData(
-//     useMaterial3: true,
-//     brightness: Brightness.dark,
-
-//     // ---------- Core Color Scheme ----------
-//     colorScheme: ColorScheme(
-//       brightness: Brightness.dark,
-//       primary: const Color(0xFF8F7BFF), // Soft neon purple
-//       onPrimary: Colors.white,
-//       secondary: const Color(0xFF5CE1E6), // Aqua accent
-//       onSecondary: Colors.black,
-//       error: Colors.redAccent,
-//       onError: Colors.white,
-//       background: const Color(0xFF0C0C12),
-//       onBackground: Colors.white.withOpacity(0.9),
-//       surface: const Color(0xFF1A1A24),
-//       onSurface: Colors.white.withOpacity(0.9),
-//     ),
-
-//     // ---------- Background ----------
-//     scaffoldBackgroundColor: const Color(0xFF0C0C12),
-
-//     // ---------- Typography ----------
-//     textTheme: GoogleFonts.interTextTheme().apply(
-//       bodyColor: Colors.white.withOpacity(0.95),
-//       displayColor: Colors.white.withOpacity(0.95),
-//     ),
-
-//     // ---------- AppBar ----------
-//     appBarTheme: AppBarTheme(
-//       backgroundColor: Colors.transparent,
-//       elevation: 0,
-//       centerTitle: false,
-//       titleTextStyle: GoogleFonts.inter(
-//         fontSize: 20,
-//         fontWeight: FontWeight.w600,
-//         color: Colors.white,
-//       ),
-//       iconTheme: const IconThemeData(color: Colors.white),
-//     ),
-
-//     // ---------- Buttons ----------
-//     elevatedButtonTheme: ElevatedButtonThemeData(
-//       style: ElevatedButton.styleFrom(
-//         elevation: 0,
-//         foregroundColor: Colors.white,
-//         backgroundColor: const Color(0xFF8F7BFF),
-//         padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
-//         shape: RoundedRectangleBorder(
-//           borderRadius: BorderRadius.circular(14),
-//         ),
-//         textStyle: GoogleFonts.inter(fontWeight: FontWeight.w600),
-//       ),
-//     ),
-
-//     filledButtonTheme: FilledButtonThemeData(
-//       style: FilledButton.styleFrom(
-//         backgroundColor: const Color(0xFF5CE1E6),
-//         foregroundColor: Colors.black,
-//         shape: RoundedRectangleBorder(
-//           borderRadius: BorderRadius.circular(14),
-//         ),
-//       ),
-//     ),
-
-//     // ---------- Input Fields ----------
-//     inputDecorationTheme: InputDecorationTheme(
-//       filled: true,
-//       fillColor: const Color(0xFF1F1F2A),
-//       border: OutlineInputBorder(
-//         borderRadius: BorderRadius.circular(14),
-//         borderSide: BorderSide.none,
-//       ),
-//       hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
-//       labelStyle: TextStyle(color: Colors.white.withOpacity(0.7)),
-//     ),
-
-//     // ---------- Cards (glass effect) ----------
-//     cardTheme: CardThemeData(
-//       color: const Color(0x1AFFFFFF), // subtle glass
-//       elevation: 0,
-//       margin: const EdgeInsets.all(12),
-//       shape: RoundedRectangleBorder(
-//         borderRadius: BorderRadius.circular(20),
-//       ),
-//     ),
-
-//     // ---------- ListTile ----------
-//     listTileTheme: ListTileThemeData(
-//       shape: RoundedRectangleBorder(
-//         borderRadius: BorderRadius.circular(14),
-//       ),
-//       tileColor: const Color(0xFF1B1B24),
-//       iconColor: Colors.white.withOpacity(0.9),
-//       textColor: Colors.white.withOpacity(0.9),
-//     ),
-
-//     // ---------- Switch, Radio, Checkbox ----------
-//     switchTheme: SwitchThemeData(
-//       thumbColor: MaterialStateProperty.all(const Color(0xFF8F7BFF)),
-//       trackColor:
-//           MaterialStateProperty.all(const Color(0xFF8F7BFF).withOpacity(0.4)),
-//     ),
-
-//     // ---------- Divider ----------
-//     dividerTheme: DividerThemeData(
-//       color: Colors.white.withOpacity(0.08),
-//       thickness: 1,
-//     ),
-
-//     // ---------- Dialogs ----------
-//     dialogTheme: DialogThemeData(
-//       backgroundColor: const Color(0xFF1A1A22),
-//       elevation: 10,
-//       shape: RoundedRectangleBorder(
-//         borderRadius: BorderRadius.circular(20),
-//       ),
-//       titleTextStyle: GoogleFonts.inter(
-//         color: Colors.white,
-//         fontSize: 20,
-//         fontWeight: FontWeight.bold,
-//       ),
-//       contentTextStyle: GoogleFonts.inter(
-//         color: Colors.white.withOpacity(0.9),
-//         fontSize: 16,
-//       ),
-//     ),
-//   );
-// }
-//
-//===================================================================
-
-import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -195,8 +32,6 @@ class AppTheme {
       onSecondary: Colors.black,
       error: Colors.redAccent,
       onError: Colors.white,
-      background: Color(0xFF0C0C12),
-      onBackground: Colors.white,
       surface: Color(0xFF1A1A24),
       onSurface: Colors.white,
     ));
@@ -207,7 +42,7 @@ class AppTheme {
       colorScheme: scheme,
 
       // Background
-      scaffoldBackgroundColor: scheme.background,
+      scaffoldBackgroundColor: scheme.surface,
 
       // Typography
       textTheme: GoogleFonts.interTextTheme().apply(
@@ -286,8 +121,8 @@ class AppTheme {
 
       // Switches / Checkbox
       switchTheme: SwitchThemeData(
-        thumbColor: MaterialStateProperty.all(seedPrimary),
-        trackColor: MaterialStateProperty.all(seedPrimary.withOpacity(0.4)),
+        thumbColor: WidgetStateProperty.all(seedPrimary),
+        trackColor: WidgetStateProperty.all(seedPrimary.withOpacity(0.4)),
       ),
 
       // Divider
@@ -329,8 +164,6 @@ class AppTheme {
       onSecondary: Colors.black,
       error: Colors.red,
       onError: Colors.white,
-      background: Color(0xFFF7F8FB),
-      onBackground: Colors.black,
       surface: Color(0xFFFFFFFF),
       onSurface: Colors.black,
     ));
@@ -339,7 +172,7 @@ class AppTheme {
       useMaterial3: true,
       brightness: Brightness.light,
       colorScheme: scheme,
-      scaffoldBackgroundColor: scheme.background,
+      scaffoldBackgroundColor: scheme.surface,
       textTheme: GoogleFonts.interTextTheme().apply(
         bodyColor: Colors.black87,
         displayColor: Colors.black87,
@@ -402,8 +235,8 @@ class AppTheme {
         ),
       ),
       switchTheme: SwitchThemeData(
-        thumbColor: MaterialStateProperty.all(seedPrimary),
-        trackColor: MaterialStateProperty.all(seedPrimary.withOpacity(0.4)),
+        thumbColor: WidgetStateProperty.all(seedPrimary),
+        trackColor: WidgetStateProperty.all(seedPrimary.withOpacity(0.4)),
       ),
       dividerTheme: DividerThemeData(
         color: Colors.black.withOpacity(0.06),

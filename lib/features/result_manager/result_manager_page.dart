@@ -1,3 +1,5 @@
+// lib/features/result_manager/result_manager_page.dart
+
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui';
@@ -23,11 +25,10 @@ class _ResultManagerPageState extends State<ResultManagerPage>
   @override
   void initState() {
     super.initState();
-    isResultManagerOpen = true; // ✅ mark open
+    isResultManagerOpen = true;
     WidgetsBinding.instance.addObserver(this);
-    debugPrint("🟢 ResultManagerPage opened");
-    _refreshJobs(); // initial refresh on open
-    // 🧩 Also ensure latest FCM background writes are caught
+    _refreshJobs();
+
     SharedPreferences.getInstance().then((prefs) async {
       await prefs.reload();
     });
@@ -36,84 +37,86 @@ class _ResultManagerPageState extends State<ResultManagerPage>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    isResultManagerOpen = false; // ✅ mark closed
-    debugPrint("🔴 ResultManagerPage closed");
+    isResultManagerOpen = false;
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      debugPrint("🔁 ResultManagerPage resumed — refreshing jobs");
       _refreshJobs();
     }
   }
 
   Future<void> _refreshJobs() async {
-    debugPrint("🔄 Pull-to-refresh triggered");
-
     try {
       final prefs = await SharedPreferences.getInstance();
-
-      debugPrint("📂 Reloaded ${jobListNotifier.value.length} jobs from prefs");
-      for (final j in jobListNotifier.value) {
-        debugPrint(
-            "  • job=${j.jobId} inputImagePath=${j.inputImagePath} localFilePath=${j.localFilePath}");
-      }
-      // ✅ Step 1: Reload what we already have on disk
       await prefs.reload();
-      final localJson = prefs.getString('jobs');
 
+      // Load existing jobs
+      final localJson = prefs.getString('jobs');
       if (localJson != null) {
         final decoded = jsonDecode(localJson);
         if (decoded is List) {
-          final list = decoded
+          jobListNotifier.value = decoded
               .map((e) => JobModel.fromJson(Map<String, dynamic>.from(e)))
               .toList();
-          jobListNotifier.value = List<JobModel>.from(list);
-          debugPrint("📂 Loaded ${list.length} jobs from disk");
         }
       }
 
-      // ✅ Step 2: Query server for any jobs still processing
+      // Query server
       await PollingService.instance.refreshProcessingJobs();
 
-      // ✅ Step 3: Reload updated statuses from SharedPrefs
+      // Reload after server update
       await prefs.reload();
       final updatedJson = prefs.getString('jobs');
-
       if (updatedJson != null) {
         final decoded = jsonDecode(updatedJson);
         if (decoded is List) {
-          final list = decoded
+          jobListNotifier.value = decoded
               .map((e) => JobModel.fromJson(Map<String, dynamic>.from(e)))
               .toList();
-          jobListNotifier.value = List<JobModel>.from(list);
-          debugPrint("✅ Updated ${list.length} jobs after server sync");
         }
       }
-    } catch (e, st) {
-      debugPrint("⚠️ Refresh failed: $e\n$st");
-    }
+    } catch (_) {}
   }
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
     return Scaffold(
-      appBar: AppBar(title: const Text('My AI Jobs')),
+      backgroundColor: cs.surface,
+      appBar: AppBar(
+        title: Text(
+          'My AI Jobs',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: cs.onSurface,
+          ),
+        ),
+        backgroundColor: cs.surface,
+        elevation: 0,
+      ),
       body: RefreshIndicator(
-        onRefresh: _refreshJobs, // 👈 pull-to-refresh logic
+        color: cs.primary,
+        backgroundColor: cs.surfaceContainer,
+        onRefresh: _refreshJobs,
         child: ValueListenableBuilder<List<JobModel>>(
           valueListenable: jobListNotifier,
           builder: (_, jobs, __) {
             if (jobs.isEmpty) {
-              return const Center(
+              return Center(
                 child: Text(
                   'No jobs yet.',
-                  style: TextStyle(color: Colors.white70),
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
+                    fontSize: 15,
+                  ),
                 ),
               );
             }
+
             return ListView.builder(
               physics: const AlwaysScrollableScrollPhysics(),
               itemCount: jobs.length,
@@ -129,6 +132,7 @@ class _ResultManagerPageState extends State<ResultManagerPage>
 class JobCard extends StatelessWidget {
   final JobModel job;
   const JobCard({super.key, required this.job});
+
   static bool _openingPreview = false;
 
   Future<void> _openPreview(BuildContext context) async {
@@ -138,7 +142,6 @@ class JobCard extends StatelessWidget {
     try {
       String? path = job.localFilePath;
 
-      // If no local path, fetch+preview once
       if (path == null || !File(path).existsSync()) {
         path = await FileService.previewFileAndReturnPath(
           context,
@@ -146,17 +149,13 @@ class JobCard extends StatelessWidget {
           uniqueKey: job.jobId,
         );
 
-        // If downloaded successfully, update job
         if (path != null) {
           job.localFilePath = path;
           await addOrUpdateJob(job);
         }
-
-        // ⛔ DO NOT open preview again here — already shown inside previewFileAndReturnPath
-        return;
+        return; // preview already shown
       }
 
-      // If we already have local file – open it normally
       FileService.openLocalPreview(context, path);
     } finally {
       _openingPreview = false;
@@ -164,8 +163,8 @@ class JobCard extends StatelessWidget {
   }
 
   Future<void> _download(BuildContext context) async {
-    // Already downloaded → re-save
-    if (job.localFilePath != null && File(job.localFilePath!).existsSync()) {
+    if (job.localFilePath != null &&
+        File(job.localFilePath!).existsSync()) {
       final success = await FileService.saveExistingToGallery(
         context,
         job.localFilePath!,
@@ -173,267 +172,280 @@ class JobCard extends StatelessWidget {
       if (success) return;
     }
 
-    // Download, save, and link
     final savedPath = await FileService.downloadFromUrl(
       context,
       job.downloadUrl!,
-      suggestedFileName: job.jobId, // use jobId-based filename
+      suggestedFileName: job.jobId,
     );
 
     if (savedPath != null) {
-      // Wait a little to ensure file system ready
       final file = File(savedPath);
       for (int i = 0; i < 5; i++) {
         if (file.existsSync() && file.lengthSync() > 0) break;
         await Future.delayed(const Duration(milliseconds: 100));
       }
 
-      // Precache image to force reload
       try {
         await precacheImage(FileImage(file), context);
-      } catch (e) {
-        debugPrint("⚠️ precacheImage failed: $e");
-      }
+      } catch (_) {}
 
-      // Update job and save persistently
       job.localFilePath = savedPath;
       await addOrUpdateJob(job);
       await saveJobsToPrefs();
 
-      // Force rebuild list
       jobListNotifier.value = List<JobModel>.from(jobListNotifier.value);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
     return InkWell(
       onTap: job.status == 'completed' ? () => _openPreview(context) : null,
       borderRadius: BorderRadius.circular(16),
       child: Card(
         margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        color: Colors.white10,
+        color: cs.surfaceContainerHigh,
+        elevation: 0,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: ListTile(
-          // 🟣 THUMBNAIL AREA (fade between blurred + final)
-          leading: ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: Builder(
-              builder: (_) {
-                final fileExists = job.localFilePath != null &&
-                    File(job.localFilePath!).existsSync();
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
 
-                return AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 400),
-                  switchInCurve: Curves.easeOut,
-                  switchOutCurve: Curves.easeIn,
-                  transitionBuilder: (child, animation) =>
-                      FadeTransition(opacity: animation, child: child),
-                  child: fileExists
-                      ? Image.file(
-                          File(job.localFilePath!),
-                          key: ValueKey(job.localFilePath),
-                          width: 52,
-                          height: 52,
-                          fit: BoxFit.cover,
-                        )
-                      : ((job.status == 'processing' ||
-                                  job.status == 'completed') &&
-                              (job.localFilePath == null ||
-                                  !File(job.localFilePath!).existsSync()) &&
-                              job.inputImagePath != null &&
-                              File(job.inputImagePath!).existsSync())
-                          ? Stack(
-                              key: const ValueKey('blurred'),
-                              children: [
-                                ImageFiltered(
-                                  imageFilter:
-                                      ImageFilter.blur(sigmaX: 6, sigmaY: 6),
-                                  child: Image.file(
-                                    File(job.inputImagePath!),
-                                    width: 52,
-                                    height: 52,
-                                    fit: BoxFit.cover,
-                                  ),
-                                ),
-                                if (job.status == 'processing')
-                                  Positioned.fill(
-                                    child: Shimmer.fromColors(
-                                      baseColor: Colors.white24,
-                                      highlightColor: Colors.white70,
-                                      child: Container(color: Colors.white24),
-                                    ),
-                                  ),
-                              ],
-                            )
-                          : Container(
-                              key: const ValueKey('placeholder'),
-                              width: 52,
-                              height: 52,
-                              color: Colors.black26,
-                              child: const Icon(Icons.image,
-                                  color: Colors.white54),
-                            ),
-                );
-              },
-            ),
+          // ✅ Thumbnail area
+          leading: ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: _buildThumbnail(cs),
           ),
 
-          // 🟣 TITLE
+          // ✅ Title
           title: Text(
             job.title,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w500,
+            style: textTheme.bodyLarge?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: cs.onSurface,
             ),
           ),
 
-          // 🟣 SUBTITLE AREA (fade between processing ↔ completed)
+          // ✅ Status animated
           subtitle: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 350),
-            switchInCurve: Curves.easeOut,
-            switchOutCurve: Curves.easeIn,
-            transitionBuilder: (child, animation) =>
-                FadeTransition(opacity: animation, child: child),
-            child: job.status == 'processing'
-                ? const Row(
-                    key: ValueKey('processing'),
-                    children: [
-                      SizedBox(
-                        height: 16,
-                        width: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.blueAccent,
-                        ),
-                      ),
-                      SizedBox(width: 10),
-                      Text(
-                        "PROCESSING...",
-                        style: TextStyle(
-                          color: Colors.blueAccent,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
-                  )
-                : Row(
-                    key: ValueKey('completed_or_failed'),
-                    children: [
-                      Icon(
-                        job.status == 'failed'
-                            ? Icons.error_outline
-                            : Icons.check_circle,
-                        size: 16,
-                        color: job.status == 'failed'
-                            ? Colors.redAccent
-                            : Colors.greenAccent,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        job.status.toUpperCase(),
-                        style: TextStyle(
-                          color: job.status == 'failed'
-                              ? Colors.redAccent
-                              : Colors.greenAccent,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
-                  ),
+            duration: const Duration(milliseconds: 300),
+            child: _buildStatus(cs),
           ),
 
-          // 🟣 TRAILING BUTTONS
+          // ✅ Trailing buttons
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               if (job.status == 'completed')
                 IconButton(
-                  icon: const Icon(Icons.download, color: Colors.white),
+                  icon: Icon(Icons.download, color: cs.primary),
                   tooltip: 'Save to device',
                   onPressed: () => _download(context),
                 ),
+
               IconButton(
-                icon: const Icon(Icons.delete, color: Colors.white70),
+                icon: Icon(Icons.delete_outline, color: cs.onSurfaceVariant),
                 tooltip: 'Delete Job',
-                onPressed: () async {
-                  bool deleteGalleryFile = false;
-
-                  final confirmed = await showDialog<bool>(
-                    context: context,
-                    builder: (context) {
-                      return StatefulBuilder(
-                        builder: (context, setState) => AlertDialog(
-                          backgroundColor: Colors.grey[900],
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16)),
-                          title: const Text(
-                            'Delete this job?',
-                            style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold),
-                          ),
-                          content: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Text(
-                                'This will remove this job from your list and delete cached files.',
-                                style: TextStyle(
-                                    color: Colors.white70, height: 1.4),
-                              ),
-                              const SizedBox(height: 12),
-                              Row(
-                                children: [
-                                  Checkbox(
-                                    value: deleteGalleryFile,
-                                    onChanged: (val) => setState(
-                                        () => deleteGalleryFile = val ?? false),
-                                    activeColor: Colors.redAccent,
-                                    side:
-                                        const BorderSide(color: Colors.white54),
-                                  ),
-                                  const Flexible(
-                                    child: Text(
-                                      'Also delete saved result file from gallery',
-                                      style: TextStyle(color: Colors.white70),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.of(context).pop(false),
-                              child: const Text('Cancel',
-                                  style: TextStyle(color: Colors.blue)),
-                            ),
-                            TextButton(
-                              onPressed: () => Navigator.of(context).pop(true),
-                              child: const Text('Delete',
-                                  style: TextStyle(color: Colors.redAccent)),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  );
-
-                  if (confirmed == true) {
-                    await FileService.deleteJobFiles(job,
-                        deleteGalleryFile: deleteGalleryFile);
-
-                    jobListNotifier.value = jobListNotifier.value
-                        .where((j) => j.jobId != job.jobId)
-                        .toList();
-                    await saveJobsToPrefs();
-                  }
-                },
+                onPressed: () => _confirmDelete(context, cs),
               ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  // ✅ Thumbnail widget
+  Widget _buildThumbnail(ColorScheme cs) {
+    final fileExists =
+        job.localFilePath != null && File(job.localFilePath!).existsSync();
+
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 350),
+      child: fileExists
+          ? Image.file(
+              File(job.localFilePath!),
+              key: ValueKey(job.localFilePath),
+              width: 52,
+              height: 52,
+              fit: BoxFit.cover,
+            )
+          : _buildBlurOrPlaceholder(cs),
+    );
+  }
+
+  Widget _buildBlurOrPlaceholder(ColorScheme cs) {
+    final inputExists =
+        job.inputImagePath != null && File(job.inputImagePath!).existsSync();
+
+    if ((job.status == 'processing' || job.status == 'completed') &&
+        inputExists) {
+      return Stack(
+        key: const ValueKey('blurred'),
+        children: [
+          ImageFiltered(
+            imageFilter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+            child: Image.file(
+              File(job.inputImagePath!),
+              width: 52,
+              height: 52,
+              fit: BoxFit.cover,
+            ),
+          ),
+
+          if (job.status == 'processing')
+            Positioned.fill(
+              child: Shimmer.fromColors(
+                baseColor: cs.primary.withOpacity(0.15),
+                highlightColor: cs.primary.withOpacity(0.45),
+                child: Container(color: cs.primary.withOpacity(0.10)),
+              ),
+            ),
+        ],
+      );
+    }
+
+    return Container(
+      key: const ValueKey('placeholder'),
+      width: 52,
+      height: 52,
+      color: cs.surfaceContainerHighest,
+      child: Icon(Icons.image, color: cs.onSurfaceVariant),
+    );
+  }
+
+  // ✅ Status widget
+  Widget _buildStatus(ColorScheme cs) {
+    if (job.status == 'processing') {
+      return Row(
+        key: const ValueKey('processing'),
+        children: [
+          SizedBox(
+            height: 16,
+            width: 16,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: cs.primary,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            "PROCESSING…",
+            style: TextStyle(
+              color: cs.primary,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      );
+    }
+
+    final isFailed = job.status == 'failed';
+
+    return Row(
+      key: const ValueKey('completed_or_failed'),
+      children: [
+        Icon(
+          isFailed ? Icons.error_outline : Icons.check_circle_outline,
+          size: 16,
+          color: isFailed ? cs.error : cs.secondary,
+        ),
+        const SizedBox(width: 8),
+        Text(
+          job.status.toUpperCase(),
+          style: TextStyle(
+            color: isFailed ? cs.error : cs.secondary,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ✅ Delete confirmation dialog
+  Future<void> _confirmDelete(BuildContext context, ColorScheme cs) async {
+    bool deleteGalleryFile = false;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) => AlertDialog(
+            backgroundColor: cs.surface,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+            ),
+            title: Text(
+              'Delete this job?',
+              style: TextStyle(
+                color: cs.onSurface,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'This will remove this job from your list and delete related files.',
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Checkbox(
+                      value: deleteGalleryFile,
+                      onChanged: (val) =>
+                          setState(() => deleteGalleryFile = val ?? false),
+                      activeColor: cs.error,
+                      side: BorderSide(color: cs.onSurfaceVariant),
+                    ),
+                    Flexible(
+                      child: Text(
+                        'Also delete saved result file from gallery',
+                        style: TextStyle(color: cs.onSurfaceVariant),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                child: Text(
+                  'Cancel',
+                  style: TextStyle(color: cs.primary),
+                ),
+                onPressed: () => Navigator.pop(context, false),
+              ),
+              TextButton(
+                child: Text(
+                  'Delete',
+                  style: TextStyle(color: cs.error),
+                ),
+                onPressed: () => Navigator.pop(context, true),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (confirmed == true) {
+      await FileService.deleteJobFiles(job,
+          deleteGalleryFile: deleteGalleryFile);
+
+      jobListNotifier.value = jobListNotifier.value
+          .where((j) => j.jobId != job.jobId)
+          .toList();
+      await saveJobsToPrefs();
+    }
   }
 }

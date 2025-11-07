@@ -5,6 +5,59 @@
       "accent": "#8B5CF6",
       "tools": [
         {
+          "name": "Qwen Image",
+          "icon": "images",
+          "caps": [
+            "Text → Image"
+          ],
+          "type": "generic",
+          "model": "qwen_image",
+          "cost": 30,
+          "offer": 5,
+          "inputs": [
+            {
+              "id": "prompt",
+              "type": "text",
+              "label": "Describe the image you want"
+            },
+            {
+              "id": "scale_factor",
+              "type": "slider",
+              "label": "Upscale Factor",
+              "min": 1,
+              "max": 4,
+              "default": 2
+            }
+          ],
+          "elements": [
+            {
+              "type": "prompt",
+              "input_ref": "prompt"
+            },
+            {
+              "type": "slider",
+              "input_ref": "scale_factor"
+            },
+            {
+              "type": "generate_button"
+            },
+            {
+              "type": "output_preview"
+            }
+          ],
+          "params": {
+            "cfg_scale": 1.0,
+            "num_inference_steps": 8,
+            "scale_image": true,
+            "scale_factor": "{{scale_factor}}",
+            "negative_prompt": " "
+          },
+          "root_params": {
+            "prompt": "{{prompt}}"
+          },
+          "outputType": "image"
+        },
+        {
           "name": "Flux Kontext Edit",
           "icon": "sparkles",
           "caps": [
@@ -56,7 +109,12 @@
             "steps": 28,
             "guidance_scale": 3.0,
             "seed": "random",
-            "negative_prompt": "blurry, distorted, lowres"
+            "negative_prompt": "blurry, distorted, lowres",
+            "init_image": "{{init_image}}",
+            "scale_factor": "{{scale_factor}}"
+          },
+          "root_params": {
+            "prompt": "{{prompt}}"
           },
           "outputType": "image"
         },
@@ -109,9 +167,15 @@
             }
           ],
           "params": {
-            "steps": 8,
-            "guidance_scale": 3.0,
-            "seed": "random"
+            "num_inference_steps": 8,
+            "cfg_scale": 3.0,
+            "seed": "random",
+            "init_image": "{{init_image}}",
+            "scale_factor": "{{scale_factor}}"
+          },
+          "root_params": {
+            "prompt": "{{prompt}}",
+            "negative_prompt": " "
           },
           "outputType": "image"
         },
@@ -164,92 +228,14 @@
             }
           ],
           "params": {
-            "steps": 8,
-            "guidance_scale": 3.0,
-            "seed": "random"
+            "cfg_scale": 1.0,
+            "num_inference_steps": 4,
+            "init_image": "{{images}}",
+            "scale_factor": "{{scale_factor}}"
           },
-          "outputType": "image"
-        },
-        {
-          "name": "Background Remover",
-          "icon": "scissors",
-          "caps": [
-            "Image → Transparent"
-          ],
-          "type": "generic",
-          "model": "background_remover",
-          "cost": 30,
-          "offer": 5,
-          "inputs": [
-            {
-              "id": "image",
-              "type": "image",
-              "label": "Upload Image",
-              "min": 1,
-              "max": 1
-            }
-          ],
-          "elements": [
-            {
-              "type": "image_upload",
-              "input_ref": "init_image"
-            },
-            {
-              "type": "generate_button"
-            },
-            {
-              "type": "output_preview"
-            }
-          ],
-          "params": {
-            "mode": "remove_bg"
-          },
-          "outputType": "image"
-        },
-        {
-          "name": "LaMa Inpainter",
-          "icon": "eraser",
-          "caps": [
-            "Small Edits",
-            "Remove Objects"
-          ],
-          "type": "generic",
-          "model": "lama_inpainter",
-          "cost": 30,
-          "offer": 5,
-          "inputs": [
-            {
-              "id": "image",
-              "type": "image",
-              "label": "Upload Image",
-              "min": 1,
-              "max": 1
-            },
-            {
-              "id": "mask_image",
-              "type": "image",
-              "label": "Mask (white=replace)"
-            }
-          ],
-          "elements": [
-            {
-              "type": "image_upload",
-              "input_ref": "init_image"
-            },
-            {
-              "type": "painter",
-              "input_ref": "mask_image"
-            },
-            {
-              "type": "generate_button"
-            },
-            {
-              "type": "output_preview"
-            }
-          ],
-          "params": {
-            "mode": "inpaint",
-            "strength": 0.9
+          "root_params": {
+            "prompt": "{{prompt}}",
+            "negative_prompt": " "
           },
           "outputType": "image"
         },
@@ -274,22 +260,22 @@
             {
               "id": "init_image",
               "type": "image",
-              "label": "Initial Image",
+              "label": "Initial Image (optional)",
               "min": 0,
               "max": 1
             },
             {
               "id": "mask_image",
               "type": "image",
-              "label": "Mask Image"
+              "label": "Mask Image (for inpainting)"
             },
             {
               "id": "scale_factor",
               "type": "slider",
-              "label": "Scale Factor",
+              "label": "Upscale Factor",
               "min": 1,
               "max": 4,
-              "default": 1
+              "default": 2
             }
           ],
           "modes": {
@@ -301,7 +287,7 @@
                   "input_ref": "prompt"
                 },
                 {
-                  "type": "upscale",
+                  "type": "slider",
                   "input_ref": "scale_factor"
                 },
                 {
@@ -356,10 +342,17 @@
             }
           },
           "params": {
-            "steps": 50,
-            "guidance_scale": 8.5,
-            "strength": 0.85,
-            "seed": "random"
+            "sample_steps": "{{sample_steps}}",
+            "cfg_scale": "1.0",
+            "sampler": "DPMSolverMultistep",
+            "strength": "1.0",
+            "scale_factor": "{{scale_factor}}",
+            "seed": "random",
+            "init_image": "{{init_image}}",
+            "mask_image": "{{mask_image}}"
+          },
+          "root_params": {
+            "prompt": "{{prompt}}"
           },
           "outputType": "image"
         },
@@ -370,12 +363,12 @@
             "Expand Image"
           ],
           "type": "generic",
-          "model": "diffusion_outpaint",
+          "model": "diffusers_outpaint",
           "cost": 30,
           "offer": 5,
           "inputs": [
             {
-              "id": "image",
+              "id": "init_image",
               "type": "image",
               "label": "Upload Image",
               "min": 1,
@@ -387,7 +380,7 @@
               "label": "Describe Expansion"
             },
             {
-              "id": "expand",
+              "id": "alignment",
               "type": "dropdown",
               "label": "Expand Direction",
               "options": [
@@ -395,8 +388,31 @@
                 "Bottom",
                 "Left",
                 "Right",
-                "All Sides"
-              ]
+                "All Sides",
+                "Middle"
+              ],
+              "default": "Middle"
+            },
+            {
+              "id": "aspect_ratio",
+              "type": "dropdown",
+              "label": "Aspect Ratio",
+              "options": [
+                "1:1",
+                "16:9",
+                "9:16",
+                "4:3",
+                "3:4"
+              ],
+              "default": "9:16"
+            },
+            {
+              "id": "scale_factor",
+              "type": "slider",
+              "label": "Upscale Factor",
+              "min": 1,
+              "max": 4,
+              "default": 2
             }
           ],
           "elements": [
@@ -410,7 +426,11 @@
             },
             {
               "type": "dropdown",
-              "input_ref": "expand"
+              "input_ref": "alignment"
+            },
+            {
+              "type": "dropdown",
+              "input_ref": "aspect_ratio"
             },
             {
               "type": "generate_button"
@@ -420,8 +440,126 @@
             }
           ],
           "params": {
-            "outpaint_strength": 0.8,
-            "padding": 128
+            "init_image": "{{init_image}}",
+            "alignment": "{{alignment}}",
+            "aspect_ratio": "{{aspect_ratio}}",
+            "num_inference_steps": 12,
+            "overlap_percentage": 1,
+            "resize_option": "Full",
+            "custom_resize_percentage": 100,
+            "scale_image": true,
+            "scale_factor": "{{scale_factor}}",
+            "scale_model_name": "RealESRGAN_x{{scale_factor}}plus"
+          },
+          "root_params": {
+            "prompt": "{{prompt}}"
+          },
+          "outputType": "image"
+        },
+        {
+          "name": "Background Remover",
+          "icon": "scissors",
+          "caps": [
+            "Image → Transparent"
+          ],
+          "type": "generic",
+          "model": "basic_utils",
+          "mode": "bg_remove",
+          "cost": 30,
+          "offer": 5,
+          "inputs": [
+            {
+              "id": "init_image",
+              "type": "image",
+              "label": "Upload Image",
+              "min": 1,
+              "max": 1
+            },
+            {
+              "id": "scale_factor",
+              "type": "slider",
+              "label": "Upscale Factor",
+              "min": 1,
+              "max": 4,
+              "default": 2
+            }
+          ],
+          "elements": [
+            {
+              "type": "image_upload",
+              "input_ref": "init_image"
+            },
+            {
+              "type": "generate_button"
+            },
+            {
+              "type": "output_preview"
+            }
+          ],
+          "params": {
+            "mode": "bg_remove",
+            "init_image": "{{init_image}}",
+            "scale_image": true,
+            "scale_factor": "{{scale_factor}}"
+          },
+          "outputType": "image"
+        },
+        {
+          "name": "LaMa Inpainter",
+          "icon": "eraser",
+          "caps": [
+            "Remove Objects",
+            "Smart Fill"
+          ],
+          "type": "generic",
+          "model": "basic_utils",
+          "mode": "lama_inpaint",
+          "cost": 30,
+          "offer": 5,
+          "inputs": [
+            {
+              "id": "init_image",
+              "type": "image",
+              "label": "Upload Image",
+              "min": 1,
+              "max": 1
+            },
+            {
+              "id": "mask_image",
+              "type": "image",
+              "label": "Mask (white = replace area)"
+            },
+            {
+              "id": "scale_factor",
+              "type": "slider",
+              "label": "Upscale Factor",
+              "min": 1,
+              "max": 4,
+              "default": 2
+            }
+          ],
+          "elements": [
+            {
+              "type": "image_upload",
+              "input_ref": "init_image"
+            },
+            {
+              "type": "painter",
+              "input_ref": "mask_image"
+            },
+            {
+              "type": "generate_button"
+            },
+            {
+              "type": "output_preview"
+            }
+          ],
+          "params": {
+            "mode": "lama_inpaint",
+            "init_image": "{{init_image}}",
+            "mask_image": "{{mask_image}}",
+            "scale_image": true,
+            "scale_factor": "{{scale_factor}}"
           },
           "outputType": "image"
         }
@@ -439,7 +577,7 @@
             "Text → Image"
           ],
           "type": "generic",
-          "model": "wan2_1",
+          "model": "fastwan_21_1b",
           "cost": 30,
           "offer": 5,
           "inputs": [
@@ -447,6 +585,14 @@
               "id": "prompt",
               "type": "text",
               "label": "Prompt"
+            },
+            {
+              "id": "scale_factor",
+              "type": "slider",
+              "label": "Upscale Factor",
+              "min": 1,
+              "max": 4,
+              "default": 1
             }
           ],
           "modes": {
@@ -482,9 +628,21 @@
             }
           },
           "params": {
-            "resolution": "512x512",
-            "duration": 4,
-            "fps": 24
+            "steps": 8,
+            "guidance_scale": 0.0,
+            "seed": 42,
+            "randomize_seed": true,
+            "height": 896,
+            "width": 896,
+            "negative_prompt": "blurry, distorted, lowres",
+            "output_dir": "./outputs",
+            "scale_image": true,
+            "scale_factor": "{{scale_factor}}",
+            "duration_seconds": 5,
+            "mode": "{{mode}}"
+          },
+          "root_params": {
+            "prompt": "{{prompt}}"
           },
           "outputType": "video"
         },
@@ -497,7 +655,7 @@
             "Text → Image"
           ],
           "type": "generic",
-          "model": "wan2_2",
+          "model": "fastwan_22_5b",
           "cost": 30,
           "offer": 5,
           "inputs": [
@@ -512,6 +670,14 @@
               "label": "Initial Image (optional)",
               "min": 0,
               "max": 1
+            },
+            {
+              "id": "scale_factor",
+              "type": "slider",
+              "label": "Upscale Factor",
+              "min": 1,
+              "max": 4,
+              "default": 1
             }
           ],
           "modes": {
@@ -566,9 +732,23 @@
             }
           },
           "params": {
-            "resolution": "720p",
-            "duration": 5,
-            "fps": 24
+            "steps": 8,
+            "guidance_scale": 0.0,
+            "seed": 42,
+            "randomize_seed": true,
+            "height": 896,
+            "width": 896,
+            "negative_prompt": "blurry, distorted, lowres",
+            "output_dir": "./outputs",
+            "scale_image": true,
+            "scale_factor": "{{scale_factor}}",
+            "duration_seconds": 5,
+            "fps": 24,
+            "init_image": "{{init_image}}",
+            "mode": "{{mode}}"
+          },
+          "root_params": {
+            "prompt": "{{prompt}}"
           },
           "outputType": "video"
         }
@@ -609,7 +789,7 @@
           "elements": [
             {
               "type": "image_upload",
-              "input_ref": "init_image"
+              "input_ref": "image"
             },
             {
               "type": "generate_button"
@@ -619,9 +799,10 @@
             }
           ],
           "params": {
-            "mode": "superres",
-            "tile_size": 512
+            "init_image": "{{image}}",
+            "scale": "{{scale_factor}}"
           },
+          "root_params": {},
           "outputType": "image"
         },
         {
@@ -655,7 +836,7 @@
           "elements": [
             {
               "type": "image_upload",
-              "input_ref": "init_image"
+              "input_ref": "image"
             },
             {
               "type": "generate_button"
@@ -665,9 +846,10 @@
             }
           ],
           "params": {
-            "mode": "superres",
-            "tile_size": 512
+            "init_image": "{{image}}",
+            "scale": "{{scale_factor}}"
           },
+          "root_params": {},
           "outputType": "image"
         },
         {
@@ -701,7 +883,7 @@
           "elements": [
             {
               "type": "image_upload",
-              "input_ref": "init_image"
+              "input_ref": "image"
             },
             {
               "type": "generate_button"
@@ -711,9 +893,10 @@
             }
           ],
           "params": {
-            "mode": "superres",
-            "tile_size": 512
+            "init_image": "{{image}}",
+            "scale": "{{scale_factor}}"
           },
+          "root_params": {},
           "outputType": "image"
         }
       ]
