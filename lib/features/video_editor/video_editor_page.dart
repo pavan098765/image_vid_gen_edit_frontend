@@ -34,6 +34,7 @@ class _VideoEditorPageState extends State<VideoEditorPage> {
 
   // Exported result playback (inline preview)
   String? _outputPath;
+  // ignore: unused_field
   Duration _generationTime = Duration.zero;
   VideoPlayerController? _resultController;
 
