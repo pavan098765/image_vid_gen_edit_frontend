@@ -567,7 +567,7 @@ class _VideoEditorPageState extends State<VideoEditorPage> {
     );
   }
 
-  // ---------------- RESULT SCREEN ----------------
+  // // ---------------- RESULT SCREEN ----------------
   Widget _buildResultScreen() {
     final controller = _resultController;
     final cs = Theme.of(context).colorScheme;
@@ -576,146 +576,146 @@ class _VideoEditorPageState extends State<VideoEditorPage> {
       return const Center(child: CircularProgressIndicator());
     }
 
+    final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
     final videoHeight = min(screenHeight * 0.55, 360.0);
+    final videoWidth = screenWidth; // full width
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 0),
       child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 480),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Text(
-                'Edited Video',
-                style: Theme.of(context)
-                    .textTheme
-                    .titleLarge
-                    ?.copyWith(fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Text(
+              'Edited Video',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleLarge
+                  ?.copyWith(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 12),
 
-              // Video card
-              Container(
-                constraints: BoxConstraints(maxHeight: videoHeight),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(18),
-                  gradient: LinearGradient(
-                    colors: [
-                      cs.surface.withOpacity(0.85),
-                      cs.surface.withOpacity(0.60),
-                    ],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: cs.shadow.withOpacity(0.20),
-                      blurRadius: 20,
-                      offset: const Offset(0, 6),
-                    ),
+            // Video card
+            Container(
+              width: videoWidth,
+              constraints: BoxConstraints(maxHeight: videoHeight),
+              margin: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                gradient: LinearGradient(
+                  colors: [
+                    cs.surface.withOpacity(0.9),
+                    cs.surface.withOpacity(0.65),
                   ],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
                 ),
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(18),
-                      child: AspectRatio(
-                        aspectRatio: controller.value.aspectRatio,
-                        child: VideoPlayer(controller),
-                      ),
-                    ),
+                boxShadow: [
+                  BoxShadow(
+                    color: cs.shadow.withOpacity(0.25),
+                    blurRadius: 22,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              clipBehavior: Clip.antiAlias, // keeps overlay clipping clean
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  // Video fills entire available area, no rounding on video itself
+                  AspectRatio(
+                    aspectRatio: controller.value.aspectRatio,
+                    child: VideoPlayer(controller),
+                  ),
 
-                    // Play / Pause overlay
-                    Positioned.fill(
-                      child: GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            controller.value.isPlaying
-                                ? controller.pause()
-                                : controller.play();
-                          });
-                        },
-                        child: AnimatedOpacity(
-                          opacity: controller.value.isPlaying ? 0.0 : 1.0,
-                          duration: const Duration(milliseconds: 250),
-                          child: Container(
-                            color: cs.surface.withOpacity(0.25),
-                            child: Icon(
-                              Icons.play_circle_fill_rounded,
-                              size: 90,
-                              color: cs.onSurface.withOpacity(0.85),
-                            ),
+                  // Play / Pause overlay
+                  Positioned.fill(
+                    child: GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          controller.value.isPlaying
+                              ? controller.pause()
+                              : controller.play();
+                        });
+                      },
+                      child: AnimatedOpacity(
+                        opacity: controller.value.isPlaying ? 0.0 : 1.0,
+                        duration: const Duration(milliseconds: 250),
+                        child: Container(
+                          color: cs.background.withOpacity(0.25),
+                          child: Icon(
+                            Icons.play_circle_fill_rounded,
+                            size: 90,
+                            color: cs.onSurface.withOpacity(0.85),
                           ),
                         ),
                       ),
                     ),
-
-                    // Progress bar
-                    Positioned(
-                      bottom: 8,
-                      left: 12,
-                      right: 12,
-                      child: Column(
-                        children: [
-                          VideoProgressIndicator(
-                            controller,
-                            allowScrubbing: true,
-                            colors: VideoProgressColors(
-                              playedColor: cs.primary,
-                              bufferedColor: cs.onSurface.withOpacity(0.30),
-                              backgroundColor: cs.onSurface.withOpacity(0.15),
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                _formatDuration(controller.value.position),
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: cs.onSurface.withOpacity(0.70),
-                                ),
-                              ),
-                              Text(
-                                _formatDuration(controller.value.duration),
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: cs.onSurface.withOpacity(0.70),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              Wrap(
-                spacing: 12,
-                alignment: WrapAlignment.center,
-                children: [
-                  FilledButton.icon(
-                    onPressed: () => setState(() => _editorOpen = true),
-                    icon: const Icon(Icons.edit),
-                    label: const Text('Edit Again'),
                   ),
-                  FilledButton.icon(
-                    onPressed: _saveExported,
-                    icon: const Icon(Icons.save_alt),
-                    label: const Text('Save Video'),
+
+                  // Progress bar and duration text
+                  Positioned(
+                    bottom: 8,
+                    left: 12,
+                    right: 12,
+                    child: Column(
+                      children: [
+                        VideoProgressIndicator(
+                          controller,
+                          allowScrubbing: true,
+                          colors: VideoProgressColors(
+                            playedColor: cs.primary,
+                            bufferedColor: cs.onSurface.withOpacity(0.30),
+                            backgroundColor: cs.onSurface.withOpacity(0.15),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              _formatDuration(controller.value.position),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: cs.onSurface.withOpacity(0.70),
+                              ),
+                            ),
+                            Text(
+                              _formatDuration(controller.value.duration),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: cs.onSurface.withOpacity(0.70),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
-            ],
-          ),
+            ),
+
+            const SizedBox(height: 24),
+
+            Wrap(
+              spacing: 12,
+              alignment: WrapAlignment.center,
+              children: [
+                FilledButton.icon(
+                  onPressed: () => setState(() => _editorOpen = true),
+                  icon: const Icon(Icons.edit),
+                  label: const Text('Edit Again'),
+                ),
+                FilledButton.icon(
+                  onPressed: _saveExported,
+                  icon: const Icon(Icons.save_alt),
+                  label: const Text('Save Video'),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );

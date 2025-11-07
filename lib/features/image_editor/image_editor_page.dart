@@ -17,22 +17,18 @@ class _EditorPageState extends State<EditorPage> {
   File? _selectedImage;
   final ImagePicker _picker = ImagePicker();
 
-  // track last time editing completed — used to avoid immediately showing close dialog
   DateTime? _lastEditCompleteAt;
 
-  // Editor configuration
   late final ProImageEditorConfigs _configs = const ProImageEditorConfigs();
 
-  // Default callbacks (base)
   late final ProImageEditorCallbacks _callbacks = ProImageEditorCallbacks(
     onImageEditingComplete: (bytes) async {
       debugPrint("✅ Image editing completed");
     },
-    // leave onCloseEditor empty / noop so we don't interfere with internal navigation
     onCloseEditor: (_) {},
   );
 
-  /// Pick image from gallery or camera (theme-adaptive bottom sheet with subtle gradient)
+  // Pick image from gallery or camera
   Future<void> _pickImage() async {
     try {
       final source = await _showSourcePickerSheet();
@@ -41,7 +37,8 @@ class _EditorPageState extends State<EditorPage> {
       final XFile? pickedFile = await _picker.pickImage(source: source);
       if (pickedFile != null) {
         final bytes = await pickedFile.readAsBytes();
-        final tempFile = await FileService.writeTempFile(bytes, pickedFile.name);
+        final tempFile =
+            await FileService.writeTempFile(bytes, pickedFile.name);
 
         if (!mounted) return;
         setState(() {
@@ -66,14 +63,14 @@ class _EditorPageState extends State<EditorPage> {
 
     return showModalBottomSheet<ImageSource>(
       context: context,
-      backgroundColor: Colors.transparent, // we draw our own rounded surface
+      backgroundColor: Colors.transparent,
       builder: (_) {
         return SafeArea(
           child: Container(
             margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-              // Subtle gradient “Option B” polish
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(20)),
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
@@ -89,7 +86,8 @@ class _EditorPageState extends State<EditorPage> {
               ),
               boxShadow: [
                 BoxShadow(
-                  color: (isDark ? Colors.black : Colors.black54).withOpacity(0.12),
+                  color: (isDark ? Colors.black : Colors.black54)
+                      .withOpacity(0.12),
                   blurRadius: 24,
                   spreadRadius: 2,
                   offset: const Offset(0, -2),
@@ -101,7 +99,6 @@ class _EditorPageState extends State<EditorPage> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Drag handle
                   Container(
                     width: 36,
                     height: 4,
@@ -138,33 +135,32 @@ class _EditorPageState extends State<EditorPage> {
     );
   }
 
-  /// Confirm close (triggered when user tries to exit the editor)
-  /// Returns true if we closed the editor (i.e., cleared selected image), false otherwise.
-  Future<bool> _confirmClose() async {
-    final result = await showDialog<_EditorCloseAction>(
-      context: context,
-      builder: (_) => const _ConfirmCloseDialog(),
-    );
+  // Show confirm exit dialog (video editor style)
+  Future<bool> _confirmExitEditing() async {
+    return (await showDialog<bool>(
+          context: context,
+          builder: (_) => const _ConfirmExitDialog(),
+        )) ??
+        false;
+  }
 
-    if (result == null || result == _EditorCloseAction.cancel) return false;
-
-    if (result == _EditorCloseAction.save) {
-      await _onExportPressed();
+  // Handle system/device back press
+  Future<bool> _handleSystemBack() async {
+    if (_selectedImage != null) {
+      final ok = await _confirmExitEditing();
+      if (ok) {
+        setState(() {
+          _selectedImage = null;
+          _exportedImage = null;
+          _lastEditCompleteAt = null;
+        });
+      }
+      return false;
     }
-
-    // Clear selection and exported bytes — this returns the UI to the image picker.
-    if (mounted) {
-      setState(() {
-        _selectedImage = null;
-        _exportedImage = null;
-        _lastEditCompleteAt = null;
-      });
-    }
-
     return true;
   }
 
-  /// Manual save button
+  // Manual save button
   Future<void> _onExportPressed() async {
     if (_exportedImage == null) {
       if (!mounted) return;
@@ -187,15 +183,8 @@ class _EditorPageState extends State<EditorPage> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    // Intercept system / app back navigation while an image is loaded.
     return WillPopScope(
-      onWillPop: () async {
-        if (_selectedImage != null) {
-          await _confirmClose();
-          return false; // prevent popping; we just cleared local state
-        }
-        return true;
-      },
+      onWillPop: _handleSystemBack,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Image Editor'),
@@ -219,7 +208,6 @@ class _EditorPageState extends State<EditorPage> {
             if (_selectedImage == null)
               _buildNoImagePlaceholder(context)
             else
-              // ProImageEditor: keep onCloseEditor minimal and do not clear state here.
               ProImageEditor.file(
                 _selectedImage!,
                 key: ValueKey(_selectedImage!.path),
@@ -230,18 +218,26 @@ class _EditorPageState extends State<EditorPage> {
                       _lastEditCompleteAt = DateTime.now();
                       setState(() => _exportedImage = bytes);
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('✅ Image editing complete')),
+                        const SnackBar(
+                            content: Text('✅ Image editing complete')),
                       );
                     }
                   },
-                  onCloseEditor: (_) {
-                    // intentionally minimal to avoid interfering with sub-tool navigation.
-                    debugPrint('pro_image_editor: onCloseEditor called (ignored here).');
+                  onCloseEditor: (_) async {
+                    final ok = await _confirmExitEditing();
+                    if (ok) {
+                      setState(() {
+                        _selectedImage = null;
+                        _exportedImage = null;
+                        _lastEditCompleteAt = null;
+                      });
+                    } else {
+                      debugPrint('❌ User cancelled exit from image editor.');
+                    }
                   },
                 ),
               ),
 
-            // Floating preview button (Option B styling: soft glassy chip)
             if (_exportedImage != null)
               Positioned(
                 right: 16,
@@ -299,7 +295,6 @@ class _EditorPageState extends State<EditorPage> {
         padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(20),
-          // glassy card with slight gradient (Option B)
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
@@ -332,7 +327,7 @@ class _EditorPageState extends State<EditorPage> {
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: cs.onSurface.withOpacity(0.70),
-                    height: 1.35,
+                    fontSize: 16,
                   ),
             ),
           ],
@@ -342,9 +337,34 @@ class _EditorPageState extends State<EditorPage> {
   }
 }
 
-enum _EditorCloseAction { cancel, discard, save }
+// Confirm Exit dialog (same as video editor)
+class _ConfirmExitDialog extends StatelessWidget {
+  const _ConfirmExitDialog();
 
-/// Fancy primary FAB with gradient halo (Option B)
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return AlertDialog(
+      title: Text('Exit editing?',
+          style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+      content: Text(
+        'Your unsaved changes will be lost. Exit editor?',
+        style: t.bodyMedium,
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('Exit'),
+        ),
+      ],
+    );
+  }
+}
+
 class _PrimaryFAB extends StatelessWidget {
   final String label;
   final IconData icon;
@@ -358,10 +378,8 @@ class _PrimaryFAB extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-
     return Container(
       decoration: BoxDecoration(
-        // subtle glow around the FAB
         boxShadow: [
           BoxShadow(
             color: cs.primary.withOpacity(0.35),
@@ -378,38 +396,6 @@ class _PrimaryFAB extends StatelessWidget {
         backgroundColor: cs.primary,
         foregroundColor: cs.onPrimary,
       ),
-    );
-    // Note: We keep native FAB for ripple/semantics, wrapping with a shadow container for polish.
-  }
-}
-
-/// Themed confirmation dialog using current Theme.dialogTheme
-class _ConfirmCloseDialog extends StatelessWidget {
-  const _ConfirmCloseDialog();
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
-    return AlertDialog(
-      title: Text('Exit the editor?', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-      content: Text(
-        'Do you want to save your work before closing?',
-        style: t.bodyMedium,
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(_EditorCloseAction.cancel),
-          child: const Text('Cancel'),
-        ),
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(_EditorCloseAction.discard),
-          child: const Text('Discard'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop(_EditorCloseAction.save),
-          child: const Text('Save & Exit'),
-        ),
-      ],
     );
   }
 }
@@ -463,7 +449,8 @@ class _SheetTile extends StatelessWidget {
 
 class _ResultPreviewPage extends StatelessWidget {
   final Uint8List imageBytes;
-  const _ResultPreviewPage({Key? key, required this.imageBytes}) : super(key: key);
+  const _ResultPreviewPage({Key? key, required this.imageBytes})
+      : super(key: key);
 
   @override
   Widget build(BuildContext context) {
