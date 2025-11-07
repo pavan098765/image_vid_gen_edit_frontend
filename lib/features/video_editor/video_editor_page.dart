@@ -2,7 +2,6 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
-import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -261,48 +260,6 @@ class _VideoEditorPageState extends State<VideoEditorPage> {
     }
   }
 
-  // Future<void> _onCloseEditor(EditorMode mode) async {
-  //   debugPrint(
-  //       '🎬 onCloseEditor called — mode: $mode, outputPath: $_outputPath');
-
-  //   // ✅ If a video was just exported successfully, show result screen — no dialog
-  //   if (_outputPath != null) {
-  //     try {
-  //       final file = File(_outputPath!);
-  //       if (await file.exists()) {
-  //         await _disposeResultController();
-  //         _resultController = VideoPlayerController.file(file);
-  //         await _resultController!.initialize();
-  //         await _resultController!.setLooping(true);
-  //         await _resultController!.play();
-  //       }
-  //     } catch (e) {
-  //       debugPrint('⚠️ Error preparing result controller: $e');
-  //     }
-
-  //     if (mounted) {
-  //       setState(() {
-  //         _editorOpen = false; // Hide editor, show result preview
-  //       });
-  //     }
-  //     return;
-  //   }
-
-  //   // 🟢 If no export → user pressed ❌ or back
-  //   final confirm = await _confirmExitEditing();
-  //   if (!confirm) return;
-
-  //   await _clearLoadedVideo();
-  //   if (mounted) {
-  //     ScaffoldMessenger.of(context).showSnackBar(
-  //       const SnackBar(
-  //         content: Text('Editor closed. Select another video to edit.'),
-  //         duration: Duration(seconds: 2),
-  //       ),
-  //     );
-  //   }
-  // }
-
   Future<void> _onCloseEditor(EditorMode mode) async {
     debugPrint(
         '🎬 onCloseEditor called — mode: $mode, outputPath: $_outputPath, exportJustCompleted: $_exportJustCompleted');
@@ -336,53 +293,53 @@ class _VideoEditorPageState extends State<VideoEditorPage> {
     if (!confirm) return;
 
     await _clearLoadedVideo();
-    // if (mounted) {
-    //   ScaffoldMessenger.of(context).showSnackBar(
-    //     const SnackBar(
-    //       content: Text('Editor closed. Select another video to edit.'),
-    //       duration: Duration(seconds: 2),
-    //     ),
-    //   );
-    // }
   }
 
   // ---------------- Save exported video ----------------
   Future<void> _saveExported() async {
     if (_outputPath == null) return;
     try {
-      final bytes = await File(_outputPath!).readAsBytes();
+      final file = File(_outputPath!);
+      if (!await file.exists()) return;
+
+      final bytes = await file.readAsBytes();
+
+      // 🎞 Generate a single thumbnail for bottom sheet preview
+      Uint8List? thumbBytes;
+      try {
+        final thumbList = await ProVideoEditor.instance.getKeyFrames(
+          KeyFramesConfigs(
+            video: EditorVideo.file(file),
+            outputSize: const Size.square(180),
+            boxFit: ThumbnailBoxFit.cover,
+            maxOutputFrames: 1,
+            outputFormat: ThumbnailFormat.jpeg,
+          ),
+        );
+        if (thumbList.isNotEmpty) {
+          thumbBytes = thumbList.first;
+        }
+      } catch (e) {
+        debugPrint("⚠️ Failed to create video thumbnail: $e");
+      }
+
+      // ✅ Save the video file
       await FileService.saveFile(
         context,
         bytes,
         extension: "mp4",
         customFileName: FileService.generateTimestampFilename("video", "mp4"),
+        // NEW: pass thumbnail image bytes for bottom sheet preview
+        previewBytes: thumbBytes,
       );
 
-      // ✅ Regenerate thumbnail from saved video
-      if (mounted) {
-        final file = File(_outputPath!);
-        if (await file.exists()) {
-          final thumbList = await ProVideoEditor.instance.getKeyFrames(
-            KeyFramesConfigs(
-              video: EditorVideo.file(file),
-              outputSize: const Size.square(180),
-              boxFit: ThumbnailBoxFit.cover,
-              maxOutputFrames: 1,
-              outputFormat: ThumbnailFormat.jpeg,
-            ),
-          );
-          if (thumbList.isNotEmpty) {
-            final newThumb = MemoryImage(thumbList.first);
-            await precacheImage(newThumb, context);
-            setState(() {
-              _thumbnails = [newThumb];
-            });
-          }
-        }
-
-        // ScaffoldMessenger.of(context).showSnackBar(
-        //   const SnackBar(content: Text('✅ Video saved successfully')),
-        // );
+      // ✅ Update in-memory thumbnail in editor view (if desired)
+      if (mounted && thumbBytes != null) {
+        final newThumb = MemoryImage(thumbBytes);
+        await precacheImage(newThumb, context);
+        setState(() {
+          _thumbnails = [newThumb];
+        });
       }
     } catch (e) {
       if (!mounted) return;
@@ -758,7 +715,7 @@ class _VideoEditorPageState extends State<VideoEditorPage> {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Exit editing?'),
-        content: const Text('Your changes are not exported yet. Exit editor?'),
+        content: const Text('Your unsaved changes will be lost. Exit editor?'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context, false),

@@ -29,6 +29,7 @@ class FileService {
     String subfolder = 'AI_Creative_Studio',
     String extension = 'png',
     bool showPreview = true,
+    Uint8List? previewBytes,
   }) async {
     final currentHash = sha1.convert(bytes).toString();
 
@@ -104,7 +105,7 @@ class FileService {
       final filePath = '${saveDir.path}/$fileName';
 
       if (context.mounted && showPreview) {
-        _showSavedBottomSheet(context, bytes, filePath);
+        _showSavedBottomSheet(context, bytes, filePath, previewBytes);
       }
 
       debugPrint('✅ Saved file: $filePath');
@@ -472,8 +473,8 @@ class FileService {
 
   /// 🪄 Bottom sheet confirmation with preview + open option
   static void _showSavedBottomSheet(
-      BuildContext context, Uint8List bytes, String filePath) {
-      final isVideo = filePath.toLowerCase().endsWith(".mp4");
+      BuildContext context, Uint8List bytes, String filePath, Uint8List? previewBytes) {
+    final isVideo = filePath.toLowerCase().endsWith(".mp4");
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.black.withOpacity(0.9),
@@ -488,21 +489,30 @@ class FileService {
             leading: ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: isVideo
-                  ? Container(
-                      width: 60,
-                      height: 60,
-                      color: Colors.white12,
-                      child: const Icon(
-                        Icons.videocam,
-                        color: Colors.white,
-                        size: 28,
-                      ),
-                    )
+                  ? (previewBytes != null
+                      ? Image.memory(
+                          previewBytes,
+                          width: 60,
+                          height: 60,
+                          fit: BoxFit.cover,
+                          filterQuality: FilterQuality.medium,
+                        )
+                      : Container(
+                          width: 60,
+                          height: 60,
+                          color: Colors.white12,
+                          child: const Icon(
+                            Icons.videocam,
+                            color: Colors.white,
+                            size: 28,
+                          ),
+                        ))
                   : Image.memory(
                       bytes,
                       width: 60,
                       height: 60,
                       fit: BoxFit.cover,
+                      filterQuality: FilterQuality.medium,
                     ),
             ),
             title: const Text(
