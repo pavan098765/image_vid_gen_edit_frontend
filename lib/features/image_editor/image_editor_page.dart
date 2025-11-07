@@ -32,59 +32,18 @@ class _EditorPageState extends State<EditorPage> {
     onCloseEditor: (_) {},
   );
 
-  /// Pick image from gallery or camera
+  /// Pick image from gallery or camera (theme-adaptive bottom sheet with subtle gradient)
   Future<void> _pickImage() async {
     try {
-      final source = await showModalBottomSheet<ImageSource>(
-        context: context,
-        backgroundColor: Colors.grey[900],
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-        ),
-        builder: (_) {
-          return SafeArea(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 12.0),
-                  child: Text(
-                    'Select Image Source',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-                ListTile(
-                  leading:
-                      const Icon(Icons.photo_library, color: Colors.white70),
-                  title: const Text('Gallery',
-                      style: TextStyle(color: Colors.white)),
-                  onTap: () => Navigator.pop(context, ImageSource.gallery),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.camera_alt, color: Colors.white70),
-                  title: const Text('Camera',
-                      style: TextStyle(color: Colors.white)),
-                  onTap: () => Navigator.pop(context, ImageSource.camera),
-                ),
-                const SizedBox(height: 8),
-              ],
-            ),
-          );
-        },
-      );
-
+      final source = await _showSourcePickerSheet();
       if (source == null) return;
 
       final XFile? pickedFile = await _picker.pickImage(source: source);
       if (pickedFile != null) {
         final bytes = await pickedFile.readAsBytes();
-        final tempFile =
-            await FileService.writeTempFile(bytes, pickedFile.name);
+        final tempFile = await FileService.writeTempFile(bytes, pickedFile.name);
 
+        if (!mounted) return;
         setState(() {
           _selectedImage = tempFile;
           _exportedImage = null;
@@ -101,31 +60,90 @@ class _EditorPageState extends State<EditorPage> {
     }
   }
 
+  Future<ImageSource?> _showSourcePickerSheet() async {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: Colors.transparent, // we draw our own rounded surface
+      builder: (_) {
+        return SafeArea(
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+              // Subtle gradient “Option B” polish
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: isDark
+                    ? [
+                        cs.surface.withOpacity(0.98),
+                        cs.surface.withOpacity(0.92),
+                      ]
+                    : [
+                        cs.surface.withOpacity(0.98),
+                        cs.surface.withOpacity(0.96),
+                      ],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: (isDark ? Colors.black : Colors.black54).withOpacity(0.12),
+                  blurRadius: 24,
+                  spreadRadius: 2,
+                  offset: const Offset(0, -2),
+                ),
+              ],
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Drag handle
+                  Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: cs.onSurface.withOpacity(0.22),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Select Image Source',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: cs.onSurface,
+                        ),
+                  ),
+                  const SizedBox(height: 8),
+                  _SheetTile(
+                    icon: Icons.photo_library,
+                    label: 'Gallery',
+                    onTap: () => Navigator.pop(context, ImageSource.gallery),
+                  ),
+                  _SheetTile(
+                    icon: Icons.camera_alt,
+                    label: 'Camera',
+                    onTap: () => Navigator.pop(context, ImageSource.camera),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   /// Confirm close (triggered when user tries to exit the editor)
   /// Returns true if we closed the editor (i.e., cleared selected image), false otherwise.
   Future<bool> _confirmClose() async {
     final result = await showDialog<_EditorCloseAction>(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Exit the editor?'),
-        content: const Text('Do you want to save your work before closing?'),
-        actions: [
-          TextButton(
-            onPressed: () =>
-                Navigator.of(context).pop(_EditorCloseAction.cancel),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () =>
-                Navigator.of(context).pop(_EditorCloseAction.discard),
-            child: const Text('Discard'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(_EditorCloseAction.save),
-            child: const Text('Save & Exit'),
-          ),
-        ],
-      ),
+      builder: (_) => const _ConfirmCloseDialog(),
     );
 
     if (result == null || result == _EditorCloseAction.cancel) return false;
@@ -149,6 +167,7 @@ class _EditorPageState extends State<EditorPage> {
   /// Manual save button
   Future<void> _onExportPressed() async {
     if (_exportedImage == null) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('No exported image available. Please finish editing.'),
@@ -166,17 +185,15 @@ class _EditorPageState extends State<EditorPage> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
     // Intercept system / app back navigation while an image is loaded.
     return WillPopScope(
       onWillPop: () async {
-        // If we have an image open in editor, ask the user before leaving.
         if (_selectedImage != null) {
-          // show confirm dialog; if user discards or saves, we clear selection.
           await _confirmClose();
-          // Prevent popping the route — we only changed local state to return to picker.
-          return false;
+          return false; // prevent popping; we just cleared local state
         }
-        // No image open — allow default back navigation.
         return true;
       },
       child: Scaffold(
@@ -200,10 +217,9 @@ class _EditorPageState extends State<EditorPage> {
         body: Stack(
           children: [
             if (_selectedImage == null)
-              _buildNoImagePlaceholder()
+              _buildNoImagePlaceholder(context)
             else
-              // ProImageEditor: don't implement custom 'onCloseEditor' behavior that clears state.
-              // Let sub-editors handle their own back/check behavior internally.
+              // ProImageEditor: keep onCloseEditor minimal and do not clear state here.
               ProImageEditor.file(
                 _selectedImage!,
                 key: ValueKey(_selectedImage!.path),
@@ -214,69 +230,113 @@ class _EditorPageState extends State<EditorPage> {
                       _lastEditCompleteAt = DateTime.now();
                       setState(() => _exportedImage = bytes);
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content: Text('✅ Image editing complete')),
+                        const SnackBar(content: Text('✅ Image editing complete')),
                       );
                     }
                   },
-
-                  // keep onCloseEditor minimal *and* no state-clearing here.
-                  // If the package signals a top-level close, it will also likely trigger a route pop
-                  // or the user will press system back — both will be handled by WillPopScope above.
                   onCloseEditor: (_) {
-                    // intentionally left minimal to avoid interfering with sub-tool navigation.
-                    debugPrint(
-                        'pro_image_editor: onCloseEditor called (ignored here).');
+                    // intentionally minimal to avoid interfering with sub-tool navigation.
+                    debugPrint('pro_image_editor: onCloseEditor called (ignored here).');
                   },
                 ),
               ),
 
-            // Floating preview button (optional)
+            // Floating preview button (Option B styling: soft glassy chip)
             if (_exportedImage != null)
               Positioned(
                 right: 16,
                 bottom: 100,
-                child: FloatingActionButton.small(
-                  backgroundColor: Colors.white24,
-                  tooltip: 'Preview Image',
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) =>
-                            _ResultPreviewPage(imageBytes: _exportedImage!),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: cs.primary.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(
+                        color: cs.primary.withOpacity(0.25),
+                        blurRadius: 18,
+                        offset: const Offset(0, 6),
                       ),
-                    );
-                  },
-                  child: const Icon(Icons.preview, color: Colors.white),
+                    ],
+                  ),
+                  child: FloatingActionButton.small(
+                    backgroundColor: Colors.transparent,
+                    foregroundColor: cs.onPrimary,
+                    elevation: 0,
+                    tooltip: 'Preview Image',
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              _ResultPreviewPage(imageBytes: _exportedImage!),
+                        ),
+                      );
+                    },
+                    child: const Icon(Icons.preview),
+                  ),
                 ),
               ),
           ],
         ),
         floatingActionButton: _selectedImage == null
-            ? FloatingActionButton.extended(
+            ? _PrimaryFAB(
+                label: 'Pick Image',
+                icon: Icons.add_photo_alternate_outlined,
                 onPressed: _pickImage,
-                label: const Text('Pick Image'),
-                icon: const Icon(Icons.add_photo_alternate_outlined),
               )
             : null,
       ),
     );
   }
 
-  Widget _buildNoImagePlaceholder() {
-    return const Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.image_outlined, size: 80, color: Colors.white38),
-          SizedBox(height: 16),
-          Text(
-            'No image selected.\nTap the button below to choose one.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.white60, fontSize: 16),
+  Widget _buildNoImagePlaceholder(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 24),
+        padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          // glassy card with slight gradient (Option B)
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: isDark
+                ? [cs.surface.withOpacity(0.70), cs.surface.withOpacity(0.55)]
+                : [cs.surface.withOpacity(0.85), cs.surface.withOpacity(0.70)],
           ),
-        ],
+          boxShadow: [
+            BoxShadow(
+              color: (isDark ? Colors.black : Colors.black54).withOpacity(0.10),
+              blurRadius: 24,
+              offset: const Offset(0, 10),
+            ),
+          ],
+          border: Border.all(
+            color: cs.outlineVariant.withOpacity(0.25),
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.image_outlined,
+              size: 80,
+              color: cs.onSurface.withOpacity(0.38),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'No image selected.\nTap the button below to choose one.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: cs.onSurface.withOpacity(0.70),
+                    height: 1.35,
+                  ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -284,17 +344,140 @@ class _EditorPageState extends State<EditorPage> {
 
 enum _EditorCloseAction { cancel, discard, save }
 
-class _ResultPreviewPage extends StatelessWidget {
-  final Uint8List imageBytes;
-  const _ResultPreviewPage({Key? key, required this.imageBytes})
-      : super(key: key);
+/// Fancy primary FAB with gradient halo (Option B)
+class _PrimaryFAB extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final VoidCallback onPressed;
+  const _PrimaryFAB({
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return Container(
+      decoration: BoxDecoration(
+        // subtle glow around the FAB
+        boxShadow: [
+          BoxShadow(
+            color: cs.primary.withOpacity(0.35),
+            blurRadius: 28,
+            spreadRadius: 1,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: FloatingActionButton.extended(
+        onPressed: onPressed,
+        label: Text(label),
+        icon: Icon(icon),
+        backgroundColor: cs.primary,
+        foregroundColor: cs.onPrimary,
+      ),
+    );
+    // Note: We keep native FAB for ripple/semantics, wrapping with a shadow container for polish.
+  }
+}
+
+/// Themed confirmation dialog using current Theme.dialogTheme
+class _ConfirmCloseDialog extends StatelessWidget {
+  const _ConfirmCloseDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return AlertDialog(
+      title: Text('Exit the editor?', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+      content: Text(
+        'Do you want to save your work before closing?',
+        style: t.bodyMedium,
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(_EditorCloseAction.cancel),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(_EditorCloseAction.discard),
+          child: const Text('Discard'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_EditorCloseAction.save),
+          child: const Text('Save & Exit'),
+        ),
+      ],
+    );
+  }
+}
+
+class _SheetTile extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  const _SheetTile({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+        child: Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: cs.primary.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: cs.primary),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                label,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: cs.onSurface,
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+            ),
+            Icon(Icons.chevron_right, color: cs.onSurface.withOpacity(0.4)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ResultPreviewPage extends StatelessWidget {
+  final Uint8List imageBytes;
+  const _ResultPreviewPage({Key? key, required this.imageBytes}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: const Text('Preview Result')),
-      backgroundColor: Colors.black,
-      body: Center(child: Image.memory(imageBytes)),
+      backgroundColor: cs.surface,
+      body: Center(
+        child: InteractiveViewer(
+          minScale: 0.5,
+          maxScale: 5,
+          child: Image.memory(imageBytes),
+        ),
+      ),
     );
   }
 }

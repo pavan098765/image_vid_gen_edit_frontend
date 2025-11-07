@@ -64,7 +64,7 @@ Future<void> _mergeAndPersistJobMap(Map<String, dynamic> jobMap) async {
         'model': old['model'] ?? jobMap['model'] ?? 'unknown',
         'outputType': old['outputType'] ?? jobMap['outputType'] ?? 'image',
         'downloadUrl':
-            downloadUrl.isNotEmpty ? downloadUrl : (old['downloadUrl'] ?? null),
+            downloadUrl.isNotEmpty ? downloadUrl : (old['downloadUrl']),
         'status': status.isNotEmpty ? status : (old['status'] ?? 'processing'),
         'createdAt': old['createdAt'] ?? DateTime.now().toIso8601String(),
         'localFilePath': old['localFilePath'],
@@ -141,8 +141,6 @@ Future<void> _reloadJobsToNotifier() async {
 /// Expected keys: job_id, status, download_url, title, model, outputType (optional)
 Future<void> _applyFcmUpdate(Map<String, dynamic> data) async {
   try {
-    if (data == null) return;
-    // Normalize expected fields
     final jobId = (data['job_id'] ?? data['jobId'] ?? '').toString();
     if (jobId.isEmpty) return;
 
@@ -210,7 +208,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         'model': old['model'] ?? model,
         'outputType': old['outputType'] ?? outputType,
         'downloadUrl':
-            downloadUrl.isNotEmpty ? downloadUrl : (old['downloadUrl'] ?? null),
+            downloadUrl.isNotEmpty ? downloadUrl : (old['downloadUrl']),
         'status': normalizedStatus.isNotEmpty
             ? normalizedStatus
             : (old['status'] ?? 'processing'),
@@ -432,8 +430,8 @@ Future<void> main() async {
 
   // 🟢 Wrap the app in lifecycle handler (so jobs auto-refresh when app resumes)
   runApp(
-    AppLifecycleHandler(
-      child: const AICreativeStudio(),
+    const AppLifecycleHandler(
+      child: AICreativeStudio(),
     ),
   );
 

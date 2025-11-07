@@ -345,7 +345,7 @@ class PollingService {
             DateTime.tryParse(job["createdAt"] ?? "") ?? DateTime.now();
         final ageMin = now.difference(createdAt).inMinutes;
         if (ageMin > maxJobAgeMinutes) {
-          debugPrint("⏩ Skipping old job ${job["jobId"]} (${ageMin} min old)");
+          debugPrint("⏩ Skipping old job ${job["jobId"]} ($ageMin min old)");
           return false;
         }
         return true;
