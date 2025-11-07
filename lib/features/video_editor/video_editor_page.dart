@@ -70,24 +70,79 @@ class _VideoEditorPageState extends State<VideoEditorPage> {
   }
 
   // ---------------- Picking & Initialize ----------------
+  /// Pick video from gallery or camera (bottom-sheet like image picker)
   Future<void> _pickVideo() async {
-    final picked = await ImagePicker().pickVideo(source: ImageSource.gallery);
-    if (picked == null) return;
+    try {
+      final source = await showModalBottomSheet<ImageSource>(
+        context: context,
+        backgroundColor: Colors.grey[900],
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        builder: (_) {
+          return SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12.0),
+                  child: Text(
+                    'Select Video Source',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+                ListTile(
+                  leading:
+                      const Icon(Icons.video_library, color: Colors.white70),
+                  title: const Text('Gallery',
+                      style: TextStyle(color: Colors.white)),
+                  onTap: () => Navigator.pop(context, ImageSource.gallery),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.videocam, color: Colors.white70),
+                  title: const Text('Camera',
+                      style: TextStyle(color: Colors.white)),
+                  onTap: () => Navigator.pop(context, ImageSource.camera),
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          );
+        },
+      );
 
-    await _disposeControllers();
+      if (source == null) return;
 
-    setState(() {
-      _video = EditorVideo.file(File(picked.path));
-      _outputPath = null;
-      _thumbnails = null;
-      _isInitializing = true;
-      _durationSpan = null;
-      _pendingSeek = null;
-      _editorOpen = true; // A: open editor automatically
-      _exportJustCompleted = false;
-    });
+      final picked = await ImagePicker().pickVideo(source: source);
+      if (picked == null) return;
 
-    await _initializeEditor();
+      // Clean up any existing controllers before loading the new video
+      await _disposeControllers();
+
+      setState(() {
+        _video = EditorVideo.file(File(picked.path));
+        _outputPath = null;
+        _thumbnails = null;
+        _isInitializing = true;
+        _durationSpan = null;
+        _pendingSeek = null;
+        _editorOpen = true; // open editor automatically
+        _exportJustCompleted = false;
+      });
+
+      await _initializeEditor();
+    } catch (e) {
+      debugPrint('❌ Error picking video: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error picking video: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _initializeEditor() async {
@@ -359,12 +414,6 @@ class _VideoEditorPageState extends State<VideoEditorPage> {
         appBar: AppBar(
           title: const Text('Video Editor'),
           actions: [
-            if (_video == null)
-              IconButton(
-                icon: const Icon(Icons.video_library_outlined),
-                tooltip: 'Pick Video',
-                onPressed: _pickVideo,
-              ),
             if (_video != null && !_editorOpen)
               IconButton(
                 icon: const Icon(Icons.edit),
@@ -373,7 +422,6 @@ class _VideoEditorPageState extends State<VideoEditorPage> {
                   _editorOpen = true;
                   _exportJustCompleted = false;
                 }),
-                // onPressed: () => setState(() => _editorOpen = true),
               ),
             if (_outputPath != null && !_editorOpen)
               IconButton(
@@ -383,7 +431,17 @@ class _VideoEditorPageState extends State<VideoEditorPage> {
               ),
           ],
         ),
+
         body: _buildBody(),
+
+        // ✅ Show floating pick-video FAB when no video is selected
+        floatingActionButton: _video == null
+            ? FloatingActionButton.extended(
+                onPressed: _pickVideo,
+                label: const Text('Pick Video'),
+                icon: const Icon(Icons.video_library_outlined),
+              )
+            : null,
       ),
     );
   }
@@ -689,22 +747,16 @@ class _VideoEditorPageState extends State<VideoEditorPage> {
   }
 
   Widget _pickPlaceholder() {
-    return Center(
+    return const Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.movie_outlined, size: 80, color: Colors.white38),
-          const SizedBox(height: 16),
-          const Text(
+          Icon(Icons.movie_outlined, size: 80, color: Colors.white38),
+          SizedBox(height: 16),
+          Text(
             'No video selected.\nTap the button below to choose one.',
             textAlign: TextAlign.center,
             style: TextStyle(color: Colors.white60, fontSize: 16),
-          ),
-          const SizedBox(height: 20),
-          FilledButton.icon(
-            onPressed: _pickVideo,
-            icon: const Icon(Icons.video_call_outlined),
-            label: const Text('Pick Video'),
           ),
         ],
       ),
