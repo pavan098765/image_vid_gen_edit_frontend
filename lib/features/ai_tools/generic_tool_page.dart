@@ -331,11 +331,26 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   Widget _buildCard({required Widget child}) => Container(
-        margin: const EdgeInsets.symmetric(vertical: 8),
-        padding: const EdgeInsets.all(12),
+        margin: const EdgeInsets.symmetric(vertical: 10),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.05),
-          borderRadius: BorderRadius.circular(12),
+          gradient: LinearGradient(
+            colors: [
+              Colors.white.withOpacity(0.06),
+              Colors.white.withOpacity(0.03),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.white.withOpacity(0.05)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.2),
+              blurRadius: 6,
+              offset: const Offset(0, 3),
+            ),
+          ],
         ),
         child: child,
       );
@@ -458,6 +473,68 @@ class _GenericToolPageState extends State<GenericToolPage>
     return finalImage!.buffer.asUint8List();
   }
 
+  /// Unified bottom-sheet picker for Gallery / Camera
+  Future<void> _pickImage(Map<String, dynamic> input) async {
+    try {
+      final source = await showModalBottomSheet<ImageSource>(
+        context: context,
+        backgroundColor: Colors.grey[900],
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        builder: (_) {
+          return SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12.0),
+                  child: Text(
+                    'Select Image Source',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+                ListTile(
+                  leading:
+                      const Icon(Icons.photo_library, color: Colors.white70),
+                  title: const Text('Gallery',
+                      style: TextStyle(color: Colors.white)),
+                  onTap: () => Navigator.pop(context, ImageSource.gallery),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.camera_alt, color: Colors.white70),
+                  title: const Text('Camera',
+                      style: TextStyle(color: Colors.white)),
+                  onTap: () => Navigator.pop(context, ImageSource.camera),
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          );
+        },
+      );
+
+      if (source == null) return;
+
+      if (source == ImageSource.gallery) {
+        await _pickImageFromGallery(input);
+      } else {
+        await _pickImageFromCamera(input);
+      }
+    } catch (e) {
+      debugPrint('❌ Error picking image: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error picking image: $e')),
+        );
+      }
+    }
+  }
+
   // -----------------------------------------------
   // 🧱 ELEMENT BUILDERS (core dynamic UI logic)
   // -----------------------------------------------
@@ -465,13 +542,12 @@ class _GenericToolPageState extends State<GenericToolPage>
   Widget _buildElement(Map<String, dynamic> e) {
     final type = e["type"];
     final ref = e["input_ref"];
+
     switch (type) {
       case "prompt":
         return _buildPrompt(ref);
       case "image_upload":
-        return _buildImageUpload(ref);
-      case "image_preview":
-        return _buildImagePreview(ref);
+        return _buildImageUpload(ref); // now includes upscale
       case "upscale":
         return _buildUpscale(ref);
       case "slider":
@@ -490,188 +566,21 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   // -------- Prompt --------
-  Widget _buildPrompt(String ref) {
-    final label = widget.config.inputs
-            .firstWhere((i) => i["id"] == ref, orElse: () => {})["label"] ??
-        "Prompt";
-    return _buildCard(
-      child: TextField(
-        controller: _promptController,
-        onChanged: (v) => _inputs[ref] = v,
-        style: const TextStyle(color: Colors.white),
-        maxLines: 3,
-        decoration: InputDecoration(
-          hintText: label,
-          hintStyle: const TextStyle(color: Colors.white54),
-          filled: true,
-          fillColor: Colors.white.withOpacity(0.05),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide.none,
-          ),
-        ),
-      ),
-    );
-  }
-
-  // -------- Image Upload --------
-  Widget _buildImageUpload(String ref) {
-    final input = widget.config.inputs
-        .firstWhere((i) => i["id"] == ref, orElse: () => {});
-    return _buildCard(
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: ElevatedButton.icon(
-                  icon: const Icon(Icons.photo),
-                  label: const Text("Gallery"),
-                  onPressed: () => _pickImageFromGallery(input),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.deepPurpleAccent,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              ElevatedButton.icon(
-                icon: const Icon(Icons.camera_alt),
-                label: const Text("Camera"),
-                onPressed: () => _pickImageFromCamera(input),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.purple,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  // -------- Image Preview --------
-  Widget _buildImagePreview(String ref) {
-    final data = _inputs[ref];
-    if (data == null || (data is List && data.isEmpty)) {
-      return Container(
-        height: 200,
-        decoration: BoxDecoration(
-          color: Colors.black12,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: const Center(
-          child: Icon(Icons.image, color: Colors.white30, size: 60),
-        ),
-      );
-    }
-
-    // ensure it's a List<Uint8List>
-    final list =
-        (data is List) ? List<Uint8List>.from(data) : [data as Uint8List];
-
-    final mask = _inputs["mask"]; // mask stays Uint8List
-
-    if (list.length == 1) {
-      // single image (same appearance as before)
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: Stack(
-          children: [
-            Center(
-              child: Image.memory(
-                list.first,
-                fit: BoxFit.contain,
-                width: double.infinity,
-                height: 220,
-              ),
-            ),
-            if (mask != null)
-              Positioned.fill(
-                child: Center(
-                  child: Opacity(
-                    opacity: 0.85,
-                    child: Image.memory(
-                      mask as Uint8List,
-                      fit: BoxFit.contain,
-                      width: double.infinity,
-                      height: 220,
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      );
-    }
-
-    // Multi-image: PageView with small dot indicator
-    return Column(
-      children: [
-        SizedBox(
-          height: 220,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: PageView.builder(
-              controller: _previewPageController,
-              itemCount: list.length,
-              onPageChanged: (idx) => setState(() => _previewPageIndex = idx),
-              itemBuilder: (context, idx) {
-                final imgBytes = list[idx];
-                return Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Center(
-                      child: Image.memory(
-                        imgBytes,
-                        fit: BoxFit.contain,
-                        width: double.infinity,
-                        height: 220,
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: List.generate(list.length, (i) {
-            final active = i == _previewPageIndex;
-            return AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              margin: const EdgeInsets.symmetric(horizontal: 4),
-              width: active ? 10 : 8,
-              height: active ? 10 : 8,
-              decoration: BoxDecoration(
-                color: active ? Colors.white : Colors.white24,
-                borderRadius: BorderRadius.circular(10),
-              ),
-            );
-          }),
-        ),
-      ],
-    );
-  }
 
   // -------- Upscale (2x/4x switch) --------
   int _scaleFactor = 2;
   bool _upscaleEnabled = false;
+
   Widget _buildUpscale(String ref) {
     return _buildCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SwitchListTile(
-            title: const Text("Upscale Output",
-                style: TextStyle(color: Colors.white)),
+            title: const Text(
+              "Upscale Output",
+              style: TextStyle(color: Colors.white),
+            ),
             value: _upscaleEnabled,
             onChanged: (v) => setState(() => _upscaleEnabled = v),
             activeThumbColor: Colors.deepPurpleAccent,
@@ -687,7 +596,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                   onSelected: (_) => setState(() => _scaleFactor = 2),
                   selectedColor: Colors.deepPurpleAccent,
                   labelStyle: TextStyle(
-                      color: _scaleFactor == 2 ? Colors.white : Colors.white70),
+                    color: _scaleFactor == 2 ? Colors.white : Colors.white70,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 ChoiceChip(
@@ -696,10 +606,199 @@ class _GenericToolPageState extends State<GenericToolPage>
                   onSelected: (_) => setState(() => _scaleFactor = 4),
                   selectedColor: Colors.deepPurpleAccent,
                   labelStyle: TextStyle(
-                      color: _scaleFactor == 4 ? Colors.white : Colors.white70),
+                    color: _scaleFactor == 4 ? Colors.white : Colors.white70,
+                  ),
                 ),
               ],
-            )
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPrompt(String ref) {
+    final label = widget.config.inputs
+            .firstWhere((i) => i["id"] == ref, orElse: () => {})["label"] ??
+        "Describe the edit";
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: TextField(
+        controller: _promptController,
+        onChanged: (v) => _inputs[ref] = v,
+        style: const TextStyle(color: Colors.white, fontSize: 16),
+        maxLines: 3,
+        decoration: InputDecoration(
+          hintText: label,
+          hintStyle: const TextStyle(color: Colors.white54),
+          filled: true,
+          fillColor: Colors.white.withOpacity(0.05),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: BorderSide(color: Colors.white.withOpacity(0.08)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(color: Color(0xFF6B4EFF), width: 1.5),
+          ),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildImageUpload(String ref) {
+    final input = widget.config.inputs
+        .firstWhere((i) => i["id"] == ref, orElse: () => {});
+
+    return _buildCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // 🖼️ Image preview
+          _buildImagePreview(ref),
+
+          const SizedBox(height: 16),
+
+          // Row: Pick Image + Upscale toggle (same height, balanced)
+          Row(
+            children: [
+              // 📸 Pick Image Button
+              Expanded(
+                child: SizedBox(
+                  height: 52,
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.add_photo_alternate_outlined,
+                        size: 22),
+                    label: const Text("Pick Image"),
+                    onPressed: () => _pickImage(input),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF6B4EFF),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      elevation: 2,
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(width: 14),
+
+              // 🧩 Upscale Toggle — same height as button
+              Expanded(
+                child: Container(
+                  height: 52,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.04),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.white.withOpacity(0.05)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        "Upscale",
+                        style: TextStyle(color: Colors.white70, fontSize: 14.5),
+                      ),
+                      Switch(
+                        value: _upscaleEnabled,
+                        onChanged: (v) => setState(() => _upscaleEnabled = v),
+                        activeColor: const Color(0xFF6B4EFF),
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          // Upscale factor choice (visible only if toggle is on)
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 250),
+            child: _upscaleEnabled
+                ? Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        ChoiceChip(
+                          label: const Text("2x"),
+                          selected: _scaleFactor == 2,
+                          onSelected: (_) => setState(() => _scaleFactor = 2),
+                          selectedColor: const Color(0xFF6B4EFF),
+                          backgroundColor: Colors.white.withOpacity(0.08),
+                          labelStyle: TextStyle(
+                            color: _scaleFactor == 2
+                                ? Colors.white
+                                : Colors.white70,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        ChoiceChip(
+                          label: const Text("4x"),
+                          selected: _scaleFactor == 4,
+                          onSelected: (_) => setState(() => _scaleFactor = 4),
+                          selectedColor: const Color(0xFF6B4EFF),
+                          backgroundColor: Colors.white.withOpacity(0.08),
+                          labelStyle: TextStyle(
+                            color: _scaleFactor == 4
+                                ? Colors.white
+                                : Colors.white70,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildImagePreview(String ref) {
+    final data = _inputs[ref];
+    if (data == null || (data is List && data.isEmpty)) {
+      return Container(
+        height: 200,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.04),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child:
+            const Icon(Icons.image_outlined, color: Colors.white30, size: 60),
+      );
+    }
+
+    final list =
+        (data is List) ? List<Uint8List>.from(data) : [data as Uint8List];
+    final mask = _inputs["mask"];
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14), // keep soft corners
+      child: Stack(
+        children: [
+          Center(
+            child: Image.memory(
+              list.first,
+              fit: BoxFit.contain, // ✅ show full image
+              width: double.infinity,
+              height: 220,
+            ),
+          ),
+          if (mask != null)
+            Positioned.fill(
+              child: Opacity(
+                opacity: 0.7,
+                child: Image.memory(mask as Uint8List, fit: BoxFit.contain),
+              ),
+            ),
         ],
       ),
     );
@@ -832,7 +931,7 @@ class _GenericToolPageState extends State<GenericToolPage>
           label: const Text("Generate ✨"),
           onPressed: _runJob,
           style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.deepPurple,
+            backgroundColor: const Color(0xFF6B4EFF),
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
             shape:
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -1289,8 +1388,11 @@ class _GenericToolPageState extends State<GenericToolPage>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.config.title),
+        title: Text(widget.config.title,
+            style: const TextStyle(fontWeight: FontWeight.w600)),
         backgroundColor: Colors.deepPurple,
+        elevation: 0,
+        scrolledUnderElevation: 0,
       ),
       body: _resultData != null
           ? _buildResultScreen()
@@ -1298,16 +1400,43 @@ class _GenericToolPageState extends State<GenericToolPage>
     );
   }
 
+  // Widget _buildDynamicInputScreen() {
+  //   return Container(
+  //     decoration: const BoxDecoration(
+  //       gradient: LinearGradient(
+  //         colors: [Color(0xFF0E0E11), Color(0xFF1A1A1E)],
+  //         begin: Alignment.topCenter,
+  //         end: Alignment.bottomCenter,
+  //       ),
+  //     ),
+  //     child: SingleChildScrollView(
+  //       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+  //       child: Column(
+  //         crossAxisAlignment: CrossAxisAlignment.center,
+  //         children: [
+  //           if (widget.config.modes != null && widget.config.modes!.isNotEmpty)
+  //             _buildModeSelector(),
+  //           const SizedBox(height: 12),
+  //           ..._currentElements.map(_buildElement).toList(),
+  //           const SizedBox(height: 32),
+  //         ],
+  //       ),
+  //     ),
+  //   );
+  // }
+
   Widget _buildDynamicInputScreen() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding:
+          const EdgeInsets.symmetric(horizontal: 14, vertical: 4), // ⬅ tighter
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (widget.config.modes != null && widget.config.modes!.isNotEmpty)
             _buildModeSelector(),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           ..._currentElements.map(_buildElement).toList(),
-          const SizedBox(height: 20),
+          const SizedBox(height: 12),
         ],
       ),
     );

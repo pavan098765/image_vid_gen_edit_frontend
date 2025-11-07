@@ -26,7 +26,6 @@ import 'features/settings/settings_page.dart';
 import 'features/result_manager/result_manager_page.dart'; // 🔹 NEW import
 import 'package:media_kit/media_kit.dart';
 
-
 // Global navigator key
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -549,9 +548,19 @@ class AICreativeStudio extends StatelessWidget {
 
     return MaterialApp(
       title: 'AI Creative Studio',
-      theme: AppTheme.darkTheme,
+
+      // ✅ NEW: Light + Dark theme pair
+      theme: AppTheme.modernLight, // Light
+      darkTheme: AppTheme.modernDark, // Dark
+
+      // ✅ NEW: Controls which one is active
+      themeMode: ThemeMode.system, // Auto-follow system theme
+      // themeMode: ThemeMode.dark,       // Force dark
+      // themeMode: ThemeMode.light,      // Force light
+
       navigatorKey: navigatorKey,
       debugShowCheckedModeBanner: false,
+
       home: Scaffold(
         body: SafeArea(
           child: ValueListenableBuilder<int>(
