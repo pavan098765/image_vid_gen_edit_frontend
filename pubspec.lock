@@ -908,10 +908,10 @@ packages:
     dependency: "direct main"
     description:
       name: pro_video_editor
-      sha256: c60bcf00b9583c735a15ee500237f2de6b8c26483205e0be72ed8b4293dc4a72
+      sha256: dd8c8df9638ac7bbcddc86adb2fb99f73787cadcb203ca36f1fe211d813e98b1
       url: "https://pub.dev"
     source: hosted
-    version: "0.2.4"
+    version: "0.3.0"
   realtime_client:
     dependency: transitive
     description:

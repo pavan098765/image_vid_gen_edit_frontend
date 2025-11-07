@@ -473,6 +473,7 @@ class FileService {
   /// 🪄 Bottom sheet confirmation with preview + open option
   static void _showSavedBottomSheet(
       BuildContext context, Uint8List bytes, String filePath) {
+      final isVideo = filePath.toLowerCase().endsWith(".mp4");
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.black.withOpacity(0.9),
@@ -486,8 +487,23 @@ class FileService {
           child: ListTile(
             leading: ClipRRect(
               borderRadius: BorderRadius.circular(8),
-              child:
-                  Image.memory(bytes, width: 60, height: 60, fit: BoxFit.cover),
+              child: isVideo
+                  ? Container(
+                      width: 60,
+                      height: 60,
+                      color: Colors.white12,
+                      child: const Icon(
+                        Icons.videocam,
+                        color: Colors.white,
+                        size: 28,
+                      ),
+                    )
+                  : Image.memory(
+                      bytes,
+                      width: 60,
+                      height: 60,
+                      fit: BoxFit.cover,
+                    ),
             ),
             title: const Text(
               '✅ Saved successfully!',

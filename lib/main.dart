@@ -17,13 +17,15 @@ import 'core/theme/app_theme.dart';
 import 'core/app_state.dart';
 import 'core/services/notification_service.dart';
 
-import 'features/editor/editor_page.dart';
+import 'features/image_editor/image_editor_page.dart';
 import 'features/ai_tools/ai_tools_page.dart';
 import 'features/ai_tools/generic_tool_page.dart';
-import 'features/video_gen/video_gen_page.dart';
+import 'features/video_editor/video_editor_page.dart';
 import 'features/credits/credits_page.dart';
 import 'features/settings/settings_page.dart';
 import 'features/result_manager/result_manager_page.dart'; // 🔹 NEW import
+import 'package:media_kit/media_kit.dart';
+
 
 // Global navigator key
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -263,6 +265,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  MediaKit.ensureInitialized();
 
   // Initialize Firebase
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
@@ -534,7 +537,7 @@ class AICreativeStudio extends StatelessWidget {
 
   final List<Widget> _pages = const [
     EditorPage(),
-    VideoGenPage(),
+    VideoEditorPage(),
     AiToolsPage(),
     CreditsPage(),
     SettingsPage(),
