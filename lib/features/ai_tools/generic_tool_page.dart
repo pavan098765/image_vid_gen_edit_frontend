@@ -433,6 +433,8 @@ class _GenericToolPageState extends State<GenericToolPage>
         return _buildImageUpload(ref);
       case "slider":
         return _buildSlider(ref);
+      case "upscale_toggle":
+        return _buildUpscaleToggle();
       case "dropdown":
         return _buildDropdown(ref);
       case "painter":
@@ -444,6 +446,85 @@ class _GenericToolPageState extends State<GenericToolPage>
       default:
         return const SizedBox.shrink();
     }
+  }
+
+  // -------- Standalone Upscale Toggle (for text-to-image modes) --------
+  Widget _buildUpscaleToggle() {
+    final cs = Theme.of(context).colorScheme;
+    return _buildCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  height: 52,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerHigh,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: cs.outlineVariant),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text("Upscale",
+                          style: TextStyle(
+                              color: cs.onSurfaceVariant, fontSize: 14.5)),
+                      Switch(
+                        value: _upscaleEnabled,
+                        onChanged: (v) => setState(() => _upscaleEnabled = v),
+                        activeThumbColor: cs.primary,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 250),
+            child: _upscaleEnabled
+                ? Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        ChoiceChip(
+                          label: const Text("2x"),
+                          selected: _scaleFactor == 2,
+                          onSelected: (_) => setState(() => _scaleFactor = 2),
+                          selectedColor: cs.primary,
+                          backgroundColor: cs.surfaceContainerHigh,
+                          labelStyle: TextStyle(
+                            color: _scaleFactor == 2
+                                ? cs.onPrimary
+                                : cs.onSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        ChoiceChip(
+                          label: const Text("4x"),
+                          selected: _scaleFactor == 4,
+                          onSelected: (_) => setState(() => _scaleFactor = 4),
+                          selectedColor: cs.primary,
+                          backgroundColor: cs.surfaceContainerHigh,
+                          labelStyle: TextStyle(
+                            color: _scaleFactor == 4
+                                ? cs.onPrimary
+                                : cs.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
+        ],
+      ),
+    );
   }
 
   // -------- Prompt --------

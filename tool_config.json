@@ -287,8 +287,7 @@
                   "input_ref": "prompt"
                 },
                 {
-                  "type": "slider",
-                  "input_ref": "scale_factor"
+                  "type": "upscale_toggle"
                 },
                 {
                   "type": "generate_button"
@@ -619,6 +618,9 @@
                   "input_ref": "prompt"
                 },
                 {
+                  "type": "upscale_toggle"
+                },
+                {
                   "type": "generate_button"
                 },
                 {
@@ -721,6 +723,9 @@
                 {
                   "type": "prompt",
                   "input_ref": "prompt"
+                },
+                {
+                  "type": "upscale_toggle"
                 },
                 {
                   "type": "generate_button"
