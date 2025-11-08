@@ -8,7 +8,6 @@ import 'dart:math';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:crypto/crypto.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
@@ -16,7 +15,6 @@ import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:image_vid_gen_edit_frontend/core/app_state.dart';
 import 'package:image_vid_gen_edit_frontend/core/services/file_service.dart';
-import 'package:image_vid_gen_edit_frontend/core/services/notification_service.dart';
 import 'package:image_vid_gen_edit_frontend/features/result_manager/result_manager_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -105,7 +103,9 @@ class _GenericToolPageState extends State<GenericToolPage>
   static const String controllerApiKey = "SECRETKEY";
   static const String controllerSharedSecret = "SECRETKEY";
 
-  bool _restoringInProgress = false;
+  // -------- Upscale (2x/4x switch) --------
+  int _scaleFactor = 2;
+  bool _upscaleEnabled = false;
 
   // Dynamic element cache
   List<Map<String, dynamic>> get _currentElements {
@@ -139,7 +139,6 @@ class _GenericToolPageState extends State<GenericToolPage>
       _loading = true;
     }
 
-    _restoreJobIfExists();
     debugPrint("🔧 Config for ${widget.config.model}");
     debugPrint("  title=${widget.config.title}");
     debugPrint("  elements=${widget.config.elements?.length}");
@@ -161,191 +160,6 @@ class _GenericToolPageState extends State<GenericToolPage>
         debugPrint("🔁 Resuming job polling after resume");
       }
     }
-  }
-
-  Future<void> _waitForNetworkThenRetry(String payloadJson) async {
-    if (_restoringInProgress) return;
-    _restoringInProgress = true;
-    final connectivity = Connectivity();
-    final current = await connectivity.checkConnectivity();
-
-    if (current != ConnectivityResult.none) {
-      debugPrint("🌐 Network available, retrying submit immediately...");
-      await _retrySubmit(payloadJson);
-      _restoringInProgress = false;
-      return;
-    }
-
-    // else wait until connectivity resumes
-    debugPrint("📴 Offline — waiting for network to restore submission...");
-    final sub = connectivity.onConnectivityChanged.listen(null);
-    sub.onData((result) async {
-      if (result != ConnectivityResult.none) {
-        await sub.cancel();
-        debugPrint("🌐 Network restored — retrying job submit...");
-        await _retrySubmit(payloadJson);
-      }
-    });
-  }
-
-  Future<void> _retrySubmit(String payloadJson) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final sigBytes = Hmac(sha256, utf8.encode(controllerSharedSecret))
-          .convert(utf8.encode(payloadJson));
-      final signature = "sha256=${sigBytes.toString()}";
-
-      final headers = {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer $controllerApiKey",
-        "X-Signature": signature,
-      };
-
-      final resp = await http
-          .post(Uri.parse('$controllerUrl/submit'),
-              headers: headers, body: payloadJson)
-          .timeout(const Duration(seconds: 20));
-
-      if (resp.statusCode == 200) {
-        final data = jsonDecode(resp.body);
-        final jobId = data["job_id"];
-        final downloadUrl = data["download_url"];
-
-        await prefs.setString("active_job_id", jobId ?? "");
-        await prefs.remove("job_submitting");
-        await prefs.remove("pending_payload");
-
-        if (mounted) {
-          setState(() {
-            _activeJobId = jobId;
-            _loading = true;
-          });
-        }
-
-        if (downloadUrl != null) {
-          await prefs.setString("pending_download_url", downloadUrl);
-        }
-
-        debugPrint("✅ Retried submit successfully for job $jobId");
-      } else {
-        throw Exception("Server responded ${resp.statusCode}");
-      }
-    } catch (e) {
-      debugPrint("⚠️ Retry submit failed: $e");
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Retry failed: $e")),
-      );
-    }
-  }
-
-  // 🧠 Restore previous job or submission state
-  Future<void> _restoreJobIfExists() async {
-    final prefs = await SharedPreferences.getInstance();
-
-    final savedJobId = prefs.getString("active_job_id");
-    final pendingUrl = prefs.getString("pending_download_url");
-    final cached = prefs.getString("cached_result_bytes");
-
-    final wasSubmitting = prefs.getBool("job_submitting") ?? false;
-    final pendingPayload = prefs.getString("pending_payload");
-
-    final lastStatus = prefs.getString("job_last_status");
-
-    debugPrint(
-      "🔄 Restoring job state: "
-      "jobId=$savedJobId, wasSubmitting=$wasSubmitting, "
-      "hasCached=${cached != null}, hasPendingUrl=${pendingUrl != null}, lastStatus=$lastStatus",
-    );
-
-    // 1) If cached result exists → show instantly
-    if (cached != null && cached.isNotEmpty) {
-      try {
-        final bytes = base64Decode(cached);
-        setState(() {
-          _resultData = bytes;
-          _loading = false;
-        });
-
-        await prefs.remove("cached_result_bytes");
-        await prefs.remove("pending_download_url");
-        await prefs.remove("active_job_id");
-        await prefs.remove("notify_requested");
-        await prefs.remove("job_submitting");
-        await prefs.remove("pending_payload");
-        await prefs.remove("job_last_status");
-        return;
-      } catch (e) {
-        debugPrint("⚠️ Failed to decode cached result: $e");
-      }
-    }
-
-    // 2) If pending download URL exists → fetch result
-    if (pendingUrl != null && pendingUrl.isNotEmpty) {
-      try {
-        await _fetchResult({
-          "download_url": pendingUrl,
-          "status": "completed",
-        });
-
-        await prefs.remove("pending_download_url");
-        await prefs.remove("cached_result_bytes");
-        await prefs.remove("active_job_id");
-        await prefs.remove("notify_requested");
-        await prefs.remove("job_submitting");
-        await prefs.remove("pending_payload");
-        await prefs.remove("job_last_status");
-        return;
-      } catch (e) {
-        debugPrint("⚠️ Failed to download pending result: $e");
-      }
-    }
-
-    // 3) If we were submitting but no job_id → retry submit
-    if (wasSubmitting && pendingPayload != null && pendingPayload.isNotEmpty) {
-      if (lastStatus == "completed" || lastStatus == "failed") {
-        await prefs.remove("job_submitting");
-        await prefs.remove("pending_payload");
-        await prefs.remove("job_last_status");
-        return;
-      }
-      setState(() => _loading = true);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("⏳ Restoring interrupted submission...")),
-      );
-      await _waitForNetworkThenRetry(pendingPayload);
-      return;
-    }
-
-    debugPrint("ℹ️ No active, cached, or pending job to restore");
-  }
-
-  // ---------- Card (theme-aware glass-ish) ----------
-  Widget _buildCard({required Widget child}) {
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 10),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            cs.surfaceContainerHighest.withOpacity(0.10),
-            cs.surface.withOpacity(0.06),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: cs.outlineVariant.withOpacity(0.35)),
-        boxShadow: [
-          BoxShadow(
-            color: cs.shadow.withOpacity(0.08),
-            blurRadius: 8,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: child,
-    );
   }
 
   // -----------------------------------------------
@@ -579,6 +393,35 @@ class _GenericToolPageState extends State<GenericToolPage>
   // 🧱 ELEMENT BUILDERS (core dynamic UI logic)
   // -----------------------------------------------
 
+  // ---------- Card (theme-aware glass-ish) ----------
+  Widget _buildCard({required Widget child}) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            cs.surfaceContainerHighest.withOpacity(0.10),
+            cs.surface.withOpacity(0.06),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: cs.outlineVariant.withOpacity(0.35)),
+        boxShadow: [
+          BoxShadow(
+            color: cs.shadow.withOpacity(0.08),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+
   Widget _buildElement(Map<String, dynamic> e) {
     final type = e["type"];
     final ref = e["input_ref"];
@@ -601,58 +444,6 @@ class _GenericToolPageState extends State<GenericToolPage>
       default:
         return const SizedBox.shrink();
     }
-  }
-
-  // -------- Upscale (2x/4x switch) --------
-  int _scaleFactor = 2;
-  bool _upscaleEnabled = false;
-
-  Widget _buildUpscale(String ref) {
-    final cs = Theme.of(context).colorScheme;
-    return _buildCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SwitchListTile(
-            title: Text(
-              "Upscale Output",
-              style: TextStyle(color: cs.onSurface),
-            ),
-            value: _upscaleEnabled,
-            onChanged: (v) => setState(() => _upscaleEnabled = v),
-            activeThumbColor: cs.primary,
-            contentPadding: EdgeInsets.zero,
-          ),
-          if (_upscaleEnabled)
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                ChoiceChip(
-                  label: const Text("2x"),
-                  selected: _scaleFactor == 2,
-                  onSelected: (_) => setState(() => _scaleFactor = 2),
-                  selectedColor: cs.primary,
-                  labelStyle: TextStyle(
-                    color:
-                        _scaleFactor == 2 ? cs.onPrimary : cs.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                ChoiceChip(
-                  label: const Text("4x"),
-                  selected: _scaleFactor == 4,
-                  onSelected: (_) => setState(() => _scaleFactor = 4),
-                  selectedColor: cs.primary,
-                  labelStyle: TextStyle(
-                    color:
-                        _scaleFactor == 4 ? cs.onPrimary : cs.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-        ],
-      ),
-    );
   }
 
   // -------- Prompt --------
@@ -892,25 +683,6 @@ class _GenericToolPageState extends State<GenericToolPage>
     );
   }
 
-  // -------- Painter (Mask Editor) --------
-  Future<Uint8List?> _openMaskEditor(Uint8List base) async {
-    try {
-      return await Navigator.push<Uint8List?>(
-        context,
-        MaterialPageRoute(
-          builder: (_) => MaskEditorPage(
-            baseImageBytes: base,
-            existingMask: _inputs["mask_image"],
-          ),
-          fullscreenDialog: true,
-        ),
-      );
-    } catch (e) {
-      debugPrint("Mask editor failed: $e");
-      return null;
-    }
-  }
-
   Widget _buildPainter(String ref) {
     final cs = Theme.of(context).colorScheme;
 
@@ -1012,6 +784,25 @@ class _GenericToolPageState extends State<GenericToolPage>
         )
       ],
     );
+  }
+
+  // -------- Painter (Mask Editor) --------
+  Future<Uint8List?> _openMaskEditor(Uint8List base) async {
+    try {
+      return await Navigator.push<Uint8List?>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => MaskEditorPage(
+            baseImageBytes: base,
+            existingMask: _inputs["mask_image"],
+          ),
+          fullscreenDialog: true,
+        ),
+      );
+    } catch (e) {
+      debugPrint("Mask editor failed: $e");
+      return null;
+    }
   }
 
   // ----------------------------------------------------
@@ -1364,86 +1155,6 @@ class _GenericToolPageState extends State<GenericToolPage>
     }
   }
 
-  Future<void> _fetchResult(Map<String, dynamic> data) async {
-    if (_fetchingResult) return;
-    _fetchingResult = true;
-
-    try {
-      String? downloadUrl = data["download_url"];
-      final prefs = await SharedPreferences.getInstance();
-
-      downloadUrl ??= prefs.getString("pending_download_url");
-      if (downloadUrl == null || downloadUrl.isEmpty) {
-        throw Exception("Missing download URL");
-      }
-
-      debugPrint("⬇️ Downloading result from: $downloadUrl");
-      final resp = await http.get(Uri.parse(downloadUrl));
-      if (resp.statusCode != 200) {
-        throw Exception("Download failed (${resp.statusCode})");
-      }
-
-      final bytes = resp.bodyBytes;
-
-      if (mounted) {
-        setState(() {
-          _resultData = bytes;
-          _loading = false;
-        });
-      }
-
-      final jobId = _activeJobId;
-
-      bool readyToNotify = false;
-      if (jobId != null) {
-        readyToNotify = prefs.getBool("notify_requested_$jobId") ?? false;
-      }
-
-      if (readyToNotify) {
-        await NotificationService.showNotification(
-          title: "Processing Complete",
-          body: "Tap to view your result.",
-          payload: jobId ?? "",
-        );
-        await prefs.remove("notify_requested_$jobId");
-      }
-
-      if (jobId != null) {
-        await prefs.remove("notify_job_$jobId");
-        await prefs.remove("notify_requested_$jobId");
-
-        final activeJobs = prefs.getStringList("notify_jobs_list") ?? [];
-        if (activeJobs.contains(jobId)) {
-          activeJobs.remove(jobId);
-          await prefs.setStringList("notify_jobs_list", activeJobs);
-        }
-      }
-
-      await prefs.remove("active_job_id");
-      await prefs.remove("cached_result_bytes");
-      await prefs.remove("pending_download_url");
-      await prefs.remove("selected_images");
-      await prefs.remove("job_submitting");
-      await prefs.remove("pending_payload");
-      await prefs.remove("ready_to_notify");
-
-      debugPrint("✅ Result image fetched & displayed successfully");
-    } catch (e) {
-      _onJobFailed(e.toString());
-    } finally {
-      _fetchingResult = false;
-    }
-  }
-
-  void _onJobFailed(String error) {
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text("Job failed: $error")));
-    setState(() {
-      _loading = false;
-      _resultData = null;
-    });
-  }
-
   // ----------------------------------------------------
   // 🖼️ BUILD UI — Scaffold + Mode Selector + Dynamic Elements
   // ----------------------------------------------------
@@ -1462,9 +1173,7 @@ class _GenericToolPageState extends State<GenericToolPage>
         scrolledUnderElevation: 0,
         iconTheme: IconThemeData(color: cs.onSurface),
       ),
-      body: _resultData != null
-          ? _buildResultScreen()
-          : _buildDynamicInputScreen(),
+      body: _buildDynamicInputScreen(),
     );
   }
 
@@ -1522,66 +1231,6 @@ class _GenericToolPageState extends State<GenericToolPage>
       ),
     );
   }
-
-  // ----------------------------------------------------
-  // 🌈 RESULT SCREEN (theme-aware)
-  // ----------------------------------------------------
-  Widget _buildResultScreen() {
-    final cs = Theme.of(context).colorScheme;
-
-    return Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              "✨ Result Ready!",
-              style: TextStyle(
-                fontSize: 22,
-                color: cs.onSurface,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 16),
-            if (widget.config.outputType == "image" && _resultData != null)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: Image.memory(
-                  _resultData!,
-                  height: 360,
-                  fit: BoxFit.contain,
-                ),
-              ),
-            const SizedBox(height: 20),
-            FilledButton.icon(
-              onPressed: () async {
-                final _ = widget.config.model
-                    .replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_');
-                await FileService.saveFile(context, _resultData!);
-              },
-              icon: const Icon(Icons.download_rounded),
-              label: const Text("Save Result"),
-            ),
-            const SizedBox(height: 10),
-            TextButton.icon(
-              onPressed: () {
-                Future.microtask(() {
-                  Navigator.of(context).pushReplacement(
-                    MaterialPageRoute(
-                      builder: (_) => GenericToolPage(config: widget.config),
-                    ),
-                  );
-                });
-              },
-              icon: Icon(Icons.refresh, color: cs.primary),
-              label: Text("Try Again", style: TextStyle(color: cs.primary)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 // ------------------ MASK EDITOR ------------------
@@ -1608,7 +1257,7 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
   final List<_Stroke> _strokes = [];
   _Stroke? _currentStroke;
 
-  double _brushSize = 30.0;
+  double _brushSize = 50.0;
   int? _lastImageHash;
   bool _eraser = false;
 
@@ -1726,6 +1375,16 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
     return byteData!.buffer.asUint8List();
   }
 
+  bool _showSlider = true;
+  Timer? _hideTimer;
+
+  void _scheduleHideSlider() {
+    _hideTimer?.cancel();
+    _hideTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _showSlider = false);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -1799,11 +1458,13 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
         ],
       ),
       body: LayoutBuilder(builder: (context, constraints) {
-        final widgetSize = Size(constraints.maxWidth, constraints.maxHeight);
+        final widgetSize = Size(constraints.maxWidth,
+            constraints.maxHeight - 60); // leave space for ad
         final imgW = _image!.width.toDouble();
         final imgH = _image!.height.toDouble();
-        final widgetAspect = widgetSize.width / widgetSize.height;
         final imgAspect = imgW / imgH;
+        final widgetAspect = widgetSize.width / widgetSize.height;
+
         double displayW, displayH;
         if (imgAspect > widgetAspect) {
           displayW = widgetSize.width;
@@ -1812,56 +1473,85 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
           displayH = widgetSize.height;
           displayW = displayH * imgAspect;
         }
+
         final displaySize = Size(displayW, displayH);
 
         return GestureDetector(
-          onPanStart: (details) {
-            final local = details.localPosition;
-            final imgPos = _toImageCoords(local, widgetSize, displaySize);
-            _currentStroke =
-                _Stroke(points: [imgPos], size: _brushSize, eraser: _eraser);
-            setState(() => _strokes.add(_currentStroke!));
-          },
-          onPanUpdate: (details) {
-            final local = details.localPosition;
-            final imgPos = _toImageCoords(local, widgetSize, displaySize);
-            if (_currentStroke != null) {
-              setState(() => _currentStroke!.points.add(imgPos));
-            }
-          },
-          onPanEnd: (_) {
-            _currentStroke = null;
+          onTap: () {
+            // toggle slider visibility manually on single tap
+            setState(() => _showSlider = !_showSlider);
+            if (_showSlider) _scheduleHideSlider();
           },
           child: Stack(
             children: [
+              // --- MAIN IMAGE + MASK ---
               Positioned.fill(
-                child: Container(
-                  color: cs.surface,
-                  child: Center(
+                top: 0,
+                bottom: 60, // reserved for ad
+                child: Center(
+                  child: FittedBox(
+                    fit: BoxFit.contain,
                     child: SizedBox(
                       width: displaySize.width,
                       height: displaySize.height,
-                      child: CustomPaint(
-                        painter: _MaskEditorPainter(
-                          baseImage: _image!,
-                          strokes: _strokes,
-                          displaySize: displaySize,
-                          maskOverlay: _maskOverlay,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.translucent,
+                        onPanStart: (details) {
+                          // hide slider immediately when drawing starts
+                          setState(() => _showSlider = false);
+
+                          final local = details.localPosition;
+                          final imgPos =
+                              _toImageCoords(local, widgetSize, displaySize);
+                          _currentStroke = _Stroke(
+                            points: [imgPos],
+                            size: _brushSize,
+                            eraser: _eraser,
+                          );
+                          setState(() => _strokes.add(_currentStroke!));
+                        },
+                        onPanUpdate: (details) {
+                          final local = details.localPosition;
+                          final imgPos =
+                              _toImageCoords(local, widgetSize, displaySize);
+                          if (_currentStroke != null) {
+                            setState(() => _currentStroke!.points.add(imgPos));
+                          }
+                        },
+                        onPanEnd: (_) {
+                          _currentStroke = null;
+                          _scheduleHideSlider(); // hide again after inactivity
+                        },
+                        child: ClipRect(
+                          child: CustomPaint(
+                            painter: _MaskEditorPainter(
+                              baseImage: _image!,
+                              strokes: _strokes,
+                              displaySize: displaySize,
+                              maskOverlay: _maskOverlay,
+                            ),
+                            size: displaySize,
+                          ),
                         ),
-                        size: displaySize,
                       ),
                     ),
                   ),
                 ),
               ),
-              Positioned(
+
+              // --- SLIDER (auto-hide with smooth fade) ---
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeInOut,
                 left: 12,
                 right: 12,
-                bottom: 18,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
+                bottom: _showSlider ? 75 : -100, // slide out smoothly
+                child: AnimatedOpacity(
+                  opacity: _showSlider ? 1 : 0,
+                  duration: const Duration(milliseconds: 250),
+                  child: IgnorePointer(
+                    ignoring: !_showSlider,
+                    child: Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 8),
                       decoration: BoxDecoration(
@@ -1889,7 +1579,21 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
                         ],
                       ),
                     ),
-                  ],
+                  ),
+                ),
+              ),
+
+              // --- OPTIONAL AD BANNER ---
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: 60,
+                child: Container(
+                  color: Colors.black12,
+                  alignment: Alignment.center,
+                  child: Text("Ad Banner",
+                      style: TextStyle(color: Colors.black54)),
                 ),
               ),
             ],
@@ -1908,7 +1612,6 @@ class _Stroke {
   _Stroke({required this.points, required this.size, required this.eraser});
 }
 
-/// Painter used inside MaskEditorPage to show base image and overlay strokes scaled to the display size.
 /// Painter used inside MaskEditorPage to show base image and overlay strokes scaled to the display size.
 class _MaskEditorPainter extends CustomPainter {
   final ui.Image baseImage;
