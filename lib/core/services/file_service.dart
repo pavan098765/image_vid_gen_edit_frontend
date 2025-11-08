@@ -35,6 +35,11 @@ class FileService {
 
     if (currentHash == _lastSavedHash) {
       debugPrint('⚠️ Skipping duplicate save (same content)');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('File already saved!')),
+        );
+      }
       return null;
     }
 
@@ -342,43 +347,53 @@ class FileService {
     return 'png';
   }
 
-  /// 🧩 Download file (image/video) from [url] and save to gallery.
+  /// 🧩 Download file (image/video) from [url] and save to gallery, with progress callback.
   static Future<String?> downloadFromUrl(
     BuildContext context,
     String url, {
-    String? suggestedFileName, // renamed param
+    String? suggestedFileName,
     String subfolder = 'AI_Creative_Studio',
+    void Function(double progress)? onProgress, // progress: 0.0 → 1.0
   }) async {
     try {
       final uri = Uri.parse(url);
       final safeExt = _safeExtensionFromUrl(url);
 
-      // Download bytes
-      final response = await http.get(uri);
-      if (response.statusCode != 200) {
+      final client = http.Client();
+      final request = http.Request('GET', uri);
+      final response = await client.send(request);
+
+      if (response.statusCode != 200 && response.statusCode != 206) {
         throw Exception('Server responded ${response.statusCode}');
       }
 
-      final bytes = response.bodyBytes;
+      final totalBytes = response.contentLength ?? 0;
+      final bytes = <int>[];
+      int downloaded = 0;
 
-      // Always use uuid as base name
+      await for (final chunk in response.stream) {
+        bytes.addAll(chunk);
+        downloaded += chunk.length;
+        if (totalBytes > 0 && onProgress != null) {
+          onProgress(downloaded / totalBytes);
+        }
+      }
+
       final uuid = const Uuid().v4();
       final baseName = (suggestedFileName?.trim().isNotEmpty ?? false)
           ? suggestedFileName!
           : uuid;
       final cleanName = _normalizeFileName(baseName, defaultExt: safeExt);
-
-      // Save file to gallery
+      final fileData = Uint8List.fromList(bytes);
       final savedPath = await saveFile(
         context,
-        bytes,
+        fileData,
         extension: safeExt,
         showPreview: true,
         customFileName: cleanName,
       );
 
       if (savedPath != null) {
-        // Link saved file to job if exists
         final jobs = List<JobModel>.from(jobListNotifier.value);
         final idx = jobs.indexWhere((j) => j.downloadUrl == url);
         if (idx != -1) {
