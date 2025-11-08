@@ -1399,16 +1399,13 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
   }
 
   // Convert local widget pos to image pixel coords
-  Offset _toImageCoords(Offset localPos, Size widgetSize, Size displaySize) {
-    final dx = (widgetSize.width - displaySize.width) / 2;
-    final dy = (widgetSize.height - displaySize.height) / 2;
-    final xInImageSpace =
-        ((localPos.dx - dx) / displaySize.width) * _image!.width;
-    final yInImageSpace =
-        ((localPos.dy - dy) / displaySize.height) * _image!.height;
-    final x = xInImageSpace.clamp(0.0, _image!.width.toDouble());
-    final y = yInImageSpace.clamp(0.0, _image!.height.toDouble());
-    return Offset(x, y);
+  Offset _toImageCoords(Offset localPos, Size displaySize) {
+    final xInImageSpace = (localPos.dx / displaySize.width) * _image!.width;
+    final yInImageSpace = (localPos.dy / displaySize.height) * _image!.height;
+    return Offset(
+      xInImageSpace.clamp(0.0, _image!.width.toDouble()),
+      yInImageSpace.clamp(0.0, _image!.height.toDouble()),
+    );
   }
 
   Future<Uint8List> _exportMask() async {
@@ -1582,8 +1579,8 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
                           setState(() => _showSlider = false);
 
                           final local = details.localPosition;
-                          final imgPos =
-                              _toImageCoords(local, widgetSize, displaySize);
+
+                          final imgPos = _toImageCoords(local, displaySize);
                           _currentStroke = _Stroke(
                             points: [imgPos],
                             size: _brushSize,
@@ -1593,8 +1590,8 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
                         },
                         onPanUpdate: (details) {
                           final local = details.localPosition;
-                          final imgPos =
-                              _toImageCoords(local, widgetSize, displaySize);
+
+                          final imgPos = _toImageCoords(local, displaySize);
                           if (_currentStroke != null) {
                             setState(() => _currentStroke!.points.add(imgPos));
                           }
