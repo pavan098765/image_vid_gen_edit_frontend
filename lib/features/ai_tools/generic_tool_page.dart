@@ -560,6 +560,9 @@ class _GenericToolPageState extends State<GenericToolPage>
   // -------- Image Upload --------
   Widget _buildImageUpload(String ref) {
     final cs = Theme.of(context).colorScheme;
+    final mode = _selectedModeKey?.toLowerCase() ?? "";
+    final paramMode =
+        (widget.config.params?["mode"]?.toString().toLowerCase() ?? "");
     final input = widget.config.inputs
         .firstWhere((i) => i["id"] == ref, orElse: () => {});
 
@@ -1277,36 +1280,83 @@ class _GenericToolPageState extends State<GenericToolPage>
   Widget _buildModeSelector() {
     final cs = Theme.of(context).colorScheme;
     final modes = widget.config.modes!;
+    final modeKeys = modes.keys.toList();
+
     return _buildCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text("Mode", style: TextStyle(color: cs.onSurfaceVariant)),
+          Text(
+            "Mode",
+            style: TextStyle(
+              color: cs.onSurfaceVariant,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
           const SizedBox(height: 6),
-          Wrap(
-            spacing: 8,
-            children: modes.entries
-                .map(
-                  (entry) => ChoiceChip(
-                    label: Text(entry.value["label"] ?? entry.key),
-                    selected: _selectedModeKey == entry.key,
-                    onSelected: (_) {
+
+          // Compact Segmented Button Bar
+          Container(
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHigh,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            padding: const EdgeInsets.all(3),
+            child: Row(
+              children: modeKeys.map((key) {
+                final selected = _selectedModeKey == key;
+                return Expanded(
+                  child: GestureDetector(
+                    onTap: () {
                       setState(() {
-                        _selectedModeKey = entry.key;
+                        _selectedModeKey = key;
                         _resultData = null;
                         _promptController.clear();
                       });
                     },
-                    selectedColor: cs.primary,
-                    backgroundColor: cs.surfaceContainerHigh,
-                    labelStyle: TextStyle(
-                      color: _selectedModeKey == entry.key
-                          ? cs.onPrimary
-                          : cs.onSurfaceVariant,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 160),
+                      curve: Curves.easeInOut,
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? cs.primary.withOpacity(0.95)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(8),
+                        boxShadow: selected
+                            ? [
+                                BoxShadow(
+                                  color: cs.primary.withOpacity(0.2),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 1),
+                                ),
+                              ]
+                            : [],
+                      ),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 2),
+                          child: Text(
+                            modes[key]?["label"] ?? key,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: selected
+                                  ? cs.onPrimary
+                                  : cs.onSurfaceVariant.withOpacity(0.9),
+                              fontWeight:
+                                  selected ? FontWeight.w600 : FontWeight.w400,
+                              fontSize: 12.5, // ↓ smaller for one-row fit
+                              letterSpacing: -0.2,
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
-                )
-                .toList(),
+                );
+              }).toList(),
+            ),
           ),
         ],
       ),
