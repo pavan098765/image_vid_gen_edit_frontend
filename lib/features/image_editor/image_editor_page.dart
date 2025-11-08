@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'dart:io';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:image_vid_gen_edit_frontend/core/services/file_service.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -37,15 +38,12 @@ class _EditorPageState extends State<EditorPage> {
       final source = await _showSourcePickerSheet();
       if (source == null) return;
 
-      // ✅ Request appropriate permissions for Android 13 and below
+      // ✅ Handle permissions properly (Android 13+ & below)
       if (Platform.isAndroid) {
-        final androidVersion = int.tryParse(
-              (await DeviceInfoPlugin().androidInfo).version.release ?? '0',
-            ) ??
-            0;
+        final androidInfo = await DeviceInfoPlugin().androidInfo;
+        final sdk = androidInfo.version.sdkInt;
 
-        if (androidVersion <= 12) {
-          // Android 13 and below may still need storage permission
+        if (sdk <= 32) {
           final status = await Permission.storage.request();
           if (!status.isGranted) {
             if (context.mounted) {
@@ -56,7 +54,6 @@ class _EditorPageState extends State<EditorPage> {
             return;
           }
         } else {
-          // Android 13+ uses scoped storage; request photo permission
           final photos = await Permission.photos.request();
           if (!photos.isGranted) {
             if (context.mounted) {
@@ -69,31 +66,35 @@ class _EditorPageState extends State<EditorPage> {
         }
       }
 
-      // ✅ Let user pick image
-      final XFile? pickedFile = await _picker.pickImage(
-        source: source,
-        imageQuality: 100,
-      );
-      if (pickedFile == null) return;
+      File? safeFile;
 
-      // ✅ Ensure file is accessible locally (handles scoped URIs)
-      File safeFile;
-      if (await File(pickedFile.path).exists()) {
-        // Copy to app temp directory for guaranteed access
+      if (source == ImageSource.camera) {
+        // 📷 Capture new image via camera
+        final XFile? cameraFile = await _picker.pickImage(
+            source: ImageSource.camera, imageQuality: 100);
+        if (cameraFile == null) return;
+
         final tempDir = await getTemporaryDirectory();
-        final fileName = pickedFile.name;
-        final safePath = '${tempDir.path}/$fileName';
-        safeFile = await File(pickedFile.path).copy(safePath);
+        final safePath = '${tempDir.path}/${cameraFile.name}';
+        safeFile = await File(cameraFile.path).copy(safePath);
       } else {
-        // Fallback: read bytes (some devices return content:// URI)
-        final bytes = await pickedFile.readAsBytes();
+        // 🖼️ Pick image from gallery using FilePicker (replaces image_picker)
+        final result = await FilePicker.platform.pickFiles(
+          type: FileType.image,
+          allowMultiple: false,
+          withData: true, // Ensures we get Uint8List bytes directly
+        );
+
+        if (result == null || result.files.isEmpty) return;
+        final file = result.files.single;
+
         final tempDir = await getTemporaryDirectory();
-        final fileName = pickedFile.name;
-        final safePath = '${tempDir.path}/$fileName';
+        final safePath = '${tempDir.path}/${file.name}';
+        final bytes = file.bytes ?? await File(file.path!).readAsBytes();
         safeFile = await File(safePath).writeAsBytes(bytes, flush: true);
       }
 
-      // ✅ Optional: verify image decodes successfully before using
+      // ✅ Verify image is decodable
       try {
         await decodeImageFromList(await safeFile.readAsBytes());
       } catch (_) {
@@ -124,35 +125,6 @@ class _EditorPageState extends State<EditorPage> {
       }
     }
   }
-
-  // // Pick image from gallery or camera
-  // Future<void> _pickImage() async {
-  //   try {
-  //     final source = await _showSourcePickerSheet();
-  //     if (source == null) return;
-
-  //     final XFile? pickedFile = await _picker.pickImage(source: source);
-  //     if (pickedFile != null) {
-  //       final bytes = await pickedFile.readAsBytes();
-  //       final tempFile =
-  //           await FileService.writeTempFile(bytes, pickedFile.name);
-
-  //       if (!mounted) return;
-  //       setState(() {
-  //         _selectedImage = tempFile;
-  //         _exportedImage = null;
-  //         _lastEditCompleteAt = null;
-  //       });
-  //     }
-  //   } catch (e) {
-  //     debugPrint('❌ Error picking image: $e');
-  //     if (context.mounted) {
-  //       ScaffoldMessenger.of(context).showSnackBar(
-  //         SnackBar(content: Text('Error picking image: $e')),
-  //       );
-  //     }
-  //   }
-  // }
 
   Future<ImageSource?> _showSourcePickerSheet() async {
     final cs = Theme.of(context).colorScheme;
