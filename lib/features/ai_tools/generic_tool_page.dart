@@ -88,6 +88,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   final picker = ImagePicker();
   final Map<String, dynamic> _inputs = {};
   bool _loading = false;
+  bool _autoOpenMaskAfterPick = false;
   String? _selectedModeKey;
   Uint8List? _resultData;
   String? _activeJobId;
@@ -386,6 +387,33 @@ class _GenericToolPageState extends State<GenericToolPage>
             _inputs["${id}_path"] = file.path;
           });
         }
+        // Automatically open mask editor for inpainting / LaMa models
+        final model = widget.config.model.toLowerCase();
+        final mode = _selectedModeKey?.toLowerCase() ?? "";
+        final paramMode =
+            (widget.config.params?["mode"]?.toString().toLowerCase() ?? "");
+
+        if (model.contains("inpaint") ||
+            model.contains("lama") ||
+            mode.contains("inpaint") ||
+            paramMode.contains("inpaint") ||
+            paramMode.contains("lama")) {
+          _autoOpenMaskAfterPick = true;
+        }
+
+        // --- Auto-open mask editor if required ---
+        if (_autoOpenMaskAfterPick) {
+          _autoOpenMaskAfterPick = false;
+          final baseBytes = _inputs[id]?[0] as Uint8List?;
+          if (baseBytes != null) {
+            final mask = await _openMaskEditor(baseBytes);
+            if (mask != null && mounted) {
+              setState(() {
+                _inputs["mask_image"] = mask;
+              });
+            }
+          }
+        }
       }
     } catch (e) {
       debugPrint("Gallery picker failed: $e");
@@ -408,6 +436,33 @@ class _GenericToolPageState extends State<GenericToolPage>
           _inputs[id] = [bytes];
           _inputs["${id}_path"] = file.path;
         });
+      }
+      // Automatically open mask editor for inpainting / LaMa models
+      final model = widget.config.model.toLowerCase();
+      final mode = _selectedModeKey?.toLowerCase() ?? "";
+      final paramMode =
+          (widget.config.params?["mode"]?.toString().toLowerCase() ?? "");
+
+      if (model.contains("inpaint") ||
+          model.contains("lama") ||
+          mode.contains("inpaint") ||
+          paramMode.contains("inpaint") ||
+          paramMode.contains("lama")) {
+        _autoOpenMaskAfterPick = true;
+      }
+
+      // --- Auto-open mask editor if required ---
+      if (_autoOpenMaskAfterPick) {
+        _autoOpenMaskAfterPick = false;
+        final baseBytes = _inputs[id]?[0] as Uint8List?;
+        if (baseBytes != null) {
+          final mask = await _openMaskEditor(baseBytes);
+          if (mask != null && mounted) {
+            setState(() {
+              _inputs["mask_image"] = mask;
+            });
+          }
+        }
       }
     } catch (e) {
       debugPrint("Camera image failed: $e");
@@ -764,7 +819,7 @@ class _GenericToolPageState extends State<GenericToolPage>
           if (mask != null)
             Positioned.fill(
               child: Opacity(
-                opacity: 0.7,
+                opacity: 0.6,
                 child: Image.memory(mask as Uint8List, fit: BoxFit.contain),
               ),
             ),
@@ -843,7 +898,10 @@ class _GenericToolPageState extends State<GenericToolPage>
       return await Navigator.push<Uint8List?>(
         context,
         MaterialPageRoute(
-          builder: (_) => MaskEditorPage(baseImageBytes: base),
+          builder: (_) => MaskEditorPage(
+            baseImageBytes: base,
+            existingMask: _inputs["mask_image"],
+          ),
           fullscreenDialog: true,
         ),
       );
@@ -856,9 +914,10 @@ class _GenericToolPageState extends State<GenericToolPage>
   Widget _buildPainter(String ref) {
     final cs = Theme.of(context).colorScheme;
 
+    // Find the image input for mask base
     Map<String, dynamic>? baseImageInput;
     for (final i in widget.config.inputs) {
-      if (i["type"] == "image") {
+      if (i["type"] == "image" && i["id"] != ref) {
         baseImageInput = i;
         break;
       }
@@ -867,32 +926,46 @@ class _GenericToolPageState extends State<GenericToolPage>
     final raw = baseImageInput != null ? _inputs[baseImageInput["id"]] : null;
 
     Uint8List? baseBytes;
-    if (raw == null) {
-      baseBytes = null;
-    } else if (raw is List && raw.isNotEmpty) {
+    if (raw is List && raw.isNotEmpty) {
       baseBytes = raw.first as Uint8List;
     } else if (raw is Uint8List) {
       baseBytes = raw;
     }
 
-    return FilledButton.icon(
-      icon: const Icon(Icons.edit),
-      label: const Text("Draw Mask"),
-      onPressed: baseBytes == null
-          ? null
-          : () async {
-              final mask = await _openMaskEditor(baseBytes!);
-              if (mask != null) {
-                setState(() {
-                  _inputs["mask_image"] = mask;
-                });
-              }
-            },
-      style: FilledButton.styleFrom(
-        backgroundColor: cs.primary,
-        foregroundColor: cs.onPrimary,
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    final hasMask = _inputs["mask_image"] != null;
+
+    // 🧠 Hide button entirely until image is selected
+    if (baseBytes == null && !hasMask) {
+      return const SizedBox.shrink();
+    }
+
+    // Label dynamically changes
+    final buttonLabel = hasMask ? "Edit Mask" : "Draw Mask";
+    final buttonIcon = hasMask ? Icons.edit_note_rounded : Icons.brush;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: FilledButton.icon(
+        icon: Icon(buttonIcon),
+        label: Text(buttonLabel),
+        onPressed: () async {
+          final base = baseBytes ?? (_inputs["init_image"]?[0] as Uint8List?);
+          if (base != null) {
+            final mask = await _openMaskEditor(base);
+            if (mask != null) {
+              setState(() {
+                _inputs["mask_image"] = mask;
+              });
+            }
+          }
+        },
+        style: FilledButton.styleFrom(
+          backgroundColor: cs.primary,
+          foregroundColor: cs.onPrimary,
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
       ),
     );
   }
@@ -1514,7 +1587,13 @@ class _GenericToolPageState extends State<GenericToolPage>
 // ------------------ MASK EDITOR ------------------
 class MaskEditorPage extends StatefulWidget {
   final Uint8List baseImageBytes;
-  const MaskEditorPage({super.key, required this.baseImageBytes});
+  final Uint8List? existingMask;
+
+  const MaskEditorPage({
+    super.key,
+    required this.baseImageBytes,
+    this.existingMask,
+  });
 
   @override
   State<MaskEditorPage> createState() => _MaskEditorPageState();
@@ -1523,12 +1602,14 @@ class MaskEditorPage extends StatefulWidget {
 class _MaskEditorPageState extends State<MaskEditorPage> {
   ui.Image? _image;
   bool _loading = true;
+  ui.Image? _maskOverlay;
 
   // strokes: list of drawn strokes (in image pixel coordinates)
   final List<_Stroke> _strokes = [];
   _Stroke? _currentStroke;
 
   double _brushSize = 30.0;
+  int? _lastImageHash;
   bool _eraser = false;
 
   @override
@@ -1537,14 +1618,50 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
     _loadImage();
   }
 
+  int _hashBytes(Uint8List bytes) {
+    int hash = 0;
+    for (final b in bytes) {
+      hash = (hash * 31 + b) & 0xFFFFFFFF;
+    }
+    return hash;
+  }
+
   Future<void> _loadImage() async {
     try {
+      final currentHash = _hashBytes(widget.baseImageBytes);
+      final isNewImage =
+          _lastImageHash == null || currentHash != _lastImageHash;
+      _lastImageHash = currentHash;
+
+      // Dispose old images to avoid GPU cache artifacts
+      _image?.dispose();
+      _maskOverlay?.dispose();
+
+      // Always clear strokes for (re)open
+      _strokes.clear();
+      _currentStroke = null;
+      _eraser = false;
+
+      // If it's a NEW image, force-start fresh (ignore any existingMask)
+      if (isNewImage) {
+        _maskOverlay = null;
+      } else {
+        // Same image: load existingMask if provided
+        _maskOverlay = null;
+        if (widget.existingMask != null) {
+          final maskCodec =
+              await ui.instantiateImageCodec(widget.existingMask!);
+          final maskFrame = await maskCodec.getNextFrame();
+          _maskOverlay = maskFrame.image;
+        }
+      }
+
+      // Decode the base image
       final codec = await ui.instantiateImageCodec(widget.baseImageBytes);
       final frame = await codec.getNextFrame();
-      setState(() {
-        _image = frame.image;
-        _loading = false;
-      });
+      _image = frame.image;
+
+      if (mounted) setState(() => _loading = false);
     } catch (e) {
       debugPrint("Failed to decode image in mask editor: $e");
       if (mounted) setState(() => _loading = false);
@@ -1568,47 +1685,37 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
     final img = _image!;
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
-
     final rect =
         Rect.fromLTWH(0, 0, img.width.toDouble(), img.height.toDouble());
-    canvas.saveLayer(rect, Paint());
 
-    // no background -> transparent
+    canvas.saveLayer(rect, Paint());
+    final paintSrc = Paint()..blendMode = BlendMode.src;
+
+    if (_maskOverlay != null) {
+      // draw existing mask at 1:1 (no scaling needed here)
+      canvas.drawImage(_maskOverlay!, Offset.zero, paintSrc);
+    }
 
     for (final s in _strokes) {
-      if (s.points.isEmpty) continue;
+      if (s.points.length < 2) continue;
 
-      final pathPaint = Paint()
+      final p = Paint()
         ..style = PaintingStyle.stroke
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round
-        ..strokeWidth = s.size
-        ..isAntiAlias = true;
-
-      final capPaint = Paint()
-        ..style = PaintingStyle.fill
-        ..isAntiAlias = true;
-
-      if (s.eraser) {
-        pathPaint.blendMode = BlendMode.clear;
-        capPaint.blendMode = BlendMode.clear;
-      } else {
-        pathPaint.color = Colors.white.withOpacity(0.7);
-        capPaint.color = Colors.white.withOpacity(0.7);
-        pathPaint.blendMode = BlendMode.srcOver;
-        capPaint.blendMode = BlendMode.srcOver;
-      }
+        ..strokeWidth = s.size // image-space size (you stored image coords)
+        ..isAntiAlias = true
+        ..blendMode = s.eraser ? BlendMode.clear : BlendMode.src
+        ..color = s.eraser ? const Color(0x00000000) : const Color(0xFFFFFFFF);
 
       final path = Path()..moveTo(s.points.first.dx, s.points.first.dy);
       for (int i = 1; i < s.points.length; i++) {
-        path.lineTo(s.points[i].dx, s.points[i].dy);
+        final a = s.points[i - 1];
+        final b = s.points[i];
+        final mid = Offset((a.dx + b.dx) / 2, (a.dy + b.dy) / 2);
+        path.quadraticBezierTo(a.dx, a.dy, mid.dx, mid.dy);
       }
-
-      canvas.drawPath(path, pathPaint);
-
-      for (final p in s.points) {
-        canvas.drawCircle(Offset(p.dx, p.dy), s.size / 2, capPaint);
-      }
+      canvas.drawPath(path, p);
     }
 
     canvas.restore();
@@ -1739,6 +1846,7 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
                           baseImage: _image!,
                           strokes: _strokes,
                           displaySize: displaySize,
+                          maskOverlay: _maskOverlay,
                         ),
                         size: displaySize,
                       ),
@@ -1801,8 +1909,11 @@ class _Stroke {
 }
 
 /// Painter used inside MaskEditorPage to show base image and overlay strokes scaled to the display size.
+/// Painter used inside MaskEditorPage to show base image and overlay strokes scaled to the display size.
 class _MaskEditorPainter extends CustomPainter {
   final ui.Image baseImage;
+  final ui.Image? maskOverlay;
+
   final List<_Stroke> strokes;
   final Size displaySize;
 
@@ -1810,6 +1921,7 @@ class _MaskEditorPainter extends CustomPainter {
     required this.baseImage,
     required this.strokes,
     required this.displaySize,
+    this.maskOverlay,
   });
 
   @override
@@ -1820,44 +1932,60 @@ class _MaskEditorPainter extends CustomPainter {
     final sx = displaySize.width / baseImage.width.toDouble();
     final sy = displaySize.height / baseImage.height.toDouble();
 
-    for (final s in strokes) {
-      if (s.points.isEmpty) continue;
+    // --- Build the red overlay by COMPOSITING mask + strokes together ---
+    if (maskOverlay != null || strokes.isNotEmpty) {
+      // 1) New layer to hold: (existing mask) +/- (strokes with erase)
+      canvas.saveLayer(dst, Paint());
 
-      final strokeWidth = s.size * ((sx + sy) / 2);
-
-      final paint = Paint()
-        ..color = s.eraser
-            ? Colors.black.withOpacity(0.35)
-            : Colors.white.withOpacity(0.6)
-        ..style = PaintingStyle.stroke
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round
-        ..strokeWidth = strokeWidth
-        ..isAntiAlias = true;
-
-      final path = Path();
-      final first = s.points.first;
-      path.moveTo(first.dx * sx, first.dy * sy);
-      for (int i = 1; i < s.points.length; i++) {
-        final p = s.points[i];
-        path.lineTo(p.dx * sx, p.dy * sy);
-      }
-      canvas.drawPath(path, paint);
-
-      final capPaint = Paint()
-        ..color = s.eraser
-            ? Colors.black.withOpacity(0.35)
-            : Colors.white.withOpacity(0.6)
-        ..style = PaintingStyle.fill
-        ..isAntiAlias = true;
-
-      for (final p in s.points) {
-        canvas.drawCircle(
-          Offset(p.dx * sx, p.dy * sy),
-          strokeWidth / 2,
-          capPaint,
+      // 1a) Draw the existing mask into the layer (scaled to dst)
+      if (maskOverlay != null) {
+        final src = Rect.fromLTWH(
+          0,
+          0,
+          maskOverlay!.width.toDouble(),
+          maskOverlay!.height.toDouble(),
         );
+        // draw as pure alpha (no tint yet)
+        final paintSrc = Paint()..blendMode = BlendMode.src;
+        canvas.drawImageRect(maskOverlay!, src, dst, paintSrc);
       }
+
+      // 1b) Apply strokes on the SAME layer so clear erases old mask too
+      for (final s in strokes) {
+        if (s.points.length < 2) continue;
+
+        final strokeWidth = s.size * ((sx + sy) / 2);
+
+        final p = Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round
+          ..strokeWidth = strokeWidth
+          ..isAntiAlias = true
+          ..blendMode = s.eraser ? BlendMode.clear : BlendMode.srcOver
+          ..color = s.eraser
+              ? const Color(0x00000000)
+              : const Color(0xFFFFFFFF); // white = add to mask alpha
+
+        final path = Path()
+          ..moveTo(s.points.first.dx * sx, s.points.first.dy * sy);
+        for (int i = 1; i < s.points.length; i++) {
+          final a = s.points[i - 1];
+          final b = s.points[i];
+          final mid = Offset((a.dx + b.dx) / 2 * sx, (a.dy + b.dy) / 2 * sy);
+          path.quadraticBezierTo(a.dx * sx, a.dy * sy, mid.dx, mid.dy);
+        }
+        canvas.drawPath(path, p);
+      }
+
+      // 2) Tint the current layer’s alpha in red so user sees the mask area
+      final tint = Paint()
+        ..color = const Color(0x55FF0000)
+        ..blendMode = BlendMode.srcIn;
+      canvas.drawRect(dst, tint);
+
+      // 3) Flatten back
+      canvas.restore();
     }
   }
 
