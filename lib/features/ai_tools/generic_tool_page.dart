@@ -88,14 +88,12 @@ class _GenericToolPageState extends State<GenericToolPage>
   final picker = ImagePicker();
   final Map<String, dynamic> _inputs = {};
   bool _loading = false;
-  final bool _submittingJob = false;
   String? _selectedModeKey;
   Uint8List? _resultData;
   String? _activeJobId;
   bool _fetchingResult = false;
 
   // for multi-image preview
-  final int _previewPageIndex = 0;
   late PageController _previewPageController;
 
   // Controllers
@@ -535,8 +533,6 @@ class _GenericToolPageState extends State<GenericToolPage>
         return _buildPrompt(ref);
       case "image_upload":
         return _buildImageUpload(ref);
-      // case "upscale":
-      //   return _buildUpscale(ref);
       case "slider":
         return _buildSlider(ref);
       case "dropdown":
