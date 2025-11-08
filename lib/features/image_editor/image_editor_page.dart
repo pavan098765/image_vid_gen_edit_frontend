@@ -1,9 +1,12 @@
 import 'dart:typed_data';
 import 'dart:io';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:image_vid_gen_edit_frontend/core/services/file_service.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:pro_image_editor/pro_image_editor.dart';
+import 'package:path_provider/path_provider.dart';
 
 class EditorPage extends StatefulWidget {
   const EditorPage({super.key});
@@ -28,27 +31,92 @@ class _EditorPageState extends State<EditorPage> {
     onCloseEditor: (_) {},
   );
 
-  // Pick image from gallery or camera
+  // Pick image from gallery or camera (robust across Android versions)
   Future<void> _pickImage() async {
     try {
       final source = await _showSourcePickerSheet();
       if (source == null) return;
 
-      final XFile? pickedFile = await _picker.pickImage(source: source);
-      if (pickedFile != null) {
-        final bytes = await pickedFile.readAsBytes();
-        final tempFile =
-            await FileService.writeTempFile(bytes, pickedFile.name);
+      // ✅ Request appropriate permissions for Android 13 and below
+      if (Platform.isAndroid) {
+        final androidVersion = int.tryParse(
+              (await DeviceInfoPlugin().androidInfo).version.release ?? '0',
+            ) ??
+            0;
 
-        if (!mounted) return;
-        setState(() {
-          _selectedImage = tempFile;
-          _exportedImage = null;
-          _lastEditCompleteAt = null;
-        });
+        if (androidVersion <= 12) {
+          // Android 13 and below may still need storage permission
+          final status = await Permission.storage.request();
+          if (!status.isGranted) {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Storage permission denied')),
+              );
+            }
+            return;
+          }
+        } else {
+          // Android 13+ uses scoped storage; request photo permission
+          final photos = await Permission.photos.request();
+          if (!photos.isGranted) {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Photo access permission denied')),
+              );
+            }
+            return;
+          }
+        }
       }
-    } catch (e) {
-      debugPrint('❌ Error picking image: $e');
+
+      // ✅ Let user pick image
+      final XFile? pickedFile = await _picker.pickImage(
+        source: source,
+        imageQuality: 100,
+      );
+      if (pickedFile == null) return;
+
+      // ✅ Ensure file is accessible locally (handles scoped URIs)
+      File safeFile;
+      if (await File(pickedFile.path).exists()) {
+        // Copy to app temp directory for guaranteed access
+        final tempDir = await getTemporaryDirectory();
+        final fileName = pickedFile.name;
+        final safePath = '${tempDir.path}/$fileName';
+        safeFile = await File(pickedFile.path).copy(safePath);
+      } else {
+        // Fallback: read bytes (some devices return content:// URI)
+        final bytes = await pickedFile.readAsBytes();
+        final tempDir = await getTemporaryDirectory();
+        final fileName = pickedFile.name;
+        final safePath = '${tempDir.path}/$fileName';
+        safeFile = await File(safePath).writeAsBytes(bytes, flush: true);
+      }
+
+      // ✅ Optional: verify image decodes successfully before using
+      try {
+        await decodeImageFromList(await safeFile.readAsBytes());
+      } catch (_) {
+        debugPrint('⚠️ Failed to decode picked image, file may be corrupted');
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('Could not open image — file corrupt.')),
+          );
+        }
+        return;
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _selectedImage = safeFile;
+        _exportedImage = null;
+        _lastEditCompleteAt = null;
+      });
+
+      debugPrint('✅ Image selected safely: ${safeFile.path}');
+    } catch (e, st) {
+      debugPrint('❌ Error picking image: $e\n$st');
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error picking image: $e')),
@@ -56,6 +124,35 @@ class _EditorPageState extends State<EditorPage> {
       }
     }
   }
+
+  // // Pick image from gallery or camera
+  // Future<void> _pickImage() async {
+  //   try {
+  //     final source = await _showSourcePickerSheet();
+  //     if (source == null) return;
+
+  //     final XFile? pickedFile = await _picker.pickImage(source: source);
+  //     if (pickedFile != null) {
+  //       final bytes = await pickedFile.readAsBytes();
+  //       final tempFile =
+  //           await FileService.writeTempFile(bytes, pickedFile.name);
+
+  //       if (!mounted) return;
+  //       setState(() {
+  //         _selectedImage = tempFile;
+  //         _exportedImage = null;
+  //         _lastEditCompleteAt = null;
+  //       });
+  //     }
+  //   } catch (e) {
+  //     debugPrint('❌ Error picking image: $e');
+  //     if (context.mounted) {
+  //       ScaffoldMessenger.of(context).showSnackBar(
+  //         SnackBar(content: Text('Error picking image: $e')),
+  //       );
+  //     }
+  //   }
+  // }
 
   Future<ImageSource?> _showSourcePickerSheet() async {
     final cs = Theme.of(context).colorScheme;
@@ -237,7 +334,6 @@ class _EditorPageState extends State<EditorPage> {
                   },
                 ),
               ),
-
             if (_exportedImage != null)
               Positioned(
                 right: 16,

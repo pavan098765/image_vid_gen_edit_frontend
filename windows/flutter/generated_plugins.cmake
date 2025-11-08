@@ -12,6 +12,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   gal
   media_kit_libs_windows_video
   media_kit_video
+  permission_handler_windows
   pro_video_editor
   url_launcher_windows
   volume_controller

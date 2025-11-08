@@ -643,7 +643,7 @@ class _VideoEditorPageState extends State<VideoEditorPage> {
                         opacity: controller.value.isPlaying ? 0.0 : 1.0,
                         duration: const Duration(milliseconds: 250),
                         child: Container(
-                          color: cs.background.withOpacity(0.25),
+                          color: cs.surface.withOpacity(0.25),
                           child: Icon(
                             Icons.play_circle_fill_rounded,
                             size: 90,
@@ -1025,6 +1025,7 @@ class _VideoInitializingWidget extends StatelessWidget {
 }
 
 // Video Progress Alert
+// 📹 Clean Video Progress Overlay (no stretched dialog)
 class _VideoProgressAlert extends StatelessWidget {
   const _VideoProgressAlert({this.taskId = ''});
   final String taskId;
@@ -1032,54 +1033,80 @@ class _VideoProgressAlert extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+
     return Stack(
       children: [
+        // Dim background overlay
         ModalBarrier(
-          color: cs.surface.withOpacity(0.4),
+          color: cs.surface.withOpacity(0.35),
           dismissible: false,
         ),
+
+        // Center floating progress HUD
         Center(
-          child: AlertDialog(
-            contentPadding:
-                const EdgeInsets.symmetric(vertical: 20, horizontal: 22),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+            decoration: BoxDecoration(
+              color: cs.surface.withOpacity(0.95),
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: [
+                BoxShadow(
+                  color: cs.shadow.withOpacity(0.25),
+                  blurRadius: 14,
+                  offset: const Offset(0, 6),
+                ),
+              ],
             ),
-            content: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 500),
-              child: StreamBuilder<ProgressModel>(
-                stream: ProVideoEditor.instance.progressStreamById(taskId),
-                builder: (context, snap) {
-                  final progress = snap.data?.progress ?? 0.0;
-                  return TweenAnimationBuilder<double>(
-                    tween: Tween(begin: 0, end: progress),
-                    duration: const Duration(milliseconds: 250),
-                    builder: (_, value, __) {
-                      return Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          SizedBox(
-                            width: 26,
-                            height: 26,
-                            child: CircularProgressIndicator(
-                              value: value,
-                              color: cs.primary,
-                            ),
+            child: StreamBuilder<ProgressModel>(
+              stream: ProVideoEditor.instance.progressStreamById(taskId),
+              builder: (context, snap) {
+                final progress = snap.data?.progress ?? 0.0;
+                return TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0, end: progress),
+                  duration: const Duration(milliseconds: 250),
+                  builder: (_, value, __) {
+                    final percent =
+                        (value * 100).clamp(0, 100).toStringAsFixed(1);
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          width: 64,
+                          height: 64,
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              CircularProgressIndicator(
+                                value: value,
+                                strokeWidth: 5,
+                                color: cs.primary,
+                                backgroundColor: cs.onSurface.withOpacity(0.15),
+                              ),
+                              Text(
+                                '',
+                                style: TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.bold,
+                                  color: cs.onSurface,
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 12),
-                          Text(
-                            '${(value * 100).toStringAsFixed(1)} %',
-                            style: TextStyle(
-                                fontSize: 18,
-                                color: cs.onSurface,
-                                fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          '',
+                          style: TextStyle(
+                            fontSize: 15,
+                            color: cs.onSurfaceVariant,
+                            fontWeight: FontWeight.w500,
                           ),
-                        ],
-                      );
-                    },
-                  );
-                },
-              ),
+                        ),
+                      ],
+                    );
+                  },
+                );
+              },
             ),
           ),
         ),
@@ -1087,3 +1114,66 @@ class _VideoProgressAlert extends StatelessWidget {
     );
   }
 }
+
+// class _VideoProgressAlert extends StatelessWidget {
+//   const _VideoProgressAlert({this.taskId = ''});
+//   final String taskId;
+
+//   @override
+//   Widget build(BuildContext context) {
+//     final cs = Theme.of(context).colorScheme;
+//     return Stack(
+//       children: [
+//         ModalBarrier(
+//           color: cs.surface.withOpacity(0.4),
+//           dismissible: false,
+//         ),
+//         Center(
+//           child: AlertDialog(
+//             contentPadding:
+//                 const EdgeInsets.symmetric(vertical: 20, horizontal: 22),
+//             shape: RoundedRectangleBorder(
+//               borderRadius: BorderRadius.circular(20),
+//             ),
+//             content: ConstrainedBox(
+//               constraints: const BoxConstraints(maxWidth: 500),
+//               child: StreamBuilder<ProgressModel>(
+//                 stream: ProVideoEditor.instance.progressStreamById(taskId),
+//                 builder: (context, snap) {
+//                   final progress = snap.data?.progress ?? 0.0;
+//                   return TweenAnimationBuilder<double>(
+//                     tween: Tween(begin: 0, end: progress),
+//                     duration: const Duration(milliseconds: 250),
+//                     builder: (_, value, __) {
+//                       return Row(
+//                         mainAxisSize: MainAxisSize.min,
+//                         children: [
+//                           SizedBox(
+//                             width: 26,
+//                             height: 26,
+//                             child: CircularProgressIndicator(
+//                               value: value,
+//                               color: cs.primary,
+//                             ),
+//                           ),
+//                           const SizedBox(width: 12),
+//                           Text(
+//                             '${(value * 100).toStringAsFixed(1)} %',
+//                             style: TextStyle(
+//                                 fontSize: 18,
+//                                 color: cs.onSurface,
+//                                 fontWeight: FontWeight.w600),
+//                           ),
+//                         ],
+//                       );
+//                     },
+//                   );
+//                 },
+//               ),
+//             ),
+//           ),
+//         ),
+//       ],
+//     );
+//   }
+// }
