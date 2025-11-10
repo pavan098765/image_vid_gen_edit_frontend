@@ -747,139 +747,138 @@
             "2× / 4×",
             "Enhance",
             "Crisp Details"
-          ]
-        ],
-        "type": "generic",
-        "model": "aurasrv2",
-        "cost": 10,
-        "cost_upscale": 5,
-        "offer": 0,
-        "inputs": [
-          {
-            "id": "image",
-            "type": "image",
-            "label": "Upload Image",
-            "min": 1,
-            "max": 1
+          ],
+          "type": "generic",
+          "model": "aurasrv2",
+          "cost": 10,
+          "cost_upscale": 5,
+          "offer": 0,
+          "inputs": [
+            {
+              "id": "image",
+              "type": "image",
+              "label": "Upload Image",
+              "min": 1,
+              "max": 1
+            },
+            {
+              "id": "scale_factor",
+              "type": "slider",
+              "label": "Scale Factor",
+              "min": 2,
+              "max": 4,
+              "default": 2
+            }
+          ],
+          "elements": [
+            {
+              "type": "image_upload",
+              "input_ref": "image"
+            },
+            {
+              "type": "generate_button"
+            }
+          ],
+          "params": {
+            "init_image": "{{image}}",
+            "scale": "{{scale_factor}}"
           },
-          {
-            "id": "scale_factor",
-            "type": "slider",
-            "label": "Scale Factor",
-            "min": 2,
-            "max": 4,
-            "default": 2
-          }
-        ],
-        "elements": [
-          {
-            "type": "image_upload",
-            "input_ref": "image"
-          },
-          {
-            "type": "generate_button"
-          }
-        ],
-        "params": {
-          "init_image": "{{image}}",
-          "scale": "{{scale_factor}}"
+          "root_params": {},
+          "outputType": "image"
         },
-        "root_params": {},
-        "outputType": "image"
-      },
-      {
-        "name": "Swin 2 SR",
-        "icon": "focus",
-        "caps": [
-          "2× / 4×",
-          "Sharpen",
-          "Refine Edges"
-        ],
-        "type": "generic",
-        "model": "swin2sr",
-        "cost": 10,
-        "cost_upscale": 5,
-        "offer": 0,
-        "inputs": [
-          {
-            "id": "image",
-            "type": "image",
-            "label": "Upload Image",
-            "min": 1,
-            "max": 1
+        {
+          "name": "Swin 2 SR",
+          "icon": "focus",
+          "caps": [
+            "2× / 4×",
+            "Sharpen",
+            "Refine Edges"
+          ],
+          "type": "generic",
+          "model": "swin2sr",
+          "cost": 10,
+          "cost_upscale": 5,
+          "offer": 0,
+          "inputs": [
+            {
+              "id": "image",
+              "type": "image",
+              "label": "Upload Image",
+              "min": 1,
+              "max": 1
+            },
+            {
+              "id": "scale_factor",
+              "type": "slider",
+              "label": "Scale Factor",
+              "min": 2,
+              "max": 4,
+              "default": 2
+            }
+          ],
+          "elements": [
+            {
+              "type": "image_upload",
+              "input_ref": "image"
+            },
+            {
+              "type": "generate_button"
+            }
+          ],
+          "params": {
+            "init_image": "{{image}}",
+            "scale": "{{scale_factor}}"
           },
-          {
-            "id": "scale_factor",
-            "type": "slider",
-            "label": "Scale Factor",
-            "min": 2,
-            "max": 4,
-            "default": 2
-          }
-        ],
-        "elements": [
-          {
-            "type": "image_upload",
-            "input_ref": "image"
-          },
-          {
-            "type": "generate_button"
-          }
-        ],
-        "params": {
-          "init_image": "{{image}}",
-          "scale": "{{scale_factor}}"
+          "root_params": {},
+          "outputType": "image"
         },
-        "root_params": {},
-        "outputType": "image"
-      },
-      {
-        "name": "RealESRGAN",
-        "icon": "image-plus",
-        "caps": [
-          "2× / 4×",
-          "Enhance",
-          "Photo Realism"
-        ],
-        "type": "generic",
-        "model": "realesrgan",
-        "cost": 10,
-        "cost_upscale": 5,
-        "offer": 0,
-        "inputs": [
-          {
-            "id": "image",
-            "type": "image",
-            "label": "Upload Image",
-            "min": 1,
-            "max": 1
+        {
+          "name": "RealESRGAN",
+          "icon": "image-plus",
+          "caps": [
+            "2× / 4×",
+            "Enhance",
+            "Photo Realism"
+          ],
+          "type": "generic",
+          "model": "realesrgan",
+          "cost": 10,
+          "cost_upscale": 5,
+          "offer": 0,
+          "inputs": [
+            {
+              "id": "image",
+              "type": "image",
+              "label": "Upload Image",
+              "min": 1,
+              "max": 1
+            },
+            {
+              "id": "scale_factor",
+              "type": "slider",
+              "label": "Scale Factor",
+              "min": 2,
+              "max": 4,
+              "default": 2
+            }
+          ],
+          "elements": [
+            {
+              "type": "image_upload",
+              "input_ref": "image"
+            },
+            {
+              "type": "generate_button"
+            }
+          ],
+          "params": {
+            "init_image": "{{image}}",
+            "scale": "{{scale_factor}}"
           },
-          {
-            "id": "scale_factor",
-            "type": "slider",
-            "label": "Scale Factor",
-            "min": 2,
-            "max": 4,
-            "default": 2
-          }
-        ],
-        "elements": [
-          {
-            "type": "image_upload",
-            "input_ref": "image"
-          },
-          {
-            "type": "generate_button"
-          }
-        ],
-        "params": {
-          "init_image": "{{image}}",
-          "scale": "{{scale_factor}}"
-        },
-        "root_params": {},
-        "outputType": "image"
-      }
-    ]
-  }
-]
+          "root_params": {},
+          "outputType": "image"
+        }
+      ]
+    }
+  ]
 }
