@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'dart:io';
 import 'package:device_info_plus/device_info_plus.dart';
@@ -5,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:image_vid_gen_edit_frontend/core/services/file_service.dart';
+import 'package:image_vid_gen_edit_frontend/core/widgets/gradient_button.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:pro_image_editor/pro_image_editor.dart';
 import 'package:path_provider/path_provider.dart';
@@ -29,20 +31,17 @@ class _EditorPageState extends State<EditorPage> {
     onImageEditingComplete: (bytes) async {
       debugPrint("✅ Image editing completed");
     },
-    onCloseEditor: (_) {},
+    onCloseEditor: (_) {}, // ✅ keep minimal
   );
 
-  // Pick image from gallery or camera (robust across Android versions)
   Future<void> _pickImage() async {
     try {
       final source = await _showSourcePickerSheet();
       if (source == null) return;
 
-      // ✅ Handle permissions properly (Android 13+ & below)
       if (Platform.isAndroid) {
         final androidInfo = await DeviceInfoPlugin().androidInfo;
         final sdk = androidInfo.version.sdkInt;
-
         if (sdk <= 32) {
           final status = await Permission.storage.request();
           if (!status.isGranted) {
@@ -69,7 +68,6 @@ class _EditorPageState extends State<EditorPage> {
       File? safeFile;
 
       if (source == ImageSource.camera) {
-        // 📷 Capture new image via camera
         final XFile? cameraFile = await _picker.pickImage(
             source: ImageSource.camera, imageQuality: 100);
         if (cameraFile == null) return;
@@ -78,11 +76,10 @@ class _EditorPageState extends State<EditorPage> {
         final safePath = '${tempDir.path}/${cameraFile.name}';
         safeFile = await File(cameraFile.path).copy(safePath);
       } else {
-        // 🖼️ Pick image from gallery using FilePicker (replaces image_picker)
         final result = await FilePicker.platform.pickFiles(
           type: FileType.image,
           allowMultiple: false,
-          withData: true, // Ensures we get Uint8List bytes directly
+          withData: true,
         );
 
         if (result == null || result.files.isEmpty) return;
@@ -94,7 +91,6 @@ class _EditorPageState extends State<EditorPage> {
         safeFile = await File(safePath).writeAsBytes(bytes, flush: true);
       }
 
-      // ✅ Verify image is decodable
       try {
         await decodeImageFromList(await safeFile.readAsBytes());
       } catch (_) {
@@ -146,11 +142,11 @@ class _EditorPageState extends State<EditorPage> {
                 colors: isDark
                     ? [
                         cs.surface.withOpacity(0.98),
-                        cs.surface.withOpacity(0.92),
+                        cs.surface.withOpacity(0.92)
                       ]
                     : [
                         cs.surface.withOpacity(0.98),
-                        cs.surface.withOpacity(0.96),
+                        cs.surface.withOpacity(0.96)
                       ],
               ),
               boxShadow: [
@@ -204,7 +200,6 @@ class _EditorPageState extends State<EditorPage> {
     );
   }
 
-  // Show confirm exit dialog (video editor style)
   Future<bool> _confirmExitEditing() async {
     return (await showDialog<bool>(
           context: context,
@@ -213,7 +208,6 @@ class _EditorPageState extends State<EditorPage> {
         false;
   }
 
-  // Handle system/device back press
   Future<bool> _handleSystemBack() async {
     if (_selectedImage != null) {
       final ok = await _confirmExitEditing();
@@ -229,7 +223,6 @@ class _EditorPageState extends State<EditorPage> {
     return true;
   }
 
-  // Manual save button
   Future<void> _onExportPressed() async {
     if (_exportedImage == null) {
       if (!mounted) return;
@@ -242,7 +235,6 @@ class _EditorPageState extends State<EditorPage> {
     }
 
     final savedPath = await FileService.saveFile(context, _exportedImage!);
-
     if (savedPath != null) {
       debugPrint('✅ Image saved at: $savedPath');
     }
@@ -282,26 +274,49 @@ class _EditorPageState extends State<EditorPage> {
                 key: ValueKey(_selectedImage!.path),
                 configs: _configs,
                 callbacks: _callbacks.copyWith(
+                  // inside the callbacks.copyWith(...)
                   onImageEditingComplete: (bytes) async {
-                    if (mounted) {
-                      _lastEditCompleteAt = DateTime.now();
-                      setState(() => _exportedImage = bytes);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content: Text('✅ Image editing complete')),
-                      );
-                    }
+                    if (!mounted) return;
+                    _lastEditCompleteAt = DateTime.now();
+
+                    // Keep the timestamp for a short debounce window; then clear it so future closes behave normally.
+                    Timer(const Duration(milliseconds: 900), () {
+                      if (mounted) _lastEditCompleteAt = null;
+                    });
+
+                    setState(() => _exportedImage = bytes);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('✅ Image editing complete')),
+                    );
                   },
+
                   onCloseEditor: (_) async {
+                    final now = DateTime.now();
+
+                    // If editing was just completed recently, treat this as the editor's internal close event and ignore it.
+                    if (_lastEditCompleteAt != null) {
+                      final diff = now.difference(_lastEditCompleteAt!);
+                      if (diff.inMilliseconds < 900) {
+                        debugPrint(
+                            'pro_image_editor: onCloseEditor ignored — happened $diff after edit complete (internal).');
+                        return;
+                      }
+                    }
+
+                    // Otherwise it's likely a user-initiated close (❌). Show your confirm dialog.
+                    debugPrint(
+                        'pro_image_editor: onCloseEditor triggered by user — showing confirm dialog.');
                     final ok = await _confirmExitEditing();
                     if (ok) {
-                      setState(() {
-                        _selectedImage = null;
-                        _exportedImage = null;
-                        _lastEditCompleteAt = null;
-                      });
+                      if (mounted) {
+                        setState(() {
+                          _selectedImage = null;
+                          _exportedImage = null;
+                          _lastEditCompleteAt = null;
+                        });
+                      }
                     } else {
-                      debugPrint('❌ User cancelled exit from image editor.');
+                      debugPrint('❌ User cancelled exit from editor.');
                     }
                   },
                 ),
@@ -310,45 +325,34 @@ class _EditorPageState extends State<EditorPage> {
               Positioned(
                 right: 16,
                 bottom: 100,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: cs.primary.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: [
-                      BoxShadow(
-                        color: cs.primary.withOpacity(0.25),
-                        blurRadius: 18,
-                        offset: const Offset(0, 6),
+                child: GradientButton(
+                  icon: Icons.preview,
+                  label: "Preview",
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            _ResultPreviewPage(imageBytes: _exportedImage!),
                       ),
-                    ],
-                  ),
-                  child: FloatingActionButton.small(
-                    backgroundColor: Colors.transparent,
-                    foregroundColor: cs.onPrimary,
-                    elevation: 0,
-                    tooltip: 'Preview Image',
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              _ResultPreviewPage(imageBytes: _exportedImage!),
-                        ),
-                      );
-                    },
-                    child: const Icon(Icons.preview),
-                  ),
+                    );
+                  },
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 10, horizontal: 22),
                 ),
               ),
           ],
         ),
         floatingActionButton: _selectedImage == null
-            ? _PrimaryFAB(
-                label: 'Pick Image',
+            ? GradientButton(
                 icon: Icons.add_photo_alternate_outlined,
+                label: "Pick Image",
                 onPressed: _pickImage,
+                padding:
+                    const EdgeInsets.symmetric(vertical: 14, horizontal: 28),
               )
             : null,
+        floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       ),
     );
   }
@@ -384,11 +388,8 @@ class _EditorPageState extends State<EditorPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.image_outlined,
-              size: 80,
-              color: cs.onSurface.withOpacity(0.38),
-            ),
+            Icon(Icons.image_outlined,
+                size: 80, color: cs.onSurface.withOpacity(0.38)),
             const SizedBox(height: 16),
             Text(
               'No image selected.\nTap the button below to choose one.',
@@ -405,7 +406,7 @@ class _EditorPageState extends State<EditorPage> {
   }
 }
 
-// Confirm Exit dialog (same as video editor)
+// Confirm Exit Dialog
 class _ConfirmExitDialog extends StatelessWidget {
   const _ConfirmExitDialog();
 
@@ -424,46 +425,12 @@ class _ConfirmExitDialog extends StatelessWidget {
           onPressed: () => Navigator.pop(context, false),
           child: const Text('Cancel'),
         ),
-        FilledButton(
+        GradientButton(
+          label: "Exit",
           onPressed: () => Navigator.pop(context, true),
-          child: const Text('Exit'),
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 22),
         ),
       ],
-    );
-  }
-}
-
-class _PrimaryFAB extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final VoidCallback onPressed;
-  const _PrimaryFAB({
-    required this.label,
-    required this.icon,
-    required this.onPressed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      decoration: BoxDecoration(
-        boxShadow: [
-          BoxShadow(
-            color: cs.primary.withOpacity(0.35),
-            blurRadius: 28,
-            spreadRadius: 1,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: FloatingActionButton.extended(
-        onPressed: onPressed,
-        label: Text(label),
-        icon: Icon(icon),
-        backgroundColor: cs.primary,
-        foregroundColor: cs.onPrimary,
-      ),
     );
   }
 }
