@@ -12,9 +12,9 @@
           ],
           "type": "generic",
           "model": "qwen_image",
-          "cost": 30,
-          "cost_upscale": 10,
-          "offer": 5,
+          "cost": 10,
+          "cost_upscale": 5,
+          "offer": 0,
           "inputs": [
             {
               "id": "prompt",
@@ -36,8 +36,7 @@
               "input_ref": "prompt"
             },
             {
-              "type": "slider",
-              "input_ref": "scale_factor"
+              "type": "upscale_toggle"
             },
             {
               "type": "generate_button"
@@ -63,9 +62,9 @@
           ],
           "type": "generic",
           "model": "flux_kontext_dev",
-          "cost": 30,
-          "cost_upscale": 10,
-          "offer": 5,
+          "cost": 10,
+          "cost_upscale": 5,
+          "offer": 0,
           "inputs": [
             {
               "id": "prompt",
@@ -122,9 +121,9 @@
           ],
           "type": "generic",
           "model": "qwen_image_edit",
-          "cost": 30,
-          "cost_upscale": 10,
-          "offer": 5,
+          "cost": 10,
+          "cost_upscale": 5,
+          "offer": 0,
           "inputs": [
             {
               "id": "prompt",
@@ -181,9 +180,9 @@
           ],
           "type": "generic",
           "model": "qwen_image_edit_2509",
-          "cost": 30,
-          "cost_upscale": 10,
-          "offer": 5,
+          "cost": 10,
+          "cost_upscale": 5,
+          "offer": 0,
           "inputs": [
             {
               "id": "prompt",
@@ -241,9 +240,9 @@
           ],
           "type": "generic",
           "model": "sdxl",
-          "cost": 30,
-          "cost_upscale": 10,
-          "offer": 5,
+          "cost": 10,
+          "cost_upscale": 5,
+          "offer": 20,
           "inputs": [
             {
               "id": "prompt",
@@ -347,9 +346,9 @@
           ],
           "type": "generic",
           "model": "diffusers_outpaint",
-          "cost": 30,
-          "cost_upscale": 10,
-          "offer": 5,
+          "cost": 10,
+          "cost_upscale": 5,
+          "offer": 10,
           "inputs": [
             {
               "id": "init_image",
@@ -439,9 +438,9 @@
           "type": "generic",
           "model": "basic_utils",
           "mode": "bg_remove",
-          "cost": 30,
-          "cost_upscale": 10,
-          "offer": 5,
+          "cost": 10,
+          "cost_upscale": 5,
+          "offer": 0,
           "inputs": [
             {
               "id": "init_image",
@@ -486,9 +485,9 @@
           "type": "generic",
           "model": "basic_utils",
           "mode": "lama_inpaint",
-          "cost": 30,
-          "cost_upscale": 10,
-          "offer": 5,
+          "cost": 10,
+          "cost_upscale": 5,
+          "offer": 0,
           "inputs": [
             {
               "id": "init_image",
@@ -548,9 +547,9 @@
           ],
           "type": "generic",
           "model": "fastwan_21_1b",
-          "cost": 30,
-          "cost_upscale": 10,
-          "offer": 5,
+          "cost": 10,
+          "cost_upscale": 5,
+          "offer": 0,
           "inputs": [
             {
               "id": "prompt",
@@ -627,9 +626,9 @@
           ],
           "type": "generic",
           "model": "fastwan_22_5b",
-          "cost": 30,
-          "cost_upscale": 10,
-          "offer": 5,
+          "cost": 10,
+          "cost_upscale": 5,
+          "offer": 0,
           "inputs": [
             {
               "id": "prompt",
@@ -736,9 +735,9 @@
           ],
           "type": "generic",
           "model": "aurasrv2",
-          "cost": 30,
-          "cost_upscale": 10,
-          "offer": 5,
+          "cost": 10,
+          "cost_upscale": 5,
+          "offer": 0,
           "inputs": [
             {
               "id": "image",
@@ -781,9 +780,9 @@
           ],
           "type": "generic",
           "model": "swin2sr",
-          "cost": 30,
-          "cost_upscale": 10,
-          "offer": 5,
+          "cost": 10,
+          "cost_upscale": 5,
+          "offer": 0,
           "inputs": [
             {
               "id": "image",
@@ -826,9 +825,9 @@
           ],
           "type": "generic",
           "model": "realesrgan",
-          "cost": 30,
-          "cost_upscale": 10,
-          "offer": 5,
+          "cost": 10,
+          "cost_upscale": 5,
+          "offer": 0,
           "inputs": [
             {
               "id": "image",

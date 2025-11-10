@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:image_vid_gen_edit_frontend/core/services/file_service.dart';
+import 'package:image_vid_gen_edit_frontend/core/widgets/gradient_button.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pro_image_editor/pro_image_editor.dart';
@@ -456,10 +457,12 @@ class _VideoEditorPageState extends State<VideoEditorPage> {
         ),
         body: _buildBody(),
         floatingActionButton: _video == null
-            ? _PrimaryFAB(
+            ? GradientButton(
                 label: 'Pick Video',
                 icon: Icons.video_library_outlined,
                 onPressed: _pickVideo,
+                padding:
+                    const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
               )
             : null,
       ),
@@ -549,16 +552,20 @@ class _VideoEditorPageState extends State<VideoEditorPage> {
             spacing: 8,
             alignment: WrapAlignment.center,
             children: [
-              FilledButton.icon(
+              GradientButton(
+                label: "Edit Video",
+                icon: Icons.edit,
                 onPressed: () => setState(() => _editorOpen = true),
-                icon: const Icon(Icons.edit),
-                label: const Text('Edit Video'),
+                padding:
+                    const EdgeInsets.symmetric(vertical: 10, horizontal: 22),
               ),
               if (_outputPath != null)
-                FilledButton.icon(
+                GradientButton(
+                  label: "Save Result",
+                  icon: Icons.save_alt,
                   onPressed: _saveExported,
-                  icon: const Icon(Icons.save_alt),
-                  label: const Text('Save Result'),
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 10, horizontal: 22),
                 ),
             ],
           ),
@@ -703,15 +710,19 @@ class _VideoEditorPageState extends State<VideoEditorPage> {
               spacing: 12,
               alignment: WrapAlignment.center,
               children: [
-                FilledButton.icon(
+                GradientButton(
+                  label: "Edit Again",
+                  icon: Icons.edit,
                   onPressed: () => setState(() => _editorOpen = true),
-                  icon: const Icon(Icons.edit),
-                  label: const Text('Edit Again'),
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 10, horizontal: 22),
                 ),
-                FilledButton.icon(
+                GradientButton(
+                  label: "Save Video",
+                  icon: Icons.save_alt,
                   onPressed: _saveExported,
-                  icon: const Icon(Icons.save_alt),
-                  label: const Text('Save Video'),
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 10, horizontal: 22),
                 ),
               ],
             ),
@@ -962,9 +973,9 @@ class _ConfirmExitDialog extends StatelessWidget {
           onPressed: () => Navigator.pop(context, false),
           child: const Text('Cancel'),
         ),
-        FilledButton(
+        GradientButton(
+          label: "Exit",
           onPressed: () => Navigator.pop(context, true),
-          child: const Text('Exit'),
         ),
       ],
     );

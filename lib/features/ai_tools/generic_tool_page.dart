@@ -15,8 +15,10 @@ import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:image_vid_gen_edit_frontend/core/app_state.dart';
 import 'package:image_vid_gen_edit_frontend/core/services/file_service.dart';
+import 'package:image_vid_gen_edit_frontend/core/widgets/gradient_button.dart';
 import 'package:image_vid_gen_edit_frontend/features/ai_tools/outpaint_canvas_page.dart';
 import 'package:image_vid_gen_edit_frontend/features/result_manager/result_manager_page.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// --------------------------------------
@@ -35,6 +37,9 @@ class GenericToolConfig {
   final Map<String, dynamic>? modes;
   final List<dynamic>? elements;
   final String outputType;
+  final int cost;
+  final int costUpscale;
+  final int offer;
 
   const GenericToolConfig({
     required this.title,
@@ -45,6 +50,9 @@ class GenericToolConfig {
     this.modes,
     this.elements,
     required this.outputType,
+    this.cost = 0,
+    this.costUpscale = 0,
+    this.offer = 0,
   });
 
   // Optional: helpful for serialization (tool_config parsing)
@@ -161,6 +169,119 @@ class _GenericToolPageState extends State<GenericToolPage>
         debugPrint("🔁 Resuming job polling after resume");
       }
     }
+  }
+
+  // -------- Generate Button --------
+  // -------- Generate Button --------
+  Widget _buildGenerateButton() {
+    final cs = Theme.of(context).colorScheme;
+    final baseCost = widget.config.cost;
+    final upscaleCost = widget.config.costUpscale;
+    final offer = widget.config.offer;
+    final scaleFactor = _inputs["scale_factor"] ?? 1.0;
+
+    // Calculate costs
+    int originalCost = baseCost + ((scaleFactor > 1) ? upscaleCost : 0);
+    int totalCost = originalCost;
+    if (offer > 0) {
+      totalCost = (originalCost * (1 - offer / 100)).round();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: GradientButton(
+        onPressed: _runJob,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(LucideIcons.gem, color: Colors.white, size: 18),
+            const SizedBox(width: 8),
+            offer > 0
+                ? Text.rich(
+                    TextSpan(
+                      children: [
+                        const TextSpan(
+                          text: "Generate ",
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.white,
+                          ),
+                        ),
+                        TextSpan(
+                          text: "$totalCost ",
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const TextSpan(
+                          text: "credits ",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 15,
+                          ),
+                        ),
+                        TextSpan(
+                          text: "(${originalCost})",
+                          style: TextStyle(
+                            decoration: TextDecoration.lineThrough,
+                            color: Colors.white.withOpacity(0.65),
+                            fontSize: 13,
+                          ),
+                        ),
+                        const TextSpan(
+                          text: "  •  ",
+                          style: TextStyle(
+                            color: Colors.white70,
+                          ),
+                        ),
+                        TextSpan(
+                          text: "-${offer.toString()}%",
+                          style: const TextStyle(
+                            color: Colors.lightGreenAccent,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                    textAlign: TextAlign.center,
+                  )
+                : Text(
+                    "Generate ($totalCost credits)",
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 🖼️ BUILD UI — Scaffold + Mode Selector + Dynamic Elements
+  // ----------------------------------------------------
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          widget.config.title,
+          style: TextStyle(fontWeight: FontWeight.w600, color: cs.onSurface),
+        ),
+        backgroundColor: cs.surface,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        iconTheme: IconThemeData(color: cs.onSurface),
+      ),
+      body: _buildDynamicInputScreen(),
+    );
   }
 
   // -----------------------------------------------
@@ -426,10 +547,6 @@ class _GenericToolPageState extends State<GenericToolPage>
     }
   }
 
-  // -----------------------------------------------
-  // 🧱 ELEMENT BUILDERS (core dynamic UI logic)
-  // -----------------------------------------------
-
   // ---------- Card (theme-aware glass-ish) ----------
   Widget _buildCard({required Widget child}) {
     final cs = Theme.of(context).colorScheme;
@@ -494,7 +611,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             children: [
               Expanded(
                 child: Container(
-                  height: 52,
+                  height: 48,
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   decoration: BoxDecoration(
                     color: cs.surfaceContainerHigh,
@@ -509,7 +626,12 @@ class _GenericToolPageState extends State<GenericToolPage>
                               color: cs.onSurfaceVariant, fontSize: 14.5)),
                       Switch(
                         value: _upscaleEnabled,
-                        onChanged: (v) => setState(() => _upscaleEnabled = v),
+                        onChanged: (v) {
+                          setState(() {
+                            _upscaleEnabled = v;
+                            _inputs["scale_factor"] = v ? _scaleFactor : 1.0;
+                          });
+                        },
                         activeThumbColor: cs.primary,
                         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
@@ -530,7 +652,12 @@ class _GenericToolPageState extends State<GenericToolPage>
                         ChoiceChip(
                           label: const Text("2x"),
                           selected: _scaleFactor == 2,
-                          onSelected: (_) => setState(() => _scaleFactor = 2),
+                          onSelected: (_) {
+                            setState(() {
+                              _scaleFactor = 2;
+                              _inputs["scale_factor"] = _scaleFactor;
+                            });
+                          },
                           selectedColor: cs.primary,
                           backgroundColor: cs.surfaceContainerHigh,
                           labelStyle: TextStyle(
@@ -543,7 +670,12 @@ class _GenericToolPageState extends State<GenericToolPage>
                         ChoiceChip(
                           label: const Text("4x"),
                           selected: _scaleFactor == 4,
-                          onSelected: (_) => setState(() => _scaleFactor = 4),
+                          onSelected: (_) {
+                            setState(() {
+                              _scaleFactor = 4;
+                              _inputs["scale_factor"] = _scaleFactor;
+                            });
+                          },
                           selectedColor: cs.primary,
                           backgroundColor: cs.surfaceContainerHigh,
                           labelStyle: TextStyle(
@@ -593,6 +725,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   // -------- Image Upload --------
+  // -------- Image Upload --------
   Widget _buildImageUpload(String ref) {
     final cs = Theme.of(context).colorScheme;
     final mode = _selectedModeKey?.toLowerCase() ?? "";
@@ -607,51 +740,60 @@ class _GenericToolPageState extends State<GenericToolPage>
         children: [
           _buildImagePreview(ref),
           const SizedBox(height: 16),
-          Row(
-            children: [
-              // Pick Image
-              Expanded(
-                child: SizedBox(
-                  height: 52,
-                  child: FilledButton.icon(
-                    icon: const Icon(Icons.add_photo_alternate_outlined,
-                        size: 22),
-                    label: const Text("Pick Image"),
+
+          // --- Buttons Row ---
+          IntrinsicHeight(
+            child: Row(
+              children: [
+                // Pick Image (gradient)
+                Expanded(
+                  child: GradientButton(
+                    icon: Icons.add_photo_alternate_outlined,
+                    label: "Pick Image",
                     onPressed: () => _pickImage(input),
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 12, horizontal: 16),
                   ),
                 ),
-              ),
-              const SizedBox(width: 14),
-              // Upscale toggle
-              Expanded(
-                child: Container(
-                  height: 52,
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  decoration: BoxDecoration(
-                    color: cs.surfaceContainerHigh,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: cs.outlineVariant),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text("Upscale",
-                          style: TextStyle(
-                              color: cs.onSurfaceVariant, fontSize: 14.5)),
-                      Switch(
-                        value: _upscaleEnabled,
-                        onChanged: (v) => setState(() => _upscaleEnabled = v),
-                        activeThumbColor: cs.primary,
-                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
-                    ],
+                const SizedBox(width: 14),
+
+                // Upscale toggle
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 10, horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainerHigh,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: cs.outlineVariant),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text("Upscale",
+                            style: TextStyle(
+                                color: cs.onSurfaceVariant, fontSize: 14.5)),
+                        Switch(
+                          value: _upscaleEnabled,
+                          onChanged: (v) {
+                            setState(() {
+                              _upscaleEnabled = v;
+                              _inputs["scale_factor"] = v ? _scaleFactor : 1.0;
+                            });
+                          },
+                          activeThumbColor: cs.primary,
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
 
-          // factor
+          // --- Scale Factor Buttons ---
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 250),
             child: _upscaleEnabled
@@ -663,7 +805,11 @@ class _GenericToolPageState extends State<GenericToolPage>
                         ChoiceChip(
                           label: const Text("2x"),
                           selected: _scaleFactor == 2,
-                          onSelected: (_) => setState(() => _scaleFactor = 2),
+                          onSelected: (_) {
+                            setState(() {
+                              _scaleFactor = 2;
+                            });
+                          },
                           selectedColor: cs.primary,
                           backgroundColor: cs.surfaceContainerHigh,
                           labelStyle: TextStyle(
@@ -676,7 +822,11 @@ class _GenericToolPageState extends State<GenericToolPage>
                         ChoiceChip(
                           label: const Text("4x"),
                           selected: _scaleFactor == 4,
-                          onSelected: (_) => setState(() => _scaleFactor = 4),
+                          onSelected: (_) {
+                            setState(() {
+                              _scaleFactor = 4;
+                            });
+                          },
                           selectedColor: cs.primary,
                           backgroundColor: cs.surfaceContainerHigh,
                           labelStyle: TextStyle(
@@ -908,9 +1058,9 @@ class _GenericToolPageState extends State<GenericToolPage>
 
     return Padding(
       padding: const EdgeInsets.only(top: 8),
-      child: FilledButton.icon(
-        icon: Icon(buttonIcon),
-        label: Text(buttonLabel),
+      child: GradientButton(
+        icon: buttonIcon,
+        label: buttonLabel,
         onPressed: () async {
           final base = baseBytes ?? (_inputs["init_image"]?[0] as Uint8List?);
           if (base != null) {
@@ -922,44 +1072,110 @@ class _GenericToolPageState extends State<GenericToolPage>
             }
           }
         },
-        style: FilledButton.styleFrom(
-          backgroundColor: cs.primary,
-          foregroundColor: cs.onPrimary,
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ),
       ),
     );
   }
 
-  // -------- Generate Button --------
-  Widget _buildGenerateButton() => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        child: FilledButton.icon(
-          icon: const Icon(Icons.flash_on),
-          label: const Text("Generate ✨"),
-          onPressed: _runJob,
-        ),
-      );
+  Widget _buildDynamicInputScreen() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (widget.config.modes != null && widget.config.modes!.isNotEmpty)
+            _buildModeSelector(),
+          const SizedBox(height: 8),
+          ..._currentElements.map(_buildElement).toList(),
+          const SizedBox(height: 12),
+        ],
+      ),
+    );
+  }
 
-  // -------- Painter (Mask Editor) --------
-  Future<Uint8List?> _openMaskEditor(Uint8List base) async {
-    try {
-      return await Navigator.push<Uint8List?>(
-        context,
-        MaterialPageRoute(
-          builder: (_) => MaskEditorPage(
-            baseImageBytes: base,
-            existingMask: _inputs["mask_image"],
+  Widget _buildModeSelector() {
+    final cs = Theme.of(context).colorScheme;
+    final modes = widget.config.modes!;
+    final modeKeys = modes.keys.toList();
+
+    return _buildCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            "Mode",
+            style: TextStyle(
+              color: cs.onSurfaceVariant,
+              fontWeight: FontWeight.w500,
+            ),
           ),
-          fullscreenDialog: true,
-        ),
-      );
-    } catch (e) {
-      debugPrint("Mask editor failed: $e");
-      return null;
-    }
+          const SizedBox(height: 6),
+
+          // Compact Segmented Button Bar
+          Container(
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHigh,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            padding: const EdgeInsets.all(3),
+            child: Row(
+              children: modeKeys.map((key) {
+                final selected = _selectedModeKey == key;
+                return Expanded(
+                  child: GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _selectedModeKey = key;
+                        _resultData = null;
+                        _promptController.clear();
+                      });
+                    },
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 160),
+                      curve: Curves.easeInOut,
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? cs.primary.withOpacity(0.95)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(8),
+                        boxShadow: selected
+                            ? [
+                                BoxShadow(
+                                  color: cs.primary.withOpacity(0.2),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 1),
+                                ),
+                              ]
+                            : [],
+                      ),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 2),
+                          child: Text(
+                            modes[key]?["label"] ?? key,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: selected
+                                  ? cs.onPrimary
+                                  : cs.onSurfaceVariant.withOpacity(0.9),
+                              fontWeight:
+                                  selected ? FontWeight.w600 : FontWeight.w400,
+                              fontSize: 12.5, // ↓ smaller for one-row fit
+                              letterSpacing: -0.2,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   // ----------------------------------------------------
@@ -1312,128 +1528,23 @@ class _GenericToolPageState extends State<GenericToolPage>
     }
   }
 
-  // ----------------------------------------------------
-  // 🖼️ BUILD UI — Scaffold + Mode Selector + Dynamic Elements
-  // ----------------------------------------------------
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          widget.config.title,
-          style: TextStyle(fontWeight: FontWeight.w600, color: cs.onSurface),
+  // -------- Painter (Mask Editor) --------
+  Future<Uint8List?> _openMaskEditor(Uint8List base) async {
+    try {
+      return await Navigator.push<Uint8List?>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => MaskEditorPage(
+            baseImageBytes: base,
+            existingMask: _inputs["mask_image"],
+          ),
+          fullscreenDialog: true,
         ),
-        backgroundColor: cs.surface,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        iconTheme: IconThemeData(color: cs.onSurface),
-      ),
-      body: _buildDynamicInputScreen(),
-    );
-  }
-
-  Widget _buildDynamicInputScreen() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (widget.config.modes != null && widget.config.modes!.isNotEmpty)
-            _buildModeSelector(),
-          const SizedBox(height: 8),
-          ..._currentElements.map(_buildElement).toList(),
-          const SizedBox(height: 12),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildModeSelector() {
-    final cs = Theme.of(context).colorScheme;
-    final modes = widget.config.modes!;
-    final modeKeys = modes.keys.toList();
-
-    return _buildCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            "Mode",
-            style: TextStyle(
-              color: cs.onSurfaceVariant,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 6),
-
-          // Compact Segmented Button Bar
-          Container(
-            decoration: BoxDecoration(
-              color: cs.surfaceContainerHigh,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            padding: const EdgeInsets.all(3),
-            child: Row(
-              children: modeKeys.map((key) {
-                final selected = _selectedModeKey == key;
-                return Expanded(
-                  child: GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        _selectedModeKey = key;
-                        _resultData = null;
-                        _promptController.clear();
-                      });
-                    },
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 160),
-                      curve: Curves.easeInOut,
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      decoration: BoxDecoration(
-                        color: selected
-                            ? cs.primary.withOpacity(0.95)
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(8),
-                        boxShadow: selected
-                            ? [
-                                BoxShadow(
-                                  color: cs.primary.withOpacity(0.2),
-                                  blurRadius: 4,
-                                  offset: const Offset(0, 1),
-                                ),
-                              ]
-                            : [],
-                      ),
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 2),
-                          child: Text(
-                            modes[key]?["label"] ?? key,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: selected
-                                  ? cs.onPrimary
-                                  : cs.onSurfaceVariant.withOpacity(0.9),
-                              fontWeight:
-                                  selected ? FontWeight.w600 : FontWeight.w400,
-                              fontSize: 12.5, // ↓ smaller for one-row fit
-                              letterSpacing: -0.2,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-        ],
-      ),
-    );
+      );
+    } catch (e) {
+      debugPrint("Mask editor failed: $e");
+      return null;
+    }
   }
 }
 

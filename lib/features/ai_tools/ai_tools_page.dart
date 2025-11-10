@@ -7,7 +7,6 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_vid_gen_edit_frontend/features/ai_tools/generic_tool_page.dart';
 
-
 // -------------------- MODEL CLASSES --------------------
 class ToolConfig {
   final List<ToolCategory> categories;
@@ -53,6 +52,9 @@ class ToolItem {
   final String? outputType;
   final Map<String, dynamic>? modes;
   final List<dynamic>? elements;
+  final int cost;
+  final int costUpscale;
+  final int offer;
 
   ToolItem({
     required this.name,
@@ -66,6 +68,9 @@ class ToolItem {
     this.outputType,
     this.modes,
     this.elements,
+    this.cost = 0,
+    this.costUpscale = 0,
+    this.offer = 0,
   });
 
   factory ToolItem.fromJson(Map<String, dynamic> json) => ToolItem(
@@ -80,6 +85,9 @@ class ToolItem {
         outputType: json['outputType'],
         modes: json['modes'],
         elements: json['elements'],
+        cost: json['cost'] ?? 0,
+        costUpscale: json['cost_upscale'] ?? 0,
+        offer: json['offer'] ?? 0,
       );
 
   Map<String, dynamic> toJson() => {
@@ -94,9 +102,11 @@ class ToolItem {
         "outputType": outputType,
         "modes": modes,
         "elements": elements,
+        "cost": cost,
+        "costUpscale": costUpscale,
+        "offer": offer,
       };
 }
-
 
 // -------------------- MAIN PAGE --------------------
 class AiToolsPage extends StatefulWidget {
@@ -199,7 +209,8 @@ class _AiToolsPageState extends State<AiToolsPage>
             child: ValueListenableBuilder<int>(
               valueListenable: userCreditsNotifier,
               builder: (_, credits, __) => Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
                   color: cs.primaryContainer.withOpacity(0.85),
                   borderRadius: BorderRadius.circular(20),
@@ -258,8 +269,9 @@ class _AiToolsPageState extends State<AiToolsPage>
                   children: [
                     ShaderMask(
                       shaderCallback: (rect) => glow.createShader(rect),
-                      blendMode:
-                          _hasUnseenCompleted ? BlendMode.srcATop : BlendMode.dst,
+                      blendMode: _hasUnseenCompleted
+                          ? BlendMode.srcATop
+                          : BlendMode.dst,
                       child: IconButton(
                         icon: Icon(
                           LucideIcons.activitySquare,
@@ -277,7 +289,6 @@ class _AiToolsPageState extends State<AiToolsPage>
                         },
                       ),
                     ),
-
                     if (count > 0)
                       Positioned(
                         right: 4,
@@ -311,7 +322,6 @@ class _AiToolsPageState extends State<AiToolsPage>
           ),
         ],
       ),
-
       body: FutureBuilder<ToolConfig>(
         future: _futureConfig,
         builder: (context, snapshot) {
@@ -337,7 +347,8 @@ class _AiToolsPageState extends State<AiToolsPage>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.cloud_off, size: 64, color: cs.onSurface.withOpacity(0.50)),
+            Icon(Icons.cloud_off,
+                size: 64, color: cs.onSurface.withOpacity(0.50)),
             const SizedBox(height: 12),
             Text(
               "Unable to load tools",
@@ -356,7 +367,8 @@ class _AiToolsPageState extends State<AiToolsPage>
             ),
             const SizedBox(height: 20),
             FilledButton.icon(
-              onPressed: () => setState(() => _futureConfig = _loadToolConfig()),
+              onPressed: () =>
+                  setState(() => _futureConfig = _loadToolConfig()),
               icon: const Icon(Icons.refresh),
               label: const Text("Retry"),
             ),
@@ -405,7 +417,7 @@ class _AiToolsPageState extends State<AiToolsPage>
                 crossAxisCount: 2,
                 crossAxisSpacing: 14,
                 mainAxisSpacing: 14,
-                childAspectRatio: 0.9,
+                childAspectRatio: 0.75,
               ),
               itemBuilder: (_, j) =>
                   _ToolCard(item: cat.tools[j], accent: cat.accent),
@@ -416,7 +428,6 @@ class _AiToolsPageState extends State<AiToolsPage>
     );
   }
 }
-
 
 // -------------------- TOOL CARD --------------------
 class _ToolCard extends StatefulWidget {
@@ -474,109 +485,213 @@ class _ToolCardState extends State<_ToolCard> {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: _hover
-              ? accent.withOpacity(0.55)
-              : cs.outline.withOpacity(0.25),
-          width: 1.1,
-        ),
-        gradient: LinearGradient(
-          colors: _hover
-              ? [
-                  accent.withOpacity(0.10),
-                  cs.surfaceContainerHighest.withOpacity(0.08)
-                ]
-              : [
-                  cs.surfaceContainerHighest.withOpacity(0.04),
-                  cs.surface.withOpacity(0.03)
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        // 🌟 Main Card Container
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: _hover
+                  ? accent.withOpacity(0.55)
+                  : cs.outline.withOpacity(0.25),
+              width: 1.1,
+            ),
+            gradient: LinearGradient(
+              colors: _hover
+                  ? [
+                      accent.withOpacity(0.10),
+                      cs.surfaceContainerHighest.withOpacity(0.08)
+                    ]
+                  : [
+                      cs.surfaceContainerHighest.withOpacity(0.04),
+                      cs.surface.withOpacity(0.03)
+                    ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            boxShadow: _hover
+                ? [
+                    BoxShadow(
+                      color: accent.withOpacity(0.18),
+                      offset: const Offset(0, 4),
+                      blurRadius: 12,
+                    )
+                  ]
+                : [],
+          ),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(18),
+            onHover: (v) => setState(() => _hover = v),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => GenericToolPage(
+                    config: GenericToolConfig(
+                      title: item.name,
+                      model: item.model,
+                      inputs: item.inputs ?? [],
+                      params: item.params,
+                      modes: item.modes,
+                      elements: item.elements,
+                      outputType: item.outputType ?? "image",
+                      cost: item.cost,
+                      costUpscale: item.costUpscale,
+                      offer: item.offer,
+                    ),
+                  ),
+                ),
+              );
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  const SizedBox(height: 24), // spacing from top for badges
+                  Icon(_resolveIcon(item.icon), color: accent, size: 40),
+                  const SizedBox(height: 10),
+
+                  // 🧾 Name (consistent height container)
+                  SizedBox(
+                    height: 36, // fixes uneven multi-line height
+                    child: Center(
+                      child: Text(
+                        item.name,
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: tt.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: cs.onSurface,
+                          height: 1.18,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+
+                  // 🪄 Capabilities
+                  Flexible(
+                    child: Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      alignment: WrapAlignment.center,
+                      children: item.caps
+                          .map(
+                            (cap) => Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: accent.withOpacity(0.12),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                cap,
+                                maxLines: 1,
+                                style: tt.labelSmall?.copyWith(
+                                  color: accent.withOpacity(0.95),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          )
+                          .toList(),
+                    ),
+                  ),
+                  const Spacer(),
                 ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+              ),
+            ),
+          ),
         ),
-        boxShadow: _hover
-            ? [
-                BoxShadow(
-                  color: accent.withOpacity(0.22),
-                  offset: const Offset(0, 6),
-                  blurRadius: 16,
-                )
-              ]
-            : [],
-      ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onHover: (v) => setState(() => _hover = v),
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => GenericToolPage(
-                config: GenericToolConfig(
-                  title: item.name,
-                  model: item.model,
-                  inputs: item.inputs ?? [],
-                  params: item.params,
-                  modes: item.modes,
-                  elements: item.elements,
-                  outputType: item.outputType ?? "image",
+
+        // 💎 Credits Badge (top-left, gradient glass look)
+        if (item.cost > 0)
+          Positioned(
+            top: 8,
+            left: 10,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    cs.surface.withOpacity(0.9),
+                    cs.surfaceContainerHighest.withOpacity(0.85)
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: accent.withOpacity(0.45), width: 0.8),
+                boxShadow: [
+                  BoxShadow(
+                    color: accent.withOpacity(0.15),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(LucideIcons.gem, color: accent, size: 13),
+                  const SizedBox(width: 3),
+                  Text(
+                    "${item.cost}",
+                    style: tt.labelSmall?.copyWith(
+                      color: cs.onSurface,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+        // 🏷️ Offer Badge (top-right, pill style)
+        if (item.offer > 0)
+          Positioned(
+            top: 8,
+            right: 10,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    accent.withOpacity(0.18),
+                    accent.withOpacity(0.08),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: accent.withOpacity(0.4), width: 0.8),
+                boxShadow: [
+                  BoxShadow(
+                    color: accent.withOpacity(0.2),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Text(
+                "-${item.offer}%",
+                style: tt.labelSmall?.copyWith(
+                  color: accent,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 11,
                 ),
               ),
             ),
-          );
-        },
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Icon(_resolveIcon(item.icon), color: accent, size: 40),
-              const SizedBox(height: 10),
-              Text(
-                item.name,
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: tt.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: cs.onSurface,
-                  height: 1.18,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 6,
-                runSpacing: 4,
-                alignment: WrapAlignment.center,
-                children: item.caps
-                    .map(
-                      (cap) => Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: accent.withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          cap,
-                          maxLines: 1,
-                          style: tt.labelSmall?.copyWith(
-                            color: accent.withOpacity(0.95),
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    )
-                    .toList(),
-              ),
-            ],
           ),
-        ),
-      ),
+      ],
     );
   }
 }

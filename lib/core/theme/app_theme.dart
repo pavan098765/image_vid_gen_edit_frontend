@@ -1,6 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+/// Optional helper — can be reused by custom widgets (like GradientButton)
+LinearGradient appButtonGradient(BuildContext context) {
+  final cs = Theme.of(context).colorScheme;
+  return LinearGradient(
+    colors: [
+      cs.primary,
+      cs.secondary,
+      Colors.purpleAccent.withOpacity(0.8),
+    ],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+}
+
 class AppTheme {
   // ---------------------------------------------------------------------------
   //  BASE COLORS (Modern Professional Palette)
@@ -63,7 +77,7 @@ class AppTheme {
         iconTheme: const IconThemeData(color: Colors.white),
       ),
 
-      // Buttons
+      // Buttons (we’ll override visuals with GradientButton widget)
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           elevation: 0,
@@ -78,11 +92,32 @@ class AppTheme {
       ),
 
       filledButtonTheme: FilledButtonThemeData(
-        style: FilledButton.styleFrom(
-          backgroundColor: seedSecondary,
-          foregroundColor: Colors.black,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+        style: ButtonStyle(
+          backgroundColor: WidgetStateProperty.all(Colors.transparent),
+          foregroundColor: WidgetStateProperty.all(Colors.white),
+          elevation: WidgetStateProperty.all(0),
+          shape: WidgetStateProperty.all(
+            RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(50),
+              side: const BorderSide(
+                width: 2,
+                color: Colors.white30,
+              ),
+            ),
+          ),
+          padding: WidgetStateProperty.all(
+            const EdgeInsets.symmetric(vertical: 14, horizontal: 28),
+          ),
+          textStyle: WidgetStateProperty.all(
+            GoogleFonts.inter(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          overlayColor: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.pressed)
+                ? Colors.white.withOpacity(0.05)
+                : null,
           ),
         ),
       ),
@@ -201,10 +236,16 @@ class AppTheme {
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: seedSecondary,
-          foregroundColor: Colors.black,
+          backgroundColor: Colors.transparent,
+          foregroundColor: Colors.black87,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(50),
+            side: const BorderSide(width: 2, color: Colors.black26),
+          ),
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 28),
+          textStyle: GoogleFonts.inter(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
           ),
         ),
       ),
