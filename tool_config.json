@@ -180,7 +180,7 @@
         },
         {
           "name": "Qwen Image Edit 2509",
-          "icon": "images",
+          "icon": "wand2",
           "caps": [
             "Multi-Image Edit",
             "Consistent Look",
