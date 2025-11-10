@@ -788,7 +788,7 @@
         },
         {
           "name": "Swin 2 SR",
-          "icon": "focus",
+          "icon": "maximize",
           "caps": [
             "2× / 4×",
             "Sharpen",
@@ -834,7 +834,7 @@
         },
         {
           "name": "RealESRGAN",
-          "icon": "image-plus",
+          "icon": "image",
           "caps": [
             "2× / 4×",
             "Enhance",
