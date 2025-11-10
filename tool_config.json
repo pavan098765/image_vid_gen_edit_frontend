@@ -41,9 +41,6 @@
             },
             {
               "type": "generate_button"
-            },
-            {
-              "type": "output_preview"
             }
           ],
           "params": {
@@ -102,9 +99,6 @@
             },
             {
               "type": "generate_button"
-            },
-            {
-              "type": "output_preview"
             }
           ],
           "params": {
@@ -164,9 +158,6 @@
             },
             {
               "type": "generate_button"
-            },
-            {
-              "type": "output_preview"
             }
           ],
           "params": {
@@ -226,9 +217,6 @@
             },
             {
               "type": "generate_button"
-            },
-            {
-              "type": "output_preview"
             }
           ],
           "params": {
@@ -296,9 +284,6 @@
                 },
                 {
                   "type": "generate_button"
-                },
-                {
-                  "type": "output_preview"
                 }
               ]
             },
@@ -315,9 +300,6 @@
                 },
                 {
                   "type": "generate_button"
-                },
-                {
-                  "type": "output_preview"
                 }
               ]
             },
@@ -338,9 +320,6 @@
                 },
                 {
                   "type": "generate_button"
-                },
-                {
-                  "type": "output_preview"
                 }
               ]
             }
@@ -430,18 +409,7 @@
               "input_ref": "prompt"
             },
             {
-              "type": "dropdown",
-              "input_ref": "alignment"
-            },
-            {
-              "type": "dropdown",
-              "input_ref": "aspect_ratio"
-            },
-            {
               "type": "generate_button"
-            },
-            {
-              "type": "output_preview"
             }
           ],
           "params": {
@@ -449,6 +417,7 @@
             "alignment": "{{alignment}}",
             "aspect_ratio": "{{aspect_ratio}}",
             "num_inference_steps": 12,
+            "expansion_factor": 1.8,
             "overlap_percentage": 1,
             "resize_option": "Full",
             "custom_resize_percentage": 100,
@@ -497,9 +466,6 @@
             },
             {
               "type": "generate_button"
-            },
-            {
-              "type": "output_preview"
             }
           ],
           "params": {
@@ -556,9 +522,6 @@
             },
             {
               "type": "generate_button"
-            },
-            {
-              "type": "output_preview"
             }
           ],
           "params": {
@@ -616,9 +579,6 @@
                 },
                 {
                   "type": "generate_button"
-                },
-                {
-                  "type": "output_preview"
                 }
               ]
             },
@@ -634,9 +594,6 @@
                 },
                 {
                   "type": "generate_button"
-                },
-                {
-                  "type": "output_preview"
                 }
               ]
             }
@@ -708,9 +665,6 @@
                 },
                 {
                   "type": "generate_button"
-                },
-                {
-                  "type": "output_preview"
                 }
               ]
             },
@@ -727,9 +681,6 @@
                 },
                 {
                   "type": "generate_button"
-                },
-                {
-                  "type": "output_preview"
                 }
               ]
             },
@@ -745,9 +696,6 @@
                 },
                 {
                   "type": "generate_button"
-                },
-                {
-                  "type": "output_preview"
                 }
               ]
             }
@@ -815,9 +763,6 @@
             },
             {
               "type": "generate_button"
-            },
-            {
-              "type": "output_preview"
             }
           ],
           "params": {
@@ -863,9 +808,6 @@
             },
             {
               "type": "generate_button"
-            },
-            {
-              "type": "output_preview"
             }
           ],
           "params": {
@@ -911,9 +853,6 @@
             },
             {
               "type": "generate_button"
-            },
-            {
-              "type": "output_preview"
             }
           ],
           "params": {

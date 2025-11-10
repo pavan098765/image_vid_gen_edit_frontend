@@ -15,6 +15,7 @@ import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:image_vid_gen_edit_frontend/core/app_state.dart';
 import 'package:image_vid_gen_edit_frontend/core/services/file_service.dart';
+import 'package:image_vid_gen_edit_frontend/features/ai_tools/outpaint_canvas_page.dart';
 import 'package:image_vid_gen_edit_frontend/features/result_manager/result_manager_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -201,6 +202,24 @@ class _GenericToolPageState extends State<GenericToolPage>
             _inputs["${id}_path"] = file.path;
           });
         }
+
+        if (widget.config.model == "diffusers_outpaint") {
+          final result = await Navigator.push<Map<String, String>>(
+            context,
+            MaterialPageRoute(
+              builder: (_) => OutpaintCanvasPage(imageBytes: bytes),
+              fullscreenDialog: true,
+            ),
+          );
+          if (result != null) {
+            setState(() {
+              _inputs["alignment"] = result["alignment"];
+              _inputs["aspect_ratio"] = result["aspect_ratio"];
+              _inputs["outpaint_preview"] = bytes; // keep for visual cue
+            });
+          }
+        }
+
         // Automatically open mask editor for inpainting / LaMa models
         final model = widget.config.model.toLowerCase();
         final mode = _selectedModeKey?.toLowerCase() ?? "";
@@ -251,6 +270,24 @@ class _GenericToolPageState extends State<GenericToolPage>
           _inputs["${id}_path"] = file.path;
         });
       }
+
+      if (widget.config.model == "diffusers_outpaint") {
+        final result = await Navigator.push<Map<String, String>>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => OutpaintCanvasPage(imageBytes: bytes),
+            fullscreenDialog: true,
+          ),
+        );
+        if (result != null) {
+          setState(() {
+            _inputs["alignment"] = result["alignment"];
+            _inputs["aspect_ratio"] = result["aspect_ratio"];
+            _inputs["outpaint_preview"] = bytes; // keep for visual cue
+          });
+        }
+      }
+
       // Automatically open mask editor for inpainting / LaMa models
       final model = widget.config.model.toLowerCase();
       final mode = _selectedModeKey?.toLowerCase() ?? "";
@@ -441,8 +478,6 @@ class _GenericToolPageState extends State<GenericToolPage>
         return _buildPainter(ref);
       case "generate_button":
         return _buildGenerateButton();
-      case "output_preview":
-        return _buildOutputPreview();
       default:
         return const SizedBox.shrink();
     }
@@ -663,6 +698,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   Widget _buildImagePreview(String ref) {
     final cs = Theme.of(context).colorScheme;
     final data = _inputs[ref];
+
     if (data == null || (data is List && data.isEmpty)) {
       return Container(
         height: 200,
@@ -675,32 +711,103 @@ class _GenericToolPageState extends State<GenericToolPage>
       );
     }
 
+    // unwrap
     final list =
         (data is List) ? List<Uint8List>.from(data) : [data as Uint8List];
     final mask = _inputs["mask_image"];
 
+    final bool isOutpaint = widget.config.model == "diffusers_outpaint";
+
+    // read alignment & aspect ratio (from OutpaintCanvasPage)
+    final String alignment =
+        isOutpaint ? (_inputs["alignment"] ?? "Middle") : "Middle";
+    final String ratioStr =
+        isOutpaint ? (_inputs["aspect_ratio"] ?? "1:1") : "1:1";
+
+    final ratioParts = ratioStr.split(":");
+    final double aspectRatio = (ratioParts.length == 2)
+        ? (double.tryParse(ratioParts[0]) ?? 1) /
+            (double.tryParse(ratioParts[1]) ?? 1)
+        : 1.0;
+
+    // Simple padding logic — show empty area on the expansion side
+    EdgeInsets imgPadding = EdgeInsets.zero;
+    if (isOutpaint) {
+      switch (alignment) {
+        case "Left":
+          imgPadding = const EdgeInsets.only(right: 60); // expand right
+          break;
+        case "Right":
+          imgPadding = const EdgeInsets.only(left: 60); // expand left
+          break;
+        case "Top":
+          imgPadding = const EdgeInsets.only(bottom: 60); // expand down
+          break;
+        case "All Sides":
+          imgPadding = const EdgeInsets.all(60);
+          break;
+        case "Bottom":
+          imgPadding = const EdgeInsets.only(top: 60); // expand up
+          break;
+        default:
+          imgPadding = EdgeInsets.zero;
+      }
+    }
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(14),
-      child: Stack(
-        children: [
-          Center(
-            child: Image.memory(
-              list.first,
-              fit: BoxFit.contain,
-              width: double.infinity,
-              height: 220,
-            ),
-          ),
-          if (mask != null)
-            Positioned.fill(
-              child: Opacity(
-                opacity: 0.6,
-                child: Image.memory(mask as Uint8List, fit: BoxFit.contain),
+      child: AspectRatio(
+        aspectRatio: aspectRatio,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // Checker background only for outpaint
+            if (isOutpaint)
+              const CustomPaint(painter: _CheckerPainter())
+            else
+              Container(color: cs.surfaceContainerHigh),
+
+            // Base image
+            Padding(
+              padding: imgPadding,
+              child: Image.memory(
+                list.first,
+                fit: BoxFit.contain,
+                alignment: _convertAlignment(alignment),
+                width: double.infinity,
+                height: double.infinity,
               ),
             ),
-        ],
+
+            // Mask overlay (other models)
+            if (mask != null)
+              Positioned.fill(
+                child: Opacity(
+                  opacity: 0.6,
+                  child: Image.memory(mask as Uint8List, fit: BoxFit.contain),
+                ),
+              ),
+          ],
+        ),
       ),
     );
+  }
+
+  Alignment _convertAlignment(String a) {
+    switch (a) {
+      case "Left":
+        return Alignment.centerLeft;
+      case "Right":
+        return Alignment.centerRight;
+      case "Top":
+        return Alignment.topCenter;
+      case "Bottom":
+        return Alignment.bottomCenter;
+      case "All Sides":
+        return Alignment.center;
+      default:
+        return Alignment.center;
+    }
   }
 
   // -------- Slider --------
@@ -835,40 +942,6 @@ class _GenericToolPageState extends State<GenericToolPage>
           onPressed: _runJob,
         ),
       );
-
-  // -------- Output Preview --------
-  Widget _buildOutputPreview() {
-    final cs = Theme.of(context).colorScheme;
-    if (_resultData == null) return const SizedBox.shrink();
-    return Column(
-      children: [
-        const SizedBox(height: 20),
-        Text(
-          "✨ Result Ready!",
-          style: TextStyle(
-            fontSize: 20,
-            color: cs.onSurface,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 10),
-        if (widget.config.outputType == "image")
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Image.memory(_resultData!, fit: BoxFit.contain),
-          ),
-        const SizedBox(height: 20),
-        FilledButton.icon(
-          onPressed: () async {
-            widget.config.model.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_');
-            await FileService.saveFile(context, _resultData!);
-          },
-          icon: const Icon(Icons.download_rounded),
-          label: const Text("Save Result"),
-        )
-      ],
-    );
-  }
 
   // -------- Painter (Mask Editor) --------
   Future<Uint8List?> _openMaskEditor(Uint8List base) async {
@@ -1362,6 +1435,31 @@ class _GenericToolPageState extends State<GenericToolPage>
       ),
     );
   }
+}
+
+// ---------------------------------------------------
+// 🎨 Checker pattern background (used for Outpaint preview)
+// ---------------------------------------------------
+class _CheckerPainter extends CustomPainter {
+  const _CheckerPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const double cell = 32;
+    final paint1 = Paint()..color = const Color(0xFF2A2A2A);
+    final paint2 = Paint()..color = const Color(0xFF1E1E1E);
+    for (double y = 0; y < size.height; y += cell) {
+      for (double x = 0; x < size.width; x += cell) {
+        final usePaint = ((x / cell).floor() + (y / cell).floor()) % 2 == 0
+            ? paint1
+            : paint2;
+        canvas.drawRect(Rect.fromLTWH(x, y, cell, cell), usePaint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 // ------------------ MASK EDITOR ------------------
