@@ -110,6 +110,7 @@
             "seed": "random",
             "negative_prompt": "blurry, distorted, lowres",
             "init_image": "{{init_image}}",
+            "scale_image": true,
             "scale_factor": "{{scale_factor}}"
           },
           "root_params": {
@@ -170,6 +171,7 @@
             "cfg_scale": 3.0,
             "seed": "random",
             "init_image": "{{init_image}}",
+            "scale_image": true,
             "scale_factor": "{{scale_factor}}"
           },
           "root_params": {
@@ -230,6 +232,7 @@
             "cfg_scale": 1.0,
             "num_inference_steps": 4,
             "init_image": "{{images}}",
+            "scale_image": true,
             "scale_factor": "{{scale_factor}}"
           },
           "root_params": {
@@ -336,6 +339,7 @@
             "cfg_scale": "1.0",
             "sampler": "DPMSolverMultistep",
             "strength": "1.0",
+            "scale_image": true,
             "scale_factor": "{{scale_factor}}",
             "seed": "random",
             "init_image": "{{init_image}}",
