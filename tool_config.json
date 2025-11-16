@@ -5,7 +5,7 @@
       "accent": "#8B5CF6",
       "tools": [
         {
-          "name": "Qwen Image",
+          "name": "Lumora",
           "icon": "images",
           "caps": [
             "Text → Image",
@@ -57,7 +57,7 @@
           "outputType": "image"
         },
         {
-          "name": "Flux Kontext Edit",
+          "name": "Vectra",
           "icon": "sparkles",
           "caps": [
             "Image → Image",
@@ -119,7 +119,7 @@
           "outputType": "image"
         },
         {
-          "name": "Qwen Image Edit",
+          "name": "Revia",
           "icon": "edit3",
           "caps": [
             "Image → Image",
@@ -181,8 +181,8 @@
           "outputType": "image"
         },
         {
-          "name": "Qwen Image Edit 2509",
-          "icon": "wand2",
+          "name": "Revia 2",
+          "icon": "images",
           "caps": [
             "Multi-Image Edit",
             "Consistent Look",
@@ -242,7 +242,7 @@
           "outputType": "image"
         },
         {
-          "name": "Stable Diffusion XL",
+          "name": "IMAGIA",
           "icon": "eye",
           "caps": [
             "Text → Image",
@@ -351,7 +351,7 @@
           "outputType": "image"
         },
         {
-          "name": "Diffusion Outpaint",
+          "name": "Scene Expander",
           "icon": "crop",
           "caps": [
             "Expand Image",
@@ -492,7 +492,7 @@
           "outputType": "image"
         },
         {
-          "name": "LaMa Inpainter",
+          "name": "Object Eraser",
           "icon": "eraser",
           "caps": [
             "Remove Objects",
@@ -556,7 +556,7 @@
       "accent": "#F59E0B",
       "tools": [
         {
-          "name": "WAN 2.1",
+          "name": "CineMotion",
           "icon": "video",
           "caps": [
             "Text → Video",
@@ -635,7 +635,7 @@
           "outputType": "video"
         },
         {
-          "name": "WAN 2.2",
+          "name": "CineMotion Pro",
           "icon": "film",
           "caps": [
             "Text → Video",
@@ -745,8 +745,8 @@
       "accent": "#22D3EE",
       "tools": [
         {
-          "name": "Aura SR V2",
-          "icon": "zap",
+          "name": "Ultra Enhance",
+          "icon": "scaling",
           "caps": [
             "2× / 4×",
             "Enhance",
@@ -791,8 +791,8 @@
           "outputType": "image"
         },
         {
-          "name": "Swin 2 SR",
-          "icon": "maximize",
+          "name": "Sharp Refine",
+          "icon": "image-upscale",
           "caps": [
             "2× / 4×",
             "Sharpen",
@@ -837,8 +837,8 @@
           "outputType": "image"
         },
         {
-          "name": "RealESRGAN",
-          "icon": "image",
+          "name": "PhotoBoost",
+          "icon": "image-up",
           "caps": [
             "2× / 4×",
             "Enhance",
