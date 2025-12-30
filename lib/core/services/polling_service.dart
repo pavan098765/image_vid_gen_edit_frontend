@@ -34,6 +34,52 @@ class PollingService {
   static const String controllerSharedSecret = "SECRETKEY";
   final int pollIntervalSec = 10;
 
+  /// 🔍 Check if URL is the old download endpoint (should not be used)
+  static bool _isOldDownloadEndpoint(String? url) {
+    if (url == null || url.isEmpty) return false;
+    return url.contains('/download/') && !url.contains('workers.dev');
+  }
+
+  /// 🔐 Fetch signed R2 download URL for a completed job
+  /// Returns the signed URL from the worker, or null if not available
+  static Future<String?> getSignedDownloadUrl(String jobId) async {
+    try {
+      final url = "$baseUrl/download_url/$jobId";
+      
+      // Create signature for the request
+      final payloadJson = jsonEncode({"job_id": jobId});
+      final sigBytes = Hmac(sha256, utf8.encode(controllerSharedSecret))
+          .convert(utf8.encode(payloadJson));
+      final sig = "sha256=${sigBytes.toString()}";
+      
+      final headers = {
+        "Authorization": "Bearer $controllerApiKey",
+        "X-Signature": sig,
+      };
+      
+      final resp = await http
+          .get(Uri.parse(url), headers: headers)
+          .timeout(const Duration(seconds: 15));
+      
+      if (resp.statusCode == 200) {
+        // The endpoint returns the signed URL directly as a string
+        final signedUrl = resp.body.trim();
+        // Remove quotes if the response is JSON-encoded string
+        final cleanUrl = signedUrl.startsWith('"') && signedUrl.endsWith('"')
+            ? signedUrl.substring(1, signedUrl.length - 1)
+            : signedUrl;
+        debugPrint("✅ Got signed download URL for $jobId");
+        return cleanUrl;
+      } else {
+        debugPrint("⚠️ Failed to get signed URL: ${resp.statusCode} - ${resp.body}");
+        return null;
+      }
+    } catch (e) {
+      debugPrint("❌ Error fetching signed download URL: $e");
+      return null;
+    }
+  }
+
   void start() {
     if (_running) return;
     _running = true;
@@ -86,11 +132,27 @@ class PollingService {
       if (!allowed.contains(status)) {
         status = "processing";
       }
-      String? downloadUrl = data["download_url"] as String?;
-      if (downloadUrl != null && downloadUrl.isNotEmpty) {
-        await prefs.setString("pending_download_url_$jobId", downloadUrl);
+      
+      // 🔐 For completed jobs, ALWAYS fetch signed URL from R2 worker endpoint
+      // Ignore download_url from job_status response (it may be old endpoint)
+      String? downloadUrl;
+      if (status == "completed") {
+        downloadUrl = await getSignedDownloadUrl(jobId);
+        if (downloadUrl != null && downloadUrl.isNotEmpty) {
+          await prefs.setString("pending_download_url_$jobId", downloadUrl);
+        } else {
+          // Fallback to cached URL if fetch fails (but check it's not old endpoint)
+          final cached = prefs.getString("pending_download_url_$jobId");
+          if (cached != null && !_isOldDownloadEndpoint(cached)) {
+            downloadUrl = cached;
+          }
+        }
       } else {
-        downloadUrl = prefs.getString("pending_download_url_$jobId");
+        // For non-completed jobs, use cached URL if available (but check it's not old endpoint)
+        final cached = prefs.getString("pending_download_url_$jobId");
+        if (cached != null && !_isOldDownloadEndpoint(cached)) {
+          downloadUrl = cached;
+        }
       }
 
       // --- 2️⃣ Emit event to UI
@@ -266,14 +328,29 @@ class PollingService {
         if (!allowed.contains(status)) {
           status = "processing";
         }
-        String? downloadUrl = data["download_url"] as String?;
-
-        // ✅ Try cached downloadUrl if backend hasn’t sent one yet
-        if (downloadUrl == null || downloadUrl.isEmpty) {
+        
+        // 🔐 For completed jobs, ALWAYS fetch signed URL from R2 worker endpoint
+        // Ignore download_url from job_status response (it may be old endpoint)
+        String? downloadUrl;
+        if (status == "completed") {
+          downloadUrl = await getSignedDownloadUrl(jobId);
+          if (downloadUrl != null && downloadUrl.isNotEmpty) {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString("pending_download_url_$jobId", downloadUrl);
+          } else {
+            // Fallback to cached URL if fetch fails (but check it's not old endpoint)
+            final prefs = await SharedPreferences.getInstance();
+            final cached = prefs.getString("pending_download_url_$jobId");
+            if (cached != null && !_isOldDownloadEndpoint(cached)) {
+              downloadUrl = cached;
+            }
+          }
+        } else {
+          // For non-completed jobs, use cached URL if available (but check it's not old endpoint)
           final prefs = await SharedPreferences.getInstance();
-          final cachedUrl = prefs.getString("pending_download_url_$jobId");
-          if (cachedUrl != null && cachedUrl.isNotEmpty) {
-            downloadUrl = cachedUrl;
+          final cached = prefs.getString("pending_download_url_$jobId");
+          if (cached != null && !_isOldDownloadEndpoint(cached)) {
+            downloadUrl = cached;
           }
         }
 
@@ -395,12 +472,27 @@ class PollingService {
         if (!allowed.contains(status)) {
           status = "processing";
         }
-        String? downloadUrl = data["download_url"] as String?;
-
-        // Use cached URL if backend didn’t send one yet
-        if (downloadUrl == null || downloadUrl.isEmpty) {
+        
+        // 🔐 For completed jobs, ALWAYS fetch signed URL from R2 worker endpoint
+        // Ignore download_url from job_status response (it may be old endpoint)
+        String? downloadUrl;
+        if (status == "completed") {
+          downloadUrl = await getSignedDownloadUrl(jobId);
+          if (downloadUrl != null && downloadUrl.isNotEmpty) {
+            await prefs.setString("pending_download_url_$jobId", downloadUrl);
+          } else {
+            // Fallback to cached URL if fetch fails (but check it's not old endpoint)
+            final cached = prefs.getString("pending_download_url_$jobId");
+            if (cached != null && !_isOldDownloadEndpoint(cached)) {
+              downloadUrl = cached;
+            }
+          }
+        } else {
+          // For non-completed jobs, use cached URL if available (but check it's not old endpoint)
           final cached = prefs.getString("pending_download_url_$jobId");
-          if (cached != null && cached.isNotEmpty) downloadUrl = cached;
+          if (cached != null && !_isOldDownloadEndpoint(cached)) {
+            downloadUrl = cached;
+          }
         }
 
         // Update the local notifier list

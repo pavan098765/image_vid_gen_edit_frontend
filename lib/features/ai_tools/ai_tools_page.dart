@@ -125,7 +125,8 @@ class _AiToolsPageState extends State<AiToolsPage>
       "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/tool_config.json";
 
   late AnimationController _glowController;
-  bool _hasUnseenCompleted = false;
+  Set<String> _seenJobIds = {};
+  static const String _seenJobsKey = 'seen_completed_job_ids';
 
   @override
   void initState() {
@@ -134,18 +135,54 @@ class _AiToolsPageState extends State<AiToolsPage>
 
     _glowController = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 3),
+      duration: const Duration(seconds: 2),
     )..repeat(reverse: true);
 
+    _loadSeenJobs();
     jobListNotifier.addListener(_checkCompletedJobs);
   }
 
+  Future<void> _loadSeenJobs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final seenList = prefs.getStringList(_seenJobsKey) ?? [];
+      _seenJobIds = seenList.toSet();
+      setState(() {});
+    } catch (e) {
+      debugPrint('⚠️ Failed to load seen jobs: $e');
+    }
+  }
+
+  Future<void> _markAllCompletedAsSeen() async {
+    try {
+      final completedJobs = jobListNotifier.value
+          .where((j) => j.status == 'completed')
+          .map((j) => j.jobId)
+          .toList();
+      _seenJobIds.addAll(completedJobs);
+      
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_seenJobsKey, _seenJobIds.toList());
+      setState(() {});
+    } catch (e) {
+      debugPrint('⚠️ Failed to save seen jobs: $e');
+    }
+  }
+
   void _checkCompletedJobs() {
-    final completedCount =
-        jobListNotifier.value.where((j) => j.status == 'completed').length;
     setState(() {
-      _hasUnseenCompleted = completedCount > 0;
+      // Trigger rebuild to update count
     });
+  }
+
+  int _getUnseenCompletedCount() {
+    return jobListNotifier.value
+        .where((j) => j.status == 'completed' && !_seenJobIds.contains(j.jobId))
+        .length;
+  }
+
+  bool _hasUnseenCompleted() {
+    return _getUnseenCompletedCount() > 0;
   }
 
   @override
@@ -247,75 +284,127 @@ class _AiToolsPageState extends State<AiToolsPage>
             child: ValueListenableBuilder<List<JobModel>>(
               valueListenable: jobListNotifier,
               builder: (_, jobs, __) {
-                final count = jobs.where((j) => j.status == 'completed').length;
+                final unseenCount = _getUnseenCompletedCount();
+                final hasUnseen = _hasUnseenCompleted();
 
-                final glow = LinearGradient(
-                  colors: [
-                    cs.primary.withOpacity(0.25),
-                    cs.secondary.withOpacity(0.30),
-                    cs.primary.withOpacity(0.25),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  stops: [
-                    _glowController.value * 0.5,
-                    0.5 + _glowController.value * 0.3,
-                    1.0
-                  ],
-                );
+                return AnimatedBuilder(
+                  animation: _glowController,
+                  builder: (context, child) {
+                    final glowIntensity = hasUnseen
+                        ? 0.3 + (_glowController.value * 0.2)
+                        : 0.0;
 
-                return Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    ShaderMask(
-                      shaderCallback: (rect) => glow.createShader(rect),
-                      blendMode: _hasUnseenCompleted
-                          ? BlendMode.srcATop
-                          : BlendMode.dst,
-                      child: IconButton(
-                        icon: Icon(
-                          LucideIcons.activitySquare,
-                          size: 26,
-                          color: cs.onSurface,
-                        ),
-                        tooltip: "My Results",
-                        onPressed: () {
-                          setState(() => _hasUnseenCompleted = false);
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) => const ResultManagerPage()),
-                          );
-                        },
-                      ),
-                    ),
-                    if (count > 0)
-                      Positioned(
-                        right: 4,
-                        top: 6,
-                        child: AnimatedOpacity(
-                          duration: const Duration(milliseconds: 400),
-                          opacity: _hasUnseenCompleted ? 1.0 : 0.0,
-                          child: Container(
-                            padding: const EdgeInsets.all(4),
+                    return Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        // Glow effect container
+                        if (hasUnseen)
+                          Container(
+                            width: 48,
+                            height: 48,
                             decoration: BoxDecoration(
-                              color: cs.error,
                               shape: BoxShape.circle,
-                              border: Border.all(
-                                  color: cs.onError.withOpacity(0.5), width: 1),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: cs.primary.withOpacity(glowIntensity),
+                                  blurRadius: 12 + (_glowController.value * 8),
+                                  spreadRadius: 2 + (_glowController.value * 2),
+                                ),
+                                BoxShadow(
+                                  color: cs.secondary.withOpacity(glowIntensity * 0.7),
+                                  blurRadius: 8 + (_glowController.value * 4),
+                                  spreadRadius: 1,
+                                ),
+                              ],
                             ),
-                            child: Text(
-                              count.toString(),
-                              style: TextStyle(
-                                color: cs.onError,
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
+                          ),
+                        // Main button
+                        Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: hasUnseen
+                                ? cs.primaryContainer.withOpacity(0.3)
+                                : Colors.transparent,
+                            border: hasUnseen
+                                ? Border.all(
+                                    color: cs.primary.withOpacity(0.4),
+                                    width: 1.5,
+                                  )
+                                : null,
+                          ),
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(24),
+                              onTap: () {
+                                _markAllCompletedAsSeen();
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (_) => const ResultManagerPage()),
+                                );
+                              },
+                              child: Icon(
+                                LucideIcons.folderCheck,
+                                size: 28,
+                                color: hasUnseen
+                                    ? cs.primary
+                                    : cs.onSurface,
                               ),
                             ),
                           ),
                         ),
-                      ),
-                  ],
+                        // Badge with count
+                        if (unseenCount > 0)
+                          Positioned(
+                            right: -2,
+                            top: -2,
+                            child: AnimatedScale(
+                              scale: hasUnseen ? 1.0 : 0.0,
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.elasticOut,
+                              child: Container(
+                                padding: unseenCount > 9
+                                    ? const EdgeInsets.symmetric(
+                                        horizontal: 6, vertical: 2)
+                                    : const EdgeInsets.all(5),
+                                decoration: BoxDecoration(
+                                  color: cs.error,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: cs.surface,
+                                    width: 2,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: cs.error.withOpacity(0.5),
+                                      blurRadius: 4,
+                                      spreadRadius: 1,
+                                    ),
+                                  ],
+                                ),
+                                constraints: const BoxConstraints(
+                                  minWidth: 20,
+                                  minHeight: 20,
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    unseenCount > 99 ? '99+' : unseenCount.toString(),
+                                    style: TextStyle(
+                                      color: cs.onError,
+                                      fontSize: unseenCount > 9 ? 10 : 11,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    );
+                  },
                 );
               },
             ),

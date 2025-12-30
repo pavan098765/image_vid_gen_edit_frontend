@@ -347,6 +347,12 @@ class FileService {
     return 'png';
   }
 
+  /// 🔍 Check if URL is the old download endpoint (should not be used)
+  static bool _isOldDownloadEndpoint(String? url) {
+    if (url == null || url.isEmpty) return false;
+    return url.contains('/download/') && !url.contains('workers.dev');
+  }
+
   /// 🧩 Download file (image/video) from [url] and save to gallery, with progress callback.
   static Future<String?> downloadFromUrl(
     BuildContext context,
@@ -356,6 +362,17 @@ class FileService {
     void Function(double progress)? onProgress, // progress: 0.0 → 1.0
   }) async {
     try {
+      // 🔐 Safety check: reject old download endpoint URLs
+      if (_isOldDownloadEndpoint(url)) {
+        debugPrint('❌ Rejected old download endpoint URL: $url');
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Invalid download URL. Please refresh the job.')),
+          );
+        }
+        return null;
+      }
+      
       final uri = Uri.parse(url);
       final safeExt = _safeExtensionFromUrl(url);
 
