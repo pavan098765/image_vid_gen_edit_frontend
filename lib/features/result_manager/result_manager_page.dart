@@ -6,9 +6,11 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
-import 'package:image_vid_gen_edit_frontend/core/app_state.dart';
-import 'package:image_vid_gen_edit_frontend/core/services/file_service.dart';
-import 'package:image_vid_gen_edit_frontend/core/services/polling_service.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/services/file_service.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/services/polling_service.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/services/thumbnail_service.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_button.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 bool isResultManagerOpen = false;
@@ -31,6 +33,9 @@ class _ResultManagerPageState extends State<ResultManagerPage>
   String _searchQuery = '';
   String _sortBy = 'date'; // 'date', 'status', 'title'
   bool _sortAscending = false; // newest first by default
+  
+  // Cloud storage banner state
+  bool _isBannerExpanded = true;
 
   @override
   void initState() {
@@ -39,6 +44,7 @@ class _ResultManagerPageState extends State<ResultManagerPage>
     WidgetsBinding.instance.addObserver(this);
     _refreshJobs();
     _markAllCompletedAsSeen();
+    _loadBannerPreference();
 
     SharedPreferences.getInstance().then((prefs) async {
       await prefs.reload();
@@ -49,6 +55,23 @@ class _ResultManagerPageState extends State<ResultManagerPage>
         _searchQuery = _searchController.text.toLowerCase();
       });
     });
+  }
+  
+  Future<void> _loadBannerPreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        _isBannerExpanded = prefs.getBool('cloud_storage_banner_expanded') ?? true;
+      });
+    }
+  }
+  
+  Future<void> _toggleBanner() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _isBannerExpanded = !_isBannerExpanded;
+    });
+    await prefs.setBool('cloud_storage_banner_expanded', _isBannerExpanded);
   }
 
   Future<void> _markAllCompletedAsSeen() async {
@@ -101,8 +124,8 @@ class _ResultManagerPageState extends State<ResultManagerPage>
         }
       }
 
-      // Query server
-      await PollingService.instance.refreshProcessingJobs();
+      // Query server with force refresh (bypasses age limit and throttling)
+      await PollingService.instance.refreshProcessingJobs(forceRefresh: true);
 
       // Reload after server update
       await prefs.reload();
@@ -290,6 +313,120 @@ class _ResultManagerPageState extends State<ResultManagerPage>
     }
   }
 
+  // Info banner explaining 24-hour cloud storage (collapsible)
+  Widget _buildCloudStorageInfoBanner(ColorScheme cs) {
+    return GestureDetector(
+      onTap: _toggleBanner,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOutCubic,
+        margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+        padding: EdgeInsets.symmetric(
+          horizontal: _isBannerExpanded ? 14 : 12,
+          vertical: _isBannerExpanded ? 10 : 8,
+        ),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              cs.primaryContainer.withOpacity(_isBannerExpanded ? 0.4 : 0.25),
+              cs.secondaryContainer.withOpacity(_isBannerExpanded ? 0.3 : 0.15),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: cs.primary.withOpacity(_isBannerExpanded ? 0.2 : 0.1),
+          ),
+        ),
+        child: AnimatedCrossFade(
+          duration: const Duration(milliseconds: 200),
+          crossFadeState: _isBannerExpanded 
+              ? CrossFadeState.showFirst 
+              : CrossFadeState.showSecond,
+          firstChild: _buildExpandedBanner(cs),
+          secondChild: _buildCollapsedBanner(cs),
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildExpandedBanner(ColorScheme cs) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: cs.primary.withOpacity(0.15),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            Icons.cloud_queue_rounded,
+            size: 18,
+            color: cs.primary,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Free Cloud Storage',
+                style: TextStyle(
+                  color: cs.onSurface,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'Results available for 24 hours • Save to keep forever',
+                style: TextStyle(
+                  color: cs.onSurfaceVariant.withOpacity(0.8),
+                  fontSize: 11,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Icon(
+          Icons.keyboard_arrow_up_rounded,
+          size: 20,
+          color: cs.onSurfaceVariant.withOpacity(0.5),
+        ),
+      ],
+    );
+  }
+  
+  Widget _buildCollapsedBanner(ColorScheme cs) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(
+          Icons.cloud_queue_rounded,
+          size: 14,
+          color: cs.primary.withOpacity(0.7),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          '24h cloud storage',
+          style: TextStyle(
+            color: cs.onSurfaceVariant.withOpacity(0.7),
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(width: 4),
+        Icon(
+          Icons.keyboard_arrow_down_rounded,
+          size: 16,
+          color: cs.onSurfaceVariant.withOpacity(0.5),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -422,32 +559,26 @@ class _ResultManagerPageState extends State<ResultManagerPage>
       ),
       body: Column(
         children: [
-          // Search bar
+          // 🔔 Cloud Storage Info Banner
+          _buildCloudStorageInfoBanner(cs),
+          
+          // Search bar - uses consistent AppStyles
           Padding(
-            padding: const EdgeInsets.all(12.0),
+            padding: const EdgeInsets.all(AppStyles.spacing12),
             child: TextField(
               controller: _searchController,
-              decoration: InputDecoration(
+              decoration: AppStyles.inputDecoration(
+                cs,
                 hintText: 'Search jobs...',
-                prefixIcon: Icon(Icons.search, color: cs.onSurfaceVariant),
+                prefixIcon: Icons.search,
                 suffixIcon: _searchQuery.isNotEmpty
                     ? IconButton(
-                        icon: Icon(Icons.clear, color: cs.onSurfaceVariant),
+                        icon: Icon(Icons.clear, color: cs.onSurfaceVariant, size: 20),
                         onPressed: () {
                           _searchController.clear();
                         },
                       )
                     : null,
-                filled: true,
-                fillColor: cs.surfaceContainerHigh,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
               ),
             ),
           ),
@@ -540,40 +671,33 @@ class _JobCardState extends State<JobCard> {
     try {
       String? path = widget.job.localFilePath;
 
+      // If file doesn't exist locally, trigger download first (same as download button)
       if (path == null || !File(path).existsSync()) {
-        // 🔐 Refresh signed URL before preview (URLs expire after 1 hour)
-        String? downloadUrl = widget.job.downloadUrl;
-        if (downloadUrl == null || downloadUrl.isEmpty) {
-          downloadUrl = await PollingService.getSignedDownloadUrl(widget.job.jobId);
-          if (downloadUrl != null) {
-            widget.job.downloadUrl = downloadUrl;
-            await addOrUpdateJob(widget.job);
+        // If already downloading, wait for it to complete
+        if (_isDownloading) {
+          // Wait for download to complete (check every 200ms, max 2 minutes)
+          int waitCount = 0;
+          while (_isDownloading && waitCount < 600) {
+            await Future.delayed(const Duration(milliseconds: 200));
+            waitCount++;
           }
+        } else {
+          // Start the download
+          await _download(context);
         }
-
-        if (downloadUrl == null || downloadUrl.isEmpty) {
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Failed to get download URL')),
-            );
-          }
+        
+        // After download, check if we now have the file
+        path = widget.job.localFilePath;
+        if (path == null || !File(path).existsSync()) {
+          // Download failed or was cancelled - don't show error (download already did)
           return;
         }
-
-        path = await FileService.previewFileAndReturnPath(
-          context,
-          downloadUrl,
-          uniqueKey: widget.job.jobId,
-        );
-
-        if (path != null) {
-          widget.job.localFilePath = path;
-          await addOrUpdateJob(widget.job);
-        }
-        return;
       }
 
-      FileService.openLocalPreview(context, path);
+      // File exists locally, open preview
+      if (context.mounted) {
+        FileService.openLocalPreview(context, path);
+      }
     } finally {
       _openingPreview = false;
     }
@@ -597,39 +721,84 @@ class _JobCardState extends State<JobCard> {
       _downloadProgress = 0.0;
     });
 
-    // 🔐 Refresh signed URL before download (URLs expire after 1 hour)
-    String? downloadUrl = widget.job.downloadUrl;
-    if (downloadUrl == null || downloadUrl.isEmpty) {
-      downloadUrl = await PollingService.getSignedDownloadUrl(widget.job.jobId);
-      if (downloadUrl != null) {
-        widget.job.downloadUrl = downloadUrl;
-        await addOrUpdateJob(widget.job);
-      }
-    }
-
-    if (downloadUrl == null || downloadUrl.isEmpty) {
-      if (mounted) {
-        setState(() {
-          _isDownloading = false;
-          _downloadProgress = 0.0;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to get download URL')),
-        );
-      }
-      return;
-    }
-
-    final savedPath = await FileService.downloadFromUrl(
-      context,
-      downloadUrl,
-      suggestedFileName: widget.job.jobId,
-      onProgress: (progress) {
-        if (mounted) {
-          setState(() => _downloadProgress = progress);
+    String? savedPath;
+    
+    // Try downloading with URL refresh on failure (handles 1-hour URL expiry)
+    for (int attempt = 1; attempt <= 2; attempt++) {
+      String? downloadUrl;
+      
+      try {
+        if (attempt == 1) {
+          // First attempt: try cached URL if still valid
+          downloadUrl = await PollingService.getValidDownloadUrl(widget.job.jobId);
         }
-      },
-    );
+        
+        // If no valid cached URL or this is a retry, force refresh
+        if (downloadUrl == null || downloadUrl.isEmpty) {
+          debugPrint('🔄 Fetching fresh download URL (attempt $attempt)...');
+          downloadUrl = await PollingService.refreshDownloadUrl(widget.job.jobId);
+        }
+        
+        if (downloadUrl != null && downloadUrl.isNotEmpty) {
+          widget.job.downloadUrl = downloadUrl;
+          await addOrUpdateJob(widget.job);
+        }
+      } catch (e) {
+        debugPrint('⚠️ Failed to get download URL (attempt $attempt): $e');
+      }
+
+      if (downloadUrl == null || downloadUrl.isEmpty) {
+        if (attempt == 2) {
+          // Both attempts failed to get URL
+          if (mounted) {
+            setState(() {
+              _isDownloading = false;
+              _downloadProgress = 0.0;
+            });
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Could not get download URL. Please try again later.'),
+                duration: Duration(seconds: 3),
+              ),
+            );
+          }
+          return;
+        }
+        continue; // Try again with force refresh
+      }
+
+      // Reset progress for each attempt
+      if (mounted) {
+        setState(() => _downloadProgress = 0.0);
+      }
+
+      // Attempt download
+      savedPath = await FileService.queueDownload(
+        context,
+        downloadUrl,
+        suggestedFileName: widget.job.jobId,
+        maxRetries: 2,
+        onProgress: (progress) {
+          if (mounted) {
+            setState(() => _downloadProgress = progress);
+          }
+        },
+      );
+
+      // If download succeeded, break out of retry loop
+      if (savedPath != null) {
+        break;
+      }
+      
+      // Download failed - if this was first attempt, force refresh URL and retry
+      if (attempt == 1) {
+        debugPrint('⚠️ Download failed, will retry with fresh URL...');
+        // Clear cached URL so next attempt fetches fresh one
+        widget.job.downloadUrl = null;
+        await addOrUpdateJob(widget.job);
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
+    }
 
     if (savedPath != null) {
       final file = File(savedPath);
@@ -647,6 +816,14 @@ class _JobCardState extends State<JobCard> {
       await saveJobsToPrefs();
 
       jobListNotifier.value = List<JobModel>.from(jobListNotifier.value);
+    } else if (mounted) {
+      // Download failed after all retries
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Download failed. The URL may have expired. Refreshing...'),
+          duration: Duration(seconds: 2),
+        ),
+      );
     }
 
     if (mounted) {
@@ -662,54 +839,72 @@ class _JobCardState extends State<JobCard> {
     final cs = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final job = widget.job;
+    
+    // Check if expired (>24h old and not saved locally)
+    final isExpired = job.isCloudExpired && !job.isSavedLocally;
+    final isSaved = job.isSavedLocally;
 
-    final downloadColor = _isDownloaded ? Colors.green : cs.primary;
-    final downloadIcon =
-        _isDownloaded ? Icons.check_circle : Icons.download;
+    final downloadColor = isSaved 
+        ? Colors.green 
+        : isExpired 
+            ? cs.outline 
+            : cs.primary;
+    final downloadIcon = isSaved 
+        ? Icons.check_circle 
+        : isExpired 
+            ? Icons.cloud_off_rounded 
+            : Icons.download;
 
     return InkWell(
       onTap: widget.isSelectionMode
           ? widget.onTap
-          : (job.status == 'completed' ? () => _openPreview(context) : null),
+          : (job.status == 'completed' && !isExpired ? () => _openPreview(context) : null),
       onLongPress: widget.onLongPress,
       borderRadius: BorderRadius.circular(16),
-      child: Card(
-        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        color: widget.isSelected
-            ? cs.primaryContainer.withOpacity(0.3)
-            : cs.surfaceContainerHigh,
-        elevation: widget.isSelected ? 2 : 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: widget.isSelected
-              ? BorderSide(color: cs.primary, width: 2)
-              : BorderSide.none,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            ListTile(
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: Opacity(
+        // Dim expired jobs that aren't saved locally
+        opacity: isExpired ? 0.6 : 1.0,
+        child: Card(
+          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          color: widget.isSelected
+              ? cs.primaryContainer.withOpacity(0.3)
+              : isExpired
+                  ? cs.surfaceContainerHigh.withOpacity(0.5)
+                  : cs.surfaceContainerHigh,
+          elevation: widget.isSelected ? 2 : 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: widget.isSelected
+                ? BorderSide(color: cs.primary, width: 2)
+                : isExpired
+                    ? BorderSide(color: cs.outline.withOpacity(0.3), width: 1)
+                    : BorderSide.none,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ListTile(
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
 
-              // ✅ Selection checkbox or thumbnail
-              leading: widget.isSelectionMode
-                  ? Checkbox(
-                      value: widget.isSelected,
-                      onChanged: (_) => widget.onTap?.call(),
-                      activeColor: cs.primary,
-                    )
-                  : ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: _buildThumbnail(cs),
-                    ),
+                // ✅ Selection checkbox or thumbnail
+                leading: widget.isSelectionMode
+                    ? Checkbox(
+                        value: widget.isSelected,
+                        onChanged: (_) => widget.onTap?.call(),
+                        activeColor: cs.primary,
+                      )
+                    : ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: _buildThumbnail(cs),
+                      ),
 
-              // ✅ Title
-              title: Text(
-                job.title,
-                style: textTheme.bodyLarge?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: cs.onSurface,
+                // ✅ Title
+                title: Text(
+                  job.title,
+                  style: textTheme.bodyLarge?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: isExpired ? cs.onSurface.withOpacity(0.7) : cs.onSurface,
                 ),
               ),
 
@@ -734,9 +929,14 @@ class _JobCardState extends State<JobCard> {
                                     child: CircularProgressIndicator(strokeWidth: 2),
                                   )
                                 : Icon(downloadIcon, color: downloadColor),
-                            tooltip: 'Save to device',
-                            onPressed:
-                                _isDownloading ? null : () => _download(context),
+                            tooltip: isExpired 
+                                ? 'Cloud result expired' 
+                                : isSaved 
+                                    ? 'Already saved' 
+                                    : 'Save to device',
+                            onPressed: _isDownloading || isExpired || isSaved 
+                                ? (isExpired ? () => _showExpiredDialog(context, cs) : null) 
+                                : () => _download(context),
                           ),
                         IconButton(
                           icon: Icon(Icons.delete_outline, color: cs.onSurfaceVariant),
@@ -761,11 +961,12 @@ class _JobCardState extends State<JobCard> {
               ),
           ],
         ),
+        ),
       ),
     );
   }
 
-  // ✅ Thumbnail widget
+  // ✅ Thumbnail widget - uses cached thumbnails for large images
   Widget _buildThumbnail(ColorScheme cs) {
     final fileExists = widget.job.localFilePath != null &&
         File(widget.job.localFilePath!).existsSync();
@@ -773,12 +974,28 @@ class _JobCardState extends State<JobCard> {
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 350),
       child: fileExists
-          ? Image.file(
-              File(widget.job.localFilePath!),
+          ? CachedThumbnail(
               key: ValueKey(widget.job.localFilePath),
+              filePath: widget.job.localFilePath,
               width: 52,
               height: 52,
               fit: BoxFit.cover,
+              thumbnailSize: 150, // Generate 150px thumbnails for crisp display
+              placeholder: Container(
+                width: 52,
+                height: 52,
+                color: cs.surfaceContainerHigh,
+                child: Center(
+                  child: SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: cs.primary.withOpacity(0.5),
+                    ),
+                  ),
+                ),
+              ),
             )
           : _buildBlurOrPlaceholder(cs),
     );
@@ -801,6 +1018,9 @@ class _JobCardState extends State<JobCard> {
               width: 52,
               height: 52,
               fit: BoxFit.cover,
+              // Use cacheWidth/cacheHeight to prevent loading full res for blur
+              cacheWidth: 104, // 2x display size for retina
+              cacheHeight: 104,
             ),
           ),
           if (job.status == 'processing')
@@ -880,7 +1100,90 @@ class _JobCardState extends State<JobCard> {
 
     final isFailed = job.status == 'failed';
     final isDownloaded = _isDownloaded;
+    final isExpired = job.isCloudExpired && !job.isSavedLocally;
+    final isSaved = job.isSavedLocally;
 
+    // Show expired status for completed jobs that have expired and aren't saved
+    if (job.status == 'completed' && isExpired) {
+      return Row(
+        key: const ValueKey('expired'),
+        children: [
+          Icon(
+            Icons.cloud_off_rounded,
+            size: 16,
+            color: cs.outline,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            "EXPIRED",
+            style: TextStyle(
+              color: cs.outline,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      );
+    }
+
+    // Show saved status with a nice green indicator
+    if (isSaved) {
+      return Row(
+        key: const ValueKey('saved'),
+        children: [
+          Icon(
+            Icons.check_circle,
+            size: 16,
+            color: Colors.green,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            "SAVED",
+            style: TextStyle(
+              color: Colors.green,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      );
+    }
+
+    // Show expiry countdown for completed but not yet saved/expired
+    if (job.status == 'completed' && !isExpired && !isSaved) {
+      final timeLeft = job.expiryTimeFormatted;
+      return Row(
+        key: ValueKey('expiring_$timeLeft'),
+        children: [
+          Icon(
+            Icons.schedule_rounded,
+            size: 16,
+            color: job.timeUntilExpiry.inHours < 2 
+                ? Colors.orange 
+                : cs.secondary,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            timeLeft,
+            style: TextStyle(
+              color: job.timeUntilExpiry.inHours < 2 
+                  ? Colors.orange 
+                  : cs.secondary,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            "• Ready",
+            style: TextStyle(
+              color: cs.onSurfaceVariant.withOpacity(0.6),
+              fontSize: 12,
+            ),
+          ),
+        ],
+      );
+    }
 
     return Row(
       key: const ValueKey('completed_or_failed'),
@@ -894,7 +1197,7 @@ class _JobCardState extends State<JobCard> {
         Text(
           isFailed
           ? job.status.toUpperCase()
-          : (isDownloaded ? "DOWNLOADED" : "COMPLETED").toUpperCase(),
+          : (isDownloaded ? "SAVED" : "COMPLETED").toUpperCase(),
           style: TextStyle(
             color: isFailed
             ? cs.error
@@ -989,5 +1292,89 @@ class _JobCardState extends State<JobCard> {
           .toList();
       await saveJobsToPrefs();
     }
+  }
+
+  // ✅ Show expired cloud result dialog
+  void _showExpiredDialog(BuildContext context, ColorScheme cs) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: cs.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+        ),
+        icon: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: cs.errorContainer.withOpacity(0.3),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            Icons.cloud_off_rounded,
+            size: 32,
+            color: cs.error,
+          ),
+        ),
+        title: Text(
+          'Cloud Result Expired',
+          style: TextStyle(
+            color: cs.onSurface,
+            fontWeight: FontWeight.bold,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'This result is no longer available in the cloud. '
+              'Free cloud storage keeps results for 24 hours.',
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
+                height: 1.5,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: cs.primaryContainer.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.lightbulb_outline,
+                    size: 20,
+                    color: cs.primary,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Tip: Save results to your device to keep them forever!',
+                      style: TextStyle(
+                        color: cs.primary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              'Got it',
+              style: TextStyle(color: cs.primary, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

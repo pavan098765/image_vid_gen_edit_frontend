@@ -1,11 +1,12 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:image_vid_gen_edit_frontend/core/app_state.dart';
-import 'package:image_vid_gen_edit_frontend/features/result_manager/result_manager_page.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
+import 'package:kala_ai_create_images_videos_with_ai/features/result_manager/result_manager_page.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:image_vid_gen_edit_frontend/features/ai_tools/generic_tool_page.dart';
+import 'package:kala_ai_create_images_videos_with_ai/features/ai_tools/generic_tool_page.dart';
 
 // -------------------- MODEL CLASSES --------------------
 class ToolConfig {
@@ -232,13 +233,7 @@ class _AiToolsPageState extends State<AiToolsPage>
         elevation: 0,
         centerTitle: false,
         titleSpacing: 16,
-        title: Text(
-          "AI Tools",
-          style: tt.titleLarge?.copyWith(
-            fontWeight: FontWeight.w800,
-            color: cs.onSurface,
-          ),
-        ),
+        title: const KalaLogoWithIcon(logoHeight: 30, fontSize: 22),
         actions: [
           // ✅ Credits Chip (Option A - Primary Themed)
           Padding(
@@ -533,13 +528,25 @@ class _ToolCardState extends State<_ToolCard> {
 
   IconData _resolveIcon(String name) {
     switch (name.toLowerCase()) {
+      // Image Generation & Editing
       case 'sparkles':
         return LucideIcons.sparkles;
+      case 'wand':
+      case 'wand2':
+        return LucideIcons.wand2;
+      case 'palette':
+        return LucideIcons.palette;
+      case 'paintbrush':
+        return LucideIcons.paintbrush;
       case 'edit3':
         return LucideIcons.edit3;
       case 'image':
-      case 'images':
         return LucideIcons.image;
+      case 'images':
+      case 'galleryvertical':
+        return LucideIcons.galleryVertical;
+      case 'layers':
+        return LucideIcons.layers;
       case 'flaskconical':
         return LucideIcons.flaskConical;
       case 'microscope':
@@ -548,20 +555,44 @@ class _ToolCardState extends State<_ToolCard> {
         return LucideIcons.eye;
       case 'crop':
         return LucideIcons.crop;
+      case 'eraser':
+        return LucideIcons.eraser;
+      case 'scissors':
+        return LucideIcons.scissors;
+      
+      // Upscalers
+      case 'maximize':
+      case 'maximize2':
+        return LucideIcons.maximize2;
+      case 'scan':
+        return LucideIcons.scan;
+      case 'focus':
+        return LucideIcons.focus;
+      case 'zoomin':
+        return LucideIcons.zoomIn;
+      case 'sunmedium':
+        return LucideIcons.sunMedium;
+      case 'contrast':
+        return LucideIcons.contrast;
+      case 'sparkle':
+        return LucideIcons.sparkle;
+      
+      // Video & Animation
       case 'video':
         return LucideIcons.video;
       case 'film':
         return LucideIcons.film;
+      case 'clapperboard':
+        return LucideIcons.clapperboard;
+      
+      // Misc
       case 'zap':
         return LucideIcons.zap;
       case 'triangle':
         return LucideIcons.triangle;
       case 'aperture':
         return LucideIcons.aperture;
-      case 'eraser':
-        return LucideIcons.eraser;
-      case 'scissors':
-        return LucideIcons.scissors;
+      
       default:
         return LucideIcons.cpu;
     }

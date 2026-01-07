@@ -1,7 +1,8 @@
-package com.example.image_vid_gen_edit_frontend;
+package com.shambhutech.kalaai;
 
 import io.flutter.embedding.android.FlutterActivity;
 
 public class MainActivity extends FlutterActivity {
 
 }
+

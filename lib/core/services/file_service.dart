@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:image_vid_gen_edit_frontend/core/app_state.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/services/thumbnail_service.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:crypto/crypto.dart';
@@ -19,6 +21,80 @@ class FileService {
   static final Map<String, String> _previewCache =
       {}; // jobId/url → local file path
 
+  // ============================================================
+  // Download Queue with Concurrency Limits
+  // ============================================================
+  static const int _maxConcurrentDownloads = 2;
+  static int _activeDownloads = 0;
+  static final List<_DownloadTask> _downloadQueue = [];
+  
+  /// Queue a download with concurrency control
+  /// This prevents multiple large files from being downloaded simultaneously
+  static Future<String?> queueDownload(
+    BuildContext context,
+    String url, {
+    String? suggestedFileName,
+    String subfolder = 'Kala_AI',
+    void Function(double progress)? onProgress,
+    int maxRetries = 3,
+  }) async {
+    final completer = Completer<String?>();
+    
+    final task = _DownloadTask(
+      context: context,
+      url: url,
+      suggestedFileName: suggestedFileName,
+      subfolder: subfolder,
+      onProgress: onProgress,
+      maxRetries: maxRetries,
+      completer: completer,
+    );
+    
+    _downloadQueue.add(task);
+    _processQueue();
+    
+    return completer.future;
+  }
+
+  static void _processQueue() async {
+    while (_activeDownloads < _maxConcurrentDownloads && _downloadQueue.isNotEmpty) {
+      final task = _downloadQueue.removeAt(0);
+      _activeDownloads++;
+      
+      // Execute download and handle completion
+      downloadFromUrl(
+        task.context,
+        task.url,
+        suggestedFileName: task.suggestedFileName,
+        subfolder: task.subfolder,
+        onProgress: task.onProgress,
+        maxRetries: task.maxRetries,
+      ).then((result) async {
+        task.completer.complete(result);
+        _activeDownloads--;
+        
+        // Small delay between downloads to prevent UI jank
+        if (_downloadQueue.isNotEmpty) {
+          await Future.delayed(const Duration(milliseconds: 300));
+        }
+        _processQueue(); // Process next in queue
+      }).catchError((error) async {
+        task.completer.complete(null);
+        _activeDownloads--;
+        
+        // Small delay between downloads
+        if (_downloadQueue.isNotEmpty) {
+          await Future.delayed(const Duration(milliseconds: 300));
+        }
+        _processQueue(); // Process next in queue
+      });
+    }
+  }
+
+  /// Get current download queue status
+  static int get pendingDownloads => _downloadQueue.length;
+  static int get activeDownloads => _activeDownloads;
+
   static Future<Directory> getTempDir() async => await getTemporaryDirectory();
 
   /// 🚀 Save raw bytes (image/video) to the gallery.
@@ -26,7 +102,7 @@ class FileService {
     BuildContext context,
     Uint8List bytes, {
     String? customFileName,
-    String subfolder = 'AI_Creative_Studio',
+    String subfolder = 'Kala_AI',
     String extension = 'png',
     bool showPreview = true,
     Uint8List? previewBytes,
@@ -168,6 +244,7 @@ class FileService {
   }
 
   /// 🖼️ Displays the preview image in a fullscreen dialog with zoom and close button
+  /// Uses progressive loading for large images to avoid UI freezes
   static void _showImageDialog(BuildContext context, String filePath) {
     if (!File(filePath).existsSync()) {
       debugPrint("⚠️ File not found for preview: $filePath");
@@ -189,33 +266,12 @@ class FileService {
             _isPreviewOpen = false;
             return true;
           },
-          child: Stack(
-            children: [
-              // 🖼️ Zoomable Image
-              Center(
-                child: InteractiveViewer(
-                  maxScale: 5,
-                  minScale: 0.7,
-                  child: Image.file(
-                    File(filePath),
-                    fit: BoxFit.contain,
-                  ),
-                ),
-              ),
-
-              // ❌ Close button
-              Positioned(
-                top: 40,
-                right: 20,
-                child: IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white, size: 32),
-                  onPressed: () {
-                    _isPreviewOpen = false;
-                    Navigator.of(context, rootNavigator: true).pop();
-                  },
-                ),
-              ),
-            ],
+          child: _ProgressiveImagePreview(
+            filePath: filePath,
+            onClose: () {
+              _isPreviewOpen = false;
+              Navigator.of(context, rootNavigator: true).pop();
+            },
           ),
         );
       },
@@ -311,6 +367,34 @@ class FileService {
     }
   }
 
+  /// Clear all preview cache files and memory
+  static Future<void> clearPreviewCache() async {
+    try {
+      // Delete cached preview files
+      for (final path in _previewCache.values) {
+        try {
+          final file = File(path);
+          if (await file.exists()) {
+            await file.delete();
+          }
+        } catch (e) {
+          debugPrint("⚠️ Failed to delete preview file: $e");
+        }
+      }
+      
+      // Clear memory cache
+      _previewCache.clear();
+      
+      // Persist empty cache
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('preview_cache');
+      
+      debugPrint("🗑️ Preview cache cleared");
+    } catch (e) {
+      debugPrint("❌ Failed to clear preview cache: $e");
+    }
+  }
+
   // ✅ Opens an already-downloaded file like preview
   static Future<void> openLocalPreview(
     BuildContext context,
@@ -353,86 +437,198 @@ class FileService {
     return url.contains('/download/') && !url.contains('workers.dev');
   }
 
+  /// 🔍 Validate downloaded image/video content
+  static bool _isValidContent(Uint8List bytes, String extension) {
+    if (bytes.isEmpty) {
+      debugPrint('❌ Downloaded file is empty');
+      return false;
+    }
+
+    // Minimum file size check (blank/black images are usually very small)
+    if (bytes.length < 100) {
+      debugPrint('❌ Downloaded file too small: ${bytes.length} bytes');
+      return false;
+    }
+
+    // Check for valid image headers
+    if (extension.toLowerCase() == 'png') {
+      // PNG signature: 89 50 4E 47 0D 0A 1A 0A
+      if (bytes.length < 8) return false;
+      final pngSignature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+      for (int i = 0; i < 8; i++) {
+        if (bytes[i] != pngSignature[i]) return false;
+      }
+    } else if (extension.toLowerCase() == 'jpg' || extension.toLowerCase() == 'jpeg') {
+      // JPEG signature: FF D8 FF
+      if (bytes.length < 3) return false;
+      if (bytes[0] != 0xFF || bytes[1] != 0xD8 || bytes[2] != 0xFF) {
+        return false;
+      }
+    } else if (extension.toLowerCase() == 'mp4') {
+      // MP4 signature: ftyp box at start (bytes 4-8 should contain 'ftyp')
+      if (bytes.length < 12) return false;
+      final ftyp = String.fromCharCodes(bytes.sublist(4, 8));
+      if (ftyp != 'ftyp') {
+        // Check for alternative MP4 signatures
+        final boxType = String.fromCharCodes(bytes.sublist(4, 8));
+        if (boxType != 'ftyp' && boxType != 'moov' && boxType != 'mdat') {
+          return false;
+        }
+      }
+    }
+
+    return true;
+  }
+
   /// 🧩 Download file (image/video) from [url] and save to gallery, with progress callback.
+  /// Includes retry logic and content validation.
   static Future<String?> downloadFromUrl(
     BuildContext context,
     String url, {
     String? suggestedFileName,
-    String subfolder = 'AI_Creative_Studio',
+    String subfolder = 'Kala_AI',
     void Function(double progress)? onProgress, // progress: 0.0 → 1.0
+    int maxRetries = 3,
   }) async {
-    try {
-      // 🔐 Safety check: reject old download endpoint URLs
-      if (_isOldDownloadEndpoint(url)) {
-        debugPrint('❌ Rejected old download endpoint URL: $url');
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Invalid download URL. Please refresh the job.')),
-          );
-        }
-        return null;
-      }
-      
-      final uri = Uri.parse(url);
-      final safeExt = _safeExtensionFromUrl(url);
-
-      final client = http.Client();
-      final request = http.Request('GET', uri);
-      final response = await client.send(request);
-
-      if (response.statusCode != 200 && response.statusCode != 206) {
-        throw Exception('Server responded ${response.statusCode}');
-      }
-
-      final totalBytes = response.contentLength ?? 0;
-      final bytes = <int>[];
-      int downloaded = 0;
-
-      await for (final chunk in response.stream) {
-        bytes.addAll(chunk);
-        downloaded += chunk.length;
-        if (totalBytes > 0 && onProgress != null) {
-          onProgress(downloaded / totalBytes);
-        }
-      }
-
-      final uuid = const Uuid().v4();
-      final baseName = (suggestedFileName?.trim().isNotEmpty ?? false)
-          ? suggestedFileName!
-          : uuid;
-      final cleanName = _normalizeFileName(baseName, defaultExt: safeExt);
-      final fileData = Uint8List.fromList(bytes);
-      final savedPath = await saveFile(
-        context,
-        fileData,
-        extension: safeExt,
-        showPreview: true,
-        customFileName: cleanName,
-      );
-
-      if (savedPath != null) {
-        final jobs = List<JobModel>.from(jobListNotifier.value);
-        final idx = jobs.indexWhere((j) => j.downloadUrl == url);
-        if (idx != -1) {
-          final job = jobs[idx];
-          job.localFilePath = savedPath;
-          jobs[idx] = job;
-          jobListNotifier.value = jobs;
-          await saveJobsToPrefs();
-          debugPrint("📸 Linked downloaded file to job ${job.jobId}");
-        }
-        return savedPath;
-      }
-      return null;
-    } catch (e) {
-      debugPrint('❌ Download failed: $e');
+    // 🔐 Safety check: reject old download endpoint URLs
+    if (_isOldDownloadEndpoint(url)) {
+      debugPrint('❌ Rejected old download endpoint URL: $url');
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Download failed: $e')),
+          const SnackBar(content: Text('Invalid download URL. Please refresh the job.')),
         );
       }
       return null;
     }
+
+    final uri = Uri.parse(url);
+    final safeExt = _safeExtensionFromUrl(url);
+    http.Client? client;
+
+    for (int attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        if (attempt > 0) {
+          // Exponential backoff: 1s, 2s, 4s
+          final delay = Duration(seconds: 1 << (attempt - 1));
+          debugPrint('⏳ Retrying download in ${delay.inSeconds}s (attempt ${attempt + 1}/$maxRetries)');
+          await Future.delayed(delay);
+        }
+
+        client = http.Client();
+        final request = http.Request('GET', uri);
+        
+        // Add timeout: 30 seconds for connection, 60 seconds total
+        final response = await client.send(request).timeout(
+          const Duration(seconds: 60),
+          onTimeout: () {
+            throw Exception('Download timeout after 60 seconds');
+          },
+        );
+
+        if (response.statusCode == 403) {
+          // URL expired or invalid signature
+          throw Exception('URL expired or invalid. Please refresh.');
+        }
+
+        if (response.statusCode != 200 && response.statusCode != 206) {
+          throw Exception('Server responded ${response.statusCode}');
+        }
+
+        final totalBytes = response.contentLength ?? 0;
+        final bytes = <int>[];
+        int downloaded = 0;
+
+        try {
+          await for (final chunk in response.stream.timeout(
+            const Duration(seconds: 90),
+          )) {
+            bytes.addAll(chunk);
+            downloaded += chunk.length;
+            if (totalBytes > 0 && onProgress != null) {
+              onProgress(downloaded / totalBytes);
+            }
+          }
+        } on TimeoutException {
+          throw Exception('Download stream timeout after 90 seconds');
+        }
+
+        // Validate downloaded content
+        final fileData = Uint8List.fromList(bytes);
+        if (!_isValidContent(fileData, safeExt)) {
+          if (attempt < maxRetries - 1) {
+            debugPrint('⚠️ Invalid content detected, retrying...');
+            client.close();
+            continue; // Retry
+          } else {
+            throw Exception('Downloaded file appears to be invalid or corrupted');
+          }
+        }
+
+        final uuid = const Uuid().v4();
+        final baseName = (suggestedFileName?.trim().isNotEmpty ?? false)
+            ? suggestedFileName!
+            : uuid;
+        final cleanName = _normalizeFileName(baseName, defaultExt: safeExt);
+        
+        final savedPath = await saveFile(
+          context,
+          fileData,
+          extension: safeExt,
+          showPreview: true,
+          customFileName: cleanName,
+        );
+
+        if (savedPath != null) {
+          final jobs = List<JobModel>.from(jobListNotifier.value);
+          final idx = jobs.indexWhere((j) => j.downloadUrl == url);
+          if (idx != -1) {
+            final job = jobs[idx];
+            job.localFilePath = savedPath;
+            jobs[idx] = job;
+            jobListNotifier.value = jobs;
+            await saveJobsToPrefs();
+            debugPrint("📸 Linked downloaded file to job ${job.jobId}");
+          }
+          return savedPath;
+        }
+        return null;
+      } catch (e) {
+        debugPrint('❌ Download attempt ${attempt + 1} failed: $e');
+        
+        if (client != null) {
+          try {
+            client.close();
+          } catch (_) {}
+        }
+
+        // If this was the last attempt, show error
+        if (attempt == maxRetries - 1) {
+          if (context.mounted) {
+            String errorMsg = 'Download failed';
+            if (e.toString().contains('timeout')) {
+              errorMsg = 'Download timed out. Please try again.';
+            } else if (e.toString().contains('expired') || e.toString().contains('403')) {
+              errorMsg = 'Download URL expired. Please refresh and try again.';
+            } else if (e.toString().contains('invalid') || e.toString().contains('corrupted')) {
+              errorMsg = 'Downloaded file is invalid. Please try again.';
+            } else {
+              errorMsg = 'Download failed: ${e.toString().split(':').last.trim()}';
+            }
+            
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(errorMsg),
+                duration: const Duration(seconds: 4),
+              ),
+            );
+          }
+          return null;
+        }
+        // Otherwise, continue to next retry
+      }
+    }
+
+    return null;
   }
 
   /// Writes bytes to a temporary file (e.g., previews)
@@ -503,7 +699,8 @@ class FileService {
     }
   }
 
-  /// 🪄 Bottom sheet confirmation with preview + open option
+  /// 🪄 Premium floating notification with preview + open option
+  /// Replaces any existing snackbar to prevent stacking
   static void _showSavedBottomSheet(
     BuildContext context,
     Uint8List bytes,
@@ -512,69 +709,414 @@ class FileService {
   ) {
     final cs = Theme.of(context).colorScheme;
     final isVideo = filePath.toLowerCase().endsWith(".mp4");
+    final fileName = filePath.split('/').last;
 
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: cs.surface.withOpacity(0.98),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => SafeArea(
-        minimum: const EdgeInsets.only(bottom: 24),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: ListTile(
-            leading: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: isVideo
-                  ? (previewBytes != null
-                      ? Image.memory(
-                          previewBytes,
-                          width: 60,
-                          height: 60,
-                          fit: BoxFit.cover,
-                          filterQuality: FilterQuality.medium,
-                        )
-                      : Container(
-                          width: 60,
-                          height: 60,
-                          color: cs.surfaceContainerHighest.withOpacity(0.10),
-                          child: Icon(
-                            Icons.videocam,
-                            color: cs.onSurface,
-                            size: 28,
-                          ),
-                        ))
-                  : Image.memory(
-                      bytes,
-                      width: 60,
-                      height: 60,
-                      fit: BoxFit.cover,
-                      filterQuality: FilterQuality.medium,
+    // Clear any existing snackbars to prevent stacking
+    ScaffoldMessenger.of(context).clearSnackBars();
+
+    // Show a premium styled snackbar with preview
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 5),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+        padding: EdgeInsets.zero,
+        content: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                cs.surfaceContainerHighest,
+                cs.surfaceContainerHigh,
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: cs.outlineVariant.withOpacity(0.3),
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.15),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
+              ),
+              BoxShadow(
+                color: cs.primary.withOpacity(0.08),
+                blurRadius: 30,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              children: [
+                // Preview thumbnail with border
+                Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: Colors.green.withOpacity(0.4),
+                      width: 2,
                     ),
-            ),
-            title: Text(
-              '✅ Saved successfully!',
-              style: TextStyle(
-                color: cs.onSurface,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            subtitle: Text(
-              filePath,
-              style: TextStyle(
-                color: cs.onSurfaceVariant,
-                fontSize: 12,
-              ),
-              overflow: TextOverflow.ellipsis,
-            ),
-            trailing: IconButton(
-              icon: Icon(Icons.folder_open, color: cs.primary),
-              onPressed: () async => await OpenFilex.open(filePath),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.green.withOpacity(0.2),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: isVideo
+                        ? (previewBytes != null
+                            ? Image.memory(
+                                previewBytes,
+                                width: 56,
+                                height: 56,
+                                fit: BoxFit.cover,
+                                filterQuality: FilterQuality.medium,
+                              )
+                            : Container(
+                                width: 56,
+                                height: 56,
+                                color: cs.surfaceContainerHighest,
+                                child: Icon(
+                                  Icons.videocam_rounded,
+                                  color: cs.onSurfaceVariant,
+                                  size: 28,
+                                ),
+                              ))
+                        : Image.memory(
+                            bytes,
+                            width: 56,
+                            height: 56,
+                            fit: BoxFit.cover,
+                            filterQuality: FilterQuality.medium,
+                          ),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                
+                // Text content
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Success badge
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.green.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: Colors.green.withOpacity(0.3),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.check_circle_rounded,
+                              size: 14,
+                              color: Colors.green.shade400,
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              'Saved to Gallery',
+                              style: TextStyle(
+                                color: Colors.green.shade400,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      // File name
+                      Text(
+                        fileName,
+                        style: TextStyle(
+                          color: cs.onSurface,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                
+                // Open button
+                Material(
+                  color: cs.primary.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(12),
+                  child: InkWell(
+                    onTap: () async => await OpenFilex.open(filePath),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.folder_open_rounded,
+                            size: 18,
+                            color: cs.primary,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Open',
+                            style: TextStyle(
+                              color: cs.primary,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
       ),
     );
   }
+}
+
+/// Progressive image preview widget
+/// Shows a low-res thumbnail first, then loads full resolution in background
+class _ProgressiveImagePreview extends StatefulWidget {
+  final String filePath;
+  final VoidCallback onClose;
+
+  const _ProgressiveImagePreview({
+    required this.filePath,
+    required this.onClose,
+  });
+
+  @override
+  State<_ProgressiveImagePreview> createState() => _ProgressiveImagePreviewState();
+}
+
+class _ProgressiveImagePreviewState extends State<_ProgressiveImagePreview> {
+  Uint8List? _thumbnailBytes;
+  bool _isFullResLoaded = false;
+  bool _isLoading = true;
+
+  // Screen-aware cache dimensions for full res
+  int? _cacheWidth;
+  int? _cacheHeight;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadThumbnail();
+  }
+
+  Future<void> _loadThumbnail() async {
+    try {
+      // Load cached thumbnail first (fast)
+      final thumb = await ThumbnailService.instance.getThumbnail(
+        widget.filePath,
+        size: 400, // Larger thumbnail for preview placeholder
+        quality: 70,
+      );
+      
+      if (mounted) {
+        setState(() {
+          _thumbnailBytes = thumb;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('⚠️ Failed to load preview thumbnail: $e');
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Calculate cache dimensions based on screen size and quality setting
+    final size = MediaQuery.of(context).size;
+    final dpr = MediaQuery.of(context).devicePixelRatio;
+    
+    if (AppSettings.highQualityPreviews) {
+      // High quality: 1.5x screen resolution, up to 4K
+      _cacheWidth = (size.width * dpr * 1.5).toInt().clamp(0, 4096);
+      _cacheHeight = (size.height * dpr * 1.5).toInt().clamp(0, 4096);
+    } else {
+      // Low quality: 1x screen resolution, max 2K - uses less memory/data
+      _cacheWidth = (size.width * dpr).toInt().clamp(0, 2048);
+      _cacheHeight = (size.height * dpr).toInt().clamp(0, 2048);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        // 🖼️ Zoomable Image with progressive loading
+        Center(
+          child: InteractiveViewer(
+            maxScale: 5,
+            minScale: 0.7,
+            child: _buildImage(),
+          ),
+        ),
+
+        // Loading indicator overlay
+        if (_isLoading)
+          const Center(
+            child: CircularProgressIndicator(color: Colors.white70),
+          ),
+
+        // ❌ Close button
+        Positioned(
+          top: 40,
+          right: 20,
+          child: IconButton(
+            icon: const Icon(Icons.close, color: Colors.white, size: 32),
+            onPressed: widget.onClose,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildImage() {
+    final file = File(widget.filePath);
+    
+    if (!file.existsSync()) {
+      return const Icon(Icons.broken_image, color: Colors.white54, size: 64);
+    }
+
+    // Use Image.file with cacheWidth/cacheHeight for memory efficiency
+    // This prevents loading 20MB images at full resolution
+    return Image.file(
+      file,
+      fit: BoxFit.contain,
+      cacheWidth: _cacheWidth,
+      cacheHeight: _cacheHeight,
+      filterQuality: FilterQuality.medium,
+      gaplessPlayback: true,
+      frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+        // If loaded synchronously (cached), show immediately
+        if (wasSynchronouslyLoaded || frame != null) {
+          // Mark as loaded to hide loading indicator
+          if (!_isFullResLoaded && mounted) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) setState(() => _isFullResLoaded = true);
+            });
+          }
+          return child;
+        }
+        
+        // Show thumbnail while full image loads
+        if (_thumbnailBytes != null) {
+          return Stack(
+            alignment: Alignment.center,
+            children: [
+              // Blurred thumbnail as placeholder
+              Image.memory(
+                _thumbnailBytes!,
+                fit: BoxFit.contain,
+                filterQuality: FilterQuality.low,
+              ),
+              // Subtle loading indicator
+              Positioned(
+                bottom: 20,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white70,
+                        ),
+                      ),
+                      SizedBox(width: 8),
+                      Text(
+                        'Loading full resolution...',
+                        style: TextStyle(color: Colors.white70, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          );
+        }
+        
+        // Fallback loading state
+        return const Center(
+          child: CircularProgressIndicator(color: Colors.white70),
+        );
+      },
+      errorBuilder: (context, error, stackTrace) {
+        debugPrint('❌ Preview image error: $error');
+        return Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.broken_image, color: Colors.white54, size: 64),
+            const SizedBox(height: 16),
+            Text(
+              'Failed to load image',
+              style: TextStyle(color: Colors.white.withOpacity(0.7)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// Internal class to represent a queued download task
+class _DownloadTask {
+  final BuildContext context;
+  final String url;
+  final String? suggestedFileName;
+  final String subfolder;
+  final void Function(double progress)? onProgress;
+  final int maxRetries;
+  final Completer<String?> completer;
+
+  _DownloadTask({
+    required this.context,
+    required this.url,
+    this.suggestedFileName,
+    required this.subfolder,
+    this.onProgress,
+    required this.maxRetries,
+    required this.completer,
+  });
 }

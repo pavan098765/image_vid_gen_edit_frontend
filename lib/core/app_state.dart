@@ -1,11 +1,63 @@
 // lib/core/app_state.dart
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+// Import user service for credit notifier
+export 'package:kala_ai_create_images_videos_with_ai/core/services/user_service.dart'
+    show userCreditsNotifier, currentUserNotifier, isLoadingUserNotifier, UserData;
 
 /// Global app-level selected index for the bottom navigation.
 final ValueNotifier<int> selectedIndexNotifier = ValueNotifier<int>(0);
-final ValueNotifier<int> userCreditsNotifier = ValueNotifier<int>(0);
+
+/// Global theme mode notifier - controls app-wide theme
+final ValueNotifier<ThemeMode> themeModeNotifier = ValueNotifier<ThemeMode>(ThemeMode.system);
+
+/// App Settings that can be read from anywhere
+class AppSettings {
+  static bool highQualityPreviews = true;
+  static bool notificationsEnabled = true;
+  
+  /// Load settings from SharedPreferences
+  static Future<void> load() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      
+      // Load theme mode
+      final themeModeIndex = prefs.getInt('theme_mode') ?? 0;
+      themeModeNotifier.value = ThemeMode.values[themeModeIndex.clamp(0, 2)];
+      
+      // Load other settings
+      highQualityPreviews = prefs.getBool('high_quality_previews') ?? true;
+      notificationsEnabled = prefs.getBool('notifications_enabled') ?? true;
+      
+      debugPrint("⚙️ Settings loaded: theme=${themeModeNotifier.value}, highQuality=$highQualityPreviews");
+    } catch (e) {
+      debugPrint("⚠️ Failed to load settings: $e");
+    }
+  }
+  
+  /// Save a specific setting
+  static Future<void> setThemeMode(ThemeMode mode) async {
+    themeModeNotifier.value = mode;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('theme_mode', mode.index);
+  }
+  
+  static Future<void> setHighQualityPreviews(bool value) async {
+    highQualityPreviews = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('high_quality_previews', value);
+  }
+  
+  static Future<void> setNotificationsEnabled(bool value) async {
+    notificationsEnabled = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('notifications_enabled', value);
+  }
+}
 
 /// Helpful constants for default tab indices.
 /// Adjust if you reorder the tabs in main.dart.
@@ -29,6 +81,9 @@ class JobModel {
   String? localFilePath; // store preview/download file path
   String? inputImagePath;
 
+  /// Cloud results expire after 24 hours
+  static const int cloudExpiryHours = 24;
+
   JobModel({
     required this.jobId,
     required this.title,
@@ -40,6 +95,37 @@ class JobModel {
     this.localFilePath,
     this.inputImagePath,
   }) : createdAt = createdAt ?? DateTime.now();
+
+  /// Check if the cloud result has expired (>24 hours old)
+  bool get isCloudExpired {
+    final age = DateTime.now().difference(createdAt);
+    return age.inHours >= cloudExpiryHours;
+  }
+
+  /// Check if the result is saved locally (safe from cloud expiry)
+  bool get isSavedLocally {
+    if (localFilePath == null || localFilePath!.isEmpty) return false;
+    return File(localFilePath!).existsSync();
+  }
+
+  /// Get remaining time before cloud expiry
+  Duration get timeUntilExpiry {
+    final expiryTime = createdAt.add(const Duration(hours: cloudExpiryHours));
+    final remaining = expiryTime.difference(DateTime.now());
+    return remaining.isNegative ? Duration.zero : remaining;
+  }
+
+  /// Format remaining time as human-readable string
+  String get expiryTimeFormatted {
+    final remaining = timeUntilExpiry;
+    if (remaining.inHours > 0) {
+      return '${remaining.inHours}h ${remaining.inMinutes % 60}m';
+    } else if (remaining.inMinutes > 0) {
+      return '${remaining.inMinutes}m';
+    } else {
+      return 'Expired';
+    }
+  }
 
   // --- JSON serialization helpers for SharedPreferences persistence ---
   Map<String, dynamic> toJson() => {

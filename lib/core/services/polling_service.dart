@@ -2,21 +2,21 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:image_vid_gen_edit_frontend/core/app_state.dart';
-import 'package:image_vid_gen_edit_frontend/core/services/file_service.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/services/auth_service.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/services/file_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'notification_service.dart';
-import 'package:image_vid_gen_edit_frontend/main.dart' show navigatorKey;
+import 'package:kala_ai_create_images_videos_with_ai/main.dart' show navigatorKey;
 
 class PollingService {
   PollingService._();
   static final PollingService instance = PollingService._();
   static final allowed = ["processing", "completed", "failed"];
-  static const int minPollIntervalSec = 20; // per-job cooldown
-  static const int maxJobAgeMinutes = 10; // skip very old jobs
+  static const int minPollIntervalSec = 20; // per-job cooldown (for background polling only)
+  static const int maxJobAgeMinutesForBackgroundPoll = 60; // background poll skips very old jobs
 
   Timer? _timer;
   bool _running = false;
@@ -28,11 +28,10 @@ class PollingService {
       StreamController.broadcast();
   Stream<Map<String, dynamic>> get onStatus => _onStatus.stream;
 
-  // Match your controller config here (keep in sync)
+  // API config
   static const String baseUrl = "https://genedit.mooo.com";
-  static const String controllerApiKey = "SECRETKEY";
-  static const String controllerSharedSecret = "SECRETKEY";
   final int pollIntervalSec = 10;
+  final AuthService _authService = AuthService();
 
   /// 🔍 Check if URL is the old download endpoint (should not be used)
   static bool _isOldDownloadEndpoint(String? url) {
@@ -40,21 +39,60 @@ class PollingService {
     return url.contains('/download/') && !url.contains('workers.dev');
   }
 
-  /// 🔐 Fetch signed R2 download URL for a completed job
-  /// Returns the signed URL from the worker, or null if not available
-  static Future<String?> getSignedDownloadUrl(String jobId) async {
+  /// 🔍 Check if a signed URL is still valid (not expired)
+  /// Returns true if URL has at least [minRemainingSeconds] before expiration
+  static bool isSignedUrlValid(String? url, {int minRemainingSeconds = 300}) {
+    if (url == null || url.isEmpty) return false;
+    if (_isOldDownloadEndpoint(url)) return false;
+    
+    try {
+      final uri = Uri.parse(url);
+      final expStr = uri.queryParameters['exp'];
+      if (expStr == null) return false;
+      
+      final expTimestamp = int.tryParse(expStr);
+      if (expTimestamp == null) return false;
+      
+      final nowTimestamp = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      final remainingSeconds = expTimestamp - nowTimestamp;
+      
+      // URL is valid if it has at least minRemainingSeconds left
+      return remainingSeconds > minRemainingSeconds;
+    } catch (e) {
+      debugPrint("⚠️ Error parsing URL expiration: $e");
+      return false;
+    }
+  }
+
+  /// 🔐 Get valid signed R2 download URL for a completed job
+  /// Uses cached URL if still valid, otherwise fetches a new one
+  static Future<String?> getSignedDownloadUrl(String jobId, {bool forceRefresh = false}) async {
+    final prefs = await SharedPreferences.getInstance();
+    final cacheKey = "pending_download_url_$jobId";
+    
+    // Check cached URL first (unless force refresh)
+    if (!forceRefresh) {
+      final cachedUrl = prefs.getString(cacheKey);
+      if (isSignedUrlValid(cachedUrl, minRemainingSeconds: 300)) {
+        debugPrint("✅ Using cached signed URL for $jobId (still valid)");
+        return cachedUrl;
+      }
+    }
+    
+    // Fetch new signed URL
     try {
       final url = "$baseUrl/download_url/$jobId";
       
-      // Create signature for the request
-      final payloadJson = jsonEncode({"job_id": jobId});
-      final sigBytes = Hmac(sha256, utf8.encode(controllerSharedSecret))
-          .convert(utf8.encode(payloadJson));
-      final sig = "sha256=${sigBytes.toString()}";
+      // Firebase Auth
+      final authService = AuthService();
+      final token = await authService.getIdToken();
+      if (token == null) {
+        debugPrint("⚠️ Not authenticated for download URL refresh");
+        return null;
+      }
       
       final headers = {
-        "Authorization": "Bearer $controllerApiKey",
-        "X-Signature": sig,
+        "Authorization": "Bearer $token",
       };
       
       final resp = await http
@@ -68,16 +106,42 @@ class PollingService {
         final cleanUrl = signedUrl.startsWith('"') && signedUrl.endsWith('"')
             ? signedUrl.substring(1, signedUrl.length - 1)
             : signedUrl;
-        debugPrint("✅ Got signed download URL for $jobId");
+        
+        // Cache the new URL
+        await prefs.setString(cacheKey, cleanUrl);
+        debugPrint("✅ Fetched & cached new signed URL for $jobId");
         return cleanUrl;
       } else {
         debugPrint("⚠️ Failed to get signed URL: ${resp.statusCode} - ${resp.body}");
+        
+        // Return cached URL as fallback even if expired (let download fail gracefully)
+        final cachedUrl = prefs.getString(cacheKey);
+        if (cachedUrl != null && !_isOldDownloadEndpoint(cachedUrl)) {
+          return cachedUrl;
+        }
         return null;
       }
     } catch (e) {
       debugPrint("❌ Error fetching signed download URL: $e");
+      
+      // Return cached URL as fallback
+      final cachedUrl = prefs.getString(cacheKey);
+      if (cachedUrl != null && !_isOldDownloadEndpoint(cachedUrl)) {
+        return cachedUrl;
+      }
       return null;
     }
+  }
+  
+  /// 🔐 Get valid download URL for a job - smart version
+  /// Checks cache first, only fetches if expired/missing
+  static Future<String?> getValidDownloadUrl(String jobId) async {
+    return getSignedDownloadUrl(jobId, forceRefresh: false);
+  }
+  
+  /// 🔐 Force refresh the download URL for a job
+  static Future<String?> refreshDownloadUrl(String jobId) async {
+    return getSignedDownloadUrl(jobId, forceRefresh: true);
   }
 
   void start() {
@@ -110,14 +174,15 @@ class PollingService {
 
       final notifyRequested = prefs.getBool("notify_requested") ?? false;
 
-      // --- 1️⃣ Sign and call job_status
-      final payloadJson = jsonEncode({"job_id": jobId});
-      final sigBytes = Hmac(sha256, utf8.encode(controllerSharedSecret))
-          .convert(utf8.encode(payloadJson));
-      final sig = "sha256=${sigBytes.toString()}";
+      // --- 1️⃣ Firebase Auth and call job_status
+      final token = await _authService.getIdToken();
+      if (token == null) {
+        debugPrint("⚠️ Not authenticated for job status check");
+        return;
+      }
+      
       final headers = {
-        "Authorization": "Bearer $controllerApiKey",
-        "X-Signature": sig,
+        "Authorization": "Bearer $token",
       };
       final url = "$baseUrl/job_status?job_id=$jobId";
 
@@ -133,26 +198,10 @@ class PollingService {
         status = "processing";
       }
       
-      // 🔐 For completed jobs, ALWAYS fetch signed URL from R2 worker endpoint
-      // Ignore download_url from job_status response (it may be old endpoint)
+      // 🔐 For completed jobs, get valid signed URL (uses cache if valid)
       String? downloadUrl;
       if (status == "completed") {
-        downloadUrl = await getSignedDownloadUrl(jobId);
-        if (downloadUrl != null && downloadUrl.isNotEmpty) {
-          await prefs.setString("pending_download_url_$jobId", downloadUrl);
-        } else {
-          // Fallback to cached URL if fetch fails (but check it's not old endpoint)
-          final cached = prefs.getString("pending_download_url_$jobId");
-          if (cached != null && !_isOldDownloadEndpoint(cached)) {
-            downloadUrl = cached;
-          }
-        }
-      } else {
-        // For non-completed jobs, use cached URL if available (but check it's not old endpoint)
-        final cached = prefs.getString("pending_download_url_$jobId");
-        if (cached != null && !_isOldDownloadEndpoint(cached)) {
-          downloadUrl = cached;
-        }
+        downloadUrl = await getValidDownloadUrl(jobId);
       }
 
       // --- 2️⃣ Emit event to UI
@@ -300,19 +349,20 @@ class PollingService {
           .map((e) => Map<String, dynamic>.from(e))
           .toList();
 
+      // Get Firebase token once for all jobs
+      final token = await _authService.getIdToken();
+      if (token == null) {
+        debugPrint("⚠️ Not authenticated for job refresh");
+        return;
+      }
+      
       // refresh each job from backend
       for (final job in list) {
         final jobId = job["jobId"];
         if (jobId == null) continue;
 
-        final payloadJson = jsonEncode({"job_id": jobId});
-        final sigBytes = Hmac(sha256, utf8.encode(controllerSharedSecret))
-            .convert(utf8.encode(payloadJson));
-        final sig = "sha256=${sigBytes.toString()}";
-
         final headers = {
-          "Authorization": "Bearer $controllerApiKey",
-          "X-Signature": sig,
+          "Authorization": "Bearer $token",
         };
 
         final url = "$baseUrl/job_status?job_id=$jobId";
@@ -329,29 +379,10 @@ class PollingService {
           status = "processing";
         }
         
-        // 🔐 For completed jobs, ALWAYS fetch signed URL from R2 worker endpoint
-        // Ignore download_url from job_status response (it may be old endpoint)
+        // 🔐 For completed jobs, get valid signed URL (uses cache if valid)
         String? downloadUrl;
         if (status == "completed") {
-          downloadUrl = await getSignedDownloadUrl(jobId);
-          if (downloadUrl != null && downloadUrl.isNotEmpty) {
-            final prefs = await SharedPreferences.getInstance();
-            await prefs.setString("pending_download_url_$jobId", downloadUrl);
-          } else {
-            // Fallback to cached URL if fetch fails (but check it's not old endpoint)
-            final prefs = await SharedPreferences.getInstance();
-            final cached = prefs.getString("pending_download_url_$jobId");
-            if (cached != null && !_isOldDownloadEndpoint(cached)) {
-              downloadUrl = cached;
-            }
-          }
-        } else {
-          // For non-completed jobs, use cached URL if available (but check it's not old endpoint)
-          final prefs = await SharedPreferences.getInstance();
-          final cached = prefs.getString("pending_download_url_$jobId");
-          if (cached != null && !_isOldDownloadEndpoint(cached)) {
-            downloadUrl = cached;
-          }
+          downloadUrl = await getValidDownloadUrl(jobId);
         }
 
         // ✅ Update jobListNotifier safely
@@ -377,14 +408,8 @@ class PollingService {
             localFilePath: old.localFilePath,
           );
 
-          // ✅ Persist this downloadUrl for next refresh
-          if (finalUrl != null && finalUrl.isNotEmpty) {
-            final prefs = await SharedPreferences.getInstance();
-            await prefs.setString("pending_download_url_$jobId", finalUrl);
-          }
-
           debugPrint(
-              "✅ Refreshed job=$jobId → $status (url: ${finalUrl ?? 'none'})");
+              "✅ Refreshed job=$jobId → $status (url: ${finalUrl != null ? 'present' : 'none'})");
         }
         jobListNotifier.value = jobs;
       }
@@ -395,9 +420,10 @@ class PollingService {
   }
 
   /// ✅ Refresh only jobs still marked as "processing"
-  Future<void> refreshProcessingJobs() async {
+  /// [forceRefresh] - if true, bypasses age limit and throttling (for manual refresh)
+  Future<void> refreshProcessingJobs({bool forceRefresh = false}) async {
     debugPrint(
-        "🟢 PollingService.refreshProcessingJobs(): Refreshing active jobs only");
+        "🟢 PollingService.refreshProcessingJobs(force=$forceRefresh): Refreshing active jobs");
     try {
       final prefs = await SharedPreferences.getInstance();
       final now = DateTime.now();
@@ -413,15 +439,18 @@ class PollingService {
           .map((e) => Map<String, dynamic>.from(e))
           .toList();
 
-      // 🧩 Only refresh recent 'processing' jobs
+      // 🧩 Only refresh 'processing' jobs (apply age filter only for background polling)
       final processingJobs = list.where((job) {
         final status = (job["status"] ?? "").toString().toLowerCase();
         if (status != "processing") return false;
 
+        // Skip age check for manual/force refresh
+        if (forceRefresh) return true;
+
         final createdAt =
             DateTime.tryParse(job["createdAt"] ?? "") ?? DateTime.now();
         final ageMin = now.difference(createdAt).inMinutes;
-        if (ageMin > maxJobAgeMinutes) {
+        if (ageMin > maxJobAgeMinutesForBackgroundPoll) {
           debugPrint("⏩ Skipping old job ${job["jobId"]} ($ageMin min old)");
           return false;
         }
@@ -434,29 +463,32 @@ class PollingService {
       }
 
       debugPrint(
-          "🌐 Checking ${processingJobs.length} recent processing jobs...");
+          "🌐 Checking ${processingJobs.length} processing jobs...");
+
+      // Get Firebase token once for all jobs
+      final token = await _authService.getIdToken();
+      if (token == null) {
+        debugPrint("⚠️ Not authenticated for background polling");
+        return;
+      }
 
       for (final job in processingJobs) {
         final jobId = job["jobId"];
         if (jobId == null) continue;
 
-        // 🧠 Per-job throttle
-        final lastPollKey = "last_poll_$jobId";
-        final lastPollMs = prefs.getInt(lastPollKey) ?? 0;
-        if (nowMs - lastPollMs < minPollIntervalSec * 1000) {
-          debugPrint("⏩ Skipping $jobId (polled recently)");
-          continue;
+        // 🧠 Per-job throttle (skip for force refresh)
+        if (!forceRefresh) {
+          final lastPollKey = "last_poll_$jobId";
+          final lastPollMs = prefs.getInt(lastPollKey) ?? 0;
+          if (nowMs - lastPollMs < minPollIntervalSec * 1000) {
+            debugPrint("⏩ Skipping $jobId (polled recently)");
+            continue;
+          }
+          await prefs.setInt(lastPollKey, nowMs);
         }
-        await prefs.setInt(lastPollKey, nowMs);
-
-        final payloadJson = jsonEncode({"job_id": jobId});
-        final sigBytes = Hmac(sha256, utf8.encode(controllerSharedSecret))
-            .convert(utf8.encode(payloadJson));
-        final sig = "sha256=${sigBytes.toString()}";
 
         final headers = {
-          "Authorization": "Bearer $controllerApiKey",
-          "X-Signature": sig,
+          "Authorization": "Bearer $token",
         };
 
         final url = "$baseUrl/job_status?job_id=$jobId";
@@ -473,26 +505,10 @@ class PollingService {
           status = "processing";
         }
         
-        // 🔐 For completed jobs, ALWAYS fetch signed URL from R2 worker endpoint
-        // Ignore download_url from job_status response (it may be old endpoint)
+        // 🔐 For completed jobs, get valid signed URL (uses cache if valid)
         String? downloadUrl;
         if (status == "completed") {
-          downloadUrl = await getSignedDownloadUrl(jobId);
-          if (downloadUrl != null && downloadUrl.isNotEmpty) {
-            await prefs.setString("pending_download_url_$jobId", downloadUrl);
-          } else {
-            // Fallback to cached URL if fetch fails (but check it's not old endpoint)
-            final cached = prefs.getString("pending_download_url_$jobId");
-            if (cached != null && !_isOldDownloadEndpoint(cached)) {
-              downloadUrl = cached;
-            }
-          }
-        } else {
-          // For non-completed jobs, use cached URL if available (but check it's not old endpoint)
-          final cached = prefs.getString("pending_download_url_$jobId");
-          if (cached != null && !_isOldDownloadEndpoint(cached)) {
-            downloadUrl = cached;
-          }
+          downloadUrl = await getValidDownloadUrl(jobId);
         }
 
         // Update the local notifier list
@@ -533,12 +549,8 @@ class PollingService {
             localFilePath: old.localFilePath,
           );
 
-          if (finalUrl != null && finalUrl.isNotEmpty) {
-            await prefs.setString("pending_download_url_$jobId", finalUrl);
-          }
-
           debugPrint(
-              "✅ Processing job=$jobId → $status (url: ${finalUrl ?? 'none'})");
+              "✅ Processing job=$jobId → $status (url: ${finalUrl != null ? 'present' : 'none'})");
           jobListNotifier.value = jobs;
         }
       }

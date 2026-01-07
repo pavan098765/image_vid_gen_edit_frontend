@@ -7,8 +7,10 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:image_vid_gen_edit_frontend/core/services/file_service.dart';
-import 'package:image_vid_gen_edit_frontend/core/widgets/gradient_button.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/services/file_service.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_button.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pro_image_editor/pro_image_editor.dart';
@@ -36,6 +38,7 @@ class _VideoEditorPageState extends State<VideoEditorPage> {
 
   // Exported result playback
   String? _outputPath;
+  // ignore: unused_field
   Duration _generationTime = Duration.zero;
   VideoPlayerController? _resultController;
 
@@ -106,78 +109,161 @@ class _VideoEditorPageState extends State<VideoEditorPage> {
   // ---------------- Themed Source Picker Bottom Sheet ----------------
   Future<ImageSource?> _showSourcePickerSheet() async {
     final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return showModalBottomSheet<ImageSource>(
       context: context,
       backgroundColor: Colors.transparent,
+      isScrollControlled: true,
       builder: (_) {
-        return SafeArea(
-          child: Container(
-            margin: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(20)),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: isDark
-                    ? [
-                        cs.surface.withOpacity(0.98),
-                        cs.surface.withOpacity(0.92),
-                      ]
-                    : [
-                        cs.surface.withOpacity(0.98),
-                        cs.surface.withOpacity(0.96),
-                      ],
+        return Container(
+          decoration: BoxDecoration(
+            color: cs.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.2),
+                blurRadius: 20,
+                offset: const Offset(0, -4),
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: (isDark ? Colors.black : Colors.black38)
-                      .withOpacity(0.15),
-                  blurRadius: 24,
-                  offset: const Offset(0, -4),
-                )
-              ],
-            ),
+            ],
+          ),
+          child: SafeArea(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // Handle bar
                   Container(
-                    width: 42,
+                    width: 40,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: cs.onSurface.withOpacity(0.22),
+                      color: cs.outlineVariant.withOpacity(0.5),
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Select Video Source',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          color: cs.onSurface,
-                          fontWeight: FontWeight.w700,
+                  const SizedBox(height: 20),
+                  
+                  // Title
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: cs.primary.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
                         ),
+                        child: Icon(
+                          LucideIcons.clapperboard,
+                          color: cs.primary,
+                          size: 22,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Text(
+                        'Choose Video Source',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: cs.onSurface,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  
+                  // Options
+                  Row(
+                    children: [
+                      // Gallery option
+                      Expanded(
+                        child: _buildPickerOption(
+                          icon: LucideIcons.film,
+                          label: 'Gallery',
+                          sublabel: 'Choose from videos',
+                          color: cs.primary,
+                          onTap: () => Navigator.pop(context, ImageSource.gallery),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      
+                      // Camera option
+                      Expanded(
+                        child: _buildPickerOption(
+                          icon: LucideIcons.video,
+                          label: 'Camera',
+                          sublabel: 'Record a new video',
+                          color: cs.secondary,
+                          onTap: () => Navigator.pop(context, ImageSource.camera),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 8),
-                  _BottomTile(
-                    icon: Icons.video_library,
-                    label: 'Gallery',
-                    onTap: () => Navigator.pop(context, ImageSource.gallery),
-                  ),
-                  _BottomTile(
-                    icon: Icons.videocam,
-                    label: 'Camera',
-                    onTap: () => Navigator.pop(context, ImageSource.camera),
-                  ),
                 ],
               ),
             ),
           ),
         );
       },
+    );
+  }
+
+  // Picker option card for bottom sheet
+  Widget _buildPickerOption({
+    required IconData icon,
+    required String label,
+    required String sublabel,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      color: cs.surfaceContainerHigh,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: cs.outlineVariant.withOpacity(0.3),
+            ),
+          ),
+          child: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, size: 28, color: color),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                label,
+                style: TextStyle(
+                  color: cs.onSurface,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                sublabel,
+                style: TextStyle(
+                  color: cs.onSurfaceVariant.withOpacity(0.7),
+                  fontSize: 12,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -436,7 +522,7 @@ class _VideoEditorPageState extends State<VideoEditorPage> {
       onWillPop: _handleSystemBack,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Video Editor'),
+          title: const KalaLogoWithIcon(logoHeight: 30, fontSize: 22),
           actions: [
             if (_video != null && !_editorOpen)
               IconButton(
@@ -461,10 +547,11 @@ class _VideoEditorPageState extends State<VideoEditorPage> {
                 label: 'Pick Video',
                 icon: Icons.video_library_outlined,
                 onPressed: _pickVideo,
-                padding:
-                    const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
+                variant: ButtonVariant.primary,
+                size: ButtonSize.large,
               )
             : null,
+        floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       ),
     );
   }
@@ -535,7 +622,6 @@ class _VideoEditorPageState extends State<VideoEditorPage> {
   // ---------------- ORIGINAL PLAYER ----------------
   Widget _buildOriginalPlayer() {
     final controller = _videoController!;
-    final cs = Theme.of(context).colorScheme;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(12),
       child: Column(
@@ -556,16 +642,16 @@ class _VideoEditorPageState extends State<VideoEditorPage> {
                 label: "Edit Video",
                 icon: Icons.edit,
                 onPressed: () => setState(() => _editorOpen = true),
-                padding:
-                    const EdgeInsets.symmetric(vertical: 10, horizontal: 22),
+                variant: ButtonVariant.primary,
+                size: ButtonSize.medium,
               ),
               if (_outputPath != null)
                 GradientButton(
                   label: "Save Result",
                   icon: Icons.save_alt,
                   onPressed: _saveExported,
-                  padding:
-                      const EdgeInsets.symmetric(vertical: 10, horizontal: 22),
+                  variant: ButtonVariant.success,
+                  size: ButtonSize.medium,
                 ),
             ],
           ),
@@ -714,15 +800,15 @@ class _VideoEditorPageState extends State<VideoEditorPage> {
                   label: "Edit Again",
                   icon: Icons.edit,
                   onPressed: () => setState(() => _editorOpen = true),
-                  padding:
-                      const EdgeInsets.symmetric(vertical: 10, horizontal: 22),
+                  variant: ButtonVariant.secondary,
+                  size: ButtonSize.medium,
                 ),
                 GradientButton(
                   label: "Save Video",
                   icon: Icons.save_alt,
                   onPressed: _saveExported,
-                  padding:
-                      const EdgeInsets.symmetric(vertical: 10, horizontal: 22),
+                  variant: ButtonVariant.success,
+                  size: ButtonSize.medium,
                 ),
               ],
             ),
@@ -766,7 +852,7 @@ class _VideoEditorPageState extends State<VideoEditorPage> {
                 size: 80, color: cs.onSurface.withOpacity(0.38)),
             const SizedBox(height: 16),
             Text(
-              'No video selected.\nTap the button below to choose one.',
+              'No video selected.\nTap the button below to choose one to start editing.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: cs.onSurface.withOpacity(0.70),
@@ -873,89 +959,6 @@ class _VideoEditorPageState extends State<VideoEditorPage> {
 
 // ---------------- Helper Widgets ----------------
 
-// Polished FAB with glow
-class _PrimaryFAB extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final VoidCallback onPressed;
-  const _PrimaryFAB({
-    required this.label,
-    required this.icon,
-    required this.onPressed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      decoration: BoxDecoration(
-        boxShadow: [
-          BoxShadow(
-            color: cs.primary.withOpacity(0.35),
-            blurRadius: 28,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: FloatingActionButton.extended(
-        onPressed: onPressed,
-        label: Text(label),
-        icon: Icon(icon),
-        backgroundColor: cs.primary,
-        foregroundColor: cs.onPrimary,
-      ),
-    );
-  }
-}
-
-class _BottomTile extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  const _BottomTile({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
-        child: Row(
-          children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: cs.primary.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, color: cs.primary),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                label,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: cs.onSurface,
-                      fontWeight: FontWeight.w600,
-                    ),
-              ),
-            ),
-            Icon(Icons.chevron_right, color: cs.onSurface.withOpacity(0.4)),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 // Confirm exit dialog
 class _ConfirmExitDialog extends StatelessWidget {
   const _ConfirmExitDialog();
@@ -976,6 +979,8 @@ class _ConfirmExitDialog extends StatelessWidget {
         GradientButton(
           label: "Exit",
           onPressed: () => Navigator.pop(context, true),
+          variant: ButtonVariant.danger,
+          size: ButtonSize.small,
         ),
       ],
     );
@@ -1076,8 +1081,6 @@ class _VideoProgressAlert extends StatelessWidget {
                   tween: Tween(begin: 0, end: progress),
                   duration: const Duration(milliseconds: 250),
                   builder: (_, value, __) {
-                    final percent =
-                        (value * 100).clamp(0, 100).toStringAsFixed(1);
                     return Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [

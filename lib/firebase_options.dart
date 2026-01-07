@@ -41,46 +41,51 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyBfFA5nEvF9TnpHsUjlS40v11vUAGy8C0w',
-    appId: '1:1018696641006:web:f36e947801fb970ae906ff',
-    messagingSenderId: '1018696641006',
-    projectId: 'power-downloader-c58a3',
-    authDomain: 'power-downloader-c58a3.firebaseapp.com',
-    storageBucket: 'power-downloader-c58a3.firebasestorage.app',
+    apiKey: 'AIzaSyDyBo93E_MC7TeGlV4sumnuww27gelNV94',
+    appId: '1:261728295402:web:644dfebdd1a0e9aae1fa93',
+    messagingSenderId: '261728295402',
+    projectId: 'kalaai-ai-image-video-generate',
+    authDomain: 'kalaai-ai-image-video-generate.firebaseapp.com',
+    storageBucket: 'kalaai-ai-image-video-generate.firebasestorage.app',
+    measurementId: 'G-Y70C5KBPH7',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyBb4q5zjjBAh3gG2h-tygu_BfZ1YhAFABE',
-    appId: '1:1018696641006:android:f257f2f779c68a95e906ff',
-    messagingSenderId: '1018696641006',
-    projectId: 'power-downloader-c58a3',
-    storageBucket: 'power-downloader-c58a3.firebasestorage.app',
+    apiKey: 'AIzaSyCL9fbMHvnm87pYQMqwZhvp_1bVEW6IjV8',
+    appId: '1:261728295402:android:35704c0a1c72d9c2e1fa93',
+    messagingSenderId: '261728295402',
+    projectId: 'kalaai-ai-image-video-generate',
+    storageBucket: 'kalaai-ai-image-video-generate.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyAY12IDBQeAkgIl69pIEUqfa-982p5W0Xw',
-    appId: '1:1018696641006:ios:ccb283fe3f8e7693e906ff',
-    messagingSenderId: '1018696641006',
-    projectId: 'power-downloader-c58a3',
-    storageBucket: 'power-downloader-c58a3.firebasestorage.app',
-    iosBundleId: 'com.example.imageVidGenEditFrontend',
+    apiKey: 'AIzaSyBAko0-by3mVWFJiAiDtSkwJmMdksp7D0k',
+    appId: '1:261728295402:ios:ae2e4b520da391c3e1fa93',
+    messagingSenderId: '261728295402',
+    projectId: 'kalaai-ai-image-video-generate',
+    storageBucket: 'kalaai-ai-image-video-generate.firebasestorage.app',
+    iosClientId: '261728295402-56c530rec2497ldk4p7r8pephg8ipi7s.apps.googleusercontent.com',
+    iosBundleId: 'com.shambhutech.kalaai',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyAY12IDBQeAkgIl69pIEUqfa-982p5W0Xw',
-    appId: '1:1018696641006:ios:ccb283fe3f8e7693e906ff',
-    messagingSenderId: '1018696641006',
-    projectId: 'power-downloader-c58a3',
-    storageBucket: 'power-downloader-c58a3.firebasestorage.app',
-    iosBundleId: 'com.example.imageVidGenEditFrontend',
+    apiKey: 'AIzaSyBAko0-by3mVWFJiAiDtSkwJmMdksp7D0k',
+    appId: '1:261728295402:ios:ae2e4b520da391c3e1fa93',
+    messagingSenderId: '261728295402',
+    projectId: 'kalaai-ai-image-video-generate',
+    storageBucket: 'kalaai-ai-image-video-generate.firebasestorage.app',
+    iosClientId: '261728295402-56c530rec2497ldk4p7r8pephg8ipi7s.apps.googleusercontent.com',
+    iosBundleId: 'com.shambhutech.kalaai',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyBfFA5nEvF9TnpHsUjlS40v11vUAGy8C0w',
-    appId: '1:1018696641006:web:4158020639219f7be906ff',
-    messagingSenderId: '1018696641006',
-    projectId: 'power-downloader-c58a3',
-    authDomain: 'power-downloader-c58a3.firebaseapp.com',
-    storageBucket: 'power-downloader-c58a3.firebasestorage.app',
+    apiKey: 'AIzaSyDyBo93E_MC7TeGlV4sumnuww27gelNV94',
+    appId: '1:261728295402:web:d5760e2e29cd7f32e1fa93',
+    messagingSenderId: '261728295402',
+    projectId: 'kalaai-ai-image-video-generate',
+    authDomain: 'kalaai-ai-image-video-generate.firebaseapp.com',
+    storageBucket: 'kalaai-ai-image-video-generate.firebasestorage.app',
+    measurementId: 'G-7RVW97BFSX',
   );
+
 }

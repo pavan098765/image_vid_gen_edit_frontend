@@ -6,7 +6,7 @@
       "tools": [
         {
           "name": "Lumora",
-          "icon": "images",
+          "icon": "wand2",
           "caps": [
             "Text → Image",
             "High Detail",
@@ -182,7 +182,7 @@
         },
         {
           "name": "Revia 2",
-          "icon": "images",
+          "icon": "layers",
           "caps": [
             "Multi-Image Edit",
             "Consistent Look",
@@ -746,7 +746,7 @@
       "tools": [
         {
           "name": "Ultra Enhance",
-          "icon": "scaling",
+          "icon": "maximize2",
           "caps": [
             "2× / 4×",
             "Enhance",
@@ -792,7 +792,7 @@
         },
         {
           "name": "Sharp Refine",
-          "icon": "image-upscale",
+          "icon": "focus",
           "caps": [
             "2× / 4×",
             "Sharpen",
@@ -838,7 +838,7 @@
         },
         {
           "name": "PhotoBoost",
-          "icon": "image-up",
+          "icon": "sunMedium",
           "caps": [
             "2× / 4×",
             "Enhance",

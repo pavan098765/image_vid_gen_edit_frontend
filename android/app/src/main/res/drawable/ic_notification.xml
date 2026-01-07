@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Notification icon for Kala AI -->
+<!-- This references the launcher foreground as notification icon -->
+<!-- For best results, run: dart run flutter_launcher_icons -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:drawable="@drawable/ic_launcher_foreground"
+        android:gravity="center"
+        android:width="24dp"
+        android:height="24dp" />
+</layer-list>

@@ -1,45 +1,51 @@
 {
   "project_info": {
-    "project_number": "1018696641006",
-    "project_id": "power-downloader-c58a3",
-    "storage_bucket": "power-downloader-c58a3.firebasestorage.app"
+    "project_number": "261728295402",
+    "project_id": "kalaai-ai-image-video-generate",
+    "storage_bucket": "kalaai-ai-image-video-generate.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:1018696641006:android:f257f2f779c68a95e906ff",
+        "mobilesdk_app_id": "1:261728295402:android:35704c0a1c72d9c2e1fa93",
         "android_client_info": {
-          "package_name": "com.example.image_vid_gen_edit_frontend"
+          "package_name": "com.shambhutech.kalaai"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "261728295402-abs36dsrvs49rpapuu5c7t1rlba2beo5.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.shambhutech.kalaai",
+            "certificate_hash": "3de33149af8124fb201ca394f17d13b39a0e099b"
+          }
+        },
+        {
+          "client_id": "261728295402-f205liqojoqdedn5nhrulecfgi3uq6ce.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
-          "current_key": "AIzaSyBb4q5zjjBAh3gG2h-tygu_BfZ1YhAFABE"
+          "current_key": "AIzaSyCL9fbMHvnm87pYQMqwZhvp_1bVEW6IjV8"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
-        }
-      }
-    },
-    {
-      "client_info": {
-        "mobilesdk_app_id": "1:1018696641006:android:41cbaacbb2e8db5de906ff",
-        "android_client_info": {
-          "package_name": "com.shambhutech.powerdownloader"
-        }
-      },
-      "oauth_client": [],
-      "api_key": [
-        {
-          "current_key": "AIzaSyBb4q5zjjBAh3gG2h-tygu_BfZ1YhAFABE"
-        }
-      ],
-      "services": {
-        "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "261728295402-f205liqojoqdedn5nhrulecfgi3uq6ce.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "261728295402-56c530rec2497ldk4p7r8pephg8ipi7s.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.imageVidGenEditFrontend"
+              }
+            }
+          ]
         }
       }
     }

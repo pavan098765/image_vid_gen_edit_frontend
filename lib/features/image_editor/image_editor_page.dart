@@ -5,8 +5,10 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:image_vid_gen_edit_frontend/core/services/file_service.dart';
-import 'package:image_vid_gen_edit_frontend/core/widgets/gradient_button.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/services/file_service.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_button.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:pro_image_editor/pro_image_editor.dart';
 import 'package:path_provider/path_provider.dart';
@@ -124,79 +126,161 @@ class _EditorPageState extends State<EditorPage> {
 
   Future<ImageSource?> _showSourcePickerSheet() async {
     final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return showModalBottomSheet<ImageSource>(
       context: context,
       backgroundColor: Colors.transparent,
+      isScrollControlled: true,
       builder: (_) {
-        return SafeArea(
-          child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(20)),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: isDark
-                    ? [
-                        cs.surface.withOpacity(0.98),
-                        cs.surface.withOpacity(0.92)
-                      ]
-                    : [
-                        cs.surface.withOpacity(0.98),
-                        cs.surface.withOpacity(0.96)
-                      ],
+        return Container(
+          decoration: BoxDecoration(
+            color: cs.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.2),
+                blurRadius: 20,
+                offset: const Offset(0, -4),
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: (isDark ? Colors.black : Colors.black54)
-                      .withOpacity(0.12),
-                  blurRadius: 24,
-                  spreadRadius: 2,
-                  offset: const Offset(0, -2),
-                ),
-              ],
-            ),
+            ],
+          ),
+          child: SafeArea(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // Handle bar
                   Container(
-                    width: 36,
+                    width: 40,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: cs.onSurface.withOpacity(0.22),
+                      color: cs.outlineVariant.withOpacity(0.5),
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Select Image Source',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  const SizedBox(height: 20),
+                  
+                  // Title
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: cs.primary.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          LucideIcons.imagePlus,
+                          color: cs.primary,
+                          size: 22,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Text(
+                        'Choose Image Source',
+                        style: TextStyle(
+                          fontSize: 18,
                           fontWeight: FontWeight.w700,
                           color: cs.onSurface,
                         ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  
+                  // Options
+                  Row(
+                    children: [
+                      // Gallery option
+                      Expanded(
+                        child: _buildPickerOption(
+                          icon: LucideIcons.image,
+                          label: 'Gallery',
+                          sublabel: 'Choose from photos',
+                          color: cs.primary,
+                          onTap: () => Navigator.pop(context, ImageSource.gallery),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      
+                      // Camera option
+                      Expanded(
+                        child: _buildPickerOption(
+                          icon: LucideIcons.camera,
+                          label: 'Camera',
+                          sublabel: 'Take a new photo',
+                          color: cs.secondary,
+                          onTap: () => Navigator.pop(context, ImageSource.camera),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 8),
-                  _SheetTile(
-                    icon: Icons.photo_library,
-                    label: 'Gallery',
-                    onTap: () => Navigator.pop(context, ImageSource.gallery),
-                  ),
-                  _SheetTile(
-                    icon: Icons.camera_alt,
-                    label: 'Camera',
-                    onTap: () => Navigator.pop(context, ImageSource.camera),
-                  ),
                 ],
               ),
             ),
           ),
         );
       },
+    );
+  }
+
+  // Picker option card for bottom sheet
+  Widget _buildPickerOption({
+    required IconData icon,
+    required String label,
+    required String sublabel,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      color: cs.surfaceContainerHigh,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: cs.outlineVariant.withOpacity(0.3),
+            ),
+          ),
+          child: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, size: 28, color: color),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                label,
+                style: TextStyle(
+                  color: cs.onSurface,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                sublabel,
+                style: TextStyle(
+                  color: cs.onSurfaceVariant.withOpacity(0.7),
+                  fontSize: 12,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -242,13 +326,11 @@ class _EditorPageState extends State<EditorPage> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
     return WillPopScope(
       onWillPop: _handleSystemBack,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Image Editor'),
+          title: const KalaLogoWithIcon(logoHeight: 30, fontSize: 22),
           actions: [
             if (_selectedImage != null)
               IconButton(
@@ -337,8 +419,8 @@ class _EditorPageState extends State<EditorPage> {
                       ),
                     );
                   },
-                  padding:
-                      const EdgeInsets.symmetric(vertical: 10, horizontal: 22),
+                  variant: ButtonVariant.secondary,
+                  size: ButtonSize.medium,
                 ),
               ),
           ],
@@ -348,8 +430,8 @@ class _EditorPageState extends State<EditorPage> {
                 icon: Icons.add_photo_alternate_outlined,
                 label: "Pick Image",
                 onPressed: _pickImage,
-                padding:
-                    const EdgeInsets.symmetric(vertical: 14, horizontal: 28),
+                variant: ButtonVariant.primary,
+                size: ButtonSize.large,
               )
             : null,
         floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
@@ -392,7 +474,7 @@ class _EditorPageState extends State<EditorPage> {
                 size: 80, color: cs.onSurface.withOpacity(0.38)),
             const SizedBox(height: 16),
             Text(
-              'No image selected.\nTap the button below to choose one.',
+              'No image selected.\nTap the button below to choose one to start editing.',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: cs.onSurface.withOpacity(0.70),
@@ -428,59 +510,14 @@ class _ConfirmExitDialog extends StatelessWidget {
         GradientButton(
           label: "Exit",
           onPressed: () => Navigator.pop(context, true),
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 22),
+          variant: ButtonVariant.danger,
+          size: ButtonSize.small,
         ),
       ],
     );
   }
 }
 
-class _SheetTile extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  const _SheetTile({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
-        child: Row(
-          children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: cs.primary.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, color: cs.primary),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                label,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: cs.onSurface,
-                      fontWeight: FontWeight.w600,
-                    ),
-              ),
-            ),
-            Icon(Icons.chevron_right, color: cs.onSurface.withOpacity(0.4)),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 class _ResultPreviewPage extends StatelessWidget {
   final Uint8List imageBytes;

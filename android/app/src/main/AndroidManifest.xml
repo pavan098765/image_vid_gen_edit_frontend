@@ -7,13 +7,22 @@
     <uses-permission android:name="android.permission.INTERNET"/>
     
     <application
-        android:label="image_vid_gen_edit_frontend"
+        android:label="Kala AI"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
-        <!-- ✅ Add this: Google Mobile Ads App ID -->
+        <!-- ✅ Google Mobile Ads App ID -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
             android:value="ca-app-pub-3940256099942544~3347511713" />
+        
+        <!-- ✅ Firebase Notification Icon (uses the app icon as notification icon) -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_notification" />
+        <!-- ✅ Firebase Notification Color (Kala AI brand purple) -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/notification_color" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

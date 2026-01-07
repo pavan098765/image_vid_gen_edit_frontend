@@ -1,5 +1,5 @@
-name: image_vid_gen_edit_frontend
-description: A new Flutter project.
+name: kala_ai_create_images_videos_with_ai
+description: Create Images & Videos with AI
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 
@@ -58,9 +58,11 @@ dependencies:
   fluttertoast: ^8.2.5
   file_saver: ^0.3.1
   shimmer: ^3.0.0
-  firebase_core: ^4.1.0
-  firebase_messaging: ^16.0.3 
-  firebase_storage: ^13.0.1
+  firebase_core: ^3.9.0
+  firebase_messaging: ^15.2.0
+  firebase_storage: ^12.4.0
+  firebase_auth: ^5.5.0
+  google_sign_in: ^6.2.2
 
   vibration: ^3.1.1
 
@@ -84,6 +86,21 @@ dev_dependencies:
     sdk: flutter
 
   flutter_lints: ^2.0.0
+  flutter_launcher_icons: ^0.14.3
+
+# App icon configuration
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/kala_ai_logo.png"
+  min_sdk_android: 21
+  adaptive_icon_background: "#1A1A2E"
+  adaptive_icon_foreground: "assets/kala_ai_logo.png"
+  # iOS specific
+  remove_alpha_ios: true
+  # Android notification icon (monochrome/white for status bar)
+  android_notification_icon:
+    image_path: "assets/kala_ai_logo_monochrome.png"
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -97,4 +114,5 @@ flutter:
   uses-material-design: true
 
   assets:
-    - assets/sample.jpg
+    - assets/kala_ai_logo.png
+    - assets/kala_ai_logo_monochrome.png

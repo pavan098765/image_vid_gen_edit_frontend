@@ -21,7 +21,8 @@ class NotificationService {
     Function(NotificationResponse)? onTap,
   }) async {
     try {
-      const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+      // Use custom notification icon (white silhouette for status bar)
+      const androidSettings = AndroidInitializationSettings('@drawable/ic_notification');
       const iosSettings = DarwinInitializationSettings();
 
       const settings =
@@ -66,6 +67,8 @@ class NotificationService {
         playSound: true,
         enableVibration: true,
         showWhen: true,
+        icon: '@drawable/ic_notification', // Custom Kala AI icon
+        color: Color(0xFF7B5EFF), // Kala AI brand purple
       );
 
       const iosDetails = DarwinNotificationDetails(

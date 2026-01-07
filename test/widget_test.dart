@@ -8,12 +8,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:image_vid_gen_edit_frontend/main.dart';
+import 'package:kala_ai_create_images_videos_with_ai/main.dart';
 
 void main() {
   testWidgets('Counter increments smoke test', (WidgetTester tester) async {
     // Build our app and trigger a frame.
-    await tester.pumpWidget(const AICreativeStudio());
+    await tester.pumpWidget(const KalaAIApp());
 
     // Verify that our counter starts at 0.
     expect(find.text('0'), findsOneWidget);

@@ -1,8 +1,10 @@
 // lib/main.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:image_vid_gen_edit_frontend/core/services/file_service.dart';
-import 'package:image_vid_gen_edit_frontend/core/services/polling_service.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/services/file_service.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/services/polling_service.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/services/thumbnail_service.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // Firebase imports
@@ -16,6 +18,7 @@ import 'firebase_options.dart';
 import 'core/theme/app_theme.dart';
 import 'core/app_state.dart';
 import 'core/services/notification_service.dart';
+import 'core/services/user_service.dart';
 
 import 'features/image_editor/image_editor_page.dart';
 import 'features/ai_tools/ai_tools_page.dart';
@@ -270,7 +273,10 @@ Future<void> main() async {
 
   // ✅ Initialize persistent app state before anything else
   await initAppState();
+  await AppSettings.load(); // Load theme and other settings
   await FileService.loadPreviewCache();
+  await ThumbnailService.instance.init(); // Initialize thumbnail cache
+  await UserService().initialize(); // Initialize user service for auth
   debugPrint("✅ App state initialized & jobs restored");
 
   // Register background handler for FCM
@@ -431,7 +437,7 @@ Future<void> main() async {
   // 🟢 Wrap the app in lifecycle handler (so jobs auto-refresh when app resumes)
   runApp(
     const AppLifecycleHandler(
-      child: AICreativeStudio(),
+      child: KalaAIApp(),
     ),
   );
 
@@ -527,10 +533,10 @@ void _openOrReplaceResultManager() {
 }
 
 // ----------------------------------------------------
-// Root App
+// Root App - Kala AI
 // ----------------------------------------------------
-class AICreativeStudio extends StatelessWidget {
-  const AICreativeStudio({super.key});
+class KalaAIApp extends StatelessWidget {
+  const KalaAIApp({super.key});
 
   final List<Widget> _pages = const [
     EditorPage(),
@@ -542,24 +548,26 @@ class AICreativeStudio extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    debugPrint("🟢 Building AICreativeStudio widget");
+    debugPrint("🟢 Building KalaAIApp widget");
 
-    return MaterialApp(
-      title: 'AI Creative Studio',
+    // Listen to theme changes from settings
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeModeNotifier,
+      builder: (context, themeMode, _) {
+        return MaterialApp(
+          title: 'Kala AI',
 
-      // ✅ NEW: Light + Dark theme pair
-      theme: AppTheme.modernLight, // Light
-      darkTheme: AppTheme.modernDark, // Dark
+          // Light + Dark theme pair
+          theme: AppTheme.modernLight,
+          darkTheme: AppTheme.modernDark,
 
-      // ✅ NEW: Controls which one is active
-      themeMode: ThemeMode.system, // Auto-follow system theme
-      // themeMode: ThemeMode.dark,       // Force dark
-      // themeMode: ThemeMode.light,      // Force light
+          // Controls which theme is active - now reactive!
+          themeMode: themeMode,
 
-      navigatorKey: navigatorKey,
-      debugShowCheckedModeBanner: false,
+          navigatorKey: navigatorKey,
+          debugShowCheckedModeBanner: false,
 
-      home: Scaffold(
+          home: Scaffold(
         body: SafeArea(
           child: ValueListenableBuilder<int>(
             valueListenable: selectedIndexNotifier,
@@ -584,7 +592,7 @@ class AICreativeStudio extends StatelessWidget {
                 NavigationDestination(
                     icon: Icon(Icons.auto_awesome), label: "AI Tools"),
                 NavigationDestination(
-                    icon: Icon(Icons.monetization_on), label: "Credits"),
+                    icon: Icon(LucideIcons.gem), label: "Credits"),
                 NavigationDestination(
                     icon: Icon(Icons.settings), label: "Settings"),
               ],
@@ -592,6 +600,8 @@ class AICreativeStudio extends StatelessWidget {
           },
         ),
       ),
+    );
+      },
     );
   }
 }

@@ -1,27 +1,190 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+// =============================================================================
+// KALA AI BRAND COLORS
+// =============================================================================
+// Primary gradient: Purple (#7B5EFF) → Cyan (#00D4FF)
+// Accent: Magenta/Pink (#FF66B2)
+// Surface dark: Deep navy (#1A1A2E)
+
+class KalaColors {
+  KalaColors._();
+  
+  // Core brand colors
+  static const Color purple = Color(0xFF7B5EFF);      // Primary purple
+  static const Color cyan = Color(0xFF00D4FF);        // Secondary cyan
+  static const Color magenta = Color(0xFFFF66B2);     // Accent pink/magenta
+  static const Color gold = Color(0xFFFFAA33);        // Accent gold (brush tip)
+  
+  // Surface colors
+  static const Color surfaceDark = Color(0xFF1A1A2E);    // Deep navy background
+  static const Color surfaceDarkAlt = Color(0xFF12121C); // Deeper variant
+  static const Color surfaceLight = Color(0xFFF8F9FC);   // Light mode surface
+  
+  // Gradient presets
+  static const List<Color> brandGradient = [purple, cyan];
+  static const List<Color> accentGradient = [purple, magenta];
+  static const List<Color> fullGradient = [purple, magenta, cyan];
+}
+
 /// Optional helper — can be reused by custom widgets (like GradientButton)
 LinearGradient appButtonGradient(BuildContext context) {
-  final cs = Theme.of(context).colorScheme;
-  return LinearGradient(
-    colors: [
-      cs.primary,
-      cs.secondary,
-      Colors.purpleAccent.withOpacity(0.8),
-    ],
+  return const LinearGradient(
+    colors: KalaColors.brandGradient,
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
 }
 
+/// Brand gradient for text/icons
+LinearGradient kalaBrandGradient({
+  Alignment begin = Alignment.topLeft,
+  Alignment end = Alignment.bottomRight,
+}) {
+  return LinearGradient(
+    colors: KalaColors.brandGradient,
+    begin: begin,
+    end: end,
+  );
+}
+
+// =============================================================================
+// KALA AI LOGO WIDGET
+// =============================================================================
+/// A reusable widget that displays the Kala AI logo with gradient text.
+/// Matches the brand styling: "Kala" in purple transitioning to "AI" in cyan.
+class KalaLogo extends StatelessWidget {
+  final double fontSize;
+  final bool showTagline;
+  final String? tagline;
+  
+  const KalaLogo({
+    super.key,
+    this.fontSize = 24,
+    this.showTagline = false,
+    this.tagline,
+  });
+  
+  /// Small variant for app bars
+  factory KalaLogo.small() => const KalaLogo(fontSize: 20);
+  
+  /// Medium variant for headers
+  factory KalaLogo.medium() => const KalaLogo(fontSize: 28);
+  
+  /// Large variant for splash/hero sections
+  factory KalaLogo.large({String? tagline}) => KalaLogo(
+    fontSize: 36,
+    showTagline: tagline != null,
+    tagline: tagline,
+  );
+  
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ShaderMask(
+          shaderCallback: (bounds) => const LinearGradient(
+            colors: [
+              KalaColors.purple,
+              KalaColors.purple,
+              KalaColors.cyan,
+            ],
+            stops: [0.0, 0.5, 1.0],
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+          ).createShader(bounds),
+          blendMode: BlendMode.srcIn,
+          child: Text(
+            'Kala AI',
+            style: GoogleFonts.inter(
+              fontSize: fontSize,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.5,
+              height: 1.1,
+            ),
+          ),
+        ),
+        if (showTagline && tagline != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            tagline!,
+            style: GoogleFonts.inter(
+              fontSize: fontSize * 0.4,
+              fontWeight: FontWeight.w500,
+              color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.7),
+              letterSpacing: 0.3,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// A compact logo with icon + text for headers
+class KalaLogoWithIcon extends StatelessWidget {
+  final double logoHeight;
+  final double fontSize;
+  
+  const KalaLogoWithIcon({
+    super.key,
+    this.logoHeight = 28,
+    this.fontSize = 22,
+  });
+  
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Logo icon
+        ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: Image.asset(
+            'assets/kala_ai_logo.png',
+            height: logoHeight,
+            width: logoHeight,
+            fit: BoxFit.contain,
+          ),
+        ),
+        const SizedBox(width: 10),
+        // Gradient text
+        ShaderMask(
+          shaderCallback: (bounds) => const LinearGradient(
+            colors: [
+              KalaColors.purple,
+              KalaColors.purple,
+              KalaColors.cyan,
+            ],
+            stops: [0.0, 0.55, 1.0],
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+          ).createShader(bounds),
+          blendMode: BlendMode.srcIn,
+          child: Text(
+            'Kala AI',
+            style: GoogleFonts.inter(
+              fontSize: fontSize,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.3,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class AppTheme {
   // ---------------------------------------------------------------------------
-  //  BASE COLORS (Modern Professional Palette)
+  //  BASE COLORS (Kala AI Brand Palette)
   // ---------------------------------------------------------------------------
 
-  static const Color seedPrimary = Color(0xFF3A8FFF); // Electric Blue
-  static const Color seedSecondary = Color(0xFF00D1B2); // Mint / Teal accent
+  static const Color seedPrimary = KalaColors.purple;   // Brand purple
+  static const Color seedSecondary = KalaColors.cyan;   // Brand cyan
 
   // Creates harmonized color scheme
   static ColorScheme _harmonize(ColorScheme scheme) {
@@ -44,9 +207,11 @@ class AppTheme {
       onPrimary: Colors.white,
       secondary: seedSecondary,
       onSecondary: Colors.black,
+      tertiary: KalaColors.magenta,
+      onTertiary: Colors.white,
       error: Colors.redAccent,
       onError: Colors.white,
-      surface: Color(0xFF1A1A24),
+      surface: KalaColors.surfaceDark,
       onSurface: Colors.white,
     ));
 
@@ -197,9 +362,11 @@ class AppTheme {
       onPrimary: Colors.white,
       secondary: seedSecondary,
       onSecondary: Colors.black,
+      tertiary: KalaColors.magenta,
+      onTertiary: Colors.white,
       error: Colors.red,
       onError: Colors.white,
-      surface: Color(0xFFFFFFFF),
+      surface: KalaColors.surfaceLight,
       onSurface: Colors.black,
     ));
 

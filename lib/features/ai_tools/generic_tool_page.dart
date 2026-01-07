@@ -8,16 +8,21 @@ import 'dart:math';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:crypto/crypto.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
-import 'package:image_vid_gen_edit_frontend/core/app_state.dart';
-import 'package:image_vid_gen_edit_frontend/core/services/file_service.dart';
-import 'package:image_vid_gen_edit_frontend/core/widgets/gradient_button.dart';
-import 'package:image_vid_gen_edit_frontend/features/ai_tools/outpaint_canvas_page.dart';
-import 'package:image_vid_gen_edit_frontend/features/result_manager/result_manager_page.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/services/auth_service.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/services/file_service.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/services/user_service.dart'
+    hide userCreditsNotifier, currentUserNotifier, isLoadingUserNotifier, UserData;
+import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_button.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/sign_in_prompt.dart';
+import 'package:kala_ai_create_images_videos_with_ai/features/ai_tools/outpaint_canvas_page.dart';
+import 'package:kala_ai_create_images_videos_with_ai/features/credits/credits_page.dart';
+import 'package:kala_ai_create_images_videos_with_ai/features/result_manager/result_manager_page.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -97,9 +102,12 @@ class _GenericToolPageState extends State<GenericToolPage>
   bool _loading = false;
   bool _autoOpenMaskAfterPick = false;
   String? _selectedModeKey;
-  Uint8List? _resultData;
   String? _activeJobId;
   bool _fetchingResult = false;
+  
+  // Track image processing state to prevent race conditions
+  bool _isProcessingImage = false;
+  int _imageProcessingVersion = 0; // Increment to invalidate stale operations
 
   // for multi-image preview
   late PageController _previewPageController;
@@ -107,14 +115,28 @@ class _GenericToolPageState extends State<GenericToolPage>
   // Controllers
   final TextEditingController _promptController = TextEditingController();
 
-  // HMAC config
+  // API config
   static const String controllerUrl = "https://genedit.mooo.com";
-  static const String controllerApiKey = "SECRETKEY";
-  static const String controllerSharedSecret = "SECRETKEY";
+  final AuthService _authService = AuthService();
 
   // -------- Upscale (2x/4x switch) --------
   int _scaleFactor = 2;
   bool _upscaleEnabled = false;
+
+  /// Calculate the total credit cost for this job
+  int _calculateTotalCost() {
+    final baseCost = widget.config.cost;
+    final upscaleCost = widget.config.costUpscale;
+    final offer = widget.config.offer;
+    final scaleFactor = _inputs["scale_factor"] ?? 1.0;
+
+    final int baseTotal = baseCost + ((scaleFactor is num && scaleFactor > 1) ? upscaleCost : 0);
+    int totalCost = baseTotal;
+    if (offer > 0) {
+      totalCost = (baseTotal * (1 - offer / 100)).round();
+    }
+    return totalCost;
+  }
 
   // Dynamic element cache
   List<Map<String, dynamic>> get _currentElements {
@@ -171,7 +193,99 @@ class _GenericToolPageState extends State<GenericToolPage>
     }
   }
 
-  // -------- Generate Button --------
+  // -------- Validation: Check if all required inputs are filled --------
+  bool _areRequiredInputsFilled() {
+    // Don't allow generation while an image is being processed
+    if (_isProcessingImage) return false;
+    
+    final elements = _currentElements;
+    
+    for (final element in elements) {
+      final type = element["type"];
+      final inputRef = element["input_ref"];
+      
+      // Skip elements without input_ref (like upscale_toggle, generate_button)
+      if (inputRef == null) continue;
+      
+      // Skip optional inputs like sliders, dropdowns (they have defaults)
+      if (type == "slider" || type == "dropdown") continue;
+      
+      switch (type) {
+        case "prompt":
+          // Prompt is required - always use the controller as source of truth
+          final promptText = _promptController.text.trim();
+          if (promptText.isEmpty) {
+            return false;
+          }
+          break;
+          
+        case "image_upload":
+          // Image is required - check if it exists and is not empty
+          final imageData = _inputs[inputRef];
+          if (imageData == null) return false;
+          if (imageData is List && imageData.isEmpty) return false;
+          break;
+          
+        case "painter":
+          // Mask is required for inpainting modes
+          final maskData = _inputs[inputRef];
+          if (maskData == null) return false;
+          break;
+      }
+    }
+    
+    return true;
+  }
+  
+  // Get list of missing required inputs for user feedback
+  List<String> _getMissingInputs() {
+    final missing = <String>[];
+    
+    // Show processing message while image is being loaded
+    if (_isProcessingImage) {
+      return ["Image loading..."]; // Special message for processing state
+    }
+    
+    final elements = _currentElements;
+    
+    for (final element in elements) {
+      final type = element["type"];
+      final inputRef = element["input_ref"];
+      
+      // Skip elements without input_ref
+      if (inputRef == null) continue;
+      
+      // Skip optional inputs
+      if (type == "slider" || type == "dropdown") continue;
+      
+      switch (type) {
+        case "prompt":
+          // Always use the controller as source of truth
+          final promptText = _promptController.text.trim();
+          if (promptText.isEmpty) {
+            missing.add("Prompt");
+          }
+          break;
+          
+        case "image_upload":
+          final imageData = _inputs[inputRef];
+          if (imageData == null || (imageData is List && imageData.isEmpty)) {
+            missing.add("Image");
+          }
+          break;
+          
+        case "painter":
+          final maskData = _inputs[inputRef];
+          if (maskData == null) {
+            missing.add("Mask");
+          }
+          break;
+      }
+    }
+    
+    return missing;
+  }
+
   // -------- Generate Button --------
   Widget _buildGenerateButton() {
     final cs = Theme.of(context).colorScheme;
@@ -181,84 +295,234 @@ class _GenericToolPageState extends State<GenericToolPage>
     final scaleFactor = _inputs["scale_factor"] ?? 1.0;
 
     // Calculate costs
-    int originalCost = baseCost + ((scaleFactor > 1) ? upscaleCost : 0);
-    int totalCost = originalCost;
+    final int baseTotal = baseCost + ((scaleFactor > 1) ? upscaleCost : 0);
+    int totalCost = baseTotal;
     if (offer > 0) {
-      totalCost = (originalCost * (1 - offer / 100)).round();
+      totalCost = (baseTotal * (1 - offer / 100)).round();
     }
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: GradientButton(
-        onPressed: _runJob,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(LucideIcons.gem, color: Colors.white, size: 18),
-            const SizedBox(width: 8),
-            offer > 0
-                ? Text.rich(
-                    TextSpan(
-                      children: [
-                        const TextSpan(
-                          text: "Generate ",
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: Colors.white,
-                          ),
-                        ),
-                        TextSpan(
-                          text: "$totalCost ",
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 16,
-                          ),
-                        ),
-                        const TextSpan(
-                          text: "credits ",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 15,
-                          ),
-                        ),
-                        TextSpan(
-                          text: "(${originalCost})",
-                          style: TextStyle(
-                            decoration: TextDecoration.lineThrough,
-                            color: Colors.white.withOpacity(0.65),
-                            fontSize: 13,
-                          ),
-                        ),
-                        const TextSpan(
-                          text: "  •  ",
-                          style: TextStyle(
-                            color: Colors.white70,
-                          ),
-                        ),
-                        TextSpan(
-                          text: "-${offer.toString()}%",
-                          style: const TextStyle(
-                            color: Colors.lightGreenAccent,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
+    // Check if button should be enabled
+    final isEnabled = _areRequiredInputsFilled();
+    final missingInputs = _getMissingInputs();
+
+    return Container(
+      margin: const EdgeInsets.only(top: 20, bottom: 16),
+      child: Column(
+        children: [
+          // Missing inputs hint (shown when button is disabled)
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            child: !isEnabled && missingInputs.isNotEmpty
+                ? Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: _isProcessingImage 
+                          ? cs.primaryContainer.withOpacity(0.3)
+                          : cs.errorContainer.withOpacity(0.3),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: _isProcessingImage
+                            ? cs.primary.withOpacity(0.2)
+                            : cs.error.withOpacity(0.2),
+                      ),
+                    ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                        if (_isProcessingImage)
+                          SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: cs.primary.withOpacity(0.8),
+                            ),
+                          )
+                        else
+                Icon(
+                            LucideIcons.alertCircle,
+                            size: 16,
+                            color: cs.error.withOpacity(0.8),
+                ),
+                const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            _isProcessingImage 
+                                ? "Processing image..."
+                                : "Add ${missingInputs.join(' & ')} to continue",
+                              style: TextStyle(
+                              color: _isProcessingImage
+                                  ? cs.primary.withOpacity(0.9)
+                                  : cs.error.withOpacity(0.9),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
                         ),
                       ],
                     ),
-                    textAlign: TextAlign.center,
                   )
-                : Text(
-                    "Generate ($totalCost credits)",
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
+                : const SizedBox.shrink(),
+          ),
+          
+          // Main generate button with integrated cost (Kala AI brand gradient)
+          Opacity(
+            opacity: isEnabled ? 1.0 : 0.6,
+            child: Container(
+              width: double.infinity,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(18),
+                gradient: LinearGradient(
+                  colors: isEnabled
+                      ? KalaColors.brandGradient
+                      : [cs.onSurfaceVariant.withOpacity(0.4), cs.onSurfaceVariant.withOpacity(0.3)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                boxShadow: isEnabled
+                    ? [
+                        BoxShadow(
+                          color: KalaColors.purple.withOpacity(0.4),
+                          blurRadius: 20,
+                          offset: const Offset(0, 6),
+                        ),
+                        BoxShadow(
+                          color: KalaColors.cyan.withOpacity(0.2),
+                          blurRadius: 28,
+                          offset: const Offset(0, 10),
+                        ),
+                      ]
+                    : null,
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: isEnabled ? _runJob : null,
+                  borderRadius: BorderRadius.circular(18),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        // Left: Generate text with icon
+                        Icon(
+                          LucideIcons.sparkles,
+                          color: Colors.white,
+                          size: 22,
+                              ),
+                        const SizedBox(width: 10),
+                        const Text(
+                          "Generate",
+                              style: TextStyle(
+                                color: Colors.white,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.3,
+                              ),
+                            ),
+                        
+                        // Divider
+                        Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 14),
+                          height: 24,
+                          width: 1,
+                          color: Colors.white.withOpacity(0.3),
+                        ),
+                        
+                        // Right: Cost display
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                LucideIcons.gem,
+                                size: 16,
+                                color: Colors.white.withOpacity(0.9),
+                              ),
+                              const SizedBox(width: 6),
+                              if (offer > 0) ...[
+                                Text(
+                                  "$baseTotal",
+                              style: TextStyle(
+                                    color: Colors.white.withOpacity(0.6),
+                                    fontSize: 14,
+                                decoration: TextDecoration.lineThrough,
+                                    decorationColor: Colors.white.withOpacity(0.6),
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                              ],
+                              Text(
+                                "$totalCost",
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                              if (offer > 0) ...[
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 5,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.greenAccent.withOpacity(0.25),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    "-$offer%",
+                              style: const TextStyle(
+                                      color: Colors.greenAccent,
+                                      fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                    ),
+                              ),
+                            ),
+                          ],
+                            ],
+                        ),
+                      ),
+              ],
+            ),
+          ),
+                ),
+              ),
+            ),
+          ),
+          
+          // Upscale info badge (when upscale is enabled)
+          if (_upscaleEnabled && upscaleCost > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    LucideIcons.maximize2,
+                    size: 14,
+                    color: cs.primary.withOpacity(0.7),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    "${_scaleFactor}x upscale (+$upscaleCost credits)",
+                      style: TextStyle(
+                      color: cs.onSurfaceVariant.withOpacity(0.7),
+                      fontSize: 12,
+                        fontWeight: FontWeight.w500,
                     ),
                   ),
-          ],
-        ),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -270,15 +534,87 @@ class _GenericToolPageState extends State<GenericToolPage>
     final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
+      backgroundColor: cs.surface,
       appBar: AppBar(
-        title: Text(
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    cs.primary.withOpacity(0.15),
+                    cs.secondary.withOpacity(0.1),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                LucideIcons.sparkles,
+                size: 18,
+                color: cs.primary,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
           widget.config.title,
-          style: TextStyle(fontWeight: FontWeight.w600, color: cs.onSurface),
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: cs.onSurface,
+                  fontSize: 18,
+                  letterSpacing: -0.3,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
         ),
         backgroundColor: cs.surface,
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,
         iconTheme: IconThemeData(color: cs.onSurface),
+        actions: [
+          // Credits display
+          ValueListenableBuilder<int>(
+            valueListenable: userCreditsNotifier,
+            builder: (_, credits, __) {
+              return Container(
+                margin: const EdgeInsets.only(right: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: cs.primaryContainer.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: cs.primary.withOpacity(0.2),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      LucideIcons.gem,
+                      size: 16,
+                      color: cs.primary,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      credits.toString(),
+                      style: TextStyle(
+                        color: cs.primary,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
       ),
       body: _buildDynamicInputScreen(),
     );
@@ -293,10 +629,20 @@ class _GenericToolPageState extends State<GenericToolPage>
     final maxCount = (input['max'] ?? 1) as int;
     final allowMulti = maxCount > 1;
 
+    // Increment version and start processing
+    final currentVersion = ++_imageProcessingVersion;
+    setState(() => _isProcessingImage = true);
+
     try {
       if (allowMulti) {
         final files = await picker.pickMultiImage(imageQuality: 85);
-        if (files.isEmpty) return;
+        if (files.isEmpty) {
+          if (mounted) setState(() => _isProcessingImage = false);
+          return;
+        }
+
+        // Check if this operation is still valid (not superseded by newer pick)
+        if (currentVersion != _imageProcessingVersion) return;
 
         final limited = files.take(maxCount).toList();
         final bytesList = await Future.wait(limited.map((f) async {
@@ -304,25 +650,35 @@ class _GenericToolPageState extends State<GenericToolPage>
           return _resizeImageSafe(b);
         }));
 
-        if (mounted) {
+        // Check again after async operation
+        if (currentVersion != _imageProcessingVersion || !mounted) return;
+
           setState(() {
             _inputs[id] = bytesList;
             _inputs["${id}_path"] = limited.first.path;
+          _isProcessingImage = false;
           });
-        }
       } else {
         final file = await picker.pickImage(
             source: ImageSource.gallery, imageQuality: 85);
-        if (file == null) return;
+        if (file == null) {
+          if (mounted) setState(() => _isProcessingImage = false);
+          return;
+        }
+
+        // Check if this operation is still valid
+        if (currentVersion != _imageProcessingVersion) return;
 
         final bytes = await _resizeImageSafe(await file.readAsBytes());
 
-        if (mounted) {
+        // Check again after async operation
+        if (currentVersion != _imageProcessingVersion || !mounted) return;
+
           setState(() {
             _inputs[id] = [bytes];
             _inputs["${id}_path"] = file.path;
+          _isProcessingImage = false;
           });
-        }
 
         if (widget.config.model == "diffusers_outpaint") {
           final result = await Navigator.push<Map<String, String>>(
@@ -332,7 +688,7 @@ class _GenericToolPageState extends State<GenericToolPage>
               fullscreenDialog: true,
             ),
           );
-          if (result != null) {
+          if (result != null && mounted) {
             setState(() {
               _inputs["alignment"] = result["alignment"];
               _inputs["aspect_ratio"] = result["aspect_ratio"];
@@ -371,26 +727,42 @@ class _GenericToolPageState extends State<GenericToolPage>
       }
     } catch (e) {
       debugPrint("Gallery picker failed: $e");
+      if (mounted) {
+        setState(() => _isProcessingImage = false);
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text("Failed to load image: $e")));
+      }
     }
   }
 
   Future<void> _pickImageFromCamera(Map<String, dynamic> input) async {
     final id = input['id'];
+    
+    // Increment version and start processing
+    final currentVersion = ++_imageProcessingVersion;
+    setState(() => _isProcessingImage = true);
+    
     try {
       final file =
           await picker.pickImage(source: ImageSource.camera, imageQuality: 85);
-      if (file == null) return;
+      if (file == null) {
+        if (mounted) setState(() => _isProcessingImage = false);
+        return;
+      }
+
+      // Check if this operation is still valid
+      if (currentVersion != _imageProcessingVersion) return;
 
       final bytes = await _resizeImageSafe(await file.readAsBytes());
 
-      if (mounted) {
+      // Check again after async operation
+      if (currentVersion != _imageProcessingVersion || !mounted) return;
+
         setState(() {
           _inputs[id] = [bytes];
           _inputs["${id}_path"] = file.path;
+        _isProcessingImage = false;
         });
-      }
 
       if (widget.config.model == "diffusers_outpaint") {
         final result = await Navigator.push<Map<String, String>>(
@@ -400,7 +772,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             fullscreenDialog: true,
           ),
         );
-        if (result != null) {
+        if (result != null && mounted) {
           setState(() {
             _inputs["alignment"] = result["alignment"];
             _inputs["aspect_ratio"] = result["aspect_ratio"];
@@ -438,8 +810,11 @@ class _GenericToolPageState extends State<GenericToolPage>
       }
     } catch (e) {
       debugPrint("Camera image failed: $e");
+      if (mounted) {
+        setState(() => _isProcessingImage = false);
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text("Camera capture failed: $e")));
+      }
     }
   }
 
@@ -492,39 +867,97 @@ class _GenericToolPageState extends State<GenericToolPage>
     try {
       final source = await showModalBottomSheet<ImageSource>(
         context: context,
-        backgroundColor: cs.surface,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-        ),
+        backgroundColor: Colors.transparent,
+        isScrollControlled: true,
         builder: (_) {
-          return SafeArea(
+          return Container(
+            decoration: BoxDecoration(
+              color: cs.surface,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.2),
+                  blurRadius: 20,
+                  offset: const Offset(0, -4),
+                ),
+              ],
+            ),
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Padding(
-                  padding:
-                      const EdgeInsets.symmetric(vertical: 12.0, horizontal: 8),
-                  child: Text(
-                    'Select Image Source',
+                    // Handle bar
+                    Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: cs.outlineVariant.withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    
+                    // Title
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: cs.primary.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Icon(
+                            LucideIcons.imagePlus,
+                            color: cs.primary,
+                            size: 22,
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Text(
+                          'Choose Image Source',
                     style: TextStyle(
                       fontSize: 18,
-                      fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.w700,
                       color: cs.onSurface,
                     ),
                   ),
-                ),
-                ListTile(
-                  leading: Icon(Icons.photo_library, color: cs.primary),
-                  title: Text('Gallery', style: TextStyle(color: cs.onSurface)),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    
+                    // Options
+                    Row(
+                      children: [
+                        // Gallery option
+                        Expanded(
+                          child: _buildPickerOption(
+                            icon: LucideIcons.image,
+                            label: 'Gallery',
+                            sublabel: 'Choose from photos',
+                            color: cs.primary,
                   onTap: () => Navigator.pop(context, ImageSource.gallery),
                 ),
-                ListTile(
-                  leading: Icon(Icons.camera_alt, color: cs.primary),
-                  title: Text('Camera', style: TextStyle(color: cs.onSurface)),
+                        ),
+                        const SizedBox(width: 12),
+                        
+                        // Camera option
+                        Expanded(
+                          child: _buildPickerOption(
+                            icon: LucideIcons.camera,
+                            label: 'Camera',
+                            sublabel: 'Take a new photo',
+                            color: cs.secondary,
                   onTap: () => Navigator.pop(context, ImageSource.camera),
+                          ),
+                        ),
+                      ],
                 ),
                 const SizedBox(height: 8),
               ],
+                ),
+              ),
             ),
           );
         },
@@ -547,31 +980,76 @@ class _GenericToolPageState extends State<GenericToolPage>
     }
   }
 
-  // ---------- Card (theme-aware glass-ish) ----------
-  Widget _buildCard({required Widget child}) {
+  // Picker option card for bottom sheet
+  Widget _buildPickerOption({
+    required IconData icon,
+    required String label,
+    required String sublabel,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
     final cs = Theme.of(context).colorScheme;
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 10),
-      padding: const EdgeInsets.all(14),
+    return Material(
+      color: cs.surfaceContainerHigh,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            cs.surfaceContainerHighest.withOpacity(0.10),
-            cs.surface.withOpacity(0.06),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: cs.outlineVariant.withOpacity(0.35)),
-        boxShadow: [
-          BoxShadow(
-            color: cs.shadow.withOpacity(0.08),
-            blurRadius: 8,
-            offset: const Offset(0, 3),
+            borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+              color: cs.outlineVariant.withOpacity(0.3),
+            ),
+          ),
+          child: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, size: 28, color: color),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                label,
+                style: TextStyle(
+                  color: cs.onSurface,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+          ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                sublabel,
+                style: TextStyle(
+                  color: cs.onSurfaceVariant.withOpacity(0.7),
+                  fontSize: 12,
+                ),
+                textAlign: TextAlign.center,
           ),
         ],
       ),
+        ),
+      ),
+    );
+  }
+
+  // ---------- Card (uses shared AppStyles for consistency) ----------
+  Widget _buildCard({
+    required Widget child,
+    EdgeInsets? padding,
+    EdgeInsets? margin,
+    bool elevated = false,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      margin: margin ?? const EdgeInsets.symmetric(vertical: AppStyles.spacing8),
+      padding: padding ?? const EdgeInsets.all(AppStyles.spacing16),
+      decoration: AppStyles.cardDecoration(cs, elevated: elevated),
       child: child,
     );
   }
@@ -604,88 +1082,105 @@ class _GenericToolPageState extends State<GenericToolPage>
   Widget _buildUpscaleToggle() {
     final cs = Theme.of(context).colorScheme;
     return _buildCard(
+      padding: const EdgeInsets.all(14),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Container(
-                  height: 48,
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  decoration: BoxDecoration(
-                    color: cs.surfaceContainerHigh,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: cs.outlineVariant),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text("Upscale",
-                          style: TextStyle(
-                              color: cs.onSurfaceVariant, fontSize: 14.5)),
-                      Switch(
-                        value: _upscaleEnabled,
-                        onChanged: (v) {
-                          setState(() {
-                            _upscaleEnabled = v;
-                            _inputs["scale_factor"] = v ? _scaleFactor : 1.0;
-                          });
-                        },
-                        activeThumbColor: cs.primary,
-                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          // Header row with toggle
+          Material(
+            color: _upscaleEnabled
+                ? cs.primaryContainer.withOpacity(0.3)
+                : cs.surfaceContainerHigh,
+            borderRadius: BorderRadius.circular(14),
+            child: InkWell(
+              onTap: () {
+                setState(() {
+                  _upscaleEnabled = !_upscaleEnabled;
+                  _inputs["scale_factor"] = _upscaleEnabled ? _scaleFactor : 1.0;
+                });
+              },
+              borderRadius: BorderRadius.circular(14),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                    color: _upscaleEnabled
+                        ? cs.primary.withOpacity(0.4)
+                        : cs.outlineVariant.withOpacity(0.3),
+              ),
+            ),
+            child: Row(
+              children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: _upscaleEnabled
+                            ? cs.primary.withOpacity(0.15)
+                            : cs.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(10),
                       ),
-                    ],
-                  ),
+                      child: Icon(
+                        LucideIcons.maximize2,
+                        size: 20,
+                        color: _upscaleEnabled ? cs.primary : cs.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                    Text(
+                            "Upscale Output",
+                            style: TextStyle(
+                        color: cs.onSurface,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                          const SizedBox(height: 2),
+                          Text(
+                            _upscaleEnabled
+                                ? "Enhanced ${_scaleFactor}x resolution"
+                                : "Standard resolution",
+                            style: TextStyle(
+                              color: cs.onSurfaceVariant.withOpacity(0.7),
+                              fontSize: 12,
+                            ),
+                ),
+              ],
+            ),
+          ),
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: _upscaleEnabled
+                            ? cs.primary
+                            : cs.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        _upscaleEnabled ? LucideIcons.check : LucideIcons.plus,
+                        size: 18,
+                        color: _upscaleEnabled ? cs.onPrimary : cs.onSurfaceVariant,
+                      ),
+                          ),
+                  ],
                 ),
               ),
-            ],
+            ),
           ),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 250),
+
+          // Scale factor selector (animated)
+          AnimatedSize(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOutCubic,
             child: _upscaleEnabled
                 ? Padding(
                     padding: const EdgeInsets.only(top: 12),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        ChoiceChip(
-                          label: const Text("2x"),
-                          selected: _scaleFactor == 2,
-                          onSelected: (_) {
-                            setState(() {
-                              _scaleFactor = 2;
-                              _inputs["scale_factor"] = _scaleFactor;
-                            });
-                          },
-                          selectedColor: cs.primary,
-                          backgroundColor: cs.surfaceContainerHigh,
-                          labelStyle: TextStyle(
-                            color: _scaleFactor == 2
-                                ? cs.onPrimary
-                                : cs.onSurfaceVariant,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        ChoiceChip(
-                          label: const Text("4x"),
-                          selected: _scaleFactor == 4,
-                          onSelected: (_) {
-                            setState(() {
-                              _scaleFactor = 4;
-                              _inputs["scale_factor"] = _scaleFactor;
-                            });
-                          },
-                          selectedColor: cs.primary,
-                          backgroundColor: cs.surfaceContainerHigh,
-                          labelStyle: TextStyle(
-                            color: _scaleFactor == 4
-                                ? cs.onPrimary
-                                : cs.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
+                    child: _buildScaleFactorSelector(),
                   )
                 : const SizedBox.shrink(),
           ),
@@ -701,146 +1196,280 @@ class _GenericToolPageState extends State<GenericToolPage>
             .firstWhere((i) => i["id"] == ref, orElse: () => {})["label"] ??
         "Describe the edit";
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: TextField(
-        controller: _promptController,
-        onChanged: (v) => _inputs[ref] = v,
-        maxLines: 3,
-        decoration: InputDecoration(
-          hintText: label,
-          hintStyle: TextStyle(color: cs.onSurfaceVariant),
-          filled: true,
-          fillColor: cs.surfaceContainerHigh,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: BorderSide.none,
+    return _buildCard(
+      padding: const EdgeInsets.all(4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 12, top: 8, bottom: 4),
+            child: Row(
+            children: [
+                Icon(LucideIcons.sparkles, size: 16, color: cs.primary),
+              const SizedBox(width: 8),
+              Text(
+                  "Prompt",
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
           ),
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        ),
-        style: TextStyle(color: cs.onSurface, fontSize: 16),
+          ),
+          TextField(
+            controller: _promptController,
+            onChanged: (v) {
+                _inputs[ref] = v;
+              setState(() {}); // Trigger rebuild to update generate button validation
+            },
+            maxLines: 4,
+            minLines: 3,
+            decoration: InputDecoration(
+              hintText: label,
+              hintStyle: TextStyle(
+                color: cs.onSurfaceVariant.withOpacity(0.6),
+                fontSize: 15,
+              ),
+              filled: true,
+              fillColor: cs.surfaceContainerHigh.withOpacity(0.5),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide.none,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide(
+                  color: cs.outlineVariant.withOpacity(0.2),
+                  width: 1,
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide(
+                  color: cs.primary.withOpacity(0.5),
+                  width: 1.5,
+                ),
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 14,
+              ),
+            ),
+            style: TextStyle(
+              color: cs.onSurface,
+              fontSize: 15,
+              height: 1.5,
+            ),
+          ),
+        ],
       ),
     );
   }
 
   // -------- Image Upload --------
-  // -------- Image Upload --------
   Widget _buildImageUpload(String ref) {
-    final cs = Theme.of(context).colorScheme;
-    final mode = _selectedModeKey?.toLowerCase() ?? "";
-    final paramMode =
-        (widget.config.params?["mode"]?.toString().toLowerCase() ?? "");
     final input = widget.config.inputs
         .firstWhere((i) => i["id"] == ref, orElse: () => {});
+    final hasImage = _inputs[ref] != null && 
+        (_inputs[ref] is List && (_inputs[ref] as List).isNotEmpty);
 
     return _buildCard(
+      elevated: hasImage,
+      padding: const EdgeInsets.all(16),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+          // Image preview with elegant border
           _buildImagePreview(ref),
           const SizedBox(height: 16),
 
-          // --- Buttons Row ---
-          IntrinsicHeight(
-            child: Row(
-              children: [
-                // Pick Image (gradient)
-                Expanded(
-                  child: GradientButton(
-                    icon: Icons.add_photo_alternate_outlined,
-                    label: "Pick Image",
-                    onPressed: () => _pickImage(input),
-                    padding: const EdgeInsets.symmetric(
-                        vertical: 12, horizontal: 16),
-                  ),
+          // Action buttons row
+              Row(
+                children: [
+              // Pick Image button
+              Expanded(
+                flex: 3,
+                child: _buildActionButton(
+                  icon: hasImage ? LucideIcons.imagePlus : LucideIcons.upload,
+                  label: hasImage ? "Change" : "Upload Image",
+                  onPressed: () => _pickImage(input),
+                  isPrimary: true,
                 ),
-                const SizedBox(width: 14),
-
-                // Upscale toggle
-                Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        vertical: 10, horizontal: 12),
-                    decoration: BoxDecoration(
-                      color: cs.surfaceContainerHigh,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: cs.outlineVariant),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text("Upscale",
-                            style: TextStyle(
-                                color: cs.onSurfaceVariant, fontSize: 14.5)),
-                        Switch(
-                          value: _upscaleEnabled,
-                          onChanged: (v) {
-                            setState(() {
-                              _upscaleEnabled = v;
-                              _inputs["scale_factor"] = v ? _scaleFactor : 1.0;
-                            });
-                          },
-                          activeThumbColor: cs.primary,
-                          materialTapTargetSize:
-                              MaterialTapTargetSize.shrinkWrap,
-                        ),
-                      ],
-                    ),
                   ),
-                ),
-              ],
-            ),
-          ),
+              const SizedBox(width: 12),
 
-          // --- Scale Factor Buttons ---
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 250),
+              // Upscale toggle
+              Expanded(
+                flex: 2,
+                child: _buildUpscaleChip(),
+                    ),
+                ],
+              ),
+
+          // Scale factor selector (animated)
+          AnimatedSize(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOutCubic,
             child: _upscaleEnabled
                 ? Padding(
-                    padding: const EdgeInsets.only(top: 12),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        ChoiceChip(
-                          label: const Text("2x"),
-                          selected: _scaleFactor == 2,
-                          onSelected: (_) {
-                            setState(() {
-                              _scaleFactor = 2;
-                            });
-                          },
-                          selectedColor: cs.primary,
-                          backgroundColor: cs.surfaceContainerHigh,
-                          labelStyle: TextStyle(
-                            color: _scaleFactor == 2
-                                ? cs.onPrimary
-                                : cs.onSurfaceVariant,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        ChoiceChip(
-                          label: const Text("4x"),
-                          selected: _scaleFactor == 4,
-                          onSelected: (_) {
-                            setState(() {
-                              _scaleFactor = 4;
-                            });
-                          },
-                          selectedColor: cs.primary,
-                          backgroundColor: cs.surfaceContainerHigh,
-                          labelStyle: TextStyle(
-                            color: _scaleFactor == 4
-                                ? cs.onPrimary
-                                : cs.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
+                    padding: const EdgeInsets.only(top: 14),
+                    child: _buildScaleFactorSelector(),
                   )
                 : const SizedBox.shrink(),
           ),
-        ],
+            ],
+          ),
+    );
+  }
+
+  // Reusable action button - uses consistent button variants
+  Widget _buildActionButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onPressed,
+    bool isPrimary = false,
+  }) {
+    if (isPrimary) {
+      return GradientButton(
+        icon: icon,
+        label: label,
+        onPressed: onPressed,
+        variant: ButtonVariant.primary,
+        size: ButtonSize.medium,
+        expanded: true,
+      );
+    }
+    
+    return GradientButton(
+      icon: icon,
+      label: label,
+      onPressed: onPressed,
+      variant: ButtonVariant.secondary,
+      size: ButtonSize.medium,
+      expanded: true,
+    );
+  }
+
+  // Upscale toggle chip
+  Widget _buildUpscaleChip() {
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      color: _upscaleEnabled
+          ? cs.primaryContainer.withOpacity(0.4)
+          : cs.surfaceContainerHigh,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            _upscaleEnabled = !_upscaleEnabled;
+            _inputs["scale_factor"] = _upscaleEnabled ? _scaleFactor : 1.0;
+          });
+        },
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+              color: _upscaleEnabled
+                  ? cs.primary.withOpacity(0.4)
+                  : cs.outlineVariant.withOpacity(0.3),
+                  ),
+                ),
+                child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                LucideIcons.maximize2,
+                          size: 18,
+                color: _upscaleEnabled ? cs.primary : cs.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          "Upscale",
+                style: TextStyle(
+                  color: _upscaleEnabled ? cs.primary : cs.onSurfaceVariant,
+                            fontWeight: FontWeight.w500,
+                  fontSize: 14,
+                        ),
+              ),
+              if (_upscaleEnabled) ...[
+                const SizedBox(width: 4),
+                Icon(LucideIcons.check, size: 16, color: cs.primary),
+              ],
+                  ],
+                ),
+              ),
+      ),
+    );
+  }
+
+  // Scale factor selector
+  Widget _buildScaleFactorSelector() {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(6),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHigh.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cs.outlineVariant.withOpacity(0.2)),
+                            ),
+      child: Row(
+                              children: [
+                                Expanded(
+            child: _buildScaleOption(2),
+                                  ),
+          const SizedBox(width: 8),
+                                Expanded(
+            child: _buildScaleOption(4),
+                                ),
+                              ],
+                            ),
+    );
+  }
+
+  Widget _buildScaleOption(int scale) {
+    final cs = Theme.of(context).colorScheme;
+    final isSelected = _scaleFactor == scale;
+    
+    return Material(
+      color: isSelected ? cs.primary : Colors.transparent,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            _scaleFactor = scale;
+            _inputs["scale_factor"] = scale;
+          });
+        },
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: cs.primary.withOpacity(0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+              ),
+                  ]
+                : null,
+          ),
+          child: Center(
+            child: Text(
+              "${scale}x",
+              style: TextStyle(
+                color: isSelected ? cs.onPrimary : cs.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+                fontSize: 15,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -849,15 +1478,104 @@ class _GenericToolPageState extends State<GenericToolPage>
     final cs = Theme.of(context).colorScheme;
     final data = _inputs[ref];
 
-    if (data == null || (data is List && data.isEmpty)) {
+    // Show loading state while processing
+    if (_isProcessingImage) {
       return Container(
-        height: 200,
+        height: 220,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: cs.surfaceContainerHigh,
-          borderRadius: BorderRadius.circular(14),
+          gradient: LinearGradient(
+            colors: [
+              cs.surfaceContainerHigh.withOpacity(0.8),
+              cs.surfaceContainerHighest.withOpacity(0.4),
+            ],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: cs.primary.withOpacity(0.3),
+            width: 1.5,
+          ),
         ),
-        child: Icon(Icons.image_outlined, color: cs.onSurfaceVariant, size: 60),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: 48,
+              height: 48,
+              child: CircularProgressIndicator(
+                strokeWidth: 3,
+                color: cs.primary,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              "Processing image...",
+              style: TextStyle(
+                color: cs.primary,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (data == null || (data is List && data.isEmpty)) {
+      return Container(
+        height: 220,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              cs.surfaceContainerHigh.withOpacity(0.8),
+              cs.surfaceContainerHighest.withOpacity(0.4),
+            ],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: cs.outlineVariant.withOpacity(0.2),
+            width: 1.5,
+          ),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: cs.primary.withOpacity(0.08),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                LucideIcons.imagePlus,
+                color: cs.primary.withOpacity(0.6),
+                size: 40,
+              ),
+            ),
+            const SizedBox(height: 16),
+              Text(
+              "Tap to upload an image",
+              style: TextStyle(
+                color: cs.onSurfaceVariant.withOpacity(0.7),
+                fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+              "Supports PNG, JPG, WEBP",
+              style: TextStyle(
+                color: cs.onSurfaceVariant.withOpacity(0.5),
+                fontSize: 12,
+                ),
+              ),
+          ],
+        ),
       );
     }
 
@@ -904,40 +1622,88 @@ class _GenericToolPageState extends State<GenericToolPage>
       }
     }
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(14),
-      child: AspectRatio(
-        aspectRatio: aspectRatio,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            // Checker background only for outpaint
-            if (isOutpaint)
-              const CustomPaint(painter: _CheckerPainter())
-            else
-              Container(color: cs.surfaceContainerHigh),
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: cs.primary.withOpacity(0.3),
+          width: 2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: cs.primary.withOpacity(0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: AspectRatio(
+          aspectRatio: aspectRatio.clamp(0.5, 2.0),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // Checker background only for outpaint
+              if (isOutpaint)
+                const CustomPaint(painter: _CheckerPainter())
+              else
+                Container(color: cs.surfaceContainerHigh),
 
-            // Base image
-            Padding(
-              padding: imgPadding,
-              child: Image.memory(
-                list.first,
-                fit: BoxFit.contain,
-                alignment: _convertAlignment(alignment),
-                width: double.infinity,
-                height: double.infinity,
-              ),
-            ),
-
-            // Mask overlay (other models)
-            if (mask != null)
-              Positioned.fill(
-                child: Opacity(
-                  opacity: 0.6,
-                  child: Image.memory(mask as Uint8List, fit: BoxFit.contain),
+              // Base image
+              Padding(
+                padding: imgPadding,
+                child: Image.memory(
+                  list.first,
+                  fit: BoxFit.contain,
+                  alignment: _convertAlignment(alignment),
+                  width: double.infinity,
+                  height: double.infinity,
                 ),
               ),
-          ],
+
+              // Mask overlay (other models)
+              if (mask != null)
+                Positioned.fill(
+                  child: Opacity(
+                    opacity: 0.6,
+                    child: Image.memory(mask as Uint8List, fit: BoxFit.contain),
+                  ),
+                ),
+              
+              // Image loaded indicator
+              Positioned(
+                right: 8,
+                top: 8,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.6),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        LucideIcons.check,
+                        size: 14,
+                        color: Colors.green.shade300,
+                      ),
+                      const SizedBox(width: 6),
+                      const Text(
+                        "Image ready",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -967,19 +1733,97 @@ class _GenericToolPageState extends State<GenericToolPage>
         .firstWhere((i) => i["id"] == ref, orElse: () => {});
     final label = input["label"] ?? ref;
     _inputs[ref] ??= input["default"] ?? input["min"] ?? 1.0;
+    final minVal = (input["min"] as num?)?.toDouble() ?? 0;
+    final maxVal = (input["max"] as num?)?.toDouble() ?? 100;
+    final currentVal = (_inputs[ref] as num).toDouble();
+    
     return _buildCard(
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text("$label: ${(_inputs[ref] as num).toStringAsFixed(1)}",
-              style: TextStyle(color: cs.onSurface)),
-          Slider(
-            value: (_inputs[ref] as num).toDouble(),
-            min: (input["min"] as num?)?.toDouble() ?? 0,
-            max: (input["max"] as num?)?.toDouble() ?? 100,
-            divisions: 10,
-            activeColor: cs.primary,
-            onChanged: (v) => setState(() => _inputs[ref] = v),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: cs.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  LucideIcons.sliders,
+                    size: 18,
+                    color: cs.primary,
+                  ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                    label,
+                  style: TextStyle(
+                      color: cs.onSurface,
+                    fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: cs.primary.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  currentVal.toStringAsFixed(currentVal % 1 == 0 ? 0 : 1),
+                  style: TextStyle(
+                    color: cs.primary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              activeTrackColor: cs.primary,
+              inactiveTrackColor: cs.outlineVariant.withOpacity(0.3),
+              thumbColor: cs.primary,
+              overlayColor: cs.primary.withOpacity(0.15),
+              trackHeight: 6,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 20),
+            ),
+            child: Slider(
+              value: currentVal.clamp(minVal, maxVal),
+              min: minVal,
+              max: maxVal,
+              divisions: ((maxVal - minVal) * 10).round().clamp(1, 100),
+              onChanged: (v) => setState(() => _inputs[ref] = v),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                  minVal.toStringAsFixed(minVal % 1 == 0 ? 0 : 1),
+                  style: TextStyle(
+                  color: cs.onSurfaceVariant.withOpacity(0.6),
+                    fontSize: 12,
+                ),
+              ),
+              Text(
+                  maxVal.toStringAsFixed(maxVal % 1 == 0 ? 0 : 1),
+                  style: TextStyle(
+                  color: cs.onSurfaceVariant.withOpacity(0.6),
+                    fontSize: 12,
+                ),
+              ),
+            ],
+            ),
           ),
         ],
       ),
@@ -996,29 +1840,100 @@ class _GenericToolPageState extends State<GenericToolPage>
     _inputs[ref] ??= options.isNotEmpty ? options.first : null;
 
     return _buildCard(
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: TextStyle(color: cs.onSurfaceVariant)),
-          const SizedBox(height: 8),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: cs.secondary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                LucideIcons.list,
+                size: 18,
+                  color: cs.secondary,
+              ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                label,
+                style: TextStyle(
+                  color: cs.onSurface,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
           Wrap(
-            spacing: 8,
-            runSpacing: 6,
-            children: options
-                .map((opt) => ChoiceChip(
-                      label: Text(opt),
-                      selected: _inputs[ref] == opt,
-                      onSelected: (_) => setState(() => _inputs[ref] = opt),
-                      selectedColor: cs.primary,
-                      labelStyle: TextStyle(
-                        color: _inputs[ref] == opt
-                            ? cs.onPrimary
-                            : cs.onSurfaceVariant,
+            spacing: 10,
+            runSpacing: 10,
+            children: options.map((opt) {
+                  final isSelected = _inputs[ref] == opt;
+              return Material(
+                color: isSelected
+                    ? cs.primary
+                    : cs.surfaceContainerHigh,
+                borderRadius: BorderRadius.circular(12),
+                child: InkWell(
+                    onTap: () => setState(() => _inputs[ref] = opt),
+                    borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 10,
                       ),
-                      backgroundColor: cs.surfaceContainerHigh,
-                    ))
-                .toList(),
-          )
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isSelected
+                            ? cs.primary
+                            : cs.outlineVariant.withOpacity(0.3),
+                      ),
+                      boxShadow: isSelected
+                          ? [
+                              BoxShadow(
+                                color: cs.primary.withOpacity(0.25),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ]
+                          : null,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (isSelected) ...[
+                          Icon(
+                            LucideIcons.check,
+                            size: 16,
+                            color: cs.onPrimary,
+                      ),
+                          const SizedBox(width: 6),
+                        ],
+                        Text(
+                        opt,
+                          style: TextStyle(
+                          color: isSelected
+                                ? cs.onPrimary
+                              : cs.onSurfaceVariant,
+                            fontWeight:
+                                isSelected ? FontWeight.w600 : FontWeight.w500,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                        ),
+                      ),
+                    ),
+                  );
+            }).toList(),
+          ),
         ],
       ),
     );
@@ -1047,47 +1962,229 @@ class _GenericToolPageState extends State<GenericToolPage>
 
     final hasMask = _inputs["mask_image"] != null;
 
-    // 🧠 Hide button entirely until image is selected
+    // Hide button entirely until image is selected
     if (baseBytes == null && !hasMask) {
       return const SizedBox.shrink();
     }
 
-    // Label dynamically changes
-    final buttonLabel = hasMask ? "Edit Mask" : "Draw Mask";
-    final buttonIcon = hasMask ? Icons.edit_note_rounded : Icons.brush;
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: GradientButton(
-        icon: buttonIcon,
-        label: buttonLabel,
-        onPressed: () async {
-          final base = baseBytes ?? (_inputs["init_image"]?[0] as Uint8List?);
-          if (base != null) {
-            final mask = await _openMaskEditor(base);
-            if (mask != null) {
-              setState(() {
-                _inputs["mask_image"] = mask;
-              });
-            }
-          }
-        },
+    return _buildCard(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: hasMask
+                      ? Colors.green.withOpacity(0.12)
+                      : cs.tertiary.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  hasMask ? LucideIcons.checkCircle : LucideIcons.paintbrush,
+                size: 18,
+                  color: hasMask ? Colors.green : cs.tertiary,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+              Text(
+                      "Mask Region",
+                      style: TextStyle(
+                      color: cs.onSurface,
+                        fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+                    const SizedBox(height: 2),
+                    Text(
+                      hasMask
+                          ? "Mask created - tap to edit"
+                          : "Draw over areas to modify",
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant.withOpacity(0.7),
+                        fontSize: 12,
+                    ),
+              ),
+            ],
+          ),
+              ),
+              Material(
+                color: hasMask
+                    ? cs.surfaceContainerHigh
+                    : cs.tertiary,
+                borderRadius: BorderRadius.circular(12),
+                child: InkWell(
+                  onTap: () async {
+              final base = baseBytes ?? (_inputs["init_image"]?[0] as Uint8List?);
+              if (base != null) {
+                final mask = await _openMaskEditor(base);
+                if (mask != null) {
+                  setState(() {
+                    _inputs["mask_image"] = mask;
+                  });
+                }
+              }
+            },
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          hasMask ? LucideIcons.edit3 : LucideIcons.paintbrush,
+                          size: 18,
+                          color: hasMask ? cs.onSurfaceVariant : Colors.white,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          hasMask ? "Edit" : "Draw Mask",
+                          style: TextStyle(
+                            color: hasMask ? cs.onSurfaceVariant : Colors.white,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                          ),
+          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          
+          // Show mask preview if available
+          if (hasMask) ...[
+            const SizedBox(height: 12),
+            Container(
+              height: 80,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: Colors.green.withOpacity(0.3),
+                ),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(11),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    if (baseBytes != null)
+                      Image.memory(
+                        baseBytes,
+                        fit: BoxFit.cover,
+                      ),
+                    Container(
+                      color: Colors.black.withOpacity(0.3),
+                    ),
+                    ColorFiltered(
+                      colorFilter: const ColorFilter.mode(
+                        Colors.red,
+                        BlendMode.srcATop,
+                      ),
+                      child: Opacity(
+                        opacity: 0.5,
+                        child: Image.memory(
+                          _inputs["mask_image"] as Uint8List,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      right: 8,
+                      bottom: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black54,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              LucideIcons.check,
+                              size: 12,
+                              color: Colors.white,
+                            ),
+                            SizedBox(width: 4),
+                            Text(
+                              "Mask applied",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
 
   Widget _buildDynamicInputScreen() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+    final cs = Theme.of(context).colorScheme;
+    // Get safe area padding for devices with home bar/navigation buttons
+    final bottomSafeArea = MediaQuery.of(context).padding.bottom;
+    
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            cs.surface,
+            cs.surfaceContainerLowest,
+          ],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+      ),
+      child: SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 8,
+          // Add extra padding for devices with gesture navigation/home bar
+          bottom: 20 + bottomSafeArea,
+        ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (widget.config.modes != null && widget.config.modes!.isNotEmpty)
+            // Mode selector (if applicable)
+            if (widget.config.modes != null && widget.config.modes!.isNotEmpty) ...[
             _buildModeSelector(),
-          const SizedBox(height: 8),
-          ..._currentElements.map(_buildElement).toList(),
-          const SizedBox(height: 12),
-        ],
+          const SizedBox(height: 4),
+            ],
+            
+            // Dynamic elements with smooth spacing
+            ..._currentElements.map((e) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: _buildElement(e),
+              );
+            }),
+          ],
+        ),
       ),
     );
   }
@@ -1098,72 +2195,94 @@ class _GenericToolPageState extends State<GenericToolPage>
     final modeKeys = modes.keys.toList();
 
     return _buildCard(
+      padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            "Mode",
-            style: TextStyle(
-              color: cs.onSurfaceVariant,
-              fontWeight: FontWeight.w500,
-            ),
+          // Header
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: cs.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                LucideIcons.layers,
+                size: 18,
+                color: cs.primary,
+              ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                "Mode",
+                style: TextStyle(
+                  color: cs.onSurface,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 14),
 
-          // Compact Segmented Button Bar
+          // Mode pills
           Container(
             decoration: BoxDecoration(
-              color: cs.surfaceContainerHigh,
-              borderRadius: BorderRadius.circular(10),
+              color: cs.surfaceContainerHigh.withOpacity(0.6),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: cs.outlineVariant.withOpacity(0.2)),
             ),
-            padding: const EdgeInsets.all(3),
+            padding: const EdgeInsets.all(4),
             child: Row(
               children: modeKeys.map((key) {
                 final selected = _selectedModeKey == key;
+                final label = modes[key]?["label"] ?? key;
+                
                 return Expanded(
                   child: GestureDetector(
                     onTap: () {
                       setState(() {
                         _selectedModeKey = key;
-                        _resultData = null;
                         _promptController.clear();
                       });
                     },
                     child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 160),
-                      curve: Curves.easeInOut,
-                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      duration: const Duration(milliseconds: 200),
+                      curve: Curves.easeOutCubic,
+                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
                       decoration: BoxDecoration(
-                        color: selected
-                            ? cs.primary.withOpacity(0.95)
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(8),
+                        gradient: selected
+                            ? const LinearGradient(
+                                colors: KalaColors.brandGradient,
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              )
+                            : null,
+                        borderRadius: BorderRadius.circular(11),
                         boxShadow: selected
                             ? [
                                 BoxShadow(
-                                  color: cs.primary.withOpacity(0.2),
-                                  blurRadius: 4,
-                                  offset: const Offset(0, 1),
+                                  color: KalaColors.purple.withOpacity(0.35),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 3),
                                 ),
                               ]
                             : [],
                       ),
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 2),
-                          child: Text(
-                            modes[key]?["label"] ?? key,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: selected
-                                  ? cs.onPrimary
-                                  : cs.onSurfaceVariant.withOpacity(0.9),
-                              fontWeight:
-                                  selected ? FontWeight.w600 : FontWeight.w400,
-                              fontSize: 12.5, // ↓ smaller for one-row fit
-                              letterSpacing: -0.2,
-                            ),
+                      child: Center(
+                        child: Text(
+                          label,
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: selected
+                                ? cs.onPrimary
+                                : cs.onSurfaceVariant,
+                            fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                            fontSize: 13,
                           ),
                         ),
                       ),
@@ -1179,11 +2298,197 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   // ----------------------------------------------------
+  // 💎 INSUFFICIENT CREDITS SHEET
+  // ----------------------------------------------------
+
+  void _showInsufficientCreditsSheet({
+    required int requiredCredits,
+    required int currentCredits,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    final shortage = requiredCredits - currentCredits;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: cs.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Padding(
+        padding: EdgeInsets.only(
+          left: 24,
+          right: 24,
+          top: 24,
+          bottom: MediaQuery.of(context).padding.bottom + 24,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Icon
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                LucideIcons.gem,
+                size: 40,
+                color: Colors.orange.shade600,
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Title
+            Text(
+              'Insufficient Credits',
+              style: TextStyle(
+                color: cs.onSurface,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+
+            // Details
+            Text(
+              'You need $requiredCredits credits for this action',
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Credit comparison
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerHighest.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _buildCreditInfo(
+                    cs,
+                    label: 'You have',
+                    value: currentCredits.toString(),
+                    color: cs.primary,
+                  ),
+                  Container(
+                    width: 1,
+                    height: 40,
+                    color: cs.outlineVariant,
+                  ),
+                  _buildCreditInfo(
+                    cs,
+                    label: 'Need',
+                    value: '+$shortage',
+                    color: Colors.orange.shade600,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // Get Credits Button
+            SizedBox(
+              width: double.infinity,
+              child: GradientButton(
+                label: 'Get Credits',
+                icon: LucideIcons.gem,
+                onPressed: () {
+                  Navigator.pop(context); // Close bottom sheet
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const CreditsPage()),
+                  );
+                },
+                variant: ButtonVariant.primary,
+                size: ButtonSize.large,
+                expanded: true,
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // Cancel button
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(
+                'Cancel',
+                style: TextStyle(
+                  color: cs.onSurfaceVariant,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCreditInfo(
+    ColorScheme cs, {
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Column(
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            color: cs.onSurfaceVariant,
+            fontSize: 12,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(LucideIcons.gem, size: 16, color: color),
+            const SizedBox(width: 4),
+            Text(
+              value,
+              style: TextStyle(
+                color: color,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  // ----------------------------------------------------
   // 🛰️ JOB SUBMISSION + POLLING
   // ----------------------------------------------------
 
   Future<void> _runJob() async {
     final cs = Theme.of(context).colorScheme;
+
+    // --- Check if user is signed in ---
+    if (!AuthService().isSignedIn) {
+      final signedIn = await requireSignIn(context, feature: 'AI Tools');
+      if (!signedIn) return;
+    }
+
+    // --- Check credits ---
+    final totalCost = _calculateTotalCost();
+    final currentCredits = userCreditsNotifier.value;
+    if (!UserService().hasEnoughCredits(totalCost)) {
+      if (mounted) {
+        _showInsufficientCreditsSheet(
+          requiredCredits: totalCost,
+          currentCredits: currentCredits,
+        );
+      }
+      return;
+    }
 
     // --- Ensure all live UI values are captured ---
     if (_hasPrompt) {
@@ -1199,7 +2504,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     );
     Timer(const Duration(seconds: 45), () {
       dialogMessage.value =
-          "Still working... It’s taking a bit longer than usual.\nPlease stay on this screen.";
+          "Still working... It's taking a bit longer than usual.\nPlease stay on this screen.";
     });
 
     showDialog(
@@ -1207,35 +2512,78 @@ class _GenericToolPageState extends State<GenericToolPage>
       barrierDismissible: false,
       builder: (context) => Dialog(
         backgroundColor: cs.surface,
-        elevation: 8,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        insetPadding: const EdgeInsets.symmetric(horizontal: 48),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
+        elevation: 0,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 40),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: cs.outlineVariant.withOpacity(0.2),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: cs.primary.withOpacity(0.08),
+                blurRadius: 24,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          padding: const EdgeInsets.all(28),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              CircularProgressIndicator(strokeWidth: 3, color: cs.primary),
-              const SizedBox(height: 22),
-              Text(
-                "Submitting your job...",
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: cs.onSurface,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w600,
+              // Animated progress indicator with glow
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: cs.primary.withOpacity(0.08),
+                  shape: BoxShape.circle,
+                ),
+                child: SizedBox(
+                  width: 40,
+                  height: 40,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 3.5,
+                    color: cs.primary,
+                    strokeCap: StrokeCap.round,
+                  ),
                 ),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 24),
+              
+              // Title with icon
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    LucideIcons.sparkles,
+                    size: 20,
+                    color: cs.primary,
+                  ),
+                  const SizedBox(width: 10),
+              Text(
+                    "Creating Magic",
+                style: TextStyle(
+                  color: cs.onSurface,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              
+              // Description
               ValueListenableBuilder<String>(
                 valueListenable: dialogMessage,
                 builder: (_, value, __) => Text(
                   value,
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: cs.onSurfaceVariant,
-                    fontSize: 13.5,
-                    height: 1.4,
+                    color: cs.onSurfaceVariant.withOpacity(0.8),
+                    fontSize: 14,
+                    height: 1.5,
                   ),
                 ),
               ),
@@ -1418,15 +2766,15 @@ class _GenericToolPageState extends State<GenericToolPage>
 
         final payloadJson = jsonEncode(payload);
 
-        // --- HMAC Auth ---
-        final sigBytes = Hmac(sha256, utf8.encode(controllerSharedSecret))
-            .convert(utf8.encode(payloadJson));
-        final signature = "sha256=${sigBytes.toString()}";
+        // --- Firebase Auth ---
+        final firebaseToken = await _authService.getIdToken();
+        if (firebaseToken == null) {
+          throw Exception("Not authenticated. Please sign in first.");
+        }
 
         final headers = {
           "Content-Type": "application/json",
-          "Authorization": "Bearer $controllerApiKey",
-          "X-Signature": signature
+          "Authorization": "Bearer $firebaseToken",
         };
 
         debugPrint("🚀 Submitting job (attempt $attempt/$maxRetries)");
@@ -1500,6 +2848,10 @@ class _GenericToolPageState extends State<GenericToolPage>
         };
         await prefs.setString("notify_job_$jobId", jsonEncode(jobContext));
         await loadJobsFromPrefs();
+
+        // Credits are deducted server-side during job processing
+        // Refresh balance to reflect the deduction
+        await UserService().refreshCredits();
 
         if (mounted) {
           Navigator.push(
