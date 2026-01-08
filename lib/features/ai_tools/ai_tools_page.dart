@@ -128,6 +128,10 @@ class _AiToolsPageState extends State<AiToolsPage>
   late AnimationController _glowController;
   Set<String> _seenJobIds = {};
   static const String _seenJobsKey = 'seen_completed_job_ids';
+  
+  // Track expanded state of each category (by index)
+  // All expanded by default
+  final Map<int, bool> _expandedCategories = {};
 
   @override
   void initState() {
@@ -468,43 +472,108 @@ class _AiToolsPageState extends State<AiToolsPage>
       itemCount: config.categories.length,
       itemBuilder: (_, i) {
         final cat = config.categories[i];
+        final isExpanded = _expandedCategories[i] ?? true; // Default expanded
+        
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SizedBox(height: 18),
-            Row(
-              children: [
-                Container(
-                  width: 6,
-                  height: 24,
-                  margin: const EdgeInsets.only(right: 8),
-                  decoration: BoxDecoration(
-                    color: cat.accent,
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                ),
-                Text(
-                  cat.title,
-                  style: tt.titleMedium?.copyWith(
-                    color: cat.accent,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
             const SizedBox(height: 12),
-            GridView.builder(
-              itemCount: cat.tools.length,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                crossAxisSpacing: 14,
-                mainAxisSpacing: 14,
-                childAspectRatio: 0.75,
+            // Collapsible header
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () {
+                  setState(() {
+                    _expandedCategories[i] = !isExpanded;
+                  });
+                },
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: cat.accent.withOpacity(isExpanded ? 0.08 : 0.04),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: cat.accent.withOpacity(isExpanded ? 0.2 : 0.1),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 5,
+                        height: 22,
+                        margin: const EdgeInsets.only(right: 10),
+                        decoration: BoxDecoration(
+                          color: cat.accent,
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                      ),
+                      Expanded(
+                        child: Text(
+                          cat.title,
+                          style: tt.titleMedium?.copyWith(
+                            color: cat.accent,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      // Tool count badge
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: cat.accent.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          '${cat.tools.length}',
+                          style: tt.labelSmall?.copyWith(
+                            color: cat.accent,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // Chevron indicator
+                      AnimatedRotation(
+                        turns: isExpanded ? 0 : -0.25,
+                        duration: const Duration(milliseconds: 200),
+                        child: Icon(
+                          LucideIcons.chevronDown,
+                          color: cat.accent,
+                          size: 20,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-              itemBuilder: (_, j) =>
-                  _ToolCard(item: cat.tools[j], accent: cat.accent),
+            ),
+            // Animated tools grid
+            AnimatedCrossFade(
+              firstChild: Column(
+                children: [
+                  const SizedBox(height: 12),
+                  GridView.builder(
+                    itemCount: cat.tools.length,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      crossAxisSpacing: 14,
+                      mainAxisSpacing: 14,
+                      childAspectRatio: 0.75,
+                    ),
+                    itemBuilder: (_, j) =>
+                        _ToolCard(item: cat.tools[j], accent: cat.accent),
+                  ),
+                ],
+              ),
+              secondChild: const SizedBox.shrink(),
+              crossFadeState: isExpanded 
+                  ? CrossFadeState.showFirst 
+                  : CrossFadeState.showSecond,
+              duration: const Duration(milliseconds: 250),
+              sizeCurve: Curves.easeInOut,
             ),
           ],
         );

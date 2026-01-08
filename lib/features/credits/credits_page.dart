@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/services/ad_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/auth_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/user_service.dart'
     hide userCreditsNotifier, currentUserNotifier, isLoadingUserNotifier, UserData;
@@ -22,6 +23,7 @@ class CreditsPage extends StatefulWidget {
 class _CreditsPageState extends State<CreditsPage> {
   final AuthService _authService = AuthService();
   final UserService _userService = UserService();
+  final AdService _adService = AdService();
   bool _isRefreshing = false;
   
   // Daily spin state
@@ -30,6 +32,17 @@ class _CreditsPageState extends State<CreditsPage> {
   DateTime? _nextSpinDateTime;
   Timer? _spinCountdownTimer;
   Duration _spinCountdownDuration = Duration.zero;
+  
+  // Rewarded ad state
+  RewardedAdStatus? _adStatus;
+  bool _isCheckingAdEligibility = true;
+  bool _isShowingAd = false;
+  Timer? _adResetCountdownTimer;
+  Duration _adResetCountdownDuration = Duration.zero;
+  
+  /// Check if features requiring verification are blocked
+  /// (User signed up via email but hasn't verified yet)
+  bool get _needsEmailVerification => _authService.needsEmailVerification;
 
   @override
   void initState() {
@@ -37,28 +50,64 @@ class _CreditsPageState extends State<CreditsPage> {
     // Listen to auth state and user data changes
     _authService.authStateChanges.listen((_) {
       if (mounted) setState(() {});
-      // Re-check spin eligibility when auth state changes
+      // Re-check eligibility when auth state changes
       if (_authService.isSignedIn) {
         _checkSpinEligibility();
+        _checkAdEligibility();
       }
     });
     currentUserNotifier.addListener(_onUserChanged);
+    
+    // Listen to ad status changes
+    _adService.statusNotifier.addListener(_onAdStatusChanged);
+    _adService.isAdReadyNotifier.addListener(_onAdReadyChanged);
+    
+    // Listen to global email verification status changes (from Settings or other pages)
+    emailVerifiedNotifier.addListener(_onEmailVerificationChanged);
     
     // Refresh credits on page load if signed in
     if (_authService.isSignedIn) {
       _refreshCredits();
       _checkSpinEligibility();
+      _checkAdEligibility();
     }
   }
 
   void _onUserChanged() {
     if (mounted) setState(() {});
   }
+  
+  void _onAdStatusChanged() {
+    if (mounted) {
+      setState(() {
+        _adStatus = _adService.statusNotifier.value;
+      });
+    }
+  }
+  
+  void _onAdReadyChanged() {
+    if (mounted) setState(() {});
+  }
+  
+  void _onEmailVerificationChanged() {
+    if (mounted) {
+      setState(() {});
+      // Re-check eligibility when verification status changes
+      if (_authService.isSignedIn && _authService.isEmailVerified) {
+        _checkSpinEligibility();
+        _checkAdEligibility();
+      }
+    }
+  }
 
   @override
   void dispose() {
     currentUserNotifier.removeListener(_onUserChanged);
+    _adService.statusNotifier.removeListener(_onAdStatusChanged);
+    _adService.isAdReadyNotifier.removeListener(_onAdReadyChanged);
+    emailVerifiedNotifier.removeListener(_onEmailVerificationChanged);
     _spinCountdownTimer?.cancel();
+    _adResetCountdownTimer?.cancel();
     super.dispose();
   }
   
@@ -156,6 +205,94 @@ class _CreditsPageState extends State<CreditsPage> {
       return '${seconds}s';
     }
   }
+  
+  // ============================================================
+  // REWARDED ADS
+  // ============================================================
+  
+  Future<void> _checkAdEligibility() async {
+    if (!_authService.isSignedIn) {
+      setState(() {
+        _isCheckingAdEligibility = false;
+        _adStatus = null;
+      });
+      return;
+    }
+    
+    setState(() => _isCheckingAdEligibility = true);
+    
+    try {
+      final status = await _adService.checkEligibility();
+      
+      if (mounted) {
+        setState(() {
+          _adStatus = status;
+          _isCheckingAdEligibility = false;
+        });
+        
+        // Start countdown if limit reached
+        if (status.hasReachedLimit && status.nextResetTime != null) {
+          _startAdResetCountdownTimer(status.nextResetTime!);
+        }
+        
+        // Pre-load ad if eligible
+        if (status.canWatch) {
+          _adService.loadRewardedAd();
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isCheckingAdEligibility = false;
+          // Default to allowing ads on error
+          _adStatus = RewardedAdStatus.defaultStatus();
+        });
+        _adService.loadRewardedAd();
+      }
+    }
+  }
+  
+  void _startAdResetCountdownTimer(DateTime resetTime) {
+    _adResetCountdownTimer?.cancel();
+    
+    _adResetCountdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      
+      final now = DateTime.now();
+      final remaining = resetTime.difference(now);
+      
+      if (remaining.isNegative) {
+        timer.cancel();
+        // Reset reached - refresh eligibility
+        _checkAdEligibility();
+      } else {
+        setState(() {
+          _adResetCountdownDuration = remaining;
+        });
+      }
+    });
+    
+    // Initial update
+    final now = DateTime.now();
+    final remaining = resetTime.difference(now);
+    setState(() {
+      _adResetCountdownDuration = remaining.isNegative ? Duration.zero : remaining;
+    });
+  }
+  
+  String _formatAdResetCountdown(Duration duration) {
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes.remainder(60);
+    
+    if (hours > 0) {
+      return '${hours}h ${minutes}m';
+    } else {
+      return '${minutes}m';
+    }
+  }
 
   Future<void> _refreshCredits() async {
     setState(() => _isRefreshing = true);
@@ -171,11 +308,464 @@ class _CreditsPageState extends State<CreditsPage> {
       final signedIn = await requireSignIn(context, feature: 'earning credits');
       if (!signedIn) return;
     }
-
-    // TODO: Implement rewarded ads with server-side validation
-    // Server validates ad completion and adds credits
+    
+    // Check eligibility first
+    if (_adStatus?.hasReachedLimit == true) {
+      _showDailyLimitReachedSheet();
+      return;
+    }
+    
+    // Check if ad is ready
+    if (!_adService.isAdReadyNotifier.value) {
+      setState(() => _isShowingAd = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Loading ad... Please wait'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      await _adService.loadRewardedAd();
+      
+      // Wait for ad to load (with timeout)
+      for (int i = 0; i < 10; i++) {
+        if (_adService.isAdReadyNotifier.value) break;
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
+      
+      if (!_adService.isAdReadyNotifier.value) {
+        if (mounted) {
+          setState(() => _isShowingAd = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to load ad. Please try again.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+    }
+    
+    setState(() => _isShowingAd = true);
+    
+    try {
+      final creditsEarned = await _adService.showRewardedAd();
+      
+      if (mounted) {
+        if (creditsEarned != null && creditsEarned > 0) {
+          // Show success message with actual credits from server
+          _showAdRewardDialog(creditsEarned);
+        } else if (creditsEarned == -1) {
+          // Rate limited - show message to wait
+          _showRateLimitedSnackbar();
+        }
+        
+        // Refresh ad eligibility status
+        await _checkAdEligibility();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Ad error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isShowingAd = false);
+      }
+    }
+  }
+  
+  void _showRateLimitedSnackbar() {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Rewarded ads coming soon!')),
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(LucideIcons.clock, color: Colors.white, size: 20),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text('Please wait a moment before watching another ad'),
+            ),
+          ],
+        ),
+        backgroundColor: Colors.orange.shade700,
+        duration: const Duration(seconds: 4),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+  }
+  
+  void _showAdRewardDialog(int credits) {
+    final cs = Theme.of(context).colorScheme;
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: cs.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(colors: KalaColors.brandGradient),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                LucideIcons.gift,
+                size: 40,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'You earned',
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
+                fontSize: 16,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(LucideIcons.gem, size: 28, color: KalaColors.gold),
+                const SizedBox(width: 8),
+                ShaderMask(
+                  shaderCallback: (bounds) => const LinearGradient(
+                    colors: KalaColors.brandGradient,
+                  ).createShader(bounds),
+                  child: Text(
+                    '+$credits',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 36,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              credits == 1 ? 'Credit' : 'Credits',
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          Center(
+            child: GradientButton(
+              label: 'Thanks!',
+              icon: LucideIcons.check,
+              onPressed: () => Navigator.pop(context),
+              variant: ButtonVariant.primary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  void _showDailyLimitReachedSheet() {
+    final cs = Theme.of(context).colorScheme;
+    
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: cs.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: cs.primaryContainer.withOpacity(0.3),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  LucideIcons.clock,
+                  size: 40,
+                  color: cs.primary,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Daily Limit Reached',
+                style: TextStyle(
+                  color: cs.onSurface,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'You\'ve watched ${_adStatus?.dailyLimit ?? 30} ads today.\nCome back tomorrow for more free credits!',
+                style: TextStyle(
+                  color: cs.onSurfaceVariant,
+                  fontSize: 14,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              if (_adStatus?.nextResetTime != null) ...[
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: cs.primaryContainer.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(LucideIcons.timer, size: 18, color: cs.primary),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Resets in ${_formatAdResetCountdown(_adResetCountdownDuration)}',
+                        style: TextStyle(
+                          color: cs.primary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 24),
+              GradientButton(
+                label: 'Got it',
+                onPressed: () => Navigator.pop(context),
+                variant: ButtonVariant.secondary,
+                expanded: true,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+  
+  void _showVerificationRequiredSheet() {
+    final cs = Theme.of(context).colorScheme;
+    
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: cs.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade100.withOpacity(0.4),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  LucideIcons.mailWarning,
+                  size: 40,
+                  color: Colors.orange.shade700,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Email Verification Required',
+                style: TextStyle(
+                  color: cs.onSurface,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Please verify your email address to unlock free credits features like Lucky Spin and Watch Ads.',
+                style: TextStyle(
+                  color: cs.onSurfaceVariant,
+                  fontSize: 14,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              // Email display
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest.withOpacity(0.5),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: cs.outline.withOpacity(0.2)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(LucideIcons.mail, size: 18, color: cs.onSurfaceVariant),
+                    const SizedBox(width: 10),
+                    Flexible(
+                      child: Text(
+                        _authService.userEmail ?? 'your email',
+                        style: TextStyle(
+                          color: cs.onSurface,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              // Action buttons
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        try {
+                          await _authService.resendEmailVerification();
+                          if (mounted) {
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Row(
+                                  children: [
+                                    const Icon(LucideIcons.mailCheck, color: Colors.white, size: 18),
+                                    const SizedBox(width: 10),
+                                    const Expanded(child: Text('Verification email sent!')),
+                                  ],
+                                ),
+                                backgroundColor: Colors.green.shade600,
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Failed to send: $e'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        }
+                      },
+                      icon: const Icon(LucideIcons.send, size: 16),
+                      label: const Text('Resend'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        side: BorderSide(color: cs.primary),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () async {
+                        // Check verification status
+                        await _authService.reloadUser();
+                        await _authService.forceRefreshToken();
+                        
+                        if (mounted) {
+                          Navigator.pop(context);
+                          if (_authService.isEmailVerified) {
+                            // Sync user to get signup bonus
+                            await _userService.syncUser(isNewSignUp: true);
+                            await _refreshCredits();
+                            _checkSpinEligibility();
+                            _checkAdEligibility();
+                            
+                            // Notify all other pages about verification status change
+                            notifyEmailVerificationChanged(true);
+                            
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Row(
+                                  children: [
+                                    const Icon(LucideIcons.checkCircle, color: Colors.white, size: 18),
+                                    const SizedBox(width: 10),
+                                    const Expanded(child: Text('Email verified! Features unlocked.')),
+                                  ],
+                                ),
+                                backgroundColor: Colors.green.shade600,
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                            setState(() {});
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Row(
+                                  children: [
+                                    const Icon(LucideIcons.alertCircle, color: Colors.white, size: 18),
+                                    const SizedBox(width: 10),
+                                    const Expanded(child: Text('Email not verified yet. Check your inbox.')),
+                                  ],
+                                ),
+                                backgroundColor: Colors.orange.shade700,
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          }
+                        }
+                      },
+                      icon: const Icon(LucideIcons.checkCircle, size: 16),
+                      label: const Text('I\'ve Verified'),
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        backgroundColor: Colors.green.shade600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              // Note about purchases
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: cs.primaryContainer.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  children: [
+                    Icon(LucideIcons.info, size: 16, color: cs.primary),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'You can still purchase credits without verification.',
+                        style: TextStyle(
+                          color: cs.onSurfaceVariant,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -498,52 +1088,7 @@ class _CreditsPageState extends State<CreditsPage> {
           const SizedBox(height: AppStyles.spacing12),
           
           // Watch Ad Card
-          Container(
-            padding: const EdgeInsets.all(AppStyles.spacing16),
-            decoration: AppStyles.cardDecoration(cs),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: cs.primaryContainer.withOpacity(0.3),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(LucideIcons.playCircle, color: cs.primary),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Watch an Ad',
-                        style: TextStyle(
-                          color: cs.onSurface,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 15,
-                        ),
-                      ),
-                      Text(
-                        'Earn 5 credits',
-                        style: TextStyle(
-                          color: cs.onSurfaceVariant,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                GradientButton(
-                  label: 'Watch',
-                  icon: LucideIcons.play,
-                  onPressed: _watchAdForCredits,
-                  variant: ButtonVariant.primary,
-                  size: ButtonSize.small,
-                ),
-              ],
-            ),
-          ),
+          _buildWatchAdCard(cs),
           const SizedBox(height: AppStyles.spacing24),
           
           // Buy Credits Section
@@ -573,16 +1118,223 @@ class _CreditsPageState extends State<CreditsPage> {
     );
   }
 
-  Widget _buildDailySpinnerCard(ColorScheme cs) {
-    final bool showCountdown = !_canSpin && !_isCheckingSpinEligibility;
+  Widget _buildWatchAdCard(ColorScheme cs) {
+    final bool hasReachedLimit = _adStatus?.hasReachedLimit ?? false;
+    final bool isLoading = _isCheckingAdEligibility || _isShowingAd;
+    final int creditsPerAd = _adStatus?.creditsPerAd ?? 1;
+    final int earnedToday = _adStatus?.creditsEarnedToday ?? 0;
+    final int dailyLimit = _adStatus?.dailyLimit ?? 30;
+    final bool isDisabled = _needsEmailVerification;
     
     return GestureDetector(
-      onTap: _openDailySpinner,
+      onTap: isDisabled ? _showVerificationRequiredSheet : null,
+      child: Container(
+        padding: const EdgeInsets.all(AppStyles.spacing16),
+        decoration: BoxDecoration(
+          color: (hasReachedLimit || isDisabled)
+              ? cs.surfaceContainerHighest.withOpacity(0.3)
+              : null,
+          borderRadius: BorderRadius.circular(AppStyles.radiusMd),
+          border: Border.all(
+            color: (hasReachedLimit || isDisabled)
+                ? cs.outline.withOpacity(0.2)
+                : cs.outlineVariant.withOpacity(0.3),
+          ),
+        ),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: (hasReachedLimit || isDisabled)
+                        ? cs.surfaceContainerHighest
+                        : cs.primaryContainer.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    isDisabled ? LucideIcons.mailWarning : LucideIcons.playCircle, 
+                    color: (hasReachedLimit || isDisabled) ? cs.onSurfaceVariant : cs.primary,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            'Watch Ad',
+                            style: TextStyle(
+                              color: isDisabled ? cs.onSurfaceVariant : cs.onSurface,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 15,
+                            ),
+                          ),
+                          if (!hasReachedLimit && !isDisabled) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.green.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                '+$creditsPerAd',
+                                style: TextStyle(
+                                  color: Colors.green.shade600,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      if (isDisabled)
+                        Row(
+                          children: [
+                            Icon(LucideIcons.shieldAlert, size: 12, color: Colors.orange.shade700),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                'Verify email to unlock',
+                                style: TextStyle(
+                                  color: Colors.orange.shade700,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
+                        )
+                      else if (hasReachedLimit)
+                        Row(
+                          children: [
+                            Icon(LucideIcons.timer, size: 12, color: cs.primary),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Resets in ${_formatAdResetCountdown(_adResetCountdownDuration)}',
+                              style: TextStyle(
+                                color: cs.primary,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        )
+                      else
+                        Text(
+                          '$earnedToday/$dailyLimit earned today',
+                          style: TextStyle(
+                            color: cs.onSurfaceVariant,
+                            fontSize: 13,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                if (isDisabled)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade100.withOpacity(0.3),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange.shade300.withOpacity(0.5)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(LucideIcons.mail, size: 14, color: Colors.orange.shade700),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Verify',
+                          style: TextStyle(
+                            color: Colors.orange.shade700,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else if (isLoading)
+                  SizedBox(
+                    width: 32,
+                    height: 32,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: cs.primary,
+                    ),
+                  )
+                else if (hasReachedLimit)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(LucideIcons.lock, size: 14, color: cs.onSurfaceVariant),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Limit',
+                          style: TextStyle(
+                            color: cs.onSurfaceVariant,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  GradientButton(
+                    label: 'Watch',
+                    icon: LucideIcons.play,
+                    onPressed: _watchAdForCredits,
+                    variant: ButtonVariant.primary,
+                    size: ButtonSize.small,
+                  ),
+              ],
+            ),
+            // Progress bar showing daily limit
+            if (!_isCheckingAdEligibility && earnedToday > 0 && !isDisabled) ...[
+              const SizedBox(height: 12),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: earnedToday / dailyLimit,
+                  backgroundColor: cs.surfaceContainerHighest,
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    hasReachedLimit ? cs.outline : cs.primary,
+                  ),
+                  minHeight: 4,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDailySpinnerCard(ColorScheme cs) {
+    final bool showCountdown = !_canSpin && !_isCheckingSpinEligibility && !_needsEmailVerification;
+    final bool isDisabled = _needsEmailVerification;
+    
+    return GestureDetector(
+      onTap: isDisabled ? _showVerificationRequiredSheet : _openDailySpinner,
       child: Container(
         padding: const EdgeInsets.all(AppStyles.spacing16),
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: showCountdown
+            colors: isDisabled || showCountdown
                 ? [cs.surfaceContainerHighest.withOpacity(0.5), cs.surfaceContainerHighest.withOpacity(0.3)]
                 : [KalaColors.gold.withOpacity(0.15), Colors.orange.withOpacity(0.1)],
             begin: Alignment.topLeft,
@@ -590,7 +1342,7 @@ class _CreditsPageState extends State<CreditsPage> {
           ),
           borderRadius: BorderRadius.circular(AppStyles.radiusMd),
           border: Border.all(
-            color: showCountdown 
+            color: isDisabled || showCountdown 
                 ? cs.outline.withOpacity(0.2)
                 : KalaColors.gold.withOpacity(0.3),
             width: 1.5,
@@ -602,15 +1354,15 @@ class _CreditsPageState extends State<CreditsPage> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                gradient: showCountdown
+                gradient: (isDisabled || showCountdown)
                     ? null
                     : LinearGradient(colors: [KalaColors.gold, Colors.orange.shade600]),
-                color: showCountdown ? cs.surfaceContainerHighest : null,
+                color: (isDisabled || showCountdown) ? cs.surfaceContainerHighest : null,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
-                LucideIcons.gift,
-                color: showCountdown ? cs.onSurfaceVariant : Colors.white,
+                isDisabled ? LucideIcons.mailWarning : LucideIcons.gift,
+                color: (isDisabled || showCountdown) ? cs.onSurfaceVariant : Colors.white,
                 size: 24,
               ),
             ),
@@ -624,13 +1376,13 @@ class _CreditsPageState extends State<CreditsPage> {
                       Text(
                         'Lucky Spin',
                         style: TextStyle(
-                          color: cs.onSurface,
+                          color: isDisabled ? cs.onSurfaceVariant : cs.onSurface,
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
                         ),
                       ),
                       const SizedBox(width: 8),
-                      if (_isCheckingSpinEligibility)
+                      if (_isCheckingSpinEligibility && !isDisabled)
                         SizedBox(
                           width: 12,
                           height: 12,
@@ -639,7 +1391,7 @@ class _CreditsPageState extends State<CreditsPage> {
                             color: KalaColors.gold,
                           ),
                         )
-                      else if (_canSpin)
+                      else if (_canSpin && !isDisabled)
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                           decoration: BoxDecoration(
@@ -658,7 +1410,24 @@ class _CreditsPageState extends State<CreditsPage> {
                     ],
                   ),
                   const SizedBox(height: 4),
-                  if (showCountdown)
+                  if (isDisabled)
+                    Row(
+                      children: [
+                        Icon(LucideIcons.shieldAlert, size: 14, color: Colors.orange.shade700),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            'Verify email to unlock',
+                            style: TextStyle(
+                              color: Colors.orange.shade700,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    )
+                  else if (showCountdown)
                     Row(
                       children: [
                         Icon(LucideIcons.timer, size: 14, color: cs.primary),
@@ -685,7 +1454,31 @@ class _CreditsPageState extends State<CreditsPage> {
                 ],
               ),
             ),
-            if (_canSpin && !_isCheckingSpinEligibility)
+            if (isDisabled)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade100.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.orange.shade300.withOpacity(0.5)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(LucideIcons.mail, size: 14, color: Colors.orange.shade700),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Verify',
+                      style: TextStyle(
+                        color: Colors.orange.shade700,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else if (_canSpin && !_isCheckingSpinEligibility)
               GradientButton(
                 label: 'Spin',
                 icon: LucideIcons.sparkles,
@@ -773,41 +1566,44 @@ class _CreditsPageState extends State<CreditsPage> {
               size: 20,
             ),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
+                // Use Wrap instead of Row to handle overflow gracefully
+                Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 6,
+                  runSpacing: 4,
                   children: [
                     Text(
                       '$amount Credits',
                       style: TextStyle(
                         color: cs.onSurface,
                         fontWeight: FontWeight.w600,
-                        fontSize: 16,
+                        fontSize: 15,
                       ),
                     ),
-                    if (popular) ...[
-                      const SizedBox(width: 8),
+                    if (popular)
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
                           gradient: const LinearGradient(colors: KalaColors.brandGradient),
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: BorderRadius.circular(8),
                         ),
                         child: const Text(
                           'POPULAR',
                           style: TextStyle(
                             color: Colors.white,
-                            fontSize: 9,
+                            fontSize: 8,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                       ),
-                    ],
                   ],
                 ),
+                const SizedBox(height: 2),
                 Text(
                   price,
                   style: TextStyle(
@@ -818,6 +1614,7 @@ class _CreditsPageState extends State<CreditsPage> {
               ],
             ),
           ),
+          const SizedBox(width: 8),
           GradientButton(
             label: 'Buy',
             icon: LucideIcons.shoppingCart,

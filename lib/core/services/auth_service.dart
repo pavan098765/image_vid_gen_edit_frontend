@@ -162,6 +162,20 @@ class AuthService {
 
   /// Check if current user's email is verified
   bool get isEmailVerified => currentUser?.emailVerified ?? false;
+  
+  /// Check if user signed in with email/password provider (vs Google/social)
+  bool get isEmailPasswordUser {
+    final providers = currentUser?.providerData ?? [];
+    return providers.any((info) => info.providerId == 'password');
+  }
+  
+  /// Check if user needs email verification (signed up via email but not verified)
+  /// Returns false for Google sign-in users (they're auto-verified)
+  bool get needsEmailVerification {
+    if (!isSignedIn) return false;
+    if (!isEmailPasswordUser) return false; // Google users don't need verification
+    return !isEmailVerified;
+  }
 
   /// Resend email verification
   Future<void> resendEmailVerification() async {

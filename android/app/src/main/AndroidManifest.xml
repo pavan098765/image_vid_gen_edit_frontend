@@ -10,10 +10,10 @@
         android:label="Kala AI"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
-        <!-- ✅ Google Mobile Ads App ID -->
+        <!-- ✅ Google Mobile Ads App ID (Production) -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-3940256099942544~3347511713" />
+            android:value="ca-app-pub-3818647471101496~5829973723" />
         
         <!-- ✅ Firebase Notification Icon (uses the app icon as notification icon) -->
         <meta-data
