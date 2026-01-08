@@ -5,9 +5,11 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/services/ad_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/file_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_button.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/themed_native_ad.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:pro_image_editor/pro_image_editor.dart';
@@ -24,8 +26,10 @@ class _EditorPageState extends State<EditorPage> {
   Uint8List? _exportedImage;
   File? _selectedImage;
   final ImagePicker _picker = ImagePicker();
+  final AdService _adService = AdService();
 
   DateTime? _lastEditCompleteAt;
+  bool _isSaving = false;
 
   late final ProImageEditorConfigs _configs = const ProImageEditorConfigs();
 
@@ -317,11 +321,95 @@ class _EditorPageState extends State<EditorPage> {
       );
       return;
     }
+    
+    if (_isSaving) return;
+    
+    setState(() => _isSaving = true);
+    
+    try {
+      // Show rewarded ad before allowing export
+      final adCompleted = await _showExportAd();
+      
+      if (!adCompleted) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Row(
+                children: [
+                  Icon(LucideIcons.alertCircle, color: Colors.white, size: 20),
+                  SizedBox(width: 12),
+                  Expanded(child: Text('Please watch the ad to save your image')),
+                ],
+              ),
+              backgroundColor: Colors.orange.shade700,
+              behavior: SnackBarBehavior.floating,
+              margin: const EdgeInsets.all(16),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          );
+        }
+        return;
+      }
 
-    final savedPath = await FileService.saveFile(context, _exportedImage!);
-    if (savedPath != null) {
-      debugPrint('✅ Image saved at: $savedPath');
+      // Ad completed - proceed with save
+      final savedPath = await FileService.saveFile(context, _exportedImage!);
+      if (savedPath != null) {
+        debugPrint('✅ Image saved at: $savedPath');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
     }
+  }
+  
+  /// Shows a rewarded ad for export gate
+  /// Returns true if ad was completed, false otherwise
+  Future<bool> _showExportAd() async {
+    // Pre-load ad if not ready
+    if (!_adService.isAdReadyNotifier.value) {
+      // Show loading indicator
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                ),
+                SizedBox(width: 12),
+                Text('Loading ad...'),
+              ],
+            ),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+      
+      await _adService.loadRewardedAd();
+      
+      // Wait for ad to load (with timeout)
+      for (int i = 0; i < 10; i++) {
+        if (_adService.isAdReadyNotifier.value) break;
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
+      
+      // Clear the loading snackbar
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      }
+      
+      if (!_adService.isAdReadyNotifier.value) {
+        // Ad failed to load - allow export anyway (better UX)
+        debugPrint('⚠️ Ad failed to load, allowing export anyway');
+        return true;
+      }
+    }
+    
+    // Show the ad
+    return await _adService.showAdForFeatureGate();
   }
 
   @override
@@ -339,17 +427,26 @@ class _EditorPageState extends State<EditorPage> {
                 onPressed: _pickImage,
               ),
             if (_exportedImage != null)
-              IconButton(
-                icon: const Icon(Icons.save_alt),
-                tooltip: 'Save Image',
-                onPressed: _onExportPressed,
-              ),
+              _isSaving
+                  ? const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
+                  : IconButton(
+                      icon: const Icon(Icons.save_alt),
+                      tooltip: 'Save Image',
+                      onPressed: _onExportPressed,
+                    ),
           ],
         ),
         body: Stack(
           children: [
             if (_selectedImage == null)
-              _buildNoImagePlaceholder(context)
+              _buildEmptyStateWithAd(context)
             else
               ProImageEditor.file(
                 _selectedImage!,
@@ -439,16 +536,35 @@ class _EditorPageState extends State<EditorPage> {
     );
   }
 
+  Widget _buildEmptyStateWithAd(BuildContext context) {
+    return Column(
+      children: [
+        // Native ad at top (use small template for better space)
+        const ThemedNativeAd(
+          height: 260,
+          useSmallTemplate: false,
+        ),
+        // Placeholder in remaining space - with bottom padding for FAB
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 80), // Space for FAB
+            child: _buildNoImagePlaceholder(context),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildNoImagePlaceholder(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Center(
       child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 24),
-        padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
+        margin: const EdgeInsets.symmetric(horizontal: 20),
+        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(16),
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
@@ -459,8 +575,8 @@ class _EditorPageState extends State<EditorPage> {
           boxShadow: [
             BoxShadow(
               color: (isDark ? Colors.black : Colors.black54).withOpacity(0.10),
-              blurRadius: 24,
-              offset: const Offset(0, 10),
+              blurRadius: 16,
+              offset: const Offset(0, 6),
             ),
           ],
           border: Border.all(
@@ -471,14 +587,14 @@ class _EditorPageState extends State<EditorPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.image_outlined,
-                size: 80, color: cs.onSurface.withOpacity(0.38)),
-            const SizedBox(height: 16),
+                size: 56, color: cs.onSurface.withOpacity(0.38)),
+            const SizedBox(height: 12),
             Text(
               'No image selected.\nTap the button below to choose one to start editing.',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: cs.onSurface.withOpacity(0.70),
-                    fontSize: 16,
+                    fontSize: 14,
                   ),
             ),
           ],

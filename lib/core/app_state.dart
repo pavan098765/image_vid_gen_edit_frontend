@@ -12,6 +12,17 @@ export 'package:kala_ai_create_images_videos_with_ai/core/services/user_service.
 /// Global app-level selected index for the bottom navigation.
 final ValueNotifier<int> selectedIndexNotifier = ValueNotifier<int>(0);
 
+/// Global notifier for email verification status changes
+/// When email is verified from any screen, this notifier is updated
+/// so all listening screens can refresh their UI
+final ValueNotifier<bool> emailVerifiedNotifier = ValueNotifier<bool>(false);
+
+/// Call this when email verification status changes (from any screen)
+void notifyEmailVerificationChanged(bool isVerified) {
+  emailVerifiedNotifier.value = isVerified;
+  debugPrint("📧 Email verification status changed: $isVerified");
+}
+
 /// Global theme mode notifier - controls app-wide theme
 final ValueNotifier<ThemeMode> themeModeNotifier = ValueNotifier<ThemeMode>(ThemeMode.system);
 

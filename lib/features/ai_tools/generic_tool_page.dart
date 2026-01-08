@@ -1369,39 +1369,43 @@ class _GenericToolPageState extends State<GenericToolPage>
         },
         borderRadius: BorderRadius.circular(14),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
               color: _upscaleEnabled
                   ? cs.primary.withOpacity(0.4)
                   : cs.outlineVariant.withOpacity(0.3),
-                  ),
-                ),
-                child: Row(
+            ),
+          ),
+          child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
                 LucideIcons.maximize2,
-                          size: 18,
+                size: 16,
                 color: _upscaleEnabled ? cs.primary : cs.onSurfaceVariant,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          "Upscale",
-                style: TextStyle(
-                  color: _upscaleEnabled ? cs.primary : cs.onSurfaceVariant,
-                            fontWeight: FontWeight.w500,
-                  fontSize: 14,
-                        ),
+              ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  "Upscale",
+                  style: TextStyle(
+                    color: _upscaleEnabled ? cs.primary : cs.onSurfaceVariant,
+                    fontWeight: FontWeight.w500,
+                    fontSize: 13,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
               if (_upscaleEnabled) ...[
                 const SizedBox(width: 4),
-                Icon(LucideIcons.check, size: 16, color: cs.primary),
+                Icon(LucideIcons.check, size: 14, color: cs.primary),
               ],
-                  ],
-                ),
-              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -2311,119 +2315,122 @@ class _GenericToolPageState extends State<GenericToolPage>
     showModalBottomSheet(
       context: context,
       backgroundColor: cs.surface,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => Padding(
-        padding: EdgeInsets.only(
-          left: 24,
-          right: 24,
-          top: 24,
-          bottom: MediaQuery.of(context).padding.bottom + 24,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Icon
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.orange.withOpacity(0.1),
-                shape: BoxShape.circle,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Icon
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  LucideIcons.gem,
+                  size: 40,
+                  color: Colors.orange.shade600,
+                ),
               ),
-              child: Icon(
-                LucideIcons.gem,
-                size: 40,
-                color: Colors.orange.shade600,
-              ),
-            ),
-            const SizedBox(height: 16),
+              const SizedBox(height: 16),
 
-            // Title
-            Text(
-              'Insufficient Credits',
-              style: TextStyle(
-                color: cs.onSurface,
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
+              // Title
+              Text(
+                'Insufficient Credits',
+                style: TextStyle(
+                  color: cs.onSurface,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
+              const SizedBox(height: 8),
 
-            // Details
-            Text(
-              'You need $requiredCredits credits for this action',
-              style: TextStyle(
-                color: cs.onSurfaceVariant,
-                fontSize: 14,
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Credit comparison
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: cs.surfaceContainerHighest.withOpacity(0.5),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  _buildCreditInfo(
-                    cs,
-                    label: 'You have',
-                    value: currentCredits.toString(),
-                    color: cs.primary,
-                  ),
-                  Container(
-                    width: 1,
-                    height: 40,
-                    color: cs.outlineVariant,
-                  ),
-                  _buildCreditInfo(
-                    cs,
-                    label: 'Need',
-                    value: '+$shortage',
-                    color: Colors.orange.shade600,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // Get Credits Button
-            SizedBox(
-              width: double.infinity,
-              child: GradientButton(
-                label: 'Get Credits',
-                icon: LucideIcons.gem,
-                onPressed: () {
-                  Navigator.pop(context); // Close bottom sheet
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const CreditsPage()),
-                  );
-                },
-                variant: ButtonVariant.primary,
-                size: ButtonSize.large,
-                expanded: true,
-              ),
-            ),
-            const SizedBox(height: 12),
-
-            // Cancel button
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(
-                'Cancel',
+              // Details
+              Text(
+                'You need $requiredCredits credits for this action',
                 style: TextStyle(
                   color: cs.onSurfaceVariant,
                   fontSize: 14,
                 ),
+                textAlign: TextAlign.center,
               ),
-            ),
-          ],
+              const SizedBox(height: 16),
+
+              // Credit comparison
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest.withOpacity(0.5),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    Flexible(
+                      child: _buildCreditInfo(
+                        cs,
+                        label: 'You have',
+                        value: currentCredits.toString(),
+                        color: cs.primary,
+                      ),
+                    ),
+                    Container(
+                      width: 1,
+                      height: 40,
+                      color: cs.outlineVariant,
+                    ),
+                    Flexible(
+                      child: _buildCreditInfo(
+                        cs,
+                        label: 'Need',
+                        value: '+$shortage',
+                        color: Colors.orange.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Get Credits Button
+              SizedBox(
+                width: double.infinity,
+                child: GradientButton(
+                  label: 'Get Credits',
+                  icon: LucideIcons.gem,
+                  onPressed: () {
+                    Navigator.pop(context); // Close bottom sheet
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const CreditsPage()),
+                    );
+                  },
+                  variant: ButtonVariant.primary,
+                  size: ButtonSize.large,
+                  expanded: true,
+                ),
+              ),
+              const SizedBox(height: 8),
+
+              // Cancel button
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(
+                  'Cancel',
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

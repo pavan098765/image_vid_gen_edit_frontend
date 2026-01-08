@@ -19,6 +19,7 @@ import 'core/theme/app_theme.dart';
 import 'core/app_state.dart';
 import 'core/services/notification_service.dart';
 import 'core/services/user_service.dart';
+import 'core/services/ad_service.dart';
 
 import 'features/image_editor/image_editor_page.dart';
 import 'features/ai_tools/ai_tools_page.dart';
@@ -27,6 +28,7 @@ import 'features/video_editor/video_editor_page.dart';
 import 'features/credits/credits_page.dart';
 import 'features/settings/settings_page.dart';
 import 'features/result_manager/result_manager_page.dart'; // 🔹 NEW import
+import 'features/splash/splash_screen.dart'; // 🔹 Splash screen
 import 'package:media_kit/media_kit.dart';
 
 // Global navigator key
@@ -172,7 +174,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   try {
-    final data = message.data ?? {};
+    final data = message.data;
     final jobId = (data['job_id'] ?? '').toString();
     const allowed = ['processing', 'completed', 'failed'];
     final status = (data['status'] ?? '').toString().toLowerCase();
@@ -263,26 +265,28 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   }
 }
 
-Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  MediaKit.ensureInitialized();
-
-  // Initialize Firebase
+/// App initialization that runs while splash is visible
+/// Returns a Future that completes when all services are ready
+Future<void> initializeApp() async {
+  debugPrint("🚀 Starting app initialization...");
+  
+  // Initialize Firebase first (required for other services)
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   debugPrint("✅ Firebase initialized");
 
-  // ✅ Initialize persistent app state before anything else
+  // Initialize persistent app state
   await initAppState();
-  await AppSettings.load(); // Load theme and other settings
+  await AppSettings.load();
   await FileService.loadPreviewCache();
-  await ThumbnailService.instance.init(); // Initialize thumbnail cache
-  await UserService().initialize(); // Initialize user service for auth
-  debugPrint("✅ App state initialized & jobs restored");
+  await ThumbnailService.instance.init();
+  await UserService().initialize();
+  await AdService.initialize();
+  debugPrint("✅ App state initialized");
 
   // Register background handler for FCM
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
-  // Initialize local notification service (single call)
+  // Initialize notification service
   await NotificationService.initialize(onTap: (response) async {
     try {
       final jobId = response.payload;
@@ -291,7 +295,6 @@ Future<void> main() async {
         _openResultManager();
         return;
       }
-
       debugPrint("🔔 Notification tapped for job=$jobId");
       _openJobFromNotification(jobId, null);
     } catch (e) {
@@ -299,47 +302,40 @@ Future<void> main() async {
       _openResultManager();
     }
   });
-
   debugPrint("✅ NotificationService initialized");
 
-  // Setup FCM, request permissions
+  // Setup FCM
   final fcm = FirebaseMessaging.instance;
   await fcm.requestPermission(alert: true, badge: true, sound: true);
 
-  // Get & store token
   final token = await fcm.getToken();
   debugPrint("🔑 FCM Token: $token");
   final prefs = await SharedPreferences.getInstance();
   if (token != null) await prefs.setString("fcm_token", token);
 
-  // Listen for token refresh and update local storage (so server gets fresh token)
+  // FCM token refresh listener
   FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
     debugPrint("🔄 FCM token refreshed: $newToken");
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString("fcm_token", newToken);
-    // Optional: inform your backend about the new token here
   });
 
-  // ------------------------
-// Foreground messages handler
-// ------------------------
+  // Foreground messages handler
   FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
     debugPrint("📩 FCM onMessage: ${message.messageId} data=${message.data}");
 
-    final data = message.data ?? {};
+    final data = message.data;
     final jobId = (data['job_id'] ?? '').toString();
     const allowed = ['processing', 'completed', 'failed'];
 
     final status = (data['status'] ?? '').toString().toLowerCase();
     final normalizedStatus = allowed.contains(status) ? status : 'processing';
-    final downloadUrl =
-        (data['download_url'] ?? data['downloadUrl'] ?? '').toString();
+    final downloadUrl = (data['download_url'] ?? data['downloadUrl'] ?? '').toString();
     final title = (data['title'] ?? '').toString();
     final model = (data['model'] ?? '').toString();
     final outputType = (data['outputType'] ?? '').toString();
 
     if (jobId.isNotEmpty) {
-      // ✅ Update both prefs and notifier in one go
       await _applyFcmUpdate({
         'job_id': jobId,
         'status': normalizedStatus,
@@ -350,7 +346,6 @@ Future<void> main() async {
       });
     }
 
-    // ✅ Show a local notification for user feedback
     final notifTitle = message.notification?.title ??
         (status == 'completed' ? 'Result ready' : 'Job update');
     final notifBody = message.notification?.body ??
@@ -367,25 +362,24 @@ Future<void> main() async {
 
   FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) async {
     debugPrint("🔁 onMessageOpenedApp: ${message.data}");
-    final data = message.data ?? {};
+    final data = message.data;
     final jobId = (data['job_id'] ?? '').toString();
     if (jobId.isEmpty) return;
 
-    // Normalize values
     const allowed = ['processing', 'completed', 'failed'];
     final status = (data['status'] ?? '').toString().toLowerCase();
     final normalizedStatus = allowed.contains(status) ? status : 'processing';
-    final downloadUrl =
-        (data['download_url'] ?? data['downloadUrl'] ?? '').toString();
+    final downloadUrl = (data['download_url'] ?? data['downloadUrl'] ?? '').toString();
 
-    // 🧠 Preserve paths explicitly (optional but very safe)
-    final currentJob = jobListNotifier.value.firstWhere((j) => j.jobId == jobId,
-        orElse: () => JobModel(
-              jobId: jobId,
-              title: jobId,
-              model: 'unknown',
-              outputType: 'image',
-            ));
+    final currentJob = jobListNotifier.value.firstWhere(
+      (j) => j.jobId == jobId,
+      orElse: () => JobModel(
+        jobId: jobId,
+        title: jobId,
+        model: 'unknown',
+        outputType: 'image',
+      ),
+    );
 
     await updateJobFields(
       jobId: jobId,
@@ -395,7 +389,6 @@ Future<void> main() async {
       localFilePath: currentJob.localFilePath,
     );
 
-    // ✅ Refresh and navigate
     if (isResultManagerOpen) {
       debugPrint("🔁 ResultManager already open after onMessageOpenedApp");
       return;
@@ -403,26 +396,24 @@ Future<void> main() async {
     _openResultManager();
   });
 
-// handle cold start
+  // Handle cold start from notification
   final initialMessage = await FirebaseMessaging.instance.getInitialMessage();
   if (initialMessage != null) {
-    final data = initialMessage.data ?? {};
+    final data = initialMessage.data;
     final jobId = (data['job_id'] ?? '').toString();
     debugPrint("🟣 App launched from notification while killed: job=$jobId");
 
-    // merge update into persisted jobs
     const allowed = ['processing', 'completed', 'failed'];
     final status = (data['status'] ?? '').toString().toLowerCase();
     final normalizedStatus = allowed.contains(status) ? status : 'processing';
-    final downloadUrl =
-        (data['download_url'] ?? data['downloadUrl'] ?? '').toString();
+    final downloadUrl = (data['download_url'] ?? data['downloadUrl'] ?? '').toString();
+    
     await updateJobFields(
       jobId: jobId,
       status: normalizedStatus.isNotEmpty ? normalizedStatus : null,
       downloadUrl: downloadUrl.isNotEmpty ? downloadUrl : null,
     );
 
-    // queue navigation to result manager (single instance)
     _pendingNavigations.clear();
     _pendingNavigations.add({
       "jobId": null,
@@ -430,18 +421,22 @@ Future<void> main() async {
     });
   }
 
-  // Ensure poller runs (keeps UI in sync if notifications fail)
-  //PollingService.instance.start();
-  //debugPrint("✅ PollingService started");
+  debugPrint("✅ App initialization complete");
+}
 
-  // 🟢 Wrap the app in lifecycle handler (so jobs auto-refresh when app resumes)
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  MediaKit.ensureInitialized();
+
+  // 🟢 Run the app IMMEDIATELY to show splash screen
+  // Heavy initialization happens in the background while splash is visible
   runApp(
     const AppLifecycleHandler(
       child: KalaAIApp(),
     ),
   );
 
-  debugPrint("✅ runApp() executed");
+  debugPrint("✅ runApp() executed - splash visible now");
 
   // Execute queued navigations after first frame (UI ready)
   WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -535,8 +530,15 @@ void _openOrReplaceResultManager() {
 // ----------------------------------------------------
 // Root App - Kala AI
 // ----------------------------------------------------
-class KalaAIApp extends StatelessWidget {
+class KalaAIApp extends StatefulWidget {
   const KalaAIApp({super.key});
+
+  @override
+  State<KalaAIApp> createState() => _KalaAIAppState();
+}
+
+class _KalaAIAppState extends State<KalaAIApp> {
+  bool _showSplash = true;
 
   final List<Widget> _pages = const [
     EditorPage(),
@@ -545,6 +547,12 @@ class KalaAIApp extends StatelessWidget {
     CreditsPage(),
     SettingsPage(),
   ];
+
+  void _onSplashComplete() {
+    if (mounted) {
+      setState(() => _showSplash = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -567,41 +575,69 @@ class KalaAIApp extends StatelessWidget {
           navigatorKey: navigatorKey,
           debugShowCheckedModeBanner: false,
 
-          home: Scaffold(
-        body: SafeArea(
-          child: ValueListenableBuilder<int>(
-            valueListenable: selectedIndexNotifier,
-            builder: (_, currentIndex, __) {
-              return IndexedStack(
-                index: currentIndex,
-                children: _pages,
-              );
-            },
+          home: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 500),
+            switchInCurve: Curves.easeOut,
+            switchOutCurve: Curves.easeIn,
+            child: _showSplash
+                ? SplashScreen(
+                    key: const ValueKey('splash'),
+                    onComplete: _onSplashComplete,
+                  )
+                : _MainAppScaffold(
+                    key: const ValueKey('main'),
+                    pages: _pages,
+                  ),
           ),
-        ),
-        bottomNavigationBar: ValueListenableBuilder<int>(
+        );
+      },
+    );
+  }
+}
+
+// Extracted main scaffold to separate widget for cleaner code
+class _MainAppScaffold extends StatelessWidget {
+  final List<Widget> pages;
+  
+  const _MainAppScaffold({
+    super.key,
+    required this.pages,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: ValueListenableBuilder<int>(
           valueListenable: selectedIndexNotifier,
           builder: (_, currentIndex, __) {
-            return NavigationBar(
-              selectedIndex: currentIndex,
-              onDestinationSelected: (i) => selectedIndexNotifier.value = i,
-              destinations: const [
-                NavigationDestination(
-                    icon: Icon(Icons.photo_library), label: "Photo"),
-                NavigationDestination(icon: Icon(Icons.movie), label: "Video"),
-                NavigationDestination(
-                    icon: Icon(Icons.auto_awesome), label: "AI Tools"),
-                NavigationDestination(
-                    icon: Icon(LucideIcons.gem), label: "Credits"),
-                NavigationDestination(
-                    icon: Icon(Icons.settings), label: "Settings"),
-              ],
+            return IndexedStack(
+              index: currentIndex,
+              children: pages,
             );
           },
         ),
       ),
-    );
-      },
+      bottomNavigationBar: ValueListenableBuilder<int>(
+        valueListenable: selectedIndexNotifier,
+        builder: (_, currentIndex, __) {
+          return NavigationBar(
+            selectedIndex: currentIndex,
+            onDestinationSelected: (i) => selectedIndexNotifier.value = i,
+            destinations: const [
+              NavigationDestination(
+                  icon: Icon(Icons.photo_library), label: "Photo"),
+              NavigationDestination(icon: Icon(Icons.movie), label: "Video"),
+              NavigationDestination(
+                  icon: Icon(Icons.auto_awesome), label: "AI Tools"),
+              NavigationDestination(
+                  icon: Icon(LucideIcons.gem), label: "Credits"),
+              NavigationDestination(
+                  icon: Icon(Icons.settings), label: "Settings"),
+            ],
+          );
+        },
+      ),
     );
   }
 }

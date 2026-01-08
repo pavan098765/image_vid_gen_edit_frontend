@@ -2,6 +2,7 @@
 import 'package:firebase_auth/firebase_auth.dart' show UserCredential;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/auth_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/user_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
@@ -292,6 +293,9 @@ class _SignInRequiredScreenState extends State<SignInRequiredScreen> {
         // Email verified! Now sync with isNewSignUp to grant credits
         await _userService.syncUser(isNewSignUp: true);
         await SignInPromptManager.resetPrompts();
+        
+        // Notify all other pages about verification status change
+        notifyEmailVerificationChanged(true);
         
         if (mounted) {
           setState(() => _screenState = _SignInScreenState.verified);

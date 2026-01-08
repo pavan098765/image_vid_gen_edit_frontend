@@ -44,6 +44,21 @@ class _SettingsPageState extends State<SettingsPage> {
     super.initState();
     _loadAppInfo();
     _calculateCacheSize();
+    
+    // Listen to global email verification status changes (from Credits page or other)
+    emailVerifiedNotifier.addListener(_onEmailVerificationChanged);
+  }
+  
+  void _onEmailVerificationChanged() {
+    if (mounted) {
+      setState(() {}); // Refresh UI to show verified badge
+    }
+  }
+  
+  @override
+  void dispose() {
+    emailVerifiedNotifier.removeListener(_onEmailVerificationChanged);
+    super.dispose();
   }
 
   Future<void> _loadAppInfo() async {
@@ -402,6 +417,9 @@ class _SettingsPageState extends State<SettingsPage> {
         
         // Email verified! Now sync with isNewSignUp to grant credits
         await _userService.syncUser(isNewSignUp: true);
+        
+        // Notify all other pages about verification status change
+        notifyEmailVerificationChanged(true);
         
         if (mounted) {
           _showVerificationSuccessDialog();
