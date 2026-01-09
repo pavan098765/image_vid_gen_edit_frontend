@@ -25,8 +25,14 @@ class FileService {
   // Download Queue with Concurrency Limits
   // ============================================================
   static const int _maxConcurrentDownloads = 2;
+  static const int _maxQueuedDownloads = 10; // Prevent excessive queueing
   static int _activeDownloads = 0;
   static final List<_DownloadTask> _downloadQueue = [];
+  
+  // Snackbar debouncing to prevent spam
+  static DateTime? _lastErrorSnackbarTime;
+  static String? _lastErrorMessage;
+  static const Duration _snackbarDebounceTime = Duration(seconds: 3);
   
   /// Queue a download with concurrency control
   /// This prevents multiple large files from being downloaded simultaneously
@@ -38,6 +44,15 @@ class FileService {
     void Function(double progress)? onProgress,
     int maxRetries = 3,
   }) async {
+    // Prevent excessive queueing
+    if (_downloadQueue.length >= _maxQueuedDownloads) {
+      _showDebouncedSnackbar(
+        context, 
+        'Download queue full. Please wait for current downloads to complete.',
+      );
+      return null;
+    }
+    
     final completer = Completer<String?>();
     
     final task = _DownloadTask(
@@ -54,6 +69,33 @@ class FileService {
     _processQueue();
     
     return completer.future;
+  }
+  
+  /// Show snackbar with debouncing to prevent spam
+  static void _showDebouncedSnackbar(BuildContext context, String message, {Duration? duration}) {
+    final now = DateTime.now();
+    
+    // Skip if same message shown recently
+    if (_lastErrorMessage == message && 
+        _lastErrorSnackbarTime != null &&
+        now.difference(_lastErrorSnackbarTime!) < _snackbarDebounceTime) {
+      return;
+    }
+    
+    _lastErrorMessage = message;
+    _lastErrorSnackbarTime = now;
+    
+    if (context.mounted) {
+      // Clear any existing snackbars first
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          duration: duration ?? const Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   static void _processQueue() async {
@@ -259,7 +301,25 @@ class FileService {
     showGeneralDialog(
       context: context,
       barrierDismissible: false, // ⛔ no tap-outside close
-      barrierColor: Colors.black.withOpacity(0.95),
+      barrierColor: Colors.transparent,
+      transitionDuration: const Duration(milliseconds: 300),
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        return FadeTransition(
+          opacity: CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+          ),
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.92, end: 1.0).animate(
+              CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeOutCubic,
+              ),
+            ),
+            child: child,
+          ),
+        );
+      },
       pageBuilder: (_, __, ___) {
         return WillPopScope(
           onWillPop: () async {
@@ -285,7 +345,7 @@ class FileService {
       {required String uniqueKey}) async {
     try {
       // ✅ Step 1: Use unique cache key (prefer jobId)
-      final cacheKey = uniqueKey ?? url;
+      final cacheKey = uniqueKey;
 
       // ✅ Step 2: Check in-memory cache
       String? cachedPath = _previewCache[cacheKey];
@@ -601,27 +661,19 @@ class FileService {
           } catch (_) {}
         }
 
-        // If this was the last attempt, show error
+        // If this was the last attempt, show error (debounced)
         if (attempt == maxRetries - 1) {
-          if (context.mounted) {
-            String errorMsg = 'Download failed';
-            if (e.toString().contains('timeout')) {
-              errorMsg = 'Download timed out. Please try again.';
-            } else if (e.toString().contains('expired') || e.toString().contains('403')) {
-              errorMsg = 'Download URL expired. Please refresh and try again.';
-            } else if (e.toString().contains('invalid') || e.toString().contains('corrupted')) {
-              errorMsg = 'Downloaded file is invalid. Please try again.';
-            } else {
-              errorMsg = 'Download failed: ${e.toString().split(':').last.trim()}';
-            }
-            
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(errorMsg),
-                duration: const Duration(seconds: 4),
-              ),
-            );
+          String errorMsg = 'Download failed';
+          if (e.toString().contains('timeout')) {
+            errorMsg = 'Download timed out. Please try again.';
+          } else if (e.toString().contains('expired') || e.toString().contains('403')) {
+            errorMsg = 'Download URL expired. Refreshing...';
+          } else if (e.toString().contains('invalid') || e.toString().contains('corrupted')) {
+            errorMsg = 'Downloaded file is invalid. Please try again.';
           }
+          
+          // Use debounced snackbar to prevent spam
+          _showDebouncedSnackbar(context, errorMsg, duration: const Duration(seconds: 4));
           return null;
         }
         // Otherwise, continue to next retry
@@ -917,19 +969,72 @@ class _ProgressiveImagePreview extends StatefulWidget {
   State<_ProgressiveImagePreview> createState() => _ProgressiveImagePreviewState();
 }
 
-class _ProgressiveImagePreviewState extends State<_ProgressiveImagePreview> {
+class _ProgressiveImagePreviewState extends State<_ProgressiveImagePreview> 
+    with SingleTickerProviderStateMixin {
   Uint8List? _thumbnailBytes;
   bool _isFullResLoaded = false;
   bool _isLoading = true;
+  bool _showControls = true;
+  String? _fileSize;
+  String? _resolution;
 
   // Screen-aware cache dimensions for full res
   int? _cacheWidth;
   int? _cacheHeight;
+  
+  late AnimationController _controlsAnimController;
+  late Animation<double> _controlsAnimation;
 
   @override
   void initState() {
     super.initState();
     _loadThumbnail();
+    _loadFileInfo();
+    
+    _controlsAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+      value: 1.0,
+    );
+    _controlsAnimation = CurvedAnimation(
+      parent: _controlsAnimController,
+      curve: Curves.easeOutCubic,
+    );
+  }
+  
+  @override
+  void dispose() {
+    _controlsAnimController.dispose();
+    super.dispose();
+  }
+  
+  Future<void> _loadFileInfo() async {
+    try {
+      final file = File(widget.filePath);
+      if (file.existsSync()) {
+        final size = await file.length();
+        final sizeStr = _formatFileSize(size);
+        
+        // Get image dimensions
+        final bytes = await file.readAsBytes();
+        final decoded = await decodeImageFromList(bytes);
+        
+        if (mounted) {
+          setState(() {
+            _fileSize = sizeStr;
+            _resolution = '${decoded.width} × ${decoded.height}';
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ Failed to load file info: $e');
+    }
+  }
+  
+  String _formatFileSize(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
 
   Future<void> _loadThumbnail() async {
@@ -972,44 +1077,348 @@ class _ProgressiveImagePreviewState extends State<_ProgressiveImagePreview> {
       _cacheHeight = (size.height * dpr).toInt().clamp(0, 2048);
     }
   }
+  
+  void _toggleControls() {
+    setState(() {
+      _showControls = !_showControls;
+      if (_showControls) {
+        _controlsAnimController.forward();
+      } else {
+        _controlsAnimController.reverse();
+      }
+    });
+  }
+  
+  String get _fileName {
+    final path = widget.filePath;
+    return path.split('/').last.split('\\').last;
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        // 🖼️ Zoomable Image with progressive loading
-        Center(
-          child: InteractiveViewer(
-            maxScale: 5,
-            minScale: 0.7,
-            child: _buildImage(),
+    final topPadding = MediaQuery.of(context).padding.top;
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+    
+    return Material(
+      color: Colors.transparent,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // 🌌 Gradient background
+          Container(
+            decoration: BoxDecoration(
+              gradient: RadialGradient(
+                center: Alignment.center,
+                radius: 1.2,
+                colors: [
+                  const Color(0xFF1a1a2e),
+                  const Color(0xFF0d0d14),
+                  Colors.black,
+                ],
+                stops: const [0.0, 0.6, 1.0],
+              ),
+            ),
+          ),
+          
+          // 🖼️ Zoomable Image with progressive loading
+          GestureDetector(
+            onTap: _toggleControls,
+            child: Center(
+              child: InteractiveViewer(
+                maxScale: 5,
+                minScale: 0.7,
+                child: _buildImage(),
+              ),
+            ),
+          ),
+
+          // Loading indicator overlay
+          if (_isLoading)
+            Center(
+              child: Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.black45,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const CircularProgressIndicator(
+                  color: Colors.white70,
+                  strokeWidth: 3,
+                ),
+              ),
+            ),
+
+          // 🔝 Top action bar with frosted glass effect
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: FadeTransition(
+              opacity: _controlsAnimation,
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0, -1),
+                  end: Offset.zero,
+                ).animate(_controlsAnimation),
+                child: Container(
+                  padding: EdgeInsets.only(
+                    top: topPadding + 8,
+                    left: 8,
+                    right: 8,
+                    bottom: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black.withOpacity(0.7),
+                        Colors.black.withOpacity(0.4),
+                        Colors.transparent,
+                      ],
+                      stops: const [0.0, 0.7, 1.0],
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      // Close button with pill background
+                      _buildActionButton(
+                        icon: Icons.close_rounded,
+                        onTap: widget.onClose,
+                        tooltip: 'Close',
+                      ),
+                      const Spacer(),
+                      // Save to gallery button
+                      _buildActionButton(
+                        icon: Icons.save_alt_rounded,
+                        onTap: () => _saveToGallery(context),
+                        tooltip: 'Save to Gallery',
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          
+          // 📊 Bottom info bar
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: FadeTransition(
+              opacity: _controlsAnimation,
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0, 1),
+                  end: Offset.zero,
+                ).animate(_controlsAnimation),
+                child: Container(
+                  padding: EdgeInsets.only(
+                    top: 16,
+                    left: 20,
+                    right: 20,
+                    bottom: bottomPadding + 16,
+                  ),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                      colors: [
+                        Colors.black.withOpacity(0.8),
+                        Colors.black.withOpacity(0.5),
+                        Colors.transparent,
+                      ],
+                      stops: const [0.0, 0.6, 1.0],
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // File name
+                      Text(
+                        _fileName,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 6),
+                      // File info row
+                      Row(
+                        children: [
+                          if (_resolution != null) ...[
+                            _buildInfoChip(
+                              icon: Icons.aspect_ratio_rounded,
+                              label: _resolution!,
+                            ),
+                            const SizedBox(width: 12),
+                          ],
+                          if (_fileSize != null)
+                            _buildInfoChip(
+                              icon: Icons.storage_rounded,
+                              label: _fileSize!,
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          
+          // Tap hint (shows briefly)
+          if (_showControls && !_isLoading)
+            Positioned(
+              bottom: bottomPadding + 90,
+              left: 0,
+              right: 0,
+              child: FadeTransition(
+                opacity: _controlsAnimation,
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.black38,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Text(
+                      'Tap to hide controls • Pinch to zoom',
+                      style: TextStyle(
+                        color: Colors.white54,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildActionButton({
+    required IconData icon,
+    required VoidCallback onTap,
+    required String tooltip,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(24),
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: Colors.white.withOpacity(0.1),
+                width: 1,
+              ),
+            ),
+            child: Icon(
+              icon,
+              color: Colors.white,
+              size: 24,
+            ),
           ),
         ),
-
-        // Loading indicator overlay
-        if (_isLoading)
-          const Center(
-            child: CircularProgressIndicator(color: Colors.white70),
-          ),
-
-        // ❌ Close button
-        Positioned(
-          top: 40,
-          right: 20,
-          child: IconButton(
-            icon: const Icon(Icons.close, color: Colors.white, size: 32),
-            onPressed: widget.onClose,
+      ),
+    );
+  }
+  
+  Widget _buildInfoChip({required IconData icon, required String label}) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          icon,
+          color: Colors.white54,
+          size: 14,
+        ),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white54,
+            fontSize: 12,
           ),
         ),
       ],
     );
+  }
+  
+  Future<void> _saveToGallery(BuildContext context) async {
+    try {
+      final saved = await FileService.saveExistingToGallery(
+        context,
+        widget.filePath,
+      );
+      if (saved && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white, size: 20),
+                SizedBox(width: 12),
+                Text('Saved to gallery'),
+              ],
+            ),
+            backgroundColor: Colors.green.shade700,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            margin: const EdgeInsets.all(16),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Failed to save'),
+            backgroundColor: Colors.red.shade700,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
   }
 
   Widget _buildImage() {
     final file = File(widget.filePath);
     
     if (!file.existsSync()) {
-      return const Icon(Icons.broken_image, color: Colors.white54, size: 64);
+      return Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.broken_image_rounded,
+              color: Colors.white38,
+              size: 48,
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Image not found',
+            style: TextStyle(color: Colors.white54, fontSize: 14),
+          ),
+        ],
+      );
     }
 
     // Use Image.file with cacheWidth/cacheHeight for memory efficiency
@@ -1048,26 +1457,33 @@ class _ProgressiveImagePreviewState extends State<_ProgressiveImagePreview> {
               Positioned(
                 bottom: 20,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   decoration: BoxDecoration(
-                    color: Colors.black54,
-                    borderRadius: BorderRadius.circular(20),
+                    color: Colors.black.withOpacity(0.6),
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.1),
+                    ),
                   ),
-                  child: const Row(
+                  child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       SizedBox(
-                        width: 14,
-                        height: 14,
+                        width: 16,
+                        height: 16,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          color: Colors.white70,
+                          color: Colors.white.withOpacity(0.8),
                         ),
                       ),
-                      SizedBox(width: 8),
+                      const SizedBox(width: 10),
                       Text(
                         'Loading full resolution...',
-                        style: TextStyle(color: Colors.white70, fontSize: 12),
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.8),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     ],
                   ),
@@ -1078,8 +1494,18 @@ class _ProgressiveImagePreviewState extends State<_ProgressiveImagePreview> {
         }
         
         // Fallback loading state
-        return const Center(
-          child: CircularProgressIndicator(color: Colors.white70),
+        return Center(
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.black45,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: const CircularProgressIndicator(
+              color: Colors.white70,
+              strokeWidth: 3,
+            ),
+          ),
         );
       },
       errorBuilder: (context, error, stackTrace) {
@@ -1087,11 +1513,25 @@ class _ProgressiveImagePreviewState extends State<_ProgressiveImagePreview> {
         return Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.broken_image, color: Colors.white54, size: 64),
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.error_outline_rounded,
+                color: Colors.red,
+                size: 48,
+              ),
+            ),
             const SizedBox(height: 16),
             Text(
               'Failed to load image',
-              style: TextStyle(color: Colors.white.withOpacity(0.7)),
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.7),
+                fontSize: 14,
+              ),
             ),
           ],
         );

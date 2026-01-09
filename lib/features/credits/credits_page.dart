@@ -40,6 +40,10 @@ class _CreditsPageState extends State<CreditsPage> {
   Timer? _adResetCountdownTimer;
   Duration _adResetCountdownDuration = Duration.zero;
   
+  // Ad cooldown state (between ads)
+  Timer? _adCooldownTimer;
+  Duration _adCooldownDuration = Duration.zero;
+  
   /// Check if features requiring verification are blocked
   /// (User signed up via email but hasn't verified yet)
   bool get _needsEmailVerification => _authService.needsEmailVerification;
@@ -61,6 +65,8 @@ class _CreditsPageState extends State<CreditsPage> {
     // Listen to ad status changes
     _adService.statusNotifier.addListener(_onAdStatusChanged);
     _adService.isAdReadyNotifier.addListener(_onAdReadyChanged);
+    _adService.cooldownNotifier.addListener(_onCooldownChanged);
+    _adService.availabilityNotifier.addListener(_onAdAvailabilityChanged);
     
     // Listen to global email verification status changes (from Settings or other pages)
     emailVerifiedNotifier.addListener(_onEmailVerificationChanged);
@@ -89,6 +95,60 @@ class _CreditsPageState extends State<CreditsPage> {
     if (mounted) setState(() {});
   }
   
+  void _onCooldownChanged() {
+    if (mounted) {
+      final cooldownEndsAt = _adService.cooldownNotifier.value;
+      if (cooldownEndsAt != null) {
+        _startAdCooldownTimer(cooldownEndsAt);
+      } else {
+        _stopAdCooldownTimer();
+      }
+    }
+  }
+  
+  void _onAdAvailabilityChanged() {
+    if (mounted) setState(() {});
+  }
+  
+  void _startAdCooldownTimer(DateTime cooldownEndsAt) {
+    _stopAdCooldownTimer();
+    
+    _updateAdCooldownDuration(cooldownEndsAt);
+    
+    // Update every second
+    _adCooldownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) {
+        _stopAdCooldownTimer();
+        return;
+      }
+      
+      _updateAdCooldownDuration(cooldownEndsAt);
+      
+      // Stop timer when cooldown expires
+      if (_adCooldownDuration.inSeconds <= 0) {
+        _stopAdCooldownTimer();
+      }
+    });
+  }
+  
+  void _updateAdCooldownDuration(DateTime cooldownEndsAt) {
+    final now = DateTime.now();
+    final remaining = cooldownEndsAt.difference(now);
+    setState(() {
+      _adCooldownDuration = remaining.isNegative ? Duration.zero : remaining;
+    });
+  }
+  
+  void _stopAdCooldownTimer() {
+    _adCooldownTimer?.cancel();
+    _adCooldownTimer = null;
+    if (mounted) {
+      setState(() {
+        _adCooldownDuration = Duration.zero;
+      });
+    }
+  }
+  
   void _onEmailVerificationChanged() {
     if (mounted) {
       setState(() {});
@@ -105,9 +165,13 @@ class _CreditsPageState extends State<CreditsPage> {
     currentUserNotifier.removeListener(_onUserChanged);
     _adService.statusNotifier.removeListener(_onAdStatusChanged);
     _adService.isAdReadyNotifier.removeListener(_onAdReadyChanged);
+    _adService.cooldownNotifier.removeListener(_onCooldownChanged);
+    _adService.availabilityNotifier.removeListener(_onAdAvailabilityChanged);
     emailVerifiedNotifier.removeListener(_onEmailVerificationChanged);
+    _adService.stopPrefetching(); // Stop background prefetch when leaving page
     _spinCountdownTimer?.cancel();
     _adResetCountdownTimer?.cancel();
+    _adCooldownTimer?.cancel();
     super.dispose();
   }
   
@@ -235,9 +299,14 @@ class _CreditsPageState extends State<CreditsPage> {
           _startAdResetCountdownTimer(status.nextResetTime!);
         }
         
-        // Pre-load ad if eligible
-        if (status.canWatch) {
-          _adService.loadRewardedAd();
+        // Start cooldown timer if in cooldown
+        if (status.cooldownEndsAt != null && status.isInCooldown) {
+          _startAdCooldownTimer(status.cooldownEndsAt!);
+        }
+        
+        // Start prefetching if eligible
+        if (status.canWatchNow) {
+          _adService.startPrefetching();
         }
       }
     } catch (e) {
@@ -315,6 +384,12 @@ class _CreditsPageState extends State<CreditsPage> {
       return;
     }
     
+    // ⚠️ Check cooldown BEFORE loading/showing ad
+    if (_adService.isInCooldown) {
+      _showCooldownSnackbar();
+      return;
+    }
+    
     // Check if ad is ready
     if (!_adService.isAdReadyNotifier.value) {
       setState(() => _isShowingAd = true);
@@ -346,22 +421,29 @@ class _CreditsPageState extends State<CreditsPage> {
       }
     }
     
+    // Double-check cooldown right before showing (in case it expired while loading)
+    if (_adService.isInCooldown) {
+      _showCooldownSnackbar();
+      setState(() => _isShowingAd = false);
+      return;
+    }
+    
     setState(() => _isShowingAd = true);
     
     try {
       final creditsEarned = await _adService.showRewardedAd();
       
       if (mounted) {
-        if (creditsEarned != null && creditsEarned > 0) {
-          // Show success message with actual credits from server
+        // Refresh ad eligibility status FIRST to get updated adsWatchedToday
+        await _checkAdEligibility();
+        
+        if (creditsEarned != null && creditsEarned >= 0) {
+          // Show success/progress message (0 = progress, 1+ = earned)
           _showAdRewardDialog(creditsEarned);
         } else if (creditsEarned == -1) {
-          // Rate limited - show message to wait
-          _showRateLimitedSnackbar();
+          // Cooldown triggered (shouldn't happen with pre-check, but just in case)
+          _showCooldownSnackbar();
         }
-        
-        // Refresh ad eligibility status
-        await _checkAdEligibility();
       }
     } catch (e) {
       if (mounted) {
@@ -379,20 +461,23 @@ class _CreditsPageState extends State<CreditsPage> {
     }
   }
   
-  void _showRateLimitedSnackbar() {
+  void _showCooldownSnackbar() {
+    final remaining = _adService.remainingCooldown;
+    final seconds = remaining.inSeconds;
+    
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
           children: [
             const Icon(LucideIcons.clock, color: Colors.white, size: 20),
             const SizedBox(width: 12),
-            const Expanded(
-              child: Text('Please wait a moment before watching another ad'),
+            Expanded(
+              child: Text('Next ad available in ${seconds}s'),
             ),
           ],
         ),
         backgroundColor: Colors.orange.shade700,
-        duration: const Duration(seconds: 4),
+        duration: const Duration(seconds: 3),
         behavior: SnackBarBehavior.floating,
         margin: const EdgeInsets.all(16),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -400,8 +485,13 @@ class _CreditsPageState extends State<CreditsPage> {
     );
   }
   
+  
   void _showAdRewardDialog(int credits) {
     final cs = Theme.of(context).colorScheme;
+    
+    // credits = 0 means this was an odd ad (1st, 3rd, 5th...) - no credit earned yet
+    // credits > 0 means this was an even ad (2nd, 4th, 6th...) - credit was earned
+    final didEarnCredit = credits > 0;
     
     showDialog(
       context: context,
@@ -416,59 +506,108 @@ class _CreditsPageState extends State<CreditsPage> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                gradient: const LinearGradient(colors: KalaColors.brandGradient),
+                gradient: didEarnCredit 
+                    ? const LinearGradient(colors: KalaColors.brandGradient)
+                    : LinearGradient(colors: [Colors.blue.shade400, Colors.blue.shade600]),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(
-                LucideIcons.gift,
+              child: Icon(
+                didEarnCredit ? LucideIcons.gift : LucideIcons.checkCircle,
                 size: 40,
                 color: Colors.white,
               ),
             ),
             const SizedBox(height: 16),
-            Text(
-              'You earned',
-              style: TextStyle(
-                color: cs.onSurfaceVariant,
-                fontSize: 16,
+            if (didEarnCredit) ...[
+              // Earned credit message
+              Text(
+                'You earned',
+                style: TextStyle(
+                  color: cs.onSurfaceVariant,
+                  fontSize: 16,
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(LucideIcons.gem, size: 28, color: KalaColors.gold),
-                const SizedBox(width: 8),
-                ShaderMask(
-                  shaderCallback: (bounds) => const LinearGradient(
-                    colors: KalaColors.brandGradient,
-                  ).createShader(bounds),
-                  child: Text(
-                    '+$credits',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 36,
-                      fontWeight: FontWeight.bold,
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(LucideIcons.gem, size: 28, color: KalaColors.gold),
+                  const SizedBox(width: 8),
+                  ShaderMask(
+                    shaderCallback: (bounds) => const LinearGradient(
+                      colors: KalaColors.brandGradient,
+                    ).createShader(bounds),
+                    child: Text(
+                      '+$credits',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 36,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              credits == 1 ? 'Credit' : 'Credits',
-              style: TextStyle(
-                color: cs.onSurfaceVariant,
-                fontSize: 14,
+                ],
               ),
-            ),
+              const SizedBox(height: 4),
+              Text(
+                credits == 1 ? 'Credit' : 'Credits',
+                style: TextStyle(
+                  color: cs.onSurfaceVariant,
+                  fontSize: 14,
+                ),
+              ),
+            ] else ...[
+              // Progress message - watched 1 ad, need 1 more
+              Text(
+                'Ad watched!',
+                style: TextStyle(
+                  color: cs.onSurface,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 12),
+              // Visual progress: 1 filled, 1 empty
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: cs.primary,
+                    ),
+                    child: Icon(LucideIcons.check, size: 14, color: cs.onPrimary),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: cs.outline, width: 2),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                '1 more ad for 1 credit',
+                style: TextStyle(
+                  color: Colors.blue.shade600,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ],
         ),
         actions: [
           Center(
             child: GradientButton(
-              label: 'Thanks!',
-              icon: LucideIcons.check,
+              label: didEarnCredit ? 'Awesome!' : 'Got it',
+              icon: didEarnCredit ? LucideIcons.sparkles : LucideIcons.check,
               onPressed: () => Navigator.pop(context),
               variant: ButtonVariant.primary,
             ),
@@ -1121,10 +1260,13 @@ class _CreditsPageState extends State<CreditsPage> {
   Widget _buildWatchAdCard(ColorScheme cs) {
     final bool hasReachedLimit = _adStatus?.hasReachedLimit ?? false;
     final bool isLoading = _isCheckingAdEligibility || _isShowingAd;
-    final int creditsPerAd = _adStatus?.creditsPerAd ?? 1;
     final int earnedToday = _adStatus?.creditsEarnedToday ?? 0;
     final int dailyLimit = _adStatus?.dailyLimit ?? 30;
     final bool isDisabled = _needsEmailVerification;
+    final bool isInCooldown = _adCooldownDuration.inSeconds > 0;
+    final adAvailability = _adService.availabilityNotifier.value;
+    final bool isAdUnavailable = adAvailability == AdAvailability.unavailable;
+    final bool isAdLoading = adAvailability == AdAvailability.loading;
     
     return GestureDetector(
       onTap: isDisabled ? _showVerificationRequiredSheet : null,
@@ -1163,35 +1305,13 @@ class _CreditsPageState extends State<CreditsPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          Text(
-                            'Watch Ad',
-                            style: TextStyle(
-                              color: isDisabled ? cs.onSurfaceVariant : cs.onSurface,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 15,
-                            ),
-                          ),
-                          if (!hasReachedLimit && !isDisabled) ...[
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.green.withOpacity(0.15),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                '+$creditsPerAd',
-                                style: TextStyle(
-                                  color: Colors.green.shade600,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
+                      Text(
+                        'Watch Ad',
+                        style: TextStyle(
+                          color: isDisabled ? cs.onSurfaceVariant : cs.onSurface,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                        ),
                       ),
                       const SizedBox(height: 2),
                       if (isDisabled)
@@ -1226,14 +1346,38 @@ class _CreditsPageState extends State<CreditsPage> {
                             ),
                           ],
                         )
-                      else
-                        Text(
-                          '$earnedToday/$dailyLimit earned today',
-                          style: TextStyle(
-                            color: cs.onSurfaceVariant,
-                            fontSize: 13,
+                      else if (isInCooldown && _adStatus != null)
+                        // Show progress indicator during cooldown (timer is on button)
+                        _buildAdProgressIndicator(cs, _adStatus!)
+                      else if (isAdUnavailable)
+                        Row(
+                          children: [
+                            Icon(LucideIcons.alertCircle, size: 12, color: cs.error),
+                            const SizedBox(width: 4),
+                            Text(
+                              'No ads available',
+                              style: TextStyle(
+                                color: cs.error,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        )
+                      else ...[
+                        // Show progress toward next credit with visual indicator
+                        if (_adStatus != null && _adStatus!.adsRequiredForCredit == 2) ...[
+                          _buildAdProgressIndicator(cs, _adStatus!),
+                        ] else ...[
+                          Text(
+                            '$earnedToday/$dailyLimit credits earned today',
+                            style: TextStyle(
+                              color: cs.onSurfaceVariant,
+                              fontSize: 13,
+                            ),
                           ),
-                        ),
+                        ],
+                      ],
                     ],
                   ),
                 ),
@@ -1293,6 +1437,90 @@ class _CreditsPageState extends State<CreditsPage> {
                       ],
                     ),
                   )
+                // Show cooldown timer between ads
+                else if (isInCooldown)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade100.withOpacity(0.3),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange.shade300.withOpacity(0.5)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(LucideIcons.clock, size: 14, color: Colors.orange.shade700),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${_adCooldownDuration.inSeconds}s',
+                          style: TextStyle(
+                            color: Colors.orange.shade700,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                // Show when no ads available (low fill rate)
+                else if (isAdUnavailable)
+                  GestureDetector(
+                    onTap: () => _adService.forceRefreshAd(),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: cs.errorContainer.withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: cs.error.withOpacity(0.3)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(LucideIcons.refreshCw, size: 14, color: cs.error),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Retry',
+                            style: TextStyle(
+                              color: cs.error,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                // Show when ad is loading in background
+                else if (isAdLoading && !_adService.isAdReadyNotifier.value)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: cs.primaryContainer.withOpacity(0.3),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: cs.primary,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Loading...',
+                          style: TextStyle(
+                            color: cs.primary,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
                 else
                   GradientButton(
                     label: 'Watch',
@@ -1321,6 +1549,80 @@ class _CreditsPageState extends State<CreditsPage> {
           ],
         ),
       ),
+    );
+  }
+  
+  /// Build progress indicator showing ads watched toward next credit
+  Widget _buildAdProgressIndicator(ColorScheme cs, RewardedAdStatus status) {
+    final adsWatched = status.adsWatchedToday;
+    final adsRequired = status.adsRequiredForCredit;
+    final adsInCurrentCycle = adsWatched % adsRequired; // 0 or 1
+    final willEarnNext = adsInCurrentCycle == 1; // Next ad (2nd) will earn credit
+    final creditsEarned = status.creditsEarnedToday;
+    final dailyLimit = status.dailyLimit;
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Progress dots showing current cycle progress
+        Row(
+          children: [
+            // Circle 1 - filled if we've watched at least 1 ad in this cycle
+            Container(
+              width: 14,
+              height: 14,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: adsInCurrentCycle >= 1 ? cs.primary : cs.surfaceContainerHighest,
+                border: Border.all(
+                  color: adsInCurrentCycle >= 1 ? cs.primary : cs.outline.withOpacity(0.4),
+                  width: 1.5,
+                ),
+              ),
+              child: adsInCurrentCycle >= 1
+                  ? Icon(LucideIcons.check, size: 8, color: cs.onPrimary)
+                  : null,
+            ),
+            const SizedBox(width: 4),
+            // Circle 2 - always empty (resets after earning credit)
+            Container(
+              width: 14,
+              height: 14,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: cs.surfaceContainerHighest,
+                border: Border.all(
+                  color: cs.outline.withOpacity(0.4),
+                  width: 1.5,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            // Status text
+            Expanded(
+              child: Text(
+                willEarnNext
+                    ? 'Next ad = +1 credit!'
+                    : '2 ads = 1 credit',
+                style: TextStyle(
+                  color: willEarnNext ? Colors.amber.shade700 : cs.onSurfaceVariant,
+                  fontSize: 12,
+                  fontWeight: willEarnNext ? FontWeight.w600 : FontWeight.w400,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        // Credits earned today
+        Text(
+          '$creditsEarned/$dailyLimit credits today',
+          style: TextStyle(
+            color: cs.onSurfaceVariant.withOpacity(0.7),
+            fontSize: 11,
+          ),
+        ),
+      ],
     );
   }
 

@@ -1370,42 +1370,42 @@ class _GenericToolPageState extends State<GenericToolPage>
         borderRadius: BorderRadius.circular(14),
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
               color: _upscaleEnabled
                   ? cs.primary.withOpacity(0.4)
                   : cs.outlineVariant.withOpacity(0.3),
-            ),
-          ),
-          child: Row(
+                  ),
+                ),
+                child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
+                      children: [
+                        Icon(
                 LucideIcons.maximize2,
                 size: 16,
                 color: _upscaleEnabled ? cs.primary : cs.onSurfaceVariant,
-              ),
+                        ),
               const SizedBox(width: 6),
               Flexible(
                 child: Text(
-                  "Upscale",
+                          "Upscale",
                   style: TextStyle(
                     color: _upscaleEnabled ? cs.primary : cs.onSurfaceVariant,
-                    fontWeight: FontWeight.w500,
+                            fontWeight: FontWeight.w500,
                     fontSize: 13,
-                  ),
+                        ),
                   overflow: TextOverflow.ellipsis,
                 ),
-              ),
+                    ),
               if (_upscaleEnabled) ...[
                 const SizedBox(width: 4),
                 Icon(LucideIcons.check, size: 14, color: cs.primary),
               ],
-            ],
-          ),
-        ),
+                  ],
+                ),
+              ),
       ),
     );
   }
@@ -2187,7 +2187,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                 child: _buildElement(e),
               );
             }),
-          ],
+        ],
         ),
       ),
     );
