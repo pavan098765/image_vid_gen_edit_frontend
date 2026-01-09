@@ -45,6 +45,7 @@ class _ResultManagerPageState extends State<ResultManagerPage>
     _refreshJobs();
     _markAllCompletedAsSeen();
     _loadBannerPreference();
+    _prefetchDownloadUrls(); // Pre-fetch URLs in background
 
     SharedPreferences.getInstance().then((prefs) async {
       await prefs.reload();
@@ -55,6 +56,38 @@ class _ResultManagerPageState extends State<ResultManagerPage>
         _searchQuery = _searchController.text.toLowerCase();
       });
     });
+  }
+  
+  /// Pre-fetch download URLs for completed jobs in background
+  /// This reduces network calls when users click download buttons
+  Future<void> _prefetchDownloadUrls() async {
+    try {
+      final jobs = jobListNotifier.value;
+      final completedJobs = jobs
+          .where((j) => j.status == 'completed' && !j.isSavedLocally)
+          .take(10) // Limit to first 10 unsaved jobs
+          .toList();
+      
+      if (completedJobs.isEmpty) return;
+      
+      debugPrint('🔄 Pre-fetching URLs for ${completedJobs.length} completed jobs...');
+      
+      // Fetch URLs in parallel with a small delay between each
+      for (final job in completedJobs) {
+        // Don't block - fire and forget
+        PollingService.getValidDownloadUrl(job.jobId).then((url) {
+          if (url != null && url.isNotEmpty && url != job.downloadUrl) {
+            job.downloadUrl = url;
+            addOrUpdateJob(job);
+          }
+        }).catchError((_) {});
+        
+        // Small delay to avoid overwhelming the server
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
+    } catch (e) {
+      debugPrint('⚠️ Error pre-fetching URLs: $e');
+    }
   }
   
   Future<void> _loadBannerPreference() async {
@@ -716,6 +749,19 @@ class _JobCardState extends State<JobCard> {
       if (success) return;
     }
 
+    // Check queue status before starting
+    if (FileService.pendingDownloads >= 8) {
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Too many downloads queued. Please wait.'),
+          duration: Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
     setState(() {
       _isDownloading = true;
       _downloadProgress = 0.0;
@@ -728,18 +774,34 @@ class _JobCardState extends State<JobCard> {
       String? downloadUrl;
       
       try {
-        if (attempt == 1) {
-          // First attempt: try cached URL if still valid
-          downloadUrl = await PollingService.getValidDownloadUrl(widget.job.jobId);
+        // First, check if job already has a valid cached URL in memory (from FCM notification)
+        if (attempt == 1 && widget.job.downloadUrl != null && widget.job.downloadUrl!.isNotEmpty) {
+          // Quick check if URL looks valid (has exp parameter and not too old)
+          if (PollingService.isSignedUrlValid(widget.job.downloadUrl, minRemainingSeconds: 60)) {
+            downloadUrl = widget.job.downloadUrl;
+            debugPrint('✅ Using job\'s cached signed URL directly (from FCM) - NO API call');
+          } else {
+            debugPrint('⏰ Job URL expired or invalid, will fetch fresh one');
+          }
         }
         
-        // If no valid cached URL or this is a retry, force refresh
+        // If no valid URL from job, try SharedPreferences cache
         if (downloadUrl == null || downloadUrl.isEmpty) {
-          debugPrint('🔄 Fetching fresh download URL (attempt $attempt)...');
-          downloadUrl = await PollingService.refreshDownloadUrl(widget.job.jobId);
+          if (attempt == 1) {
+            debugPrint('🔍 Checking SharedPreferences cache for URL...');
+            downloadUrl = await PollingService.getValidDownloadUrl(widget.job.jobId);
+            if (downloadUrl != null) {
+              debugPrint('✅ Found valid URL in SharedPreferences cache');
+            }
+          } else {
+            // Force refresh on second attempt
+            debugPrint('🔄 Force refreshing download URL from server...');
+            downloadUrl = await PollingService.refreshDownloadUrl(widget.job.jobId);
+          }
         }
         
-        if (downloadUrl != null && downloadUrl.isNotEmpty) {
+        // Update job with new URL if we got one
+        if (downloadUrl != null && downloadUrl.isNotEmpty && downloadUrl != widget.job.downloadUrl) {
           widget.job.downloadUrl = downloadUrl;
           await addOrUpdateJob(widget.job);
         }
@@ -755,12 +817,7 @@ class _JobCardState extends State<JobCard> {
               _isDownloading = false;
               _downloadProgress = 0.0;
             });
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Could not get download URL. Please try again later.'),
-                duration: Duration(seconds: 3),
-              ),
-            );
+            // Don't spam snackbars - FileService handles this
           }
           return;
         }
@@ -796,7 +853,7 @@ class _JobCardState extends State<JobCard> {
         // Clear cached URL so next attempt fetches fresh one
         widget.job.downloadUrl = null;
         await addOrUpdateJob(widget.job);
-        await Future.delayed(const Duration(milliseconds: 500));
+        await Future.delayed(const Duration(milliseconds: 300));
       }
     }
 
@@ -816,15 +873,8 @@ class _JobCardState extends State<JobCard> {
       await saveJobsToPrefs();
 
       jobListNotifier.value = List<JobModel>.from(jobListNotifier.value);
-    } else if (mounted) {
-      // Download failed after all retries
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Download failed. The URL may have expired. Refreshing...'),
-          duration: Duration(seconds: 2),
-        ),
-      );
     }
+    // Note: Error snackbars are handled by FileService with debouncing
 
     if (mounted) {
       setState(() {
@@ -894,10 +944,7 @@ class _JobCardState extends State<JobCard> {
                         onChanged: (_) => widget.onTap?.call(),
                         activeColor: cs.primary,
                       )
-                    : ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: _buildThumbnail(cs),
-                      ),
+                    : _buildThumbnail(cs),
 
                 // ✅ Title
                 title: Text(
@@ -973,31 +1020,85 @@ class _JobCardState extends State<JobCard> {
 
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 350),
-      child: fileExists
-          ? CachedThumbnail(
-              key: ValueKey(widget.job.localFilePath),
-              filePath: widget.job.localFilePath,
-              width: 52,
-              height: 52,
-              fit: BoxFit.cover,
-              thumbnailSize: 150, // Generate 150px thumbnails for crisp display
-              placeholder: Container(
-                width: 52,
-                height: 52,
-                color: cs.surfaceContainerHigh,
-                child: Center(
-                  child: SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: cs.primary.withOpacity(0.5),
+      child: Container(
+        width: 58,
+        height: 58,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: cs.outline.withOpacity(0.15),
+            width: 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.08),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(11),
+          child: fileExists
+              ? Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    CachedThumbnail(
+                      key: ValueKey(widget.job.localFilePath),
+                      filePath: widget.job.localFilePath,
+                      width: 58,
+                      height: 58,
+                      fit: BoxFit.cover,
+                      thumbnailSize: 150, // Generate 150px thumbnails for crisp display
+                      placeholder: _buildLoadingPlaceholder(cs),
                     ),
-                  ),
-                ),
-              ),
-            )
-          : _buildBlurOrPlaceholder(cs),
+                    // Subtle gradient overlay for depth
+                    Positioned.fill(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.transparent,
+                              Colors.black.withOpacity(0.05),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              : _buildBlurOrPlaceholder(cs),
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildLoadingPlaceholder(ColorScheme cs) {
+    return Container(
+      width: 58,
+      height: 58,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            cs.surfaceContainerHigh,
+            cs.surfaceContainerHighest,
+          ],
+        ),
+      ),
+      child: Center(
+        child: SizedBox(
+          width: 18,
+          height: 18,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: cs.primary.withOpacity(0.5),
+          ),
+        ),
+      ),
     );
   }
 
@@ -1010,18 +1111,23 @@ class _JobCardState extends State<JobCard> {
         inputExists) {
       return Stack(
         key: const ValueKey('blurred'),
+        fit: StackFit.expand,
         children: [
           ImageFiltered(
             imageFilter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
             child: Image.file(
               File(job.inputImagePath!),
-              width: 52,
-              height: 52,
+              width: 58,
+              height: 58,
               fit: BoxFit.cover,
               // Use cacheWidth/cacheHeight to prevent loading full res for blur
-              cacheWidth: 104, // 2x display size for retina
-              cacheHeight: 104,
+              cacheWidth: 116, // 2x display size for retina
+              cacheHeight: 116,
             ),
+          ),
+          // Subtle dark overlay for better visual
+          Container(
+            color: Colors.black.withOpacity(0.1),
           ),
           if (job.status == 'processing')
             Positioned.fill(
@@ -1031,17 +1137,63 @@ class _JobCardState extends State<JobCard> {
                 child: Container(color: cs.primary.withOpacity(0.10)),
               ),
             ),
+          // Processing indicator in center
+          if (job.status == 'processing')
+            Center(
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: cs.surface.withOpacity(0.85),
+                  shape: BoxShape.circle,
+                ),
+                child: SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: cs.primary,
+                  ),
+                ),
+              ),
+            ),
         ],
       );
     }
 
+    // Default placeholder with icon
     return Container(
       key: const ValueKey('placeholder'),
-      width: 52,
-      height: 52,
-      color: cs.surfaceContainerHighest,
-      child: Icon(Icons.image, color: cs.onSurfaceVariant),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            cs.surfaceContainerHigh,
+            cs.surfaceContainerHighest,
+          ],
+        ),
+      ),
+      child: Center(
+        child: Icon(
+          _getPlaceholderIcon(job.model),
+          color: cs.onSurfaceVariant.withOpacity(0.4),
+          size: 24,
+        ),
+      ),
     );
+  }
+  
+  // Get appropriate icon based on job type
+  IconData _getPlaceholderIcon(String model) {
+    final modelLower = model.toLowerCase();
+    if (modelLower.contains('video') || modelLower.contains('animate')) {
+      return Icons.videocam_rounded;
+    } else if (modelLower.contains('upscale') || modelLower.contains('enhance')) {
+      return Icons.auto_awesome;
+    } else if (modelLower.contains('remove') || modelLower.contains('erase')) {
+      return Icons.auto_fix_high;
+    }
+    return Icons.image_rounded;
   }
 
   // ✅ Status widget (includes DOWNLOADING state)

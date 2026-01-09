@@ -89,6 +89,7 @@ Future<void> _mergeAndPersistJobMap(Map<String, dynamic> jobMap) async {
 
     if (downloadUrl.isNotEmpty) {
       await prefs.setString('pending_download_url_$jobId', downloadUrl);
+      debugPrint('📥 [FCM] Cached signed URL for $jobId (valid for ~1hr)');
     }
 
     await prefs.setString('jobs', jsonEncode(existing));
@@ -245,19 +246,48 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     // persist per-job download url key too (prevents global clobber)
     if (downloadUrl.isNotEmpty) {
       await prefs.setString('pending_download_url_$jobId', downloadUrl);
+      debugPrint('📥 [FCM Background] Cached signed URL for $jobId (valid for ~1hr)');
     }
 
     await prefs.setString('jobs', jsonEncode(existing));
     await prefs.setBool('has_fcm_update', true);
 
     // 🔔 Local notification for visibility
+    String notifTitle;
+    String notifBody;
+    
+    // Check if server notification is valid (not generic/empty)
+    final serverTitle = message.notification?.title ?? '';
+    final serverBody = message.notification?.body ?? '';
+    final isServerNotifValid = serverTitle.isNotEmpty && 
+        !serverTitle.contains('Job Update') && 
+        serverBody.isNotEmpty && 
+        !serverBody.endsWith(':') &&
+        !serverBody.contains('Job status:');
+    
+    if (isServerNotifValid) {
+      notifTitle = serverTitle;
+    } else if (normalizedStatus == 'completed') {
+      notifTitle = 'Result ready ✨';
+    } else if (normalizedStatus == 'failed') {
+      notifTitle = 'Job failed';
+    } else {
+      notifTitle = 'Processing...';
+    }
+    
+    if (isServerNotifValid) {
+      notifBody = message.notification!.body!;
+    } else if (normalizedStatus == 'completed') {
+      notifBody = 'Your AI result is ready — tap to view.';
+    } else if (normalizedStatus == 'failed') {
+      notifBody = 'Something went wrong. Please try again.';
+    } else {
+      notifBody = 'Your job is being processed...';
+    }
+    
     await NotificationService.showNotification(
-      title: message.notification?.title ??
-          (normalizedStatus == 'completed' ? 'Result ready' : 'Job update'),
-      body: message.notification?.body ??
-          (normalizedStatus == 'completed'
-              ? 'Tap to view your result'
-              : 'Job status updated'),
+      title: notifTitle,
+      body: notifBody,
       payload: jobId,
     );
   } catch (e, st) {
@@ -346,12 +376,38 @@ Future<void> initializeApp() async {
       });
     }
 
-    final notifTitle = message.notification?.title ??
-        (status == 'completed' ? 'Result ready' : 'Job update');
-    final notifBody = message.notification?.body ??
-        (status == 'completed'
-            ? 'Your AI result is ready — tap to view.'
-            : 'Job status: $status');
+    // Use normalizedStatus for notification content (not raw status which might be empty)
+    // Also check if server notification is valid (not generic/incomplete)
+    String notifTitle;
+    String notifBody;
+    
+    final serverTitle = message.notification?.title ?? '';
+    final serverBody = message.notification?.body ?? '';
+    final isServerNotifValid = serverTitle.isNotEmpty && 
+        !serverTitle.contains('Job Update') && 
+        serverBody.isNotEmpty && 
+        !serverBody.endsWith(':') &&
+        !serverBody.contains('Job status:');
+    
+    if (isServerNotifValid) {
+      notifTitle = serverTitle;
+    } else if (normalizedStatus == 'completed') {
+      notifTitle = 'Result ready ✨';
+    } else if (normalizedStatus == 'failed') {
+      notifTitle = 'Job failed';
+    } else {
+      notifTitle = 'Processing...';
+    }
+    
+    if (isServerNotifValid) {
+      notifBody = serverBody;
+    } else if (normalizedStatus == 'completed') {
+      notifBody = 'Your AI result is ready — tap to view.';
+    } else if (normalizedStatus == 'failed') {
+      notifBody = 'Something went wrong. Please try again.';
+    } else {
+      notifBody = 'Your job is being processed...';
+    }
 
     await NotificationService.showNotification(
       title: notifTitle,
