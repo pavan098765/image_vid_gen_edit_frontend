@@ -12,6 +12,7 @@ import 'package:crypto/crypto.dart';
 import 'package:uuid/uuid.dart';
 import 'package:gal/gal.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:video_player/video_player.dart';
 
 class FileService {
   static bool _isSaving = false;
@@ -341,6 +342,88 @@ class FileService {
     });
   }
 
+  /// 🖼️ Displays media preview with optional swipe navigation
+  /// Supports both images and videos
+  static void _showMediaPreviewDialog(
+    BuildContext context,
+    String filePath, {
+    List<String>? allPaths,
+    int currentIndex = 0,
+  }) {
+    if (!File(filePath).existsSync()) {
+      debugPrint("⚠️ File not found for preview: $filePath");
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('File not found.')));
+      return;
+    }
+
+    if (_isPreviewOpen) return; // 🚫 prevent double openings
+    _isPreviewOpen = true;
+
+    // Filter allPaths to only include existing files
+    final List<String> validPaths = allPaths?.where((p) => File(p).existsSync()).toList() ?? [];
+    final hasMultiple = validPaths.length > 1;
+    
+    // Recalculate current index if paths were filtered
+    int adjustedIndex = currentIndex;
+    if (hasMultiple && allPaths != null && allPaths.isNotEmpty) {
+      final originalPath = allPaths.length > currentIndex ? allPaths[currentIndex] : filePath;
+      adjustedIndex = validPaths.indexOf(originalPath);
+      if (adjustedIndex < 0) adjustedIndex = 0;
+    }
+
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: false, // ⛔ no tap-outside close
+      barrierColor: Colors.transparent,
+      transitionDuration: const Duration(milliseconds: 300),
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        return FadeTransition(
+          opacity: CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+          ),
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.92, end: 1.0).animate(
+              CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeOutCubic,
+              ),
+            ),
+            child: child,
+          ),
+        );
+      },
+      pageBuilder: (_, __, ___) {
+        return WillPopScope(
+          onWillPop: () async {
+            _isPreviewOpen = false;
+            return true;
+          },
+          child: hasMultiple
+              ? _SwipeableMediaPreview(
+                  filePaths: validPaths,
+                  initialIndex: adjustedIndex,
+                  onClose: () {
+                    _isPreviewOpen = false;
+                    Navigator.of(context, rootNavigator: true).pop();
+                  },
+                )
+              : _ProgressiveImagePreview(
+                  filePath: filePath,
+                  onClose: () {
+                    _isPreviewOpen = false;
+                    Navigator.of(context, rootNavigator: true).pop();
+                  },
+                ),
+        );
+      },
+    ).then((_) {
+      // Ensure flag resets even if system back triggered
+      _isPreviewOpen = false;
+    });
+  }
+
   static Future<void> previewFile(BuildContext context, String url,
       {required String uniqueKey}) async {
     try {
@@ -456,10 +539,15 @@ class FileService {
   }
 
   // ✅ Opens an already-downloaded file like preview
+  /// [path] - The current file to preview
+  /// [allPaths] - Optional list of all file paths for swipe navigation
+  /// [currentIndex] - Index of current file in allPaths
   static Future<void> openLocalPreview(
     BuildContext context,
-    String path,
-  ) async {
+    String path, {
+    List<String>? allPaths,
+    int currentIndex = 0,
+  }) async {
     if (!File(path).existsSync()) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("File not found")),
@@ -467,7 +555,7 @@ class FileService {
       return;
     }
 
-    _showImageDialog(context, path);
+    _showMediaPreviewDialog(context, path, allPaths: allPaths, currentIndex: currentIndex);
   }
 
   static String generateTimestampFilename(String prefix, String ext) {
@@ -1181,18 +1269,12 @@ class _ProgressiveImagePreviewState extends State<_ProgressiveImagePreview>
                   ),
                   child: Row(
                     children: [
-                      // Close button with pill background
+                      const Spacer(),
+                      // Close button on top right
                       _buildActionButton(
                         icon: Icons.close_rounded,
                         onTap: widget.onClose,
                         tooltip: 'Close',
-                      ),
-                      const Spacer(),
-                      // Save to gallery button
-                      _buildActionButton(
-                        icon: Icons.save_alt_rounded,
-                        onTap: () => _saveToGallery(context),
-                        tooltip: 'Save to Gallery',
                       ),
                     ],
                   ),
@@ -1356,42 +1438,6 @@ class _ProgressiveImagePreviewState extends State<_ProgressiveImagePreview>
       ],
     );
   }
-  
-  Future<void> _saveToGallery(BuildContext context) async {
-    try {
-      final saved = await FileService.saveExistingToGallery(
-        context,
-        widget.filePath,
-      );
-      if (saved && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Row(
-              children: [
-                Icon(Icons.check_circle, color: Colors.white, size: 20),
-                SizedBox(width: 12),
-                Text('Saved to gallery'),
-              ],
-            ),
-            backgroundColor: Colors.green.shade700,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            margin: const EdgeInsets.all(16),
-          ),
-        );
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Failed to save'),
-            backgroundColor: Colors.red.shade700,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    }
-  }
 
   Widget _buildImage() {
     final file = File(widget.filePath);
@@ -1536,6 +1582,535 @@ class _ProgressiveImagePreviewState extends State<_ProgressiveImagePreview>
           ],
         );
       },
+    );
+  }
+}
+
+/// Swipeable media preview widget for navigating between multiple downloaded results
+class _SwipeableMediaPreview extends StatefulWidget {
+  final List<String> filePaths;
+  final int initialIndex;
+  final VoidCallback onClose;
+
+  const _SwipeableMediaPreview({
+    required this.filePaths,
+    required this.initialIndex,
+    required this.onClose,
+  });
+
+  @override
+  State<_SwipeableMediaPreview> createState() => _SwipeableMediaPreviewState();
+}
+
+class _SwipeableMediaPreviewState extends State<_SwipeableMediaPreview>
+    with SingleTickerProviderStateMixin {
+  late PageController _pageController;
+  late int _currentIndex;
+  bool _showControls = true;
+  
+  late AnimationController _controlsAnimController;
+  late Animation<double> _controlsAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex;
+    _pageController = PageController(initialPage: widget.initialIndex);
+    
+    _controlsAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+      value: 1.0,
+    );
+    _controlsAnimation = CurvedAnimation(
+      parent: _controlsAnimController,
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    _controlsAnimController.dispose();
+    super.dispose();
+  }
+
+  void _toggleControls() {
+    setState(() {
+      _showControls = !_showControls;
+      if (_showControls) {
+        _controlsAnimController.forward();
+      } else {
+        _controlsAnimController.reverse();
+      }
+    });
+  }
+
+  bool _isVideo(String path) {
+    final lower = path.toLowerCase();
+    return lower.endsWith('.mp4') || 
+           lower.endsWith('.mov') || 
+           lower.endsWith('.avi') ||
+           lower.endsWith('.webm');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final topPadding = MediaQuery.of(context).padding.top;
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+    
+    return Material(
+      color: Colors.transparent,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // 🌌 Gradient background
+          Container(
+            decoration: BoxDecoration(
+              gradient: RadialGradient(
+                center: Alignment.center,
+                radius: 1.2,
+                colors: [
+                  const Color(0xFF1a1a2e),
+                  const Color(0xFF0d0d14),
+                  Colors.black,
+                ],
+                stops: const [0.0, 0.6, 1.0],
+              ),
+            ),
+          ),
+          
+          // 🖼️ PageView for swipe navigation
+          GestureDetector(
+            onTap: _toggleControls,
+            child: PageView.builder(
+              controller: _pageController,
+              itemCount: widget.filePaths.length,
+              onPageChanged: (index) {
+                setState(() => _currentIndex = index);
+              },
+              itemBuilder: (context, index) {
+                final path = widget.filePaths[index];
+                if (_isVideo(path)) {
+                  return _VideoPreviewItem(filePath: path);
+                } else {
+                  return _ImagePreviewItem(filePath: path);
+                }
+              },
+            ),
+          ),
+
+          // 🔝 Top action bar with frosted glass effect
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: FadeTransition(
+              opacity: _controlsAnimation,
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0, -1),
+                  end: Offset.zero,
+                ).animate(_controlsAnimation),
+                child: Container(
+                  padding: EdgeInsets.only(
+                    top: topPadding + 8,
+                    left: 16,
+                    right: 8,
+                    bottom: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black.withOpacity(0.7),
+                        Colors.black.withOpacity(0.4),
+                        Colors.transparent,
+                      ],
+                      stops: const [0.0, 0.7, 1.0],
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      // Page indicator
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Text(
+                          '${_currentIndex + 1} / ${widget.filePaths.length}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      const Spacer(),
+                      // Close button on top right
+                      _buildActionButton(
+                        icon: Icons.close_rounded,
+                        onTap: widget.onClose,
+                        tooltip: 'Close',
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          
+          // 📍 Page dots indicator at bottom
+          Positioned(
+            bottom: bottomPadding + 16,
+            left: 0,
+            right: 0,
+            child: FadeTransition(
+              opacity: _controlsAnimation,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Left arrow
+                      if (_currentIndex > 0)
+                        GestureDetector(
+                          onTap: () {
+                            _pageController.previousPage(
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.easeOutCubic,
+                            );
+                          },
+                          child: const Padding(
+                            padding: EdgeInsets.only(right: 12),
+                            child: Icon(
+                              Icons.chevron_left_rounded,
+                              color: Colors.white70,
+                              size: 24,
+                            ),
+                          ),
+                        ),
+                      // Dots
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: List.generate(
+                          widget.filePaths.length.clamp(0, 10), // Max 10 dots
+                          (index) {
+                            final isActive = index == _currentIndex;
+                            final showDots = widget.filePaths.length <= 10 ||
+                                (index >= _currentIndex - 4 && index <= _currentIndex + 4);
+                            if (!showDots && widget.filePaths.length > 10) {
+                              if (index == 0 || index == widget.filePaths.length - 1) {
+                                return Container(
+                                  width: 6,
+                                  height: 6,
+                                  margin: const EdgeInsets.symmetric(horizontal: 3),
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: Colors.white.withOpacity(0.3),
+                                  ),
+                                );
+                              }
+                              return const SizedBox.shrink();
+                            }
+                            return AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              width: isActive ? 20 : 8,
+                              height: 8,
+                              margin: const EdgeInsets.symmetric(horizontal: 3),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(4),
+                                color: isActive
+                                    ? Colors.white
+                                    : Colors.white.withOpacity(0.4),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      // Right arrow
+                      if (_currentIndex < widget.filePaths.length - 1)
+                        GestureDetector(
+                          onTap: () {
+                            _pageController.nextPage(
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.easeOutCubic,
+                            );
+                          },
+                          child: const Padding(
+                            padding: EdgeInsets.only(left: 12),
+                            child: Icon(
+                              Icons.chevron_right_rounded,
+                              color: Colors.white70,
+                              size: 24,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          
+          // Swipe hint
+          if (_showControls && widget.filePaths.length > 1)
+            Positioned(
+              bottom: bottomPadding + 80,
+              left: 0,
+              right: 0,
+              child: FadeTransition(
+                opacity: _controlsAnimation,
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.black38,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Text(
+                      'Swipe to browse • Pinch to zoom',
+                      style: TextStyle(
+                        color: Colors.white54,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionButton({
+    required IconData icon,
+    required VoidCallback onTap,
+    required String tooltip,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(24),
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: Colors.white.withOpacity(0.1),
+                width: 1,
+              ),
+            ),
+            child: Icon(
+              icon,
+              color: Colors.white,
+              size: 24,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Individual image preview item for PageView
+class _ImagePreviewItem extends StatefulWidget {
+  final String filePath;
+
+  const _ImagePreviewItem({required this.filePath});
+
+  @override
+  State<_ImagePreviewItem> createState() => _ImagePreviewItemState();
+}
+
+class _ImagePreviewItemState extends State<_ImagePreviewItem> {
+  int? _cacheWidth;
+  int? _cacheHeight;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final size = MediaQuery.of(context).size;
+    final dpr = MediaQuery.of(context).devicePixelRatio;
+    
+    if (AppSettings.highQualityPreviews) {
+      _cacheWidth = (size.width * dpr * 1.5).toInt().clamp(0, 4096);
+      _cacheHeight = (size.height * dpr * 1.5).toInt().clamp(0, 4096);
+    } else {
+      _cacheWidth = (size.width * dpr).toInt().clamp(0, 2048);
+      _cacheHeight = (size.height * dpr).toInt().clamp(0, 2048);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final file = File(widget.filePath);
+    
+    if (!file.existsSync()) {
+      return const Center(
+        child: Icon(
+          Icons.broken_image_rounded,
+          color: Colors.white38,
+          size: 48,
+        ),
+      );
+    }
+
+    return Center(
+      child: InteractiveViewer(
+        maxScale: 5,
+        minScale: 0.7,
+        child: Image.file(
+          file,
+          fit: BoxFit.contain,
+          cacheWidth: _cacheWidth,
+          cacheHeight: _cacheHeight,
+          filterQuality: FilterQuality.medium,
+          gaplessPlayback: true,
+          errorBuilder: (context, error, stackTrace) {
+            return const Center(
+              child: Icon(
+                Icons.error_outline_rounded,
+                color: Colors.red,
+                size: 48,
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+/// Individual video preview item for PageView
+class _VideoPreviewItem extends StatefulWidget {
+  final String filePath;
+
+  const _VideoPreviewItem({required this.filePath});
+
+  @override
+  State<_VideoPreviewItem> createState() => _VideoPreviewItemState();
+}
+
+class _VideoPreviewItemState extends State<_VideoPreviewItem> {
+  VideoPlayerController? _controller;
+  bool _isInitialized = false;
+  bool _isPlaying = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeVideo();
+  }
+
+  Future<void> _initializeVideo() async {
+    try {
+      final file = File(widget.filePath);
+      if (!file.existsSync()) return;
+
+      _controller = VideoPlayerController.file(file);
+      await _controller!.initialize();
+      await _controller!.setLooping(true);
+      
+      if (mounted) {
+        setState(() => _isInitialized = true);
+      }
+    } catch (e) {
+      debugPrint('❌ Failed to initialize video: $e');
+    }
+  }
+
+  void _togglePlayPause() {
+    if (_controller == null || !_isInitialized) return;
+
+    setState(() {
+      if (_controller!.value.isPlaying) {
+        _controller!.pause();
+        _isPlaying = false;
+      } else {
+        _controller!.play();
+        _isPlaying = true;
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_isInitialized) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.black45,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const CircularProgressIndicator(
+                color: Colors.white70,
+                strokeWidth: 3,
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Loading video...',
+              style: TextStyle(color: Colors.white54, fontSize: 14),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Center(
+      child: GestureDetector(
+        onTap: _togglePlayPause,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            AspectRatio(
+              aspectRatio: _controller!.value.aspectRatio,
+              child: VideoPlayer(_controller!),
+            ),
+            // Play/Pause overlay
+            AnimatedOpacity(
+              opacity: !_isPlaying ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 200),
+              child: Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.5),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                  color: Colors.white,
+                  size: 48,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

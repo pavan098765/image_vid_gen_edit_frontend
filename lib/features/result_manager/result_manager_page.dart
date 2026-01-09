@@ -727,9 +727,28 @@ class _JobCardState extends State<JobCard> {
         }
       }
 
-      // File exists locally, open preview
+      // File exists locally, open preview with swipe navigation
       if (context.mounted) {
-        FileService.openLocalPreview(context, path);
+        // Get all downloaded file paths for swipe navigation
+        final allJobs = jobListNotifier.value;
+        final downloadedPaths = <String>[];
+        int currentIndex = 0;
+        
+        for (final job in allJobs) {
+          if (job.localFilePath != null && File(job.localFilePath!).existsSync()) {
+            if (job.jobId == widget.job.jobId) {
+              currentIndex = downloadedPaths.length;
+            }
+            downloadedPaths.add(job.localFilePath!);
+          }
+        }
+        
+        FileService.openLocalPreview(
+          context,
+          path,
+          allPaths: downloadedPaths.length > 1 ? downloadedPaths : null,
+          currentIndex: currentIndex,
+        );
       }
     } finally {
       _openingPreview = false;
@@ -1204,15 +1223,6 @@ class _JobCardState extends State<JobCard> {
       return Row(
         key: const ValueKey('processing'),
         children: [
-          SizedBox(
-            height: 16,
-            width: 16,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: cs.primary,
-            ),
-          ),
-          const SizedBox(width: 10),
           Text(
             "PROCESSING…",
             style: TextStyle(
@@ -1229,15 +1239,6 @@ class _JobCardState extends State<JobCard> {
       return Row(
         key: const ValueKey('downloading'),
         children: [
-          SizedBox(
-            height: 16,
-            width: 16,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: cs.primary,
-            ),
-          ),
-          const SizedBox(width: 10),
           Text(
             "DOWNLOADING…",
             style: TextStyle(
