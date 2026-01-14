@@ -80,6 +80,45 @@ class AppTabs {
   static const int settings = 4;
 }
 
+/// Represents a single variation result from the backend
+class VariationResult {
+  final int variationIndex;
+  final String status; // 'queued', 'running', 'completed', 'failed'
+  final String? resultUrl;
+  final String? error;
+  String? localFilePath; // Local file path for saved variation
+
+  VariationResult({
+    required this.variationIndex,
+    required this.status,
+    this.resultUrl,
+    this.error,
+    this.localFilePath,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'variationIndex': variationIndex,
+    'status': status,
+    'resultUrl': resultUrl,
+    'error': error,
+    'localFilePath': localFilePath,
+  };
+
+  factory VariationResult.fromJson(Map<String, dynamic> json) {
+    return VariationResult(
+      variationIndex: json['variationIndex'] ?? json['variation_index'] ?? 0,
+      status: json['status'] ?? 'queued',
+      resultUrl: json['resultUrl'] ?? json['result_url'],
+      error: json['error'],
+      localFilePath: json['localFilePath'],
+    );
+  }
+
+  bool get isCompleted => status == 'completed' && resultUrl != null;
+  bool get isFailed => status == 'failed';
+  bool get isSavedLocally => localFilePath != null && File(localFilePath!).existsSync();
+}
+
 /// Represents an AI job (image/video generation, etc.)
 class JobModel {
   final String jobId;
@@ -91,6 +130,16 @@ class JobModel {
   DateTime createdAt;
   String? localFilePath; // store preview/download file path
   String? inputImagePath;
+  
+  // NEW: Variation support
+  int variations; // Number of variations requested (1-4)
+  List<VariationResult>? variationResults; // Individual variation results
+  bool allCompleted; // True when all variations finished
+  
+  // NEW: Enhanced prompt support
+  String? enhancedPrompt; // The AI-enhanced prompt (if enhancement was enabled)
+  bool promptEnhanced; // Whether prompt was enhanced by AI
+  String? originalPrompt; // Original user prompt (for comparison)
 
   /// Cloud results expire after 24 hours
   static const int cloudExpiryHours = 24;
@@ -105,6 +154,12 @@ class JobModel {
     DateTime? createdAt,
     this.localFilePath,
     this.inputImagePath,
+    this.variations = 1,
+    this.variationResults,
+    this.allCompleted = false,
+    this.enhancedPrompt,
+    this.promptEnhanced = false,
+    this.originalPrompt,
   }) : createdAt = createdAt ?? DateTime.now();
 
   /// Check if the cloud result has expired (>24 hours old)
@@ -149,6 +204,12 @@ class JobModel {
         'createdAt': createdAt.toIso8601String(),
         'localFilePath': localFilePath,
         'inputImagePath': inputImagePath,
+        'variations': variations,
+        'variationResults': variationResults?.map((v) => v.toJson()).toList(),
+        'allCompleted': allCompleted,
+        'enhancedPrompt': enhancedPrompt,
+        'promptEnhanced': promptEnhanced,
+        'originalPrompt': originalPrompt,
       };
 
   factory JobModel.fromJson(Map<String, dynamic> json) {
@@ -157,18 +218,65 @@ class JobModel {
     // Only allow 3 states
     const allowed = ['processing', 'completed', 'failed'];
     if (!allowed.contains(rawStatus)) rawStatus = 'processing';
+    
+    // Parse variation results if present
+    List<VariationResult>? variationResults;
+    if (json['variationResults'] != null || json['variation_results'] != null) {
+      final resultsList = json['variationResults'] ?? json['variation_results'];
+      if (resultsList is List) {
+        variationResults = resultsList
+            .map((v) => VariationResult.fromJson(Map<String, dynamic>.from(v)))
+            .toList();
+      }
+    }
 
     return JobModel(
-      jobId: json['jobId'],
-      title: json['title'],
-      model: json['model'],
-      outputType: json['outputType'],
-      downloadUrl: json['downloadUrl'],
+      jobId: json['jobId'] ?? json['job_id'],
+      title: json['title'] ?? 'Untitled',
+      model: json['model'] ?? 'unknown',
+      outputType: json['outputType'] ?? json['output_type'] ?? 'image',
+      downloadUrl: json['downloadUrl'] ?? json['download_url'],
       status: rawStatus,
-      createdAt: DateTime.tryParse(json['createdAt'] ?? '') ?? DateTime.now(),
-      localFilePath: json['localFilePath'], // ✅ restore saved preview path
+      createdAt: DateTime.tryParse(json['createdAt'] ?? json['created_at'] ?? '') ?? DateTime.now(),
+      localFilePath: json['localFilePath'],
       inputImagePath: json['inputImagePath'] as String?,
+      variations: json['variations'] ?? 1,
+      variationResults: variationResults,
+      allCompleted: json['allCompleted'] ?? json['all_completed'] ?? false,
+      enhancedPrompt: json['enhancedPrompt'] ?? json['enhanced_prompt'],
+      promptEnhanced: json['promptEnhanced'] ?? json['prompt_enhanced'] ?? false,
+      originalPrompt: json['originalPrompt'] ?? json['original_prompt'],
     );
+  }
+  
+  /// Get the count of successful variations
+  int get successfulVariationsCount {
+    if (variationResults == null || variationResults!.isEmpty) {
+      return status == 'completed' ? 1 : 0;
+    }
+    return variationResults!.where((v) => v.isCompleted).length;
+  }
+  
+  /// Get the count of failed variations
+  int get failedVariationsCount {
+    if (variationResults == null || variationResults!.isEmpty) {
+      return status == 'failed' ? 1 : 0;
+    }
+    return variationResults!.where((v) => v.isFailed).length;
+  }
+  
+  /// Check if this job has multiple variations
+  bool get hasMultipleVariations => variations > 1;
+  
+  /// Get all successful variation URLs
+  List<String> get allSuccessfulUrls {
+    if (variationResults == null || variationResults!.isEmpty) {
+      return downloadUrl != null ? [downloadUrl!] : [];
+    }
+    return variationResults!
+        .where((v) => v.isCompleted && v.resultUrl != null)
+        .map((v) => v.resultUrl!)
+        .toList();
   }
 }
 
@@ -221,6 +329,13 @@ Future<void> updateJobFields({
   String? outputType,
   String? inputImagePath, // ✅ optional explicit override
   String? localFilePath, // ✅ optional explicit override
+  // NEW: Variation and prompt enhancement fields
+  int? variations,
+  List<VariationResult>? variationResults,
+  bool? allCompleted,
+  String? enhancedPrompt,
+  bool? promptEnhanced,
+  String? originalPrompt,
 }) async {
   final list = List<JobModel>.from(jobListNotifier.value);
   final idx = list.indexWhere((j) => j.jobId == jobId);
@@ -242,6 +357,16 @@ Future<void> updateJobFields({
       // ✅ Preserve paths by default
       localFilePath: localFilePath ?? old.localFilePath,
       inputImagePath: inputImagePath ?? old.inputImagePath,
+      
+      // ✅ Variation fields
+      variations: variations ?? old.variations,
+      variationResults: variationResults ?? old.variationResults,
+      allCompleted: allCompleted ?? old.allCompleted,
+      
+      // ✅ Prompt enhancement fields
+      enhancedPrompt: enhancedPrompt ?? old.enhancedPrompt,
+      promptEnhanced: promptEnhanced ?? old.promptEnhanced,
+      originalPrompt: originalPrompt ?? old.originalPrompt,
     );
 
     if (status != null) {
@@ -265,6 +390,12 @@ Future<void> updateJobFields({
         status: status ?? 'processing',
         inputImagePath: inputImagePath,
         localFilePath: localFilePath,
+        variations: variations ?? 1,
+        variationResults: variationResults,
+        allCompleted: allCompleted ?? false,
+        enhancedPrompt: enhancedPrompt,
+        promptEnhanced: promptEnhanced ?? false,
+        originalPrompt: originalPrompt,
       ),
     );
   }

@@ -692,6 +692,7 @@ class _JobCardState extends State<JobCard> {
   static bool _openingPreview = false;
   double _downloadProgress = 0.0;
   bool _isDownloading = false;
+  bool _isPromptExpanded = false; // For expandable enhanced prompt section
 
   bool get _isDownloaded =>
       widget.job.localFilePath != null &&
@@ -1025,8 +1026,190 @@ class _JobCardState extends State<JobCard> {
                   backgroundColor: cs.surfaceContainerHighest,
                 ),
               ),
+              
+            // ✅ Variations and Enhanced Prompt badges row
+            if (job.hasMultipleVariations || job.promptEnhanced)
+              Padding(
+                padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    // Variations badge
+                    if (job.hasMultipleVariations)
+                      _buildVariationsBadge(cs, job),
+                    // Enhanced prompt indicator (tappable)
+                    if (job.promptEnhanced && job.enhancedPrompt != null)
+                      _buildEnhancedPromptBadge(cs),
+                  ],
+                ),
+              ),
+              
+            // ✅ Expandable Enhanced Prompt section
+            if (_isPromptExpanded && job.enhancedPrompt != null)
+              _buildEnhancedPromptSection(cs, job),
           ],
         ),
+        ),
+      ),
+    );
+  }
+  
+  /// Badge showing variations count
+  Widget _buildVariationsBadge(ColorScheme cs, JobModel job) {
+    final successCount = job.successfulVariationsCount;
+    final failedCount = job.failedVariationsCount;
+    final totalCount = job.variations;
+    
+    Color badgeColor = cs.primary;
+    IconData badgeIcon = Icons.grid_view_rounded;
+    String badgeText = '$successCount/$totalCount variations';
+    
+    if (failedCount > 0 && successCount > 0) {
+      badgeColor = Colors.orange;
+      badgeText = '$successCount/$totalCount (${failedCount} failed)';
+    } else if (failedCount == totalCount) {
+      badgeColor = cs.error;
+      badgeIcon = Icons.error_outline;
+      badgeText = 'All variations failed';
+    }
+    
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: badgeColor.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: badgeColor.withOpacity(0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(badgeIcon, size: 14, color: badgeColor),
+          const SizedBox(width: 6),
+          Text(
+            badgeText,
+            style: TextStyle(
+              color: badgeColor,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  /// Badge for enhanced prompt (tappable to expand)
+  Widget _buildEnhancedPromptBadge(ColorScheme cs) {
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _isPromptExpanded = !_isPromptExpanded;
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: Colors.purple.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.purple.withOpacity(0.3)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.auto_awesome, size: 14, color: Colors.purple),
+            const SizedBox(width: 6),
+            Text(
+              'AI Enhanced',
+              style: TextStyle(
+                color: Colors.purple,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Icon(
+              _isPromptExpanded ? Icons.expand_less : Icons.expand_more,
+              size: 16,
+              color: Colors.purple,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  /// Expandable section showing the enhanced prompt
+  Widget _buildEnhancedPromptSection(ColorScheme cs, JobModel job) {
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 200),
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.purple.withOpacity(0.06),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.purple.withOpacity(0.15)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.auto_awesome, size: 16, color: Colors.purple),
+                const SizedBox(width: 8),
+                Text(
+                  'Enhanced Prompt',
+                  style: TextStyle(
+                    color: Colors.purple,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              job.enhancedPrompt!,
+              style: TextStyle(
+                color: cs.onSurface.withOpacity(0.85),
+                fontSize: 13,
+                height: 1.4,
+              ),
+            ),
+            if (job.originalPrompt != null && job.originalPrompt!.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHigh.withOpacity(0.5),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Original prompt:',
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant.withOpacity(0.6),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      job.originalPrompt!,
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant.withOpacity(0.7),
+                        fontSize: 12,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
         ),
       ),
     );
@@ -1220,11 +1403,17 @@ class _JobCardState extends State<JobCard> {
     final job = widget.job;
 
     if (job.status == 'processing') {
+      // Show variation progress if multiple variations
+      String statusText = "PROCESSING…";
+      if (job.hasMultipleVariations && job.variationResults != null) {
+        final completed = job.variationResults!.where((v) => v.status == 'completed' || v.status == 'failed').length;
+        statusText = "PROCESSING… ($completed/${job.variations})";
+      }
       return Row(
         key: const ValueKey('processing'),
         children: [
           Text(
-            "PROCESSING…",
+            statusText,
             style: TextStyle(
               color: cs.primary,
               fontSize: 13,

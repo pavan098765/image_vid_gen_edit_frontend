@@ -9,104 +9,127 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/ai_tools/generic_tool_page.dart';
 
 // -------------------- MODEL CLASSES --------------------
-class ToolConfig {
-  final List<ToolCategory> categories;
-  ToolConfig({required this.categories});
 
-  factory ToolConfig.fromJson(Map<String, dynamic> json) => ToolConfig(
-        categories: (json['categories'] as List)
-            .map((c) => ToolCategory.fromJson(c))
-            .toList(),
-      );
-}
-
-class ToolCategory {
-  final String title;
-  final Color accent;
-  final List<ToolItem> tools;
-
-  ToolCategory({
-    required this.title,
-    required this.accent,
-    required this.tools,
-  });
-
-  factory ToolCategory.fromJson(Map<String, dynamic> json) => ToolCategory(
-        title: json['title'],
-        accent: Color(
-          int.parse(json['accent'].substring(1, 7), radix: 16) + 0xFF000000,
-        ),
-        tools:
-            (json['tools'] as List).map((t) => ToolItem.fromJson(t)).toList(),
-      );
-}
-
-class ToolItem {
+/// Represents a model option within a capability
+class ModelOption {
+  final String id;
   final String name;
-  final String icon;
-  final List<String> caps;
-  final String type;
-  final String model;
-  final int maxImages;
-  final List<dynamic>? inputs;
-  final Map<String, dynamic>? params;
-  final String? outputType;
-  final Map<String, dynamic>? modes;
-  final List<dynamic>? elements;
+  final String? description;
   final int cost;
   final int costUpscale;
-  final int offer;
+  final Map<String, dynamic>? params;
+  final Map<String, dynamic>? rootParams;
+  final Map<String, dynamic>? inputOverrides;
 
-  ToolItem({
+  ModelOption({
+    required this.id,
     required this.name,
-    required this.icon,
-    required this.caps,
-    required this.type,
-    required this.model,
-    this.maxImages = 1,
-    this.inputs,
+    this.description,
+    this.cost = 10,
+    this.costUpscale = 5,
     this.params,
-    this.outputType,
-    this.modes,
-    this.elements,
-    this.cost = 0,
-    this.costUpscale = 0,
-    this.offer = 0,
+    this.rootParams,
+    this.inputOverrides,
   });
 
-  factory ToolItem.fromJson(Map<String, dynamic> json) => ToolItem(
+  factory ModelOption.fromJson(Map<String, dynamic> json) => ModelOption(
+        id: json['id'],
         name: json['name'],
-        icon: json['icon'],
-        caps: List<String>.from(json['caps']),
-        type: json['type'],
-        model: json['model'],
-        maxImages: json['maxImages'] ?? 1,
-        inputs: json['inputs'],
+        description: json['description'],
+        cost: json['cost'] ?? 10,
+        costUpscale: json['costUpscale'] ?? 5,
         params: json['params'],
-        outputType: json['outputType'],
-        modes: json['modes'],
-        elements: json['elements'],
-        cost: json['cost'] ?? 0,
-        costUpscale: json['cost_upscale'] ?? 0,
-        offer: json['offer'] ?? 0,
+        rootParams: json['rootParams'],
+        inputOverrides: json['inputOverrides'],
       );
 
   Map<String, dynamic> toJson() => {
-        "name": name,
-        "icon": icon,
-        "caps": caps,
-        "type": type,
-        "model": model,
-        "maxImages": maxImages,
-        "inputs": inputs,
-        "params": params,
-        "outputType": outputType,
-        "modes": modes,
-        "elements": elements,
-        "cost": cost,
-        "costUpscale": costUpscale,
-        "offer": offer,
+        'id': id,
+        'name': name,
+        'description': description,
+        'cost': cost,
+        'costUpscale': costUpscale,
+        'params': params,
+        'rootParams': rootParams,
+        'inputOverrides': inputOverrides,
       };
+}
+
+/// Represents a capability (e.g., Create Image, Edit Image)
+class Capability {
+  final String id;
+  final String name;
+  final String description;
+  final String icon;
+  final Color accent;
+  final String outputType;
+  final String defaultModel;
+  final List<ModelOption> models;
+  final List<dynamic> inputs;
+  final List<dynamic> elements;
+
+  Capability({
+    required this.id,
+    required this.name,
+    required this.description,
+    required this.icon,
+    required this.accent,
+    required this.outputType,
+    required this.defaultModel,
+    required this.models,
+    required this.inputs,
+    required this.elements,
+  });
+
+  factory Capability.fromJson(Map<String, dynamic> json) => Capability(
+        id: json['id'],
+        name: json['name'],
+        description: json['description'] ?? '',
+        icon: json['icon'] ?? 'cpu',
+        accent: Color(
+          int.parse(json['accent'].substring(1, 7), radix: 16) + 0xFF000000,
+        ),
+        outputType: json['outputType'] ?? 'image',
+        defaultModel: json['defaultModel'] ?? '',
+        models: (json['models'] as List?)
+                ?.map((m) => ModelOption.fromJson(m))
+                .toList() ??
+            [],
+        inputs: json['inputs'] ?? [],
+        elements: json['elements'] ?? [],
+      );
+
+  /// Get the default model option
+  ModelOption? get defaultModelOption {
+    try {
+      return models.firstWhere((m) => m.id == defaultModel);
+    } catch (e) {
+      return models.isNotEmpty ? models.first : null;
+    }
+  }
+
+  /// Get cost range string (e.g., "10" or "10-15")
+  String get costRange {
+    if (models.isEmpty) return '10';
+    final costs = models.map((m) => m.cost).toSet().toList()..sort();
+    if (costs.length == 1) return '${costs.first}';
+    return '${costs.first}-${costs.last}';
+  }
+}
+
+/// Root config containing all capabilities
+class CapabilityConfig {
+  final List<Capability> capabilities;
+
+  CapabilityConfig({required this.capabilities});
+
+  factory CapabilityConfig.fromJson(Map<String, dynamic> json) =>
+      CapabilityConfig(
+        capabilities: (json['capabilities'] as List?)
+                ?.map((c) => Capability.fromJson(c))
+                .toList() ??
+            [],
+      );
 }
 
 // -------------------- MAIN PAGE --------------------
@@ -119,24 +142,20 @@ class AiToolsPage extends StatefulWidget {
 
 class _AiToolsPageState extends State<AiToolsPage>
     with SingleTickerProviderStateMixin {
-  late Future<ToolConfig> _futureConfig;
-  static const String cacheKey = "cached_tool_config_v1";
-  static const String cacheDateKey = "cached_tool_config_date_v1";
+  late Future<CapabilityConfig> _futureConfig;
+  static const String cacheKey = "cached_tool_config_v2";
+  static const String cacheDateKey = "cached_tool_config_date_v2";
   static const String configUrl =
       "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/tool_config.json";
 
   late AnimationController _glowController;
   Set<String> _seenJobIds = {};
   static const String _seenJobsKey = 'seen_completed_job_ids';
-  
-  // Track expanded state of each category (by index)
-  // All expanded by default
-  final Map<int, bool> _expandedCategories = {};
 
   @override
   void initState() {
     super.initState();
-    _futureConfig = _loadToolConfig();
+    _futureConfig = _loadCapabilityConfig();
 
     _glowController = AnimationController(
       vsync: this,
@@ -165,7 +184,7 @@ class _AiToolsPageState extends State<AiToolsPage>
           .map((j) => j.jobId)
           .toList();
       _seenJobIds.addAll(completedJobs);
-      
+
       final prefs = await SharedPreferences.getInstance();
       await prefs.setStringList(_seenJobsKey, _seenJobIds.toList());
       setState(() {});
@@ -197,15 +216,15 @@ class _AiToolsPageState extends State<AiToolsPage>
     super.dispose();
   }
 
-  Future<ToolConfig> _loadToolConfig() async {
+  Future<CapabilityConfig> _loadCapabilityConfig() async {
     final prefs = await SharedPreferences.getInstance();
     final today = DateTime.now().toUtc().toIso8601String().substring(0, 10);
     final lastFetchedDate = prefs.getString(cacheDateKey)?.substring(0, 10);
     final cachedData = prefs.getString(cacheKey);
 
     if (lastFetchedDate == today && cachedData != null) {
-      debugPrint("📦 Using cached tool config");
-      return ToolConfig.fromJson(jsonDecode(cachedData));
+      debugPrint("📦 Using cached capability config");
+      return CapabilityConfig.fromJson(jsonDecode(cachedData));
     }
 
     try {
@@ -213,13 +232,13 @@ class _AiToolsPageState extends State<AiToolsPage>
       if (response.statusCode == 200) {
         await prefs.setString(cacheKey, response.body);
         await prefs.setString(cacheDateKey, today);
-        return ToolConfig.fromJson(jsonDecode(response.body));
+        return CapabilityConfig.fromJson(jsonDecode(response.body));
       } else {
         throw Exception("Server error: ${response.statusCode}");
       }
     } catch (e) {
       if (cachedData != null) {
-        return ToolConfig.fromJson(jsonDecode(cachedData));
+        return CapabilityConfig.fromJson(jsonDecode(cachedData));
       }
       throw Exception("No internet and no cached data");
     }
@@ -228,7 +247,6 @@ class _AiToolsPageState extends State<AiToolsPage>
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final tt = Theme.of(context).textTheme;
 
     return Scaffold(
       backgroundColor: cs.surface,
@@ -239,7 +257,7 @@ class _AiToolsPageState extends State<AiToolsPage>
         titleSpacing: 16,
         title: const KalaLogoWithIcon(logoHeight: 30, fontSize: 22),
         actions: [
-          // ✅ Credits Chip (Option A - Primary Themed)
+          // Credits Chip
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: ValueListenableBuilder<int>(
@@ -277,7 +295,7 @@ class _AiToolsPageState extends State<AiToolsPage>
             ),
           ),
 
-          // ✅ Results button (glowing)
+          // Results button (glowing)
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: ValueListenableBuilder<List<JobModel>>(
@@ -307,10 +325,12 @@ class _AiToolsPageState extends State<AiToolsPage>
                                 BoxShadow(
                                   color: cs.primary.withOpacity(glowIntensity),
                                   blurRadius: 12 + (_glowController.value * 8),
-                                  spreadRadius: 2 + (_glowController.value * 2),
+                                  spreadRadius:
+                                      2 + (_glowController.value * 2),
                                 ),
                                 BoxShadow(
-                                  color: cs.secondary.withOpacity(glowIntensity * 0.7),
+                                  color: cs.secondary
+                                      .withOpacity(glowIntensity * 0.7),
                                   blurRadius: 8 + (_glowController.value * 4),
                                   spreadRadius: 1,
                                 ),
@@ -342,15 +362,15 @@ class _AiToolsPageState extends State<AiToolsPage>
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                      builder: (_) => const ResultManagerPage()),
+                                      builder: (_) =>
+                                          const ResultManagerPage()),
                                 );
                               },
                               child: Icon(
                                 LucideIcons.folderCheck,
                                 size: 28,
-                                color: hasUnseen
-                                    ? cs.primary
-                                    : cs.onSurface,
+                                color:
+                                    hasUnseen ? cs.primary : cs.onSurface,
                               ),
                             ),
                           ),
@@ -390,7 +410,9 @@ class _AiToolsPageState extends State<AiToolsPage>
                                 ),
                                 child: Center(
                                   child: Text(
-                                    unseenCount > 99 ? '99+' : unseenCount.toString(),
+                                    unseenCount > 99
+                                        ? '99+'
+                                        : unseenCount.toString(),
                                     style: TextStyle(
                                       color: cs.onError,
                                       fontSize: unseenCount > 9 ? 10 : 11,
@@ -410,7 +432,7 @@ class _AiToolsPageState extends State<AiToolsPage>
           ),
         ],
       ),
-      body: FutureBuilder<ToolConfig>(
+      body: FutureBuilder<CapabilityConfig>(
         future: _futureConfig,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -419,7 +441,7 @@ class _AiToolsPageState extends State<AiToolsPage>
           if (snapshot.hasError) {
             return _buildErrorState(snapshot.error.toString());
           }
-          return _buildToolList(snapshot.data!, cs, tt);
+          return _buildCapabilityGrid(snapshot.data!, cs);
         },
       ),
     );
@@ -456,7 +478,7 @@ class _AiToolsPageState extends State<AiToolsPage>
             const SizedBox(height: 20),
             FilledButton.icon(
               onPressed: () =>
-                  setState(() => _futureConfig = _loadToolConfig()),
+                  setState(() => _futureConfig = _loadCapabilityConfig()),
               icon: const Icon(Icons.refresh),
               label: const Text("Retry"),
             ),
@@ -466,133 +488,63 @@ class _AiToolsPageState extends State<AiToolsPage>
     );
   }
 
-  Widget _buildToolList(ToolConfig config, ColorScheme cs, TextTheme tt) {
-    return ListView.builder(
+  Widget _buildCapabilityGrid(CapabilityConfig config, ColorScheme cs) {
+    final tt = Theme.of(context).textTheme;
+
+    return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-      itemCount: config.categories.length,
-      itemBuilder: (_, i) {
-        final cat = config.categories[i];
-        final isExpanded = _expandedCategories[i] ?? true; // Default expanded
-        
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 12),
-            // Collapsible header
-            Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () {
-                  setState(() {
-                    _expandedCategories[i] = !isExpanded;
-                  });
-                },
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: cat.accent.withOpacity(isExpanded ? 0.08 : 0.04),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: cat.accent.withOpacity(isExpanded ? 0.2 : 0.1),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 5,
-                        height: 22,
-                        margin: const EdgeInsets.only(right: 10),
-                        decoration: BoxDecoration(
-                          color: cat.accent,
-                          borderRadius: BorderRadius.circular(3),
-                        ),
-                      ),
-                      Expanded(
-                        child: Text(
-                          cat.title,
-                          style: tt.titleMedium?.copyWith(
-                            color: cat.accent,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                      // Tool count badge
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: cat.accent.withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          '${cat.tools.length}',
-                          style: tt.labelSmall?.copyWith(
-                            color: cat.accent,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      // Chevron indicator
-                      AnimatedRotation(
-                        turns: isExpanded ? 0 : -0.25,
-                        duration: const Duration(milliseconds: 200),
-                        child: Icon(
-                          LucideIcons.chevronDown,
-                          color: cat.accent,
-                          size: 20,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header section
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Text(
+              "Create Studio",
+              style: tt.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+                color: cs.onSurface,
               ),
             ),
-            // Animated tools grid
-            AnimatedCrossFade(
-              firstChild: Column(
-                children: [
-                  const SizedBox(height: 12),
-                  GridView.builder(
-                    itemCount: cat.tools.length,
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      crossAxisSpacing: 14,
-                      mainAxisSpacing: 14,
-                      childAspectRatio: 0.75,
-                    ),
-                    itemBuilder: (_, j) =>
-                        _ToolCard(item: cat.tools[j], accent: cat.accent),
-                  ),
-                ],
-              ),
-              secondChild: const SizedBox.shrink(),
-              crossFadeState: isExpanded 
-                  ? CrossFadeState.showFirst 
-                  : CrossFadeState.showSecond,
-              duration: const Duration(milliseconds: 250),
-              sizeCurve: Curves.easeInOut,
+          ),
+          Text(
+            "Choose what you want to create",
+            style: tt.bodyMedium?.copyWith(
+              color: cs.onSurfaceVariant,
             ),
-          ],
-        );
-      },
+          ),
+          const SizedBox(height: 20),
+
+          // Capability grid
+          GridView.builder(
+            itemCount: config.capabilities.length,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 14,
+              mainAxisSpacing: 14,
+              childAspectRatio: 0.85,
+            ),
+            itemBuilder: (_, i) =>
+                _CapabilityCard(capability: config.capabilities[i]),
+          ),
+        ],
+      ),
     );
   }
 }
 
-// -------------------- TOOL CARD --------------------
-class _ToolCard extends StatefulWidget {
-  final ToolItem item;
-  final Color accent;
-  const _ToolCard({required this.item, required this.accent});
+// -------------------- CAPABILITY CARD --------------------
+class _CapabilityCard extends StatefulWidget {
+  final Capability capability;
+  const _CapabilityCard({required this.capability});
 
   @override
-  State<_ToolCard> createState() => _ToolCardState();
+  State<_CapabilityCard> createState() => _CapabilityCardState();
 }
 
-class _ToolCardState extends State<_ToolCard> {
+class _CapabilityCardState extends State<_CapabilityCard> {
   bool _hover = false;
 
   IconData _resolveIcon(String name) {
@@ -616,10 +568,6 @@ class _ToolCardState extends State<_ToolCard> {
         return LucideIcons.galleryVertical;
       case 'layers':
         return LucideIcons.layers;
-      case 'flaskconical':
-        return LucideIcons.flaskConical;
-      case 'microscope':
-        return LucideIcons.microscope;
       case 'eye':
         return LucideIcons.eye;
       case 'crop':
@@ -628,7 +576,7 @@ class _ToolCardState extends State<_ToolCard> {
         return LucideIcons.eraser;
       case 'scissors':
         return LucideIcons.scissors;
-      
+
       // Upscalers
       case 'maximize':
       case 'maximize2':
@@ -641,11 +589,7 @@ class _ToolCardState extends State<_ToolCard> {
         return LucideIcons.zoomIn;
       case 'sunmedium':
         return LucideIcons.sunMedium;
-      case 'contrast':
-        return LucideIcons.contrast;
-      case 'sparkle':
-        return LucideIcons.sparkle;
-      
+
       // Video & Animation
       case 'video':
         return LucideIcons.video;
@@ -653,15 +597,11 @@ class _ToolCardState extends State<_ToolCard> {
         return LucideIcons.film;
       case 'clapperboard':
         return LucideIcons.clapperboard;
-      
+
       // Misc
       case 'zap':
         return LucideIcons.zap;
-      case 'triangle':
-        return LucideIcons.triangle;
-      case 'aperture':
-        return LucideIcons.aperture;
-      
+
       default:
         return LucideIcons.cpu;
     }
@@ -669,34 +609,34 @@ class _ToolCardState extends State<_ToolCard> {
 
   @override
   Widget build(BuildContext context) {
-    final item = widget.item;
-    final accent = widget.accent;
+    final cap = widget.capability;
+    final accent = cap.accent;
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
 
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        // 🌟 Main Card Container
+        // Main Card Container
         AnimatedContainer(
           duration: const Duration(milliseconds: 180),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: _hover
-                  ? accent.withOpacity(0.55)
-                  : cs.outline.withOpacity(0.25),
-              width: 1.1,
+                  ? accent.withOpacity(0.6)
+                  : cs.outline.withOpacity(0.2),
+              width: _hover ? 1.5 : 1,
             ),
             gradient: LinearGradient(
               colors: _hover
                   ? [
-                      accent.withOpacity(0.10),
-                      cs.surfaceContainerHighest.withOpacity(0.08)
+                      accent.withOpacity(0.12),
+                      cs.surfaceContainerHighest.withOpacity(0.06)
                     ]
                   : [
                       cs.surfaceContainerHighest.withOpacity(0.04),
-                      cs.surface.withOpacity(0.03)
+                      cs.surface.withOpacity(0.02)
                     ],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
@@ -704,182 +644,185 @@ class _ToolCardState extends State<_ToolCard> {
             boxShadow: _hover
                 ? [
                     BoxShadow(
-                      color: accent.withOpacity(0.18),
-                      offset: const Offset(0, 4),
-                      blurRadius: 12,
+                      color: accent.withOpacity(0.2),
+                      offset: const Offset(0, 6),
+                      blurRadius: 16,
                     )
                   ]
                 : [],
           ),
           child: InkWell(
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(20),
             onHover: (v) => setState(() => _hover = v),
             onTap: () {
+              // Get the default model
+              final defaultModel = cap.defaultModelOption;
+
               Navigator.push(
                 context,
                 MaterialPageRoute(
                   builder: (_) => GenericToolPage(
                     config: GenericToolConfig(
-                      title: item.name,
-                      model: item.model,
-                      inputs: item.inputs ?? [],
-                      params: item.params,
-                      modes: item.modes,
-                      elements: item.elements,
-                      outputType: item.outputType ?? "image",
-                      cost: item.cost,
-                      costUpscale: item.costUpscale,
-                      offer: item.offer,
+                      title: cap.name,
+                      model: defaultModel?.id ?? cap.defaultModel,
+                      inputs: cap.inputs,
+                      params: defaultModel?.params,
+                      rootParams: defaultModel?.rootParams,
+                      elements: cap.elements,
+                      outputType: cap.outputType,
+                      cost: defaultModel?.cost ?? 10,
+                      costUpscale: defaultModel?.costUpscale ?? 5,
+                      // Pass models for model selector
+                      models: cap.models
+                          .map((m) => {
+                                'id': m.id,
+                                'name': m.name,
+                                'description': m.description,
+                                'cost': m.cost,
+                                'costUpscale': m.costUpscale,
+                                'params': m.params,
+                                'rootParams': m.rootParams,
+                                'inputOverrides': m.inputOverrides,
+                              })
+                          .toList(),
+                      defaultModel: cap.defaultModel,
                     ),
                   ),
                 ),
               );
             },
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+              padding: const EdgeInsets.all(16),
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.start,
-                crossAxisAlignment: CrossAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SizedBox(height: 24), // spacing from top for badges
-                  Icon(_resolveIcon(item.icon), color: accent, size: 40),
-                  const SizedBox(height: 10),
-
-                  // 🧾 Name (consistent height container)
-                  SizedBox(
-                    height: 36, // fixes uneven multi-line height
-                    child: Center(
-                      child: Text(
-                        item.name,
-                        textAlign: TextAlign.center,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: tt.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: cs.onSurface,
-                          height: 1.18,
-                        ),
-                      ),
+                  // Icon with accent background
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: accent.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Icon(
+                      _resolveIcon(cap.icon),
+                      color: accent,
+                      size: 28,
                     ),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 14),
 
-                  // 🪄 Capabilities
-                  Flexible(
-                    child: Wrap(
-                      spacing: 6,
-                      runSpacing: 4,
-                      alignment: WrapAlignment.center,
-                      children: item.caps
-                          .map(
-                            (cap) => Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: accent.withOpacity(0.12),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                cap,
-                                maxLines: 1,
+                  // Name
+                  Text(
+                    cap.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: tt.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: cs.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+
+                  // Description
+                  Text(
+                    cap.description,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: tt.bodySmall?.copyWith(
+                      color: cs.onSurfaceVariant.withOpacity(0.8),
+                      height: 1.3,
+                    ),
+                  ),
+
+                  const Spacer(),
+
+                  // Bottom row: Model count + Output type
+                  Row(
+                    children: [
+                      // Model count badge
+                      if (cap.models.length > 1)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: accent.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(LucideIcons.layers,
+                                  size: 12, color: accent),
+                              const SizedBox(width: 4),
+                              Text(
+                                '${cap.models.length} models',
                                 style: tt.labelSmall?.copyWith(
-                                  color: accent.withOpacity(0.95),
-                                  fontSize: 11,
+                                  color: accent,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
-                            ),
-                          )
-                          .toList(),
-                    ),
+                            ],
+                          ),
+                        ),
+                      const Spacer(),
+                      // Output type indicator
+                      Icon(
+                        cap.outputType == 'video'
+                            ? LucideIcons.film
+                            : LucideIcons.image,
+                        size: 16,
+                        color: cs.onSurfaceVariant.withOpacity(0.5),
+                      ),
+                    ],
                   ),
-                  const Spacer(),
                 ],
               ),
             ),
           ),
         ),
 
-        // 💎 Credits Badge (top-left, gradient glass look)
-        if (item.cost > 0)
-          Positioned(
-            top: 8,
-            left: 10,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    cs.surface.withOpacity(0.9),
-                    cs.surfaceContainerHighest.withOpacity(0.85)
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+        // Credits Badge (top-right)
+        Positioned(
+          top: 10,
+          right: 10,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  cs.surface.withOpacity(0.95),
+                  cs.surfaceContainerHighest.withOpacity(0.9)
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: accent.withOpacity(0.4), width: 0.8),
+              boxShadow: [
+                BoxShadow(
+                  color: accent.withOpacity(0.15),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
                 ),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: accent.withOpacity(0.45), width: 0.8),
-                boxShadow: [
-                  BoxShadow(
-                    color: accent.withOpacity(0.15),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(LucideIcons.gem, color: accent, size: 13),
+                const SizedBox(width: 4),
+                Text(
+                  cap.costRange,
+                  style: tt.labelSmall?.copyWith(
+                    color: cs.onSurface,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 11,
                   ),
-                ],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(LucideIcons.gem, color: accent, size: 13),
-                  const SizedBox(width: 3),
-                  Text(
-                    "${item.cost}",
-                    style: tt.labelSmall?.copyWith(
-                      color: cs.onSurface,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 11,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
-
-        // 🏷️ Offer Badge (top-right, pill style)
-        if (item.offer > 0)
-          Positioned(
-            top: 8,
-            right: 10,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    accent.withOpacity(0.18),
-                    accent.withOpacity(0.08),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: accent.withOpacity(0.4), width: 0.8),
-                boxShadow: [
-                  BoxShadow(
-                    color: accent.withOpacity(0.2),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Text(
-                "-${item.offer}%",
-                style: tt.labelSmall?.copyWith(
-                  color: accent,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 11,
-                ),
-              ),
-            ),
-          ),
+        ),
       ],
     );
   }

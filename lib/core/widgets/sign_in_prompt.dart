@@ -749,6 +749,8 @@ class _GoogleSignInButton extends StatelessWidget {
       child: InkWell(
         onTap: onPressed,
         borderRadius: BorderRadius.circular(AppStyles.radiusMd),
+        splashFactory: NoSplash.splashFactory,
+        highlightColor: cs.primary.withOpacity(0.08),
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 14),
           decoration: BoxDecoration(
