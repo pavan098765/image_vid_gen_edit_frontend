@@ -203,6 +203,21 @@ class PollingService {
       if (status == "completed") {
         downloadUrl = await getValidDownloadUrl(jobId);
       }
+      
+      // 📦 Parse variation results if present
+      List<VariationResult>? variationResults;
+      if (data['variation_results'] != null) {
+        final resultsList = data['variation_results'] as List;
+        variationResults = resultsList
+            .map((v) => VariationResult.fromJson(Map<String, dynamic>.from(v)))
+            .toList();
+      }
+      
+      // ✨ Parse enhanced prompt fields
+      final int variations = data['variations'] ?? 1;
+      final bool allCompleted = data['all_completed'] ?? (status == 'completed' || status == 'failed');
+      final String? enhancedPrompt = data['enhanced_prompt'];
+      final bool promptEnhanced = data['prompt_enhanced'] ?? false;
 
       // --- 2️⃣ Emit event to UI
 
@@ -223,6 +238,13 @@ class PollingService {
           createdAt: old.createdAt,
           inputImagePath: old.inputImagePath,
           localFilePath: old.localFilePath,
+          // NEW: Variation and prompt fields
+          variations: variations,
+          variationResults: variationResults ?? old.variationResults,
+          allCompleted: allCompleted,
+          enhancedPrompt: enhancedPrompt ?? old.enhancedPrompt,
+          promptEnhanced: promptEnhanced || old.promptEnhanced,
+          originalPrompt: old.originalPrompt,
         );
         jobListNotifier.value = jobs;
       }
@@ -276,6 +298,13 @@ class PollingService {
                 createdAt: job.createdAt,
                 inputImagePath: inputThumb, // 🟣 ensure preserved
                 localFilePath: job.localFilePath,
+                // NEW: Preserve variation and prompt fields
+                variations: job.variations,
+                variationResults: job.variationResults,
+                allCompleted: job.allCompleted,
+                enhancedPrompt: job.enhancedPrompt,
+                promptEnhanced: job.promptEnhanced,
+                originalPrompt: job.originalPrompt,
               );
               await addOrUpdateJob(updatedJob);
 
@@ -385,6 +414,21 @@ class PollingService {
           downloadUrl = await getValidDownloadUrl(jobId);
         }
 
+        // 📦 Parse variation results if present
+        List<VariationResult>? variationResults;
+        if (data['variation_results'] != null) {
+          final resultsList = data['variation_results'] as List;
+          variationResults = resultsList
+              .map((v) => VariationResult.fromJson(Map<String, dynamic>.from(v)))
+              .toList();
+        }
+        
+        // ✨ Parse enhanced prompt fields
+        final int variations = data['variations'] ?? 1;
+        final bool allCompleted = data['all_completed'] ?? (status == 'completed' || status == 'failed');
+        final String? enhancedPrompt = data['enhanced_prompt'];
+        final bool promptEnhanced = data['prompt_enhanced'] ?? false;
+
         // ✅ Update jobListNotifier safely
         final jobs = List<JobModel>.from(jobListNotifier.value);
         final idx = jobs.indexWhere((j) => j.jobId == jobId);
@@ -406,6 +450,13 @@ class PollingService {
             createdAt: old.createdAt,
             inputImagePath: old.inputImagePath,
             localFilePath: old.localFilePath,
+            // NEW: Variation and prompt fields
+            variations: variations,
+            variationResults: variationResults ?? old.variationResults,
+            allCompleted: allCompleted,
+            enhancedPrompt: enhancedPrompt ?? old.enhancedPrompt,
+            promptEnhanced: promptEnhanced || old.promptEnhanced,
+            originalPrompt: old.originalPrompt,
           );
 
           debugPrint(
@@ -537,6 +588,21 @@ class PollingService {
             }
           }
 
+          // 📦 Parse variation results if present
+          List<VariationResult>? variationResults;
+          if (data['variation_results'] != null) {
+            final resultsList = data['variation_results'] as List;
+            variationResults = resultsList
+                .map((v) => VariationResult.fromJson(Map<String, dynamic>.from(v)))
+                .toList();
+          }
+          
+          // ✨ Parse enhanced prompt fields
+          final int variations = data['variations'] ?? 1;
+          final bool allCompleted = data['all_completed'] ?? (status == 'completed' || status == 'failed');
+          final String? enhancedPrompt = data['enhanced_prompt'];
+          final bool promptEnhanced = data['prompt_enhanced'] ?? false;
+
           jobs[idx] = JobModel(
             jobId: old.jobId,
             title: old.title,
@@ -547,6 +613,13 @@ class PollingService {
             createdAt: old.createdAt,
             inputImagePath: preservedInputPath, // ✅ guaranteed now
             localFilePath: old.localFilePath,
+            // NEW: Variation and prompt fields
+            variations: variations,
+            variationResults: variationResults ?? old.variationResults,
+            allCompleted: allCompleted,
+            enhancedPrompt: enhancedPrompt ?? old.enhancedPrompt,
+            promptEnhanced: promptEnhanced || old.promptEnhanced,
+            originalPrompt: old.originalPrompt,
           );
 
           debugPrint(

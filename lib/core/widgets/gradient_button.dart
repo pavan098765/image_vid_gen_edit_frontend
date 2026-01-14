@@ -157,8 +157,8 @@ class GradientButton extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(_getBorderRadius()),
           onTap: isDisabled ? null : onPressed,
-          splashColor: Colors.white.withOpacity(0.15),
-          highlightColor: Colors.white.withOpacity(0.05),
+          splashFactory: NoSplash.splashFactory, // Clean tap without splash
+          highlightColor: Colors.white.withOpacity(0.1),
           child: Padding(
             padding: _getPadding(),
             child: _buildContent(Colors.white, isDisabled),
@@ -191,8 +191,8 @@ class GradientButton extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(_getBorderRadius()),
           onTap: isDisabled ? null : onPressed,
-          splashColor: cs.primary.withOpacity(0.15),
-          highlightColor: cs.primary.withOpacity(0.05),
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: cs.primary.withOpacity(0.1),
           child: Padding(
             padding: _getPadding(),
             child: _buildContent(fgColor, isDisabled),
@@ -223,8 +223,8 @@ class GradientButton extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(_getBorderRadius()),
           onTap: isDisabled ? null : onPressed,
-          splashColor: cs.primary.withOpacity(0.1),
-          highlightColor: cs.primary.withOpacity(0.05),
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: cs.primary.withOpacity(0.1),
           child: Padding(
             padding: _getPadding(),
             child: _buildContent(fgColor, isDisabled),
@@ -247,9 +247,9 @@ class GradientButton extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(_getBorderRadius()),
           onTap: isDisabled ? null : onPressed,
-          splashColor: cs.primary.withOpacity(0.08),
-          highlightColor: cs.primary.withOpacity(0.04),
-      child: Padding(
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: cs.primary.withOpacity(0.08),
+          child: Padding(
             padding: _getPadding(),
             child: _buildContent(fgColor, isDisabled),
           ),
@@ -282,8 +282,8 @@ class GradientButton extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(_getBorderRadius()),
           onTap: isDisabled ? null : onPressed,
-          splashColor: Colors.white.withOpacity(0.15),
-          highlightColor: Colors.white.withOpacity(0.05),
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: Colors.white.withOpacity(0.1),
           child: Padding(
             padding: _getPadding(),
             child: _buildContent(Colors.white, isDisabled),
@@ -311,15 +311,15 @@ class GradientButton extends StatelessWidget {
                   offset: const Offset(0, 4),
                 ),
               ],
-          ),
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
           borderRadius: BorderRadius.circular(_getBorderRadius()),
           onTap: isDisabled ? null : onPressed,
-          splashColor: Colors.white.withOpacity(0.15),
-          highlightColor: Colors.white.withOpacity(0.05),
-              child: Padding(
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: Colors.white.withOpacity(0.1),
+          child: Padding(
             padding: _getPadding(),
             child: _buildContent(Colors.white, isDisabled),
           ),

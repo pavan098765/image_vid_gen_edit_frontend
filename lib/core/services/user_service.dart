@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:device_info_plus/device_info_plus.dart';
@@ -10,6 +11,7 @@ import 'package:crypto/crypto.dart';
 import 'dart:io';
 
 import 'auth_service.dart';
+import 'package:kala_ai_create_images_videos_with_ai/main.dart' show navigatorKey;
 
 /// Backend API configuration
 /// Authentication: Firebase ID Token (verified by backend with Firebase Admin SDK)
@@ -100,6 +102,46 @@ class UserService {
   UserService._internal();
 
   final AuthService _authService = AuthService();
+  bool _handledMissingAccount = false;
+
+  Future<void> _handleMissingAccount(http.Response response) async {
+    if (_handledMissingAccount) return;
+    _handledMissingAccount = true;
+
+    String message = 'Your account was not found. Please sign in again.';
+    try {
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map) {
+        final detail = decoded['detail'] ?? decoded['message'];
+        if (detail is String && detail.trim().isNotEmpty) {
+          message = detail.trim();
+        }
+      }
+    } catch (_) {
+      // non-json response body; keep default message
+    }
+
+    // Show message (best-effort)
+    final ctx = navigatorKey.currentContext;
+    if (ctx != null) {
+      try {
+        ScaffoldMessenger.of(ctx).clearSnackBars();
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      } catch (_) {}
+    }
+
+    // Force sign out + clear local cached state
+    try {
+      await _authService.signOut();
+    } catch (_) {}
+    await _clearUserData();
+  }
   
   /// Current synced user data
   UserData? get currentUser => currentUserNotifier.value;
@@ -188,6 +230,11 @@ class UserService {
         debugPrint("⚠️ Token expired or invalid - signing out");
         await _authService.signOut();
         return null;
+      } else if (response.statusCode == 404) {
+        // Backend says user doesn't exist anymore (deleted from DB/Firebase).
+        debugPrint("⚠️ Account not found on backend (404) - signing out");
+        await _handleMissingAccount(response);
+        return null;
       } else {
         throw Exception("Sync failed: ${response.statusCode} - ${response.body}");
       }
@@ -229,6 +276,15 @@ class UserService {
         
         debugPrint("✅ Credits refreshed: $newCredits");
         return newCredits;
+      } else if (response.statusCode == 404) {
+        debugPrint("⚠️ Credits refresh: account not found (404) - signing out");
+        await _handleMissingAccount(response);
+        return 0;
+      } else if (response.statusCode == 401) {
+        debugPrint("⚠️ Credits refresh: unauthorized (401) - signing out");
+        await _authService.signOut();
+        await _clearUserData();
+        return 0;
       }
     } catch (e) {
       debugPrint("❌ Credit refresh failed: $e");
@@ -266,6 +322,15 @@ class UserService {
         await _cacheUserData(userData);
         
         return userData;
+      } else if (response.statusCode == 404) {
+        debugPrint("⚠️ Get profile: account not found (404) - signing out");
+        await _handleMissingAccount(response);
+        return null;
+      } else if (response.statusCode == 401) {
+        debugPrint("⚠️ Get profile: unauthorized (401) - signing out");
+        await _authService.signOut();
+        await _clearUserData();
+        return null;
       }
     } catch (e) {
       debugPrint("❌ Get profile failed: $e");

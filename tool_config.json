@@ -1,49 +1,21 @@
 {
-  "categories": [
+  "capabilities": [
     {
-      "title": "🎨 Image Gen & Editing",
+      "id": "create_image",
+      "name": "Create Image",
+      "description": "Generate stunning images from text descriptions",
+      "icon": "wand2",
       "accent": "#8B5CF6",
-      "tools": [
+      "outputType": "image",
+      "defaultModel": "qwen_image",
+      "models": [
         {
+          "id": "qwen_image",
           "name": "Lumora",
-          "icon": "wand2",
-          "caps": [
-            "Text → Image",
-            "High Detail",
-            "Fast Gen"
-          ],
-          "type": "generic",
-          "model": "qwen_image",
+          "description": "Fast generation, high detail",
           "cost": 10,
-          "cost_upscale": 5,
+          "costUpscale": 5,
           "offer": 0,
-          "inputs": [
-            {
-              "id": "prompt",
-              "type": "text",
-              "label": "Describe the image you want"
-            },
-            {
-              "id": "scale_factor",
-              "type": "slider",
-              "label": "Upscale Factor",
-              "min": 1,
-              "max": 4,
-              "default": 2
-            }
-          ],
-          "elements": [
-            {
-              "type": "prompt",
-              "input_ref": "prompt"
-            },
-            {
-              "type": "upscale_toggle"
-            },
-            {
-              "type": "generate_button"
-            }
-          ],
           "params": {
             "cfg_scale": 1.0,
             "num_inference_steps": 8,
@@ -51,59 +23,72 @@
             "scale_factor": "{{scale_factor}}",
             "negative_prompt": " "
           },
-          "root_params": {
+          "rootParams": {
             "prompt": "{{prompt}}"
-          },
-          "outputType": "image"
+          }
         },
         {
-          "name": "Vectra",
-          "icon": "sparkles",
-          "caps": [
-            "Image → Image",
-            "Context-Aware Edit",
-            "Instant Repaint"
-          ],
-          "type": "generic",
-          "model": "flux_kontext_dev",
+          "id": "sdxl",
+          "name": "IMAGIA",
+          "description": "Versatile, classic quality",
           "cost": 10,
-          "cost_upscale": 5,
+          "costUpscale": 5,
+          "offer": 20,
+          "params": {
+            "sample_steps": "{{sample_steps}}",
+            "cfg_scale": "1.0",
+            "sampler": "DPMSolverMultistep",
+            "strength": "1.0",
+            "scale_image": true,
+            "scale_factor": "{{scale_factor}}",
+            "seed": "random"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        }
+      ],
+      "inputs": [
+        {
+          "id": "prompt",
+          "type": "text",
+          "label": "Describe the image you want"
+        },
+        {
+          "id": "scale_factor",
+          "type": "slider",
+          "label": "Upscale Factor",
+          "min": 1,
+          "max": 4,
+          "default": 2
+        }
+      ],
+      "elements": [
+        {
+          "type": "prompt",
+          "input_ref": "prompt"
+        },
+        {
+          "type": "generate_button"
+        }
+      ]
+    },
+    {
+      "id": "edit_image",
+      "name": "Edit Image",
+      "description": "Transform and restyle your photos with AI",
+      "icon": "sparkles",
+      "accent": "#8B5CF6",
+      "outputType": "image",
+      "defaultModel": "flux_kontext_dev",
+      "models": [
+        {
+          "id": "flux_kontext_dev",
+          "name": "Vectra",
+          "description": "Context-aware, instant repaint",
+          "cost": 10,
+          "costUpscale": 5,
           "offer": 0,
-          "inputs": [
-            {
-              "id": "prompt",
-              "type": "text",
-              "label": "Edit Prompt"
-            },
-            {
-              "id": "init_image",
-              "type": "image",
-              "label": "Upload Image",
-              "min": 1,
-              "max": 1
-            },
-            {
-              "id": "scale_factor",
-              "type": "slider",
-              "label": "Scale Factor",
-              "min": 1,
-              "max": 4,
-              "default": 1
-            }
-          ],
-          "elements": [
-            {
-              "type": "image_upload",
-              "input_ref": "init_image"
-            },
-            {
-              "type": "prompt",
-              "input_ref": "prompt"
-            },
-            {
-              "type": "generate_button"
-            }
-          ],
           "params": {
             "steps": 28,
             "guidance_scale": 3.0,
@@ -113,59 +98,17 @@
             "scale_image": true,
             "scale_factor": "{{scale_factor}}"
           },
-          "root_params": {
+          "rootParams": {
             "prompt": "{{prompt}}"
-          },
-          "outputType": "image"
+          }
         },
         {
+          "id": "qwen_image_edit",
           "name": "Revia",
-          "icon": "edit3",
-          "caps": [
-            "Image → Image",
-            "Precise Retouch",
-            "Style Transfer"
-          ],
-          "type": "generic",
-          "model": "qwen_image_edit",
+          "description": "Precise retouch, style transfer",
           "cost": 10,
-          "cost_upscale": 5,
+          "costUpscale": 5,
           "offer": 0,
-          "inputs": [
-            {
-              "id": "prompt",
-              "type": "text",
-              "label": "Edit Prompt"
-            },
-            {
-              "id": "init_image",
-              "type": "image",
-              "label": "Upload Image",
-              "min": 1,
-              "max": 1
-            },
-            {
-              "id": "scale_factor",
-              "type": "slider",
-              "label": "Scale Factor",
-              "min": 1,
-              "max": 4,
-              "default": 1
-            }
-          ],
-          "elements": [
-            {
-              "type": "image_upload",
-              "input_ref": "init_image"
-            },
-            {
-              "type": "prompt",
-              "input_ref": "prompt"
-            },
-            {
-              "type": "generate_button"
-            }
-          ],
           "params": {
             "num_inference_steps": 8,
             "cfg_scale": 3.0,
@@ -174,60 +117,25 @@
             "scale_image": true,
             "scale_factor": "{{scale_factor}}"
           },
-          "root_params": {
+          "rootParams": {
             "prompt": "{{prompt}}",
             "negative_prompt": " "
-          },
-          "outputType": "image"
+          }
         },
         {
+          "id": "qwen_image_edit_2509",
           "name": "Revia 2",
-          "icon": "layers",
-          "caps": [
-            "Multi-Image Edit",
-            "Consistent Look",
-            "Style Match"
-          ],
-          "type": "generic",
-          "model": "qwen_image_edit_2509",
+          "description": "Multi-image, consistent style",
           "cost": 10,
-          "cost_upscale": 5,
+          "costUpscale": 5,
           "offer": 0,
-          "inputs": [
-            {
-              "id": "prompt",
-              "type": "text",
-              "label": "Describe the edit"
-            },
-            {
+          "inputOverrides": {
+            "init_image": {
               "id": "images",
-              "type": "image",
               "label": "Select up to 3 Images",
-              "min": 1,
               "max": 3
-            },
-            {
-              "id": "scale_factor",
-              "type": "slider",
-              "label": "Scale Factor",
-              "min": 1,
-              "max": 4,
-              "default": 1
             }
-          ],
-          "elements": [
-            {
-              "type": "image_upload",
-              "input_ref": "images"
-            },
-            {
-              "type": "prompt",
-              "input_ref": "prompt"
-            },
-            {
-              "type": "generate_button"
-            }
-          ],
+          },
           "params": {
             "cfg_scale": 1.0,
             "num_inference_steps": 4,
@@ -235,105 +143,79 @@
             "scale_image": true,
             "scale_factor": "{{scale_factor}}"
           },
-          "root_params": {
+          "rootParams": {
             "prompt": "{{prompt}}",
             "negative_prompt": " "
-          },
-          "outputType": "image"
+          }
+        }
+      ],
+      "inputs": [
+        {
+          "id": "init_image",
+          "type": "image",
+          "label": "Upload Image",
+          "min": 1,
+          "max": 1
         },
         {
-          "name": "IMAGIA",
-          "icon": "eye",
-          "caps": [
-            "Text → Image",
-            "Image → Image",
-            "Inpainting"
-          ],
-          "type": "generic",
-          "model": "sdxl",
+          "id": "prompt",
+          "type": "text",
+          "label": "Describe the edit"
+        },
+        {
+          "id": "scale_factor",
+          "type": "slider",
+          "label": "Scale Factor",
+          "min": 1,
+          "max": 4,
+          "default": 1
+        }
+      ],
+      "elements": [
+        {
+          "type": "image_upload",
+          "input_ref": "init_image"
+        },
+        {
+          "type": "prompt",
+          "input_ref": "prompt"
+        },
+        {
+          "type": "generate_button"
+        }
+      ]
+    },
+    {
+      "id": "inpaint",
+      "name": "Inpaint & Erase",
+      "description": "Remove objects or fill areas seamlessly",
+      "icon": "eraser",
+      "accent": "#8B5CF6",
+      "outputType": "image",
+      "defaultModel": "basic_utils",
+      "models": [
+        {
+          "id": "basic_utils",
+          "name": "Object Eraser",
+          "description": "Smart fill, seamless repair",
           "cost": 10,
-          "cost_upscale": 5,
-          "offer": 20,
-          "inputs": [
-            {
-              "id": "prompt",
-              "type": "text",
-              "label": "Prompt"
-            },
-            {
-              "id": "init_image",
-              "type": "image",
-              "label": "Initial Image (optional)",
-              "min": 0,
-              "max": 1
-            },
-            {
-              "id": "mask_image",
-              "type": "image",
-              "label": "Mask Image (for inpainting)"
-            },
-            {
-              "id": "scale_factor",
-              "type": "slider",
-              "label": "Upscale Factor",
-              "min": 1,
-              "max": 4,
-              "default": 2
-            }
-          ],
-          "modes": {
-            "text_to_image": {
-              "label": "Text → Image",
-              "elements": [
-                {
-                  "type": "prompt",
-                  "input_ref": "prompt"
-                },
-                {
-                  "type": "upscale_toggle"
-                },
-                {
-                  "type": "generate_button"
-                }
-              ]
-            },
-            "image_to_image": {
-              "label": "Image → Image",
-              "elements": [
-                {
-                  "type": "image_upload",
-                  "input_ref": "init_image"
-                },
-                {
-                  "type": "prompt",
-                  "input_ref": "prompt"
-                },
-                {
-                  "type": "generate_button"
-                }
-              ]
-            },
-            "inpainting": {
-              "label": "Inpainting",
-              "elements": [
-                {
-                  "type": "image_upload",
-                  "input_ref": "init_image"
-                },
-                {
-                  "type": "painter",
-                  "input_ref": "mask_image"
-                },
-                {
-                  "type": "prompt",
-                  "input_ref": "prompt"
-                },
-                {
-                  "type": "generate_button"
-                }
-              ]
-            }
-          },
+          "costUpscale": 5,
+          "offer": 0,
+          "params": {
+            "mode": "lama_inpaint",
+            "init_image": "{{init_image}}",
+            "mask_image": "{{mask_image}}",
+            "scale_image": true,
+            "scale_factor": "{{scale_factor}}"
+          }
+        },
+        {
+          "id": "sdxl",
+          "name": "IMAGIA Inpaint",
+          "description": "AI-powered content fill",
+          "cost": 10,
+          "costUpscale": 5,
+          "offer": 0,
           "params": {
             "sample_steps": "{{sample_steps}}",
             "cfg_scale": "1.0",
@@ -345,276 +227,72 @@
             "init_image": "{{init_image}}",
             "mask_image": "{{mask_image}}"
           },
-          "root_params": {
+          "rootParams": {
             "prompt": "{{prompt}}"
-          },
-          "outputType": "image"
+          }
+        }
+      ],
+      "inputs": [
+        {
+          "id": "init_image",
+          "type": "image",
+          "label": "Upload Image",
+          "min": 1,
+          "max": 1
         },
         {
-          "name": "Scene Expander",
-          "icon": "crop",
-          "caps": [
-            "Expand Image",
-            "Edge Fill",
-            "Scene Extend"
-          ],
-          "type": "generic",
-          "model": "diffusers_outpaint",
-          "cost": 10,
-          "cost_upscale": 5,
-          "offer": 10,
-          "inputs": [
-            {
-              "id": "init_image",
-              "type": "image",
-              "label": "Upload Image",
-              "min": 1,
-              "max": 1
-            },
-            {
-              "id": "prompt",
-              "type": "text",
-              "label": "Describe Expansion"
-            },
-            {
-              "id": "alignment",
-              "type": "dropdown",
-              "label": "Expand Direction",
-              "options": [
-                "Top",
-                "Bottom",
-                "Left",
-                "Right",
-                "All Sides",
-                "Middle"
-              ],
-              "default": "Middle"
-            },
-            {
-              "id": "aspect_ratio",
-              "type": "dropdown",
-              "label": "Aspect Ratio",
-              "options": [
-                "1:1",
-                "16:9",
-                "9:16",
-                "4:3",
-                "3:4"
-              ],
-              "default": "9:16"
-            },
-            {
-              "id": "scale_factor",
-              "type": "slider",
-              "label": "Upscale Factor",
-              "min": 1,
-              "max": 4,
-              "default": 2
-            }
-          ],
-          "elements": [
-            {
-              "type": "image_upload",
-              "input_ref": "init_image"
-            },
-            {
-              "type": "prompt",
-              "input_ref": "prompt"
-            },
-            {
-              "type": "generate_button"
-            }
-          ],
-          "params": {
-            "init_image": "{{init_image}}",
-            "alignment": "{{alignment}}",
-            "aspect_ratio": "{{aspect_ratio}}",
-            "num_inference_steps": 12,
-            "expansion_factor": 1.8,
-            "overlap_percentage": 1,
-            "resize_option": "Full",
-            "custom_resize_percentage": 100,
-            "scale_image": true,
-            "scale_factor": "{{scale_factor}}",
-            "scale_model_name": "RealESRGAN_x{{scale_factor}}plus"
-          },
-          "root_params": {
-            "prompt": "{{prompt}}"
-          },
-          "outputType": "image"
+          "id": "mask_image",
+          "type": "image",
+          "label": "Mask (paint area to edit)"
         },
         {
-          "name": "Background Remover",
-          "icon": "scissors",
-          "caps": [
-            "Image → Image",
-            "One-Tap Cutout",
-            "Clean Edges"
-          ],
-          "type": "generic",
-          "model": "basic_utils",
-          "mode": "bg_remove",
-          "cost": 10,
-          "cost_upscale": 5,
-          "offer": 0,
-          "inputs": [
-            {
-              "id": "init_image",
-              "type": "image",
-              "label": "Upload Image",
-              "min": 1,
-              "max": 1
-            },
-            {
-              "id": "scale_factor",
-              "type": "slider",
-              "label": "Upscale Factor",
-              "min": 1,
-              "max": 4,
-              "default": 2
-            }
-          ],
-          "elements": [
-            {
-              "type": "image_upload",
-              "input_ref": "init_image"
-            },
-            {
-              "type": "generate_button"
-            }
-          ],
-          "params": {
-            "mode": "bg_remove",
-            "init_image": "{{init_image}}",
-            "scale_image": true,
-            "scale_factor": "{{scale_factor}}"
-          },
-          "outputType": "image"
+          "id": "prompt",
+          "type": "text",
+          "label": "Describe what to fill (optional)"
         },
         {
-          "name": "Object Eraser",
-          "icon": "eraser",
-          "caps": [
-            "Remove Objects",
-            "Smart Fill",
-            "Seamless Repair"
-          ],
-          "type": "generic",
-          "model": "basic_utils",
-          "mode": "lama_inpaint",
-          "cost": 10,
-          "cost_upscale": 5,
-          "offer": 0,
-          "inputs": [
-            {
-              "id": "init_image",
-              "type": "image",
-              "label": "Upload Image",
-              "min": 1,
-              "max": 1
-            },
-            {
-              "id": "mask_image",
-              "type": "image",
-              "label": "Mask (white = replace area)"
-            },
-            {
-              "id": "scale_factor",
-              "type": "slider",
-              "label": "Upscale Factor",
-              "min": 1,
-              "max": 4,
-              "default": 2
-            }
-          ],
-          "elements": [
-            {
-              "type": "image_upload",
-              "input_ref": "init_image"
-            },
-            {
-              "type": "painter",
-              "input_ref": "mask_image"
-            },
-            {
-              "type": "generate_button"
-            }
-          ],
-          "params": {
-            "mode": "lama_inpaint",
-            "init_image": "{{init_image}}",
-            "mask_image": "{{mask_image}}",
-            "scale_image": true,
-            "scale_factor": "{{scale_factor}}"
-          },
-          "outputType": "image"
+          "id": "scale_factor",
+          "type": "slider",
+          "label": "Upscale Factor",
+          "min": 1,
+          "max": 4,
+          "default": 2
+        }
+      ],
+      "elements": [
+        {
+          "type": "image_upload",
+          "input_ref": "init_image"
+        },
+        {
+          "type": "painter",
+          "input_ref": "mask_image"
+        },
+        {
+          "type": "prompt",
+          "input_ref": "prompt"
+        },
+        {
+          "type": "generate_button"
         }
       ]
     },
     {
-      "title": "🎬 Video & Animation",
+      "id": "create_video",
+      "name": "Create Video",
+      "description": "Generate videos from text descriptions",
+      "icon": "video",
       "accent": "#F59E0B",
-      "tools": [
+      "outputType": "video",
+      "defaultModel": "fastwan_22_5b",
+      "models": [
         {
-          "name": "CineMotion",
-          "icon": "video",
-          "caps": [
-            "Text → Video",
-            "Text → Image",
-            "Creative Motion"
-          ],
-          "type": "generic",
-          "model": "fastwan_21_1b",
+          "id": "fastwan_22_5b",
+          "name": "CineMotion Pro",
+          "description": "Higher quality, more detail",
           "cost": 10,
-          "cost_upscale": 5,
+          "costUpscale": 5,
           "offer": 0,
-          "inputs": [
-            {
-              "id": "prompt",
-              "type": "text",
-              "label": "Prompt"
-            },
-            {
-              "id": "scale_factor",
-              "type": "slider",
-              "label": "Upscale Factor",
-              "min": 1,
-              "max": 4,
-              "default": 1
-            }
-          ],
-          "modes": {
-            "text_to_video": {
-              "label": "Text → Video",
-              "elements": [
-                {
-                  "type": "prompt",
-                  "input_ref": "prompt"
-                },
-                {
-                  "type": "upscale_toggle"
-                },
-                {
-                  "type": "generate_button"
-                }
-              ]
-            },
-            "text_to_image": {
-              "label": "Text → Image",
-              "elements": [
-                {
-                  "type": "prompt",
-                  "input_ref": "prompt"
-                },
-                {
-                  "type": "upscale_toggle"
-                },
-                {
-                  "type": "generate_button"
-                }
-              ]
-            }
-          },
           "params": {
             "steps": 8,
             "guidance_scale": 0.0,
@@ -627,96 +305,80 @@
             "scale_image": true,
             "scale_factor": "{{scale_factor}}",
             "duration_seconds": 5,
-            "mode": "{{mode}}"
+            "fps": 24,
+            "mode": "text_to_video"
           },
-          "root_params": {
+          "rootParams": {
             "prompt": "{{prompt}}"
-          },
-          "outputType": "video"
+          }
         },
         {
-          "name": "CineMotion Pro",
-          "icon": "film",
-          "caps": [
-            "Text → Video",
-            "Image → Video",
-            "Text → Image"
-          ],
-          "type": "generic",
-          "model": "fastwan_22_5b",
+          "id": "fastwan_21_1b",
+          "name": "CineMotion",
+          "description": "Fast generation, creative motion",
           "cost": 10,
-          "cost_upscale": 5,
+          "costUpscale": 5,
           "offer": 0,
-          "inputs": [
-            {
-              "id": "prompt",
-              "type": "text",
-              "label": "Prompt"
-            },
-            {
-              "id": "init_image",
-              "type": "image",
-              "label": "Initial Image (optional)",
-              "min": 0,
-              "max": 1
-            },
-            {
-              "id": "scale_factor",
-              "type": "slider",
-              "label": "Upscale Factor",
-              "min": 1,
-              "max": 4,
-              "default": 1
-            }
-          ],
-          "modes": {
-            "text_to_video": {
-              "label": "Text → Video",
-              "elements": [
-                {
-                  "type": "prompt",
-                  "input_ref": "prompt"
-                },
-                {
-                  "type": "upscale_toggle"
-                },
-                {
-                  "type": "generate_button"
-                }
-              ]
-            },
-            "image_to_video": {
-              "label": "Image → Video",
-              "elements": [
-                {
-                  "type": "image_upload",
-                  "input_ref": "init_image"
-                },
-                {
-                  "type": "prompt",
-                  "input_ref": "prompt"
-                },
-                {
-                  "type": "generate_button"
-                }
-              ]
-            },
-            "text_to_image": {
-              "label": "Text → Image",
-              "elements": [
-                {
-                  "type": "prompt",
-                  "input_ref": "prompt"
-                },
-                {
-                  "type": "upscale_toggle"
-                },
-                {
-                  "type": "generate_button"
-                }
-              ]
-            }
+          "params": {
+            "steps": 8,
+            "guidance_scale": 0.0,
+            "seed": 42,
+            "randomize_seed": true,
+            "height": 896,
+            "width": 896,
+            "negative_prompt": "blurry, distorted, lowres",
+            "output_dir": "./outputs",
+            "scale_image": true,
+            "scale_factor": "{{scale_factor}}",
+            "duration_seconds": 5,
+            "mode": "text_to_video"
           },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        }
+      ],
+      "inputs": [
+        {
+          "id": "prompt",
+          "type": "text",
+          "label": "Describe your video"
+        },
+        {
+          "id": "scale_factor",
+          "type": "slider",
+          "label": "Upscale Factor",
+          "min": 1,
+          "max": 4,
+          "default": 1
+        }
+      ],
+      "elements": [
+        {
+          "type": "prompt",
+          "input_ref": "prompt"
+        },
+        {
+          "type": "generate_button"
+        }
+      ]
+    },
+    {
+      "id": "animate_image",
+      "name": "Animate Image",
+      "description": "Bring your photos to life with motion",
+      "icon": "film",
+      "accent": "#F59E0B",
+      "outputType": "video",
+      "defaultModel": "fastwan_22_5b",
+      "models": [
+        {
+          "id": "fastwan_22_5b",
+          "name": "CineMotion Pro",
+          "description": "Smooth animation, high quality",
+          "cost": 10,
+          "costUpscale": 5,
+          "offer": 0,
           "params": {
             "steps": 8,
             "guidance_scale": 0.0,
@@ -731,156 +393,254 @@
             "duration_seconds": 5,
             "fps": 24,
             "init_image": "{{init_image}}",
-            "mode": "{{mode}}"
+            "mode": "image_to_video"
           },
-          "root_params": {
+          "rootParams": {
             "prompt": "{{prompt}}"
-          },
-          "outputType": "video"
+          }
+        }
+      ],
+      "inputs": [
+        {
+          "id": "init_image",
+          "type": "image",
+          "label": "Upload Image",
+          "min": 1,
+          "max": 1
+        },
+        {
+          "id": "prompt",
+          "type": "text",
+          "label": "Describe the motion"
+        },
+        {
+          "id": "scale_factor",
+          "type": "slider",
+          "label": "Upscale Factor",
+          "min": 1,
+          "max": 4,
+          "default": 1
+        }
+      ],
+      "elements": [
+        {
+          "type": "image_upload",
+          "input_ref": "init_image"
+        },
+        {
+          "type": "prompt",
+          "input_ref": "prompt"
+        },
+        {
+          "type": "generate_button"
         }
       ]
     },
     {
-      "title": "🔍 Upscalers",
+      "id": "expand_scene",
+      "name": "Expand Scene",
+      "description": "Extend your image beyond its borders",
+      "icon": "crop",
+      "accent": "#10B981",
+      "outputType": "image",
+      "defaultModel": "diffusers_outpaint",
+      "models": [
+        {
+          "id": "diffusers_outpaint",
+          "name": "Scene Expander",
+          "description": "AI-powered outpainting",
+          "cost": 10,
+          "costUpscale": 5,
+          "offer": 10,
+          "params": {
+            "init_image": "{{init_image}}",
+            "alignment": "{{alignment}}",
+            "aspect_ratio": "{{aspect_ratio}}",
+            "num_inference_steps": 12,
+            "expansion_factor": 1.8,
+            "overlap_percentage": 1,
+            "resize_option": "Full",
+            "custom_resize_percentage": 100,
+            "scale_image": true,
+            "scale_factor": "{{scale_factor}}",
+            "scale_model_name": "RealESRGAN_x{{scale_factor}}plus"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        }
+      ],
+      "inputs": [
+        {
+          "id": "init_image",
+          "type": "image",
+          "label": "Upload Image",
+          "min": 1,
+          "max": 1
+        },
+        {
+          "id": "prompt",
+          "type": "text",
+          "label": "Describe Expansion"
+        },
+        {
+          "id": "alignment",
+          "type": "dropdown",
+          "label": "Expand Direction",
+          "options": ["Top", "Bottom", "Left", "Right", "All Sides", "Middle"],
+          "default": "Middle"
+        },
+        {
+          "id": "aspect_ratio",
+          "type": "dropdown",
+          "label": "Aspect Ratio",
+          "options": ["1:1", "16:9", "9:16", "4:3", "3:4"],
+          "default": "9:16"
+        },
+        {
+          "id": "scale_factor",
+          "type": "slider",
+          "label": "Upscale Factor",
+          "min": 1,
+          "max": 4,
+          "default": 2
+        }
+      ],
+      "elements": [
+        {
+          "type": "image_upload",
+          "input_ref": "init_image"
+        },
+        {
+          "type": "prompt",
+          "input_ref": "prompt"
+        },
+        {
+          "type": "generate_button"
+        }
+      ]
+    },
+    {
+      "id": "remove_background",
+      "name": "Remove Background",
+      "description": "One-tap background removal with clean edges",
+      "icon": "scissors",
+      "accent": "#10B981",
+      "outputType": "image",
+      "defaultModel": "basic_utils",
+      "models": [
+        {
+          "id": "basic_utils",
+          "name": "Background Remover",
+          "description": "Instant cutout, clean edges",
+          "cost": 10,
+          "costUpscale": 5,
+          "offer": 0,
+          "params": {
+            "mode": "bg_remove",
+            "init_image": "{{init_image}}",
+            "scale_image": true,
+            "scale_factor": "{{scale_factor}}"
+          }
+        }
+      ],
+      "inputs": [
+        {
+          "id": "init_image",
+          "type": "image",
+          "label": "Upload Image",
+          "min": 1,
+          "max": 1
+        },
+        {
+          "id": "scale_factor",
+          "type": "slider",
+          "label": "Upscale Factor",
+          "min": 1,
+          "max": 4,
+          "default": 2
+        }
+      ],
+      "elements": [
+        {
+          "type": "image_upload",
+          "input_ref": "init_image"
+        },
+        {
+          "type": "generate_button"
+        }
+      ]
+    },
+    {
+      "id": "upscale",
+      "name": "Upscale Image",
+      "description": "Enhance resolution and sharpen details",
+      "icon": "maximize2",
       "accent": "#22D3EE",
-      "tools": [
+      "outputType": "image",
+      "defaultModel": "aurasrv2",
+      "models": [
         {
+          "id": "aurasrv2",
           "name": "Ultra Enhance",
-          "icon": "maximize2",
-          "caps": [
-            "2× / 4×",
-            "Enhance",
-            "Crisp Details"
-          ],
-          "type": "generic",
-          "model": "aurasrv2",
+          "description": "Best quality, crisp details",
           "cost": 10,
-          "cost_upscale": 5,
+          "costUpscale": 5,
           "offer": 0,
-          "inputs": [
-            {
-              "id": "image",
-              "type": "image",
-              "label": "Upload Image",
-              "min": 1,
-              "max": 1
-            },
-            {
-              "id": "scale_factor",
-              "type": "slider",
-              "label": "Scale Factor",
-              "min": 2,
-              "max": 4,
-              "default": 2
-            }
-          ],
-          "elements": [
-            {
-              "type": "image_upload",
-              "input_ref": "image"
-            },
-            {
-              "type": "generate_button"
-            }
-          ],
           "params": {
             "init_image": "{{image}}",
             "scale": "{{scale_factor}}"
-          },
-          "root_params": {},
-          "outputType": "image"
+          }
         },
         {
+          "id": "swin2sr",
           "name": "Sharp Refine",
-          "icon": "focus",
-          "caps": [
-            "2× / 4×",
-            "Sharpen",
-            "Refine Edges"
-          ],
-          "type": "generic",
-          "model": "swin2sr",
+          "description": "Edge sharpening, clarity",
           "cost": 10,
-          "cost_upscale": 5,
+          "costUpscale": 5,
           "offer": 0,
-          "inputs": [
-            {
-              "id": "image",
-              "type": "image",
-              "label": "Upload Image",
-              "min": 1,
-              "max": 1
-            },
-            {
-              "id": "scale_factor",
-              "type": "slider",
-              "label": "Scale Factor",
-              "min": 2,
-              "max": 4,
-              "default": 2
-            }
-          ],
-          "elements": [
-            {
-              "type": "image_upload",
-              "input_ref": "image"
-            },
-            {
-              "type": "generate_button"
-            }
-          ],
           "params": {
             "init_image": "{{image}}",
             "scale": "{{scale_factor}}"
-          },
-          "root_params": {},
-          "outputType": "image"
+          }
         },
         {
+          "id": "realesrgan",
           "name": "PhotoBoost",
-          "icon": "sunMedium",
-          "caps": [
-            "2× / 4×",
-            "Enhance",
-            "Photo Realism"
-          ],
-          "type": "generic",
-          "model": "realesrgan",
+          "description": "Photo realism, natural look",
           "cost": 10,
-          "cost_upscale": 5,
+          "costUpscale": 5,
           "offer": 0,
-          "inputs": [
-            {
-              "id": "image",
-              "type": "image",
-              "label": "Upload Image",
-              "min": 1,
-              "max": 1
-            },
-            {
-              "id": "scale_factor",
-              "type": "slider",
-              "label": "Scale Factor",
-              "min": 2,
-              "max": 4,
-              "default": 2
-            }
-          ],
-          "elements": [
-            {
-              "type": "image_upload",
-              "input_ref": "image"
-            },
-            {
-              "type": "generate_button"
-            }
-          ],
           "params": {
             "init_image": "{{image}}",
             "scale": "{{scale_factor}}"
-          },
-          "root_params": {},
-          "outputType": "image"
+          }
+        }
+      ],
+      "inputs": [
+        {
+          "id": "image",
+          "type": "image",
+          "label": "Upload Image",
+          "min": 1,
+          "max": 1
+        },
+        {
+          "id": "scale_factor",
+          "type": "slider",
+          "label": "Scale Factor",
+          "min": 2,
+          "max": 4,
+          "default": 2
+        }
+      ],
+      "elements": [
+        {
+          "type": "image_upload",
+          "input_ref": "image"
+        },
+        {
+          "type": "generate_button"
         }
       ]
     }
