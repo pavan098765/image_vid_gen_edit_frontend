@@ -1103,15 +1103,15 @@ class _GenericToolPageState extends State<GenericToolPage>
   // -------- Advanced Settings --------
   
   /// Show advanced settings bottom sheet
-  void _showAdvancedSettings() {
-    // ✅ Unfocus any text field to prevent keyboard from re-opening after closing
+  Future<void> _showAdvancedSettings() async {
+    // ✅ Unfocus any text field to prevent keyboard from re-opening
     FocusScope.of(context).unfocus();
     
     final cs = Theme.of(context).colorScheme;
     // Use viewPadding (device safe area), not padding, for a tighter footer.
     final safeBottom = MediaQuery.of(context).viewPadding.bottom;
     
-    showModalBottomSheet(
+    await showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
@@ -1328,6 +1328,11 @@ class _GenericToolPageState extends State<GenericToolPage>
         },
       ),
     );
+
+    // ✅ Ensure focus doesn't return to the prompt after closing
+    if (mounted) {
+      FocusManager.instance.primaryFocus?.unfocus();
+    }
   }
 
   /// Build toggle setting widget
@@ -2573,16 +2578,27 @@ class _GenericToolPageState extends State<GenericToolPage>
     int width = img.width;
     int height = img.height;
 
-    // HARD CAP: keep the longer edge <= 1536px to reduce backend GPU memory use.
-    // Also ensure final dimensions are multiples of 32 WITHOUT rounding up past 1536.
-    const int maxDim = 1200;
+    // HARD CAPS: limit both max dimension AND total pixel area.
+    // This avoids OOM spikes for tall images even when one side is within maxDim.
+    const int maxDim = 1536;
+    const int maxPixels = 700000; // ~576x1184 = 681k (safe), 800x1184 = 947k (too big)
+
+    // 1) Cap by max dimension
     if (width > maxDim || height > maxDim) {
       final scale = maxDim / max(width, height);
       width = (width * scale).round();
       height = (height * scale).round();
     }
 
-    // Round DOWN to nearest multiple of 32 so we never exceed maxDim after padding.
+    // 2) Cap by total pixel area
+    final int area = width * height;
+    if (area > maxPixels) {
+      final scale = sqrt(maxPixels / area);
+      width = (width * scale).round();
+      height = (height * scale).round();
+    }
+
+    // Round DOWN to nearest multiple of 32 so we never exceed limits after padding.
     int roundDown32(int x) => max(32, (x ~/ 32) * 32);
     final paddedW = min(maxDim, roundDown32(width));
     final paddedH = min(maxDim, roundDown32(height));

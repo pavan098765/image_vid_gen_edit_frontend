@@ -1290,6 +1290,9 @@ class _SettingsPageState extends State<SettingsPage> {
     final cs = Theme.of(context).colorScheme;
     return InkWell(
       onTap: _showAuthSheet,
+      splashFactory: NoSplash.splashFactory,
+      highlightColor: Colors.transparent,
+      overlayColor: MaterialStateProperty.all(Colors.transparent),
       child: Padding(
         padding: const EdgeInsets.all(AppStyles.spacing16),
         child: Row(
@@ -1846,12 +1849,15 @@ class _AuthSheetState extends State<_AuthSheet> {
                 size: ButtonSize.large,
                 expanded: true,
                 child: _isLoading
-                    ? const SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
+                    ? SizedBox(
+                        width: 100,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: LinearProgressIndicator(
+                            minHeight: 3,
+                            color: Colors.white,
+                            backgroundColor: Colors.white.withOpacity(0.25),
+                          ),
                         ),
                       )
                     : null,
@@ -1935,11 +1941,14 @@ class _GoogleSignInButton extends StatelessWidget {
             children: [
               if (isLoading)
                 SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: cs.primary,
+                  width: 90,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      minHeight: 3,
+                      color: cs.primary,
+                      backgroundColor: cs.primary.withOpacity(0.15),
+                    ),
                   ),
                 )
               else ...[

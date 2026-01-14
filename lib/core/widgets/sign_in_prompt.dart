@@ -750,7 +750,8 @@ class _GoogleSignInButton extends StatelessWidget {
         onTap: onPressed,
         borderRadius: BorderRadius.circular(AppStyles.radiusMd),
         splashFactory: NoSplash.splashFactory,
-        highlightColor: cs.primary.withOpacity(0.08),
+        highlightColor: Colors.transparent,
+        overlayColor: MaterialStateProperty.all(Colors.transparent),
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 14),
           decoration: BoxDecoration(
@@ -762,11 +763,14 @@ class _GoogleSignInButton extends StatelessWidget {
             children: [
               if (isLoading)
                 SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: cs.primary,
+                  width: 90,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      minHeight: 3,
+                      color: cs.primary,
+                      backgroundColor: cs.primary.withOpacity(0.15),
+                    ),
                   ),
                 )
               else ...[
@@ -1015,10 +1019,16 @@ class _EmailAuthSheetState extends State<_EmailAuthSheet> {
                 variant: ButtonVariant.primary,
                 expanded: true,
                 child: _isLoading
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    ? SizedBox(
+                        width: 90,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: LinearProgressIndicator(
+                            minHeight: 3,
+                            color: Colors.white,
+                            backgroundColor: Colors.white.withOpacity(0.25),
+                          ),
+                        ),
                       )
                     : null,
               ),
