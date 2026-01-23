@@ -23,10 +23,10 @@ import 'core/services/user_service.dart';
 import 'core/services/ad_service.dart';
 import 'core/services/integrity_service.dart';
 
-import 'features/image_editor/image_editor_page.dart';
+import 'features/media_editor/media_editor_page.dart';
 import 'features/ai_tools/ai_tools_page.dart';
 import 'features/ai_tools/generic_tool_page.dart';
-import 'features/video_editor/video_editor_page.dart';
+import 'features/explore/explore_ai_page.dart';
 import 'features/credits/credits_page.dart';
 import 'features/settings/settings_page.dart';
 import 'features/result_manager/result_manager_page.dart'; // 🔹 NEW import
@@ -673,7 +673,7 @@ void _openResultManager() async {
   }
 
   await _refreshJobsAfterNotification(); // 🆕 Force refresh
-  selectedIndexNotifier.value = 2;
+  selectedIndexNotifier.value = 1; // AI Tools tab (index 1 after navigation restructure)
   _openOrReplaceResultManager();
 }
 
@@ -709,9 +709,9 @@ class _KalaAIAppState extends State<KalaAIApp> {
   bool _showSplash = true;
 
   final List<Widget> _pages = const [
-    EditorPage(),
-    VideoEditorPage(),
+    MediaEditorPage(),
     AiToolsPage(),
+    ExploreAIPage(),
     CreditsPage(),
     SettingsPage(),
   ];
@@ -794,11 +794,11 @@ class _MainAppScaffold extends StatelessWidget {
             onDestinationSelected: (i) => selectedIndexNotifier.value = i,
             destinations: const [
               NavigationDestination(
-                  icon: Icon(LucideIcons.image), label: "Photo"),
-              NavigationDestination(
-                  icon: Icon(LucideIcons.video), label: "Video"),
+                  icon: Icon(LucideIcons.penTool), label: "Editor"),
               NavigationDestination(
                   icon: Icon(LucideIcons.sparkles), label: "AI Tools"),
+              NavigationDestination(
+                  icon: Icon(LucideIcons.compass), label: "Explore"),
               NavigationDestination(
                   icon: Icon(LucideIcons.store), label: "Store"),
               NavigationDestination(
