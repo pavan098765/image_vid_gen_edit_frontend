@@ -3,9 +3,13 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
+import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/ad_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/auth_service.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/services/purchase_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/user_service.dart'
     hide userCreditsNotifier, currentUserNotifier, isLoadingUserNotifier, UserData;
 import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
@@ -24,7 +28,12 @@ class _CreditsPageState extends State<CreditsPage> {
   final AuthService _authService = AuthService();
   final UserService _userService = UserService();
   final AdService _adService = AdService();
+  final PurchaseService _purchaseService = PurchaseService.instance;
   bool _isRefreshing = false;
+  
+  // Purchase state
+  String? _selectedGemPackId;
+  bool _isPurchasing = false;
   
   // Daily spin state
   bool _canSpin = true;
@@ -71,11 +80,123 @@ class _CreditsPageState extends State<CreditsPage> {
     // Listen to global email verification status changes (from Settings or other pages)
     emailVerifiedNotifier.addListener(_onEmailVerificationChanged);
     
+    // Initialize purchase service and listen to updates
+    _initPurchaseService();
+    _purchaseService.statusNotifier.addListener(_onPurchaseStatusChanged);
+    _purchaseService.productsNotifier.addListener(_onProductsChanged);
+    
+    // Set default selected pack (Power Pack - popular)
+    _selectedGemPackId = kCredits500ProductId;
+    
     // Refresh credits on page load if signed in
     if (_authService.isSignedIn) {
       _refreshCredits();
       _checkSpinEligibility();
       _checkAdEligibility();
+    }
+  }
+  
+  void _initPurchaseService() async {
+    await _purchaseService.initialize();
+  }
+  
+  void _onPurchaseStatusChanged() {
+    if (mounted) {
+      setState(() {
+        _isPurchasing = _purchaseService.statusNotifier.value == IAPState.purchasing ||
+                        _purchaseService.statusNotifier.value == IAPState.verifying;
+      });
+      
+      // Handle purchase completion
+      final status = _purchaseService.statusNotifier.value;
+      final productId = _purchaseService.currentPurchaseProductId;
+      if (status == IAPState.completed) {
+        _showPurchaseSuccessSnackBar(productId: productId);
+      } else if (status == IAPState.failed) {
+        _showPurchaseErrorSnackBar(_purchaseService.errorNotifier.value, productId: productId);
+      }
+    }
+  }
+  
+  void _onProductsChanged() {
+    if (mounted) setState(() {});
+  }
+  
+  void _showPurchaseSuccessSnackBar({String? productId}) {
+    // Determine message based on product type
+    final isAdFree = productId == kRemoveAdsProductId;
+    final message = isAdFree 
+        ? 'Ad-free activated! Enjoy the app without ads.'
+        : 'Purchase successful! Gems added to your account.';
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              isAdFree ? LucideIcons.bellOff : LucideIcons.checkCircle, 
+              color: Colors.white, 
+              size: 18,
+            ),
+            const SizedBox(width: 10),
+            Expanded(child: Text(message)),
+          ],
+        ),
+        backgroundColor: Colors.green.shade600,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+  
+  void _showPurchaseErrorSnackBar(String? error, {String? productId}) {
+    // Handle "already owned" for ad-free (not really an error)
+    final isAdFree = productId == kRemoveAdsProductId;
+    if (isAdFree && error != null && 
+        (error.contains('itemUnavailable') || error.contains('already own'))) {
+      // User already purchased - check with server and update UI
+      _checkAndRestoreAdFree();
+      return;
+    }
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(LucideIcons.alertCircle, color: Colors.white, size: 18),
+            const SizedBox(width: 10),
+            Expanded(child: Text(error ?? 'Purchase failed. Please try again.')),
+          ],
+        ),
+        backgroundColor: Colors.red.shade600,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+  
+  /// Check with server if user has ad-free and restore it
+  Future<void> _checkAndRestoreAdFree() async {
+    try {
+      final isAdFree = await _userService.checkAdFreeStatus();
+      if (isAdFree) {
+        _showPurchaseSuccessSnackBar(productId: kRemoveAdsProductId);
+      } else {
+        // Not ad-free on server - maybe refunded or different account
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Row(
+              children: [
+                Icon(LucideIcons.alertCircle, color: Colors.white, size: 18),
+                SizedBox(width: 10),
+                Expanded(child: Text('Please sign in with the account used for purchase.')),
+              ],
+            ),
+            backgroundColor: Colors.orange.shade600,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error checking ad-free status: $e');
     }
   }
 
@@ -168,6 +289,8 @@ class _CreditsPageState extends State<CreditsPage> {
     _adService.cooldownNotifier.removeListener(_onCooldownChanged);
     _adService.availabilityNotifier.removeListener(_onAdAvailabilityChanged);
     emailVerifiedNotifier.removeListener(_onEmailVerificationChanged);
+    _purchaseService.statusNotifier.removeListener(_onPurchaseStatusChanged);
+    _purchaseService.productsNotifier.removeListener(_onProductsChanged);
     _adService.stopPrefetching(); // Stop background prefetch when leaving page
     _spinCountdownTimer?.cancel();
     _adResetCountdownTimer?.cancel();
@@ -374,7 +497,7 @@ class _CreditsPageState extends State<CreditsPage> {
 
   Future<void> _watchAdForCredits() async {
     if (!_authService.isSignedIn) {
-      final signedIn = await requireSignIn(context, feature: 'earning credits');
+      final signedIn = await requireSignIn(context, feature: 'earning gems');
       if (!signedIn) return;
     }
     
@@ -531,7 +654,7 @@ class _CreditsPageState extends State<CreditsPage> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(LucideIcons.gem, size: 28, color: KalaColors.gold),
+                  const Icon(LucideIcons.gem, size: 28, color: KalaColors.gold),
                   const SizedBox(width: 8),
                   ShaderMask(
                     shaderCallback: (bounds) => const LinearGradient(
@@ -550,7 +673,7 @@ class _CreditsPageState extends State<CreditsPage> {
               ),
               const SizedBox(height: 4),
               Text(
-                credits == 1 ? 'Credit' : 'Credits',
+                credits == 1 ? 'Gem' : 'Gems',
                 style: TextStyle(
                   color: cs.onSurfaceVariant,
                   fontSize: 14,
@@ -593,7 +716,7 @@ class _CreditsPageState extends State<CreditsPage> {
               ),
               const SizedBox(height: 12),
               Text(
-                '1 more ad for 1 credit',
+                '1 more ad for 1 gem',
                 style: TextStyle(
                   color: Colors.blue.shade600,
                   fontSize: 16,
@@ -655,7 +778,7 @@ class _CreditsPageState extends State<CreditsPage> {
               ),
               const SizedBox(height: 8),
               Text(
-                'You\'ve watched ${_adStatus?.dailyLimit ?? 30} ads today.\nCome back tomorrow for more free credits!',
+                'You\'ve watched ${_adStatus?.dailyLimit ?? 30} ads today.\nCome back tomorrow for more free gems!',
                 style: TextStyle(
                   color: cs.onSurfaceVariant,
                   fontSize: 14,
@@ -738,7 +861,7 @@ class _CreditsPageState extends State<CreditsPage> {
               ),
               const SizedBox(height: 8),
               Text(
-                'Please verify your email address to unlock free credits features like Lucky Spin and Watch Ads.',
+                'Please verify your email address to unlock free gems features like Lucky Spin and Watch Ads.',
                 style: TextStyle(
                   color: cs.onSurfaceVariant,
                   fontSize: 14,
@@ -785,11 +908,11 @@ class _CreditsPageState extends State<CreditsPage> {
                             Navigator.pop(context);
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Row(
+                                content: const Row(
                                   children: [
-                                    const Icon(LucideIcons.mailCheck, color: Colors.white, size: 18),
-                                    const SizedBox(width: 10),
-                                    const Expanded(child: Text('Verification email sent!')),
+                                    Icon(LucideIcons.mailCheck, color: Colors.white, size: 18),
+                                    SizedBox(width: 10),
+                                    Expanded(child: Text('Verification email sent!')),
                                   ],
                                 ),
                                 backgroundColor: Colors.green.shade600,
@@ -838,11 +961,11 @@ class _CreditsPageState extends State<CreditsPage> {
                             
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Row(
+                                content: const Row(
                                   children: [
-                                    const Icon(LucideIcons.checkCircle, color: Colors.white, size: 18),
-                                    const SizedBox(width: 10),
-                                    const Expanded(child: Text('Email verified! Features unlocked.')),
+                                    Icon(LucideIcons.checkCircle, color: Colors.white, size: 18),
+                                    SizedBox(width: 10),
+                                    Expanded(child: Text('Email verified! Features unlocked.')),
                                   ],
                                 ),
                                 backgroundColor: Colors.green.shade600,
@@ -853,11 +976,11 @@ class _CreditsPageState extends State<CreditsPage> {
                           } else {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Row(
+                                content: const Row(
                                   children: [
-                                    const Icon(LucideIcons.alertCircle, color: Colors.white, size: 18),
-                                    const SizedBox(width: 10),
-                                    const Expanded(child: Text('Email not verified yet. Check your inbox.')),
+                                    Icon(LucideIcons.alertCircle, color: Colors.white, size: 18),
+                                    SizedBox(width: 10),
+                                    Expanded(child: Text('Email not verified yet. Check your inbox.')),
                                   ],
                                 ),
                                 backgroundColor: Colors.orange.shade700,
@@ -891,7 +1014,7 @@ class _CreditsPageState extends State<CreditsPage> {
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        'You can still purchase credits without verification.',
+                        'You can still purchase gems without verification.',
                         style: TextStyle(
                           color: cs.onSurfaceVariant,
                           fontSize: 12,
@@ -908,19 +1031,12 @@ class _CreditsPageState extends State<CreditsPage> {
     );
   }
 
-  void _buyCredits() {
-    // TODO: Implement in-app purchase
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Coming soon!')),
-    );
-  }
-
   void _showAuthSheet() {
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => SignInRequiredScreen(
-          feature: 'Credits',
+          feature: 'Gems',
           onSignInSuccess: () {
             _refreshCredits();
           },
@@ -971,7 +1087,7 @@ class _CreditsPageState extends State<CreditsPage> {
                     )
                   : const Icon(LucideIcons.refreshCw),
               onPressed: _isRefreshing ? null : _refreshCredits,
-              tooltip: 'Refresh credits',
+              tooltip: 'Refresh gems',
             ),
         ],
       ),
@@ -1013,7 +1129,7 @@ class _CreditsPageState extends State<CreditsPage> {
           const SizedBox(height: 24),
           
           Text(
-            'Sign in to manage credits',
+            'Sign in to manage gems',
             style: TextStyle(
               color: cs.onSurface,
               fontSize: 22,
@@ -1022,7 +1138,7 @@ class _CreditsPageState extends State<CreditsPage> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Create an account to earn and use credits for AI tools',
+            'Create an account to earn and use gems for AI tools',
             style: TextStyle(
               color: cs.onSurfaceVariant,
               fontSize: 14,
@@ -1039,13 +1155,13 @@ class _CreditsPageState extends State<CreditsPage> {
               borderRadius: BorderRadius.circular(20),
               border: Border.all(color: KalaColors.gold.withOpacity(0.3)),
             ),
-            child: Row(
+            child: const Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(LucideIcons.gift, size: 20, color: KalaColors.gold),
-                const SizedBox(width: 8),
+                SizedBox(width: 8),
                 Text(
-                  '50 free credits on signup!',
+                  '50 free gems on signup!',
                   style: TextStyle(
                     color: KalaColors.gold,
                     fontWeight: FontWeight.w600,
@@ -1080,14 +1196,14 @@ class _CreditsPageState extends State<CreditsPage> {
             cs,
             icon: LucideIcons.playCircle,
             title: 'Watch Ads',
-            description: 'Earn free credits by watching ads',
+            description: 'Earn free gems by watching ads',
           ),
           const SizedBox(height: 16),
           _buildBenefit(
             cs,
             icon: LucideIcons.cloud,
             title: 'Sync Everywhere',
-            description: 'Your credits sync across all devices',
+            description: 'Your gems sync across all devices',
           ),
         ],
       ),
@@ -1164,8 +1280,8 @@ class _CreditsPageState extends State<CreditsPage> {
                 // Icon with gradient
                 Container(
                   padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(colors: KalaColors.brandGradient),
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(colors: KalaColors.brandGradient),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(
@@ -1176,7 +1292,7 @@ class _CreditsPageState extends State<CreditsPage> {
                 ),
                 const SizedBox(height: AppStyles.spacing16),
                 Text(
-                  'Your Credits',
+                  'Your Gems',
                   style: TextStyle(
                     color: cs.onSurfaceVariant,
                     fontSize: 14,
@@ -1203,7 +1319,7 @@ class _CreditsPageState extends State<CreditsPage> {
                 ),
                 const SizedBox(height: AppStyles.spacing8),
                 Text(
-                  'Use credits to generate AI content',
+                  'Use gems to generate AI content',
                   style: TextStyle(
                     color: cs.onSurfaceVariant.withOpacity(0.7),
                     fontSize: 13,
@@ -1223,29 +1339,103 @@ class _CreditsPageState extends State<CreditsPage> {
           const SizedBox(height: AppStyles.spacing24),
           
           // Earn Credits Section
-          _buildSectionHeader(cs, 'Earn Credits', LucideIcons.gift),
+          _buildSectionHeader(cs, 'Earn Gems', LucideIcons.gift),
           const SizedBox(height: AppStyles.spacing12),
           
           // Watch Ad Card
           _buildWatchAdCard(cs),
           const SizedBox(height: AppStyles.spacing24),
           
-          // Buy Credits Section
-          _buildSectionHeader(cs, 'Buy Credits', LucideIcons.creditCard),
+          // Buy Gems Section
+          _buildSectionHeader(cs, 'Buy Gems', LucideIcons.store),
           const SizedBox(height: AppStyles.spacing12),
           
-          // Credit Packs
-          _buildCreditPack(cs, amount: 100, price: '\$0.99', popular: false),
-          const SizedBox(height: AppStyles.spacing12),
-          _buildCreditPack(cs, amount: 500, price: '\$3.99', popular: true),
-          const SizedBox(height: AppStyles.spacing12),
-          _buildCreditPack(cs, amount: 1000, price: '\$6.99', popular: false),
+          // Gem Packs Grid
+          _buildGemPacksSection(cs),
           
-          const SizedBox(height: AppStyles.spacing32),
+          const SizedBox(height: AppStyles.spacing24),
+          
+          // Remove Ads Section
+          _buildSectionHeader(cs, 'Remove Ads', LucideIcons.bellOff),
+          const SizedBox(height: AppStyles.spacing12),
+          
+          // Remove Ads Card
+          _buildRemoveAdsCard(cs),
+          
+          const SizedBox(height: AppStyles.spacing24),
+          
+          // Restore Purchases link
+          Center(
+            child: TextButton.icon(
+              onPressed: _restorePurchases,
+              icon: Icon(LucideIcons.refreshCw, size: 16, color: cs.primary),
+              label: Text(
+                'Restore Purchases',
+                style: TextStyle(
+                  color: cs.primary,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          ),
+          
+          const SizedBox(height: AppStyles.spacing8),
+          
+          // Legal links
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              TextButton(
+                onPressed: () => _showLegalDocument(
+                  title: 'Terms of Service',
+                  rawUrl: 'https://pastebin.com/raw/bprTSU66',
+                ),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: Text(
+                  'Terms of Service',
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant.withOpacity(0.7),
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+              Text(
+                '•',
+                style: TextStyle(
+                  color: cs.onSurfaceVariant.withOpacity(0.5),
+                  fontSize: 11,
+                ),
+              ),
+              TextButton(
+                onPressed: () => _showLegalDocument(
+                  title: 'Privacy Policy',
+                  rawUrl: 'https://pastebin.com/raw/66qXZNSW',
+                ),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: Text(
+                  'Privacy Policy',
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant.withOpacity(0.7),
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          
+          const SizedBox(height: AppStyles.spacing12),
           
           // Info text
           Text(
-            'Credits never expire. Use them anytime for AI generation.',
+            'Gems never expire. Use them anytime for AI generation.',
             style: TextStyle(
               color: cs.onSurfaceVariant.withOpacity(0.6),
               fontSize: 12,
@@ -1268,52 +1458,110 @@ class _CreditsPageState extends State<CreditsPage> {
     final bool isAdUnavailable = adAvailability == AdAvailability.unavailable;
     final bool isAdLoading = adAvailability == AdAvailability.loading;
     
+    // Active state - can watch ads (not disabled, not at limit)
+    final bool isActive = !isDisabled && !hasReachedLimit;
+    
     return GestureDetector(
       onTap: isDisabled ? _showVerificationRequiredSheet : null,
       child: Container(
         padding: const EdgeInsets.all(AppStyles.spacing16),
         decoration: BoxDecoration(
-          color: (hasReachedLimit || isDisabled)
-              ? cs.surfaceContainerHighest.withOpacity(0.3)
-              : null,
+          color: hasReachedLimit 
+              ? Colors.green.withOpacity(0.1) // Completed state
+              : isActive 
+                  ? cs.primaryContainer.withOpacity(0.15) // Active state
+                  : cs.surfaceContainerHighest.withOpacity(0.3), // Disabled state
           borderRadius: BorderRadius.circular(AppStyles.radiusMd),
           border: Border.all(
-            color: (hasReachedLimit || isDisabled)
-                ? cs.outline.withOpacity(0.2)
-                : cs.outlineVariant.withOpacity(0.3),
+            color: hasReachedLimit 
+                ? Colors.green.withOpacity(0.4)
+                : isActive 
+                    ? cs.primary.withOpacity(0.5)
+                    : cs.outline.withOpacity(0.2),
+            width: isActive || hasReachedLimit ? 2 : 1,
           ),
+          boxShadow: isActive ? [
+            BoxShadow(
+              color: cs.primary.withOpacity(0.15),
+              blurRadius: 8,
+              spreadRadius: 0,
+            ),
+          ] : null,
         ),
         child: Column(
           children: [
             Row(
               children: [
+                // Icon with gradient glow like gem packs (when active)
                 Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: (hasReachedLimit || isDisabled)
-                        ? cs.surfaceContainerHighest
-                        : cs.primaryContainer.withOpacity(0.3),
-                    borderRadius: BorderRadius.circular(12),
+                    gradient: isActive 
+                        ? const LinearGradient(colors: KalaColors.brandGradient)
+                        : null,
+                    color: hasReachedLimit 
+                        ? Colors.green.withOpacity(0.15)
+                        : isActive ? null : cs.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: isActive ? [
+                      BoxShadow(
+                        color: KalaColors.brandGradient[0].withOpacity(0.4),
+                        blurRadius: 12,
+                        spreadRadius: 2,
+                      ),
+                    ] : null,
                   ),
                   child: Icon(
-                    isDisabled ? LucideIcons.mailWarning : LucideIcons.playCircle, 
-                    color: (hasReachedLimit || isDisabled) ? cs.onSurfaceVariant : cs.primary,
+                    hasReachedLimit 
+                        ? LucideIcons.checkCircle2 
+                        : isDisabled 
+                            ? LucideIcons.mailWarning 
+                            : LucideIcons.playCircle, 
+                    color: hasReachedLimit 
+                        ? Colors.green 
+                        : isActive ? Colors.white : cs.onSurfaceVariant,
+                    size: 20,
                   ),
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Watch Ad',
-                        style: TextStyle(
-                          color: isDisabled ? cs.onSurfaceVariant : cs.onSurface,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 15,
-                        ),
+                      // Title + badge row - same as other cards
+                      Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 6,
+                        runSpacing: 4,
+                        children: [
+                          Text(
+                            hasReachedLimit ? 'Daily Limit Reached' : 'Watch Ad',
+                            style: TextStyle(
+                              color: isDisabled ? cs.onSurfaceVariant : cs.onSurface,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 15,
+                            ),
+                          ),
+                          if (isActive && !hasReachedLimit)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(colors: KalaColors.brandGradient),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Text(
+                                'FREE',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 8,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                       const SizedBox(height: 2),
+                      // Status text
                       if (isDisabled)
                         Row(
                           children: [
@@ -1332,37 +1580,23 @@ class _CreditsPageState extends State<CreditsPage> {
                           ],
                         )
                       else if (hasReachedLimit)
-                        Row(
-                          children: [
-                            Icon(LucideIcons.timer, size: 12, color: cs.primary),
-                            const SizedBox(width: 4),
-                            Text(
-                              'Resets in ${_formatAdResetCountdown(_adResetCountdownDuration)}',
-                              style: TextStyle(
-                                color: cs.primary,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
+                        Text(
+                          'Resets in ${_formatAdResetCountdown(_adResetCountdownDuration)}',
+                          style: TextStyle(
+                            color: Colors.green.shade700,
+                            fontSize: 13,
+                          ),
                         )
                       else if (isInCooldown && _adStatus != null)
                         // Show progress indicator during cooldown (timer is on button)
                         _buildAdProgressIndicator(cs, _adStatus!)
                       else if (isAdUnavailable)
-                        Row(
-                          children: [
-                            Icon(LucideIcons.alertCircle, size: 12, color: cs.error),
-                            const SizedBox(width: 4),
-                            Text(
-                              'No ads available',
-                              style: TextStyle(
-                                color: cs.error,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
+                        Text(
+                          'No ads available',
+                          style: TextStyle(
+                            color: cs.error,
+                            fontSize: 13,
+                          ),
                         )
                       else ...[
                         // Show progress toward next credit with visual indicator
@@ -1370,7 +1604,7 @@ class _CreditsPageState extends State<CreditsPage> {
                           _buildAdProgressIndicator(cs, _adStatus!),
                         ] else ...[
                           Text(
-                            '$earnedToday/$dailyLimit credits earned today',
+                            '$earnedToday/$dailyLimit gems earned today',
                             style: TextStyle(
                               color: cs.onSurfaceVariant,
                               fontSize: 13,
@@ -1415,27 +1649,10 @@ class _CreditsPageState extends State<CreditsPage> {
                     ),
                   )
                 else if (hasReachedLimit)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: cs.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(LucideIcons.lock, size: 14, color: cs.onSurfaceVariant),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Limit',
-                          style: TextStyle(
-                            color: cs.onSurfaceVariant,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
+                  const Icon(
+                    LucideIcons.checkCircle,
+                    color: Colors.green,
+                    size: 24,
                   )
                 // Show cooldown timer between ads
                 else if (isInCooldown)
@@ -1598,17 +1815,30 @@ class _CreditsPageState extends State<CreditsPage> {
               ),
             ),
             const SizedBox(width: 8),
-            // Status text
-            Expanded(
-              child: Text(
-                willEarnNext
-                    ? 'Next ad = +1 credit!'
-                    : '2 ads = 1 credit',
-                style: TextStyle(
-                  color: willEarnNext ? Colors.amber.shade700 : cs.onSurfaceVariant,
-                  fontSize: 12,
-                  fontWeight: willEarnNext ? FontWeight.w600 : FontWeight.w400,
+            // Status text with gem icon - use Flexible to prevent overflow
+            Flexible(
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(
+                      text: willEarnNext ? 'Next = +1 ' : '2 ads = 1 ',
+                      style: TextStyle(
+                        color: willEarnNext ? Colors.amber.shade700 : cs.onSurfaceVariant,
+                        fontSize: 12,
+                        fontWeight: willEarnNext ? FontWeight.w600 : FontWeight.w400,
+                      ),
+                    ),
+                    WidgetSpan(
+                      alignment: PlaceholderAlignment.middle,
+                      child: Icon(
+                        LucideIcons.gem,
+                        size: 11,
+                        color: willEarnNext ? Colors.amber.shade700 : cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ),
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ],
@@ -1616,7 +1846,7 @@ class _CreditsPageState extends State<CreditsPage> {
         const SizedBox(height: 4),
         // Credits earned today
         Text(
-          '$creditsEarned/$dailyLimit credits today',
+          '$creditsEarned/$dailyLimit gems today',
           style: TextStyle(
             color: cs.onSurfaceVariant.withOpacity(0.7),
             fontSize: 11,
@@ -1630,99 +1860,128 @@ class _CreditsPageState extends State<CreditsPage> {
     final bool showCountdown = !_canSpin && !_isCheckingSpinEligibility && !_needsEmailVerification;
     final bool isDisabled = _needsEmailVerification;
     
+    // Active state - can spin (not disabled, not on cooldown)
+    final bool isActive = !isDisabled && _canSpin && !_isCheckingSpinEligibility;
+    
     return GestureDetector(
       onTap: isDisabled ? _showVerificationRequiredSheet : _openDailySpinner,
       child: Container(
         padding: const EdgeInsets.all(AppStyles.spacing16),
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: isDisabled || showCountdown
-                ? [cs.surfaceContainerHighest.withOpacity(0.5), cs.surfaceContainerHighest.withOpacity(0.3)]
-                : [KalaColors.gold.withOpacity(0.15), Colors.orange.withOpacity(0.1)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
+          color: showCountdown 
+              ? Colors.green.withOpacity(0.1) // Used state (like completed)
+              : isActive 
+                  ? cs.primaryContainer.withOpacity(0.15) // Active state
+                  : cs.surfaceContainerHighest.withOpacity(0.3), // Disabled/loading state
           borderRadius: BorderRadius.circular(AppStyles.radiusMd),
           border: Border.all(
-            color: isDisabled || showCountdown 
-                ? cs.outline.withOpacity(0.2)
-                : KalaColors.gold.withOpacity(0.3),
-            width: 1.5,
+            color: showCountdown 
+                ? Colors.green.withOpacity(0.4)
+                : isActive 
+                    ? cs.primary.withOpacity(0.5)
+                    : cs.outline.withOpacity(0.2),
+            width: isActive || showCountdown ? 2 : 1,
           ),
+          boxShadow: isActive ? [
+            BoxShadow(
+              color: cs.primary.withOpacity(0.15),
+              blurRadius: 8,
+              spreadRadius: 0,
+            ),
+          ] : null,
         ),
         child: Row(
           children: [
-            // Spinner icon
+            // Icon with gradient glow like other cards (when active)
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                gradient: (isDisabled || showCountdown)
-                    ? null
-                    : LinearGradient(colors: [KalaColors.gold, Colors.orange.shade600]),
-                color: (isDisabled || showCountdown) ? cs.surfaceContainerHighest : null,
-                borderRadius: BorderRadius.circular(12),
+                gradient: isActive 
+                    ? const LinearGradient(colors: KalaColors.brandGradient)
+                    : null,
+                color: showCountdown 
+                    ? Colors.green.withOpacity(0.15)
+                    : isActive ? null : cs.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: isActive ? [
+                  BoxShadow(
+                    color: KalaColors.brandGradient[0].withOpacity(0.4),
+                    blurRadius: 12,
+                    spreadRadius: 2,
+                  ),
+                ] : null,
               ),
               child: Icon(
-                isDisabled ? LucideIcons.mailWarning : LucideIcons.gift,
-                color: (isDisabled || showCountdown) ? cs.onSurfaceVariant : Colors.white,
-                size: 24,
+                showCountdown 
+                    ? LucideIcons.checkCircle2 
+                    : isDisabled 
+                        ? LucideIcons.mailWarning 
+                        : LucideIcons.gift,
+                color: showCountdown 
+                    ? Colors.green 
+                    : isActive ? Colors.white : cs.onSurfaceVariant,
+                size: 20,
               ),
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
+                  // Title + badge row - same as other cards
+                  Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 6,
+                    runSpacing: 4,
                     children: [
                       Text(
-                        'Lucky Spin',
+                        showCountdown ? 'Spin Used' : 'Lucky Spin',
                         style: TextStyle(
                           color: isDisabled ? cs.onSurfaceVariant : cs.onSurface,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
                         ),
                       ),
-                      const SizedBox(width: 8),
                       if (_isCheckingSpinEligibility && !isDisabled)
                         SizedBox(
                           width: 12,
                           height: 12,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            color: KalaColors.gold,
+                            color: cs.primary,
                           ),
                         )
-                      else if (_canSpin && !isDisabled)
+                      else if (isActive)
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
-                            color: KalaColors.gold.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(10),
+                            gradient: const LinearGradient(colors: KalaColors.brandGradient),
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                          child: Text(
+                          child: const Text(
                             'FREE',
                             style: TextStyle(
-                              color: KalaColors.gold,
-                              fontSize: 10,
+                              color: Colors.white,
+                              fontSize: 8,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
                         ),
                     ],
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 2),
+                  // Status text
                   if (isDisabled)
                     Row(
                       children: [
-                        Icon(LucideIcons.shieldAlert, size: 14, color: Colors.orange.shade700),
+                        Icon(LucideIcons.shieldAlert, size: 12, color: Colors.orange.shade700),
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
                             'Verify email to unlock',
                             style: TextStyle(
                               color: Colors.orange.shade700,
-                              fontSize: 13,
+                              fontSize: 12,
                               fontWeight: FontWeight.w500,
                             ),
                           ),
@@ -1730,24 +1989,16 @@ class _CreditsPageState extends State<CreditsPage> {
                       ],
                     )
                   else if (showCountdown)
-                    Row(
-                      children: [
-                        Icon(LucideIcons.timer, size: 14, color: cs.primary),
-                        const SizedBox(width: 4),
-                        Text(
-                          _formatSpinCountdown(_spinCountdownDuration),
-                          style: TextStyle(
-                            color: cs.primary,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            fontFamily: 'monospace',
-                          ),
-                        ),
-                      ],
+                    Text(
+                      'Next spin in ${_formatSpinCountdown(_spinCountdownDuration)}',
+                      style: TextStyle(
+                        color: Colors.green.shade700,
+                        fontSize: 13,
+                      ),
                     )
                   else
                     Text(
-                      'Win up to 30 credits daily!',
+                      'Win up to 30 gems daily!',
                       style: TextStyle(
                         color: cs.onSurfaceVariant,
                         fontSize: 13,
@@ -1780,7 +2031,7 @@ class _CreditsPageState extends State<CreditsPage> {
                   ],
                 ),
               )
-            else if (_canSpin && !_isCheckingSpinEligibility)
+            else if (isActive)
               GradientButton(
                 label: 'Spin',
                 icon: LucideIcons.sparkles,
@@ -1789,27 +2040,10 @@ class _CreditsPageState extends State<CreditsPage> {
                 size: ButtonSize.small,
               )
             else if (showCountdown)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: cs.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(LucideIcons.lock, size: 14, color: cs.onSurfaceVariant),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Wait',
-                      style: TextStyle(
-                        color: cs.onSurfaceVariant,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
+              const Icon(
+                LucideIcons.checkCircle,
+                color: Colors.green,
+                size: 24,
               ),
           ],
         ),
@@ -1835,97 +2069,1315 @@ class _CreditsPageState extends State<CreditsPage> {
     );
   }
 
-  Widget _buildCreditPack(ColorScheme cs, {
-    required int amount,
-    required String price,
-    required bool popular,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(AppStyles.spacing16),
-      decoration: BoxDecoration(
-        color: popular ? cs.primaryContainer.withOpacity(0.2) : null,
-        borderRadius: BorderRadius.circular(AppStyles.radiusMd),
-        border: Border.all(
-          color: popular ? cs.primary.withOpacity(0.4) : cs.outlineVariant.withOpacity(0.3),
-          width: popular ? 2 : 1,
+  /// Build the gem packs section with modern design
+  Widget _buildGemPacksSection(ColorScheme cs) {
+    final products = _purchaseService.productsNotifier.value;
+    final isLoading = _purchaseService.statusNotifier.value == IAPState.loadingProducts;
+    final hasError = _purchaseService.statusNotifier.value == IAPState.error;
+    
+    // Get selected pack config for the buy button
+    final selectedConfig = kGemPacks.firstWhere(
+      (p) => p.productId == _selectedGemPackId,
+      orElse: () => kGemPacks[2], // Default to Power Pack
+    );
+    final selectedProduct = _purchaseService.getProduct(_selectedGemPackId ?? '');
+    
+    // Loading state
+    if (isLoading) {
+      return Container(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          children: [
+            CircularProgressIndicator(color: cs.primary),
+            const SizedBox(height: 12),
+            Text(
+              'Loading store...',
+              style: TextStyle(color: cs.onSurfaceVariant),
+            ),
+          ],
         ),
-      ),
-      child: Row(
-        children: [
-          // Coin icon
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              gradient: popular 
-                  ? const LinearGradient(colors: KalaColors.brandGradient)
-                  : null,
-              color: popular ? null : cs.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(10),
+      );
+    }
+    
+    // Error state
+    if (hasError || products.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: cs.errorContainer.withOpacity(0.2),
+          borderRadius: BorderRadius.circular(AppStyles.radiusMd),
+          border: Border.all(color: cs.error.withOpacity(0.3)),
+        ),
+        child: Column(
+          children: [
+            Icon(LucideIcons.alertTriangle, color: cs.error, size: 32),
+            const SizedBox(height: 8),
+            Text(
+              'Store unavailable',
+              style: TextStyle(color: cs.error, fontWeight: FontWeight.w600),
             ),
-            child: Icon(
-              LucideIcons.gem,
-              color: popular ? Colors.white : cs.onSurfaceVariant,
-              size: 20,
+            const SizedBox(height: 4),
+            Text(
+              _purchaseService.errorNotifier.value ?? 'Please try again later',
+              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
+              textAlign: TextAlign.center,
             ),
+            const SizedBox(height: 12),
+            TextButton.icon(
+              onPressed: () => _purchaseService.loadProducts(),
+              icon: const Icon(LucideIcons.refreshCw, size: 16),
+              label: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
+    
+    // Find featured pack (popular one)
+    final featuredPack = kGemPacks.firstWhere((p) => p.isPopular, orElse: () => kGemPacks[2]);
+    final featuredProduct = _purchaseService.getProduct(featuredPack.productId);
+    
+    // Other packs (excluding featured)
+    final otherPacks = kGemPacks.where((p) => !p.isPopular).toList();
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Featured Pack - Large Hero Card
+        _buildFeaturedPackCard(cs, featuredPack, featuredProduct),
+        
+        const SizedBox(height: 16),
+        
+        // Other Packs - Horizontal Scroll
+        Text(
+          'More Options',
+          style: TextStyle(
+            color: cs.onSurfaceVariant,
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Use Wrap instead of Row to handle overflow gracefully
-                Wrap(
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  spacing: 6,
-                  runSpacing: 4,
-                  children: [
-                    Text(
-                      '$amount Credits',
-                      style: TextStyle(
-                        color: cs.onSurface,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 15,
-                      ),
+        ),
+        const SizedBox(height: 10),
+        
+        SizedBox(
+          height: 140,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            clipBehavior: Clip.none, // Allow badge to overflow
+            padding: const EdgeInsets.only(top: 8), // Space for floating badge
+            itemCount: otherPacks.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 10),
+            itemBuilder: (context, index) {
+              final pack = otherPacks[index];
+              final product = _purchaseService.getProduct(pack.productId);
+              return _buildCompactPackCard(cs, pack, product);
+            },
+          ),
+        ),
+        
+        const SizedBox(height: 20),
+        
+        // Purchase Button
+        if (selectedProduct != null)
+          _buildPurchaseButton(cs, selectedConfig, selectedProduct),
+      ],
+    );
+  }
+  
+  /// Build the featured/popular pack card (large hero style)
+  Widget _buildFeaturedPackCard(ColorScheme cs, GemPackConfig pack, ProductDetails? product) {
+    final bool isSelected = _selectedGemPackId == pack.productId;
+    final bool isAvailable = product != null;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    return GestureDetector(
+      onTap: isAvailable ? () {
+        HapticFeedback.mediumImpact();
+        setState(() => _selectedGemPackId = pack.productId);
+      } : null,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: isSelected
+                ? [
+                    KalaColors.brandGradient[0].withOpacity(0.25),
+                    KalaColors.brandGradient[1].withOpacity(0.15),
+                  ]
+                : isDark
+                    ? [cs.surface, cs.surface]
+                    : [Colors.white, cs.surfaceContainerHighest.withOpacity(0.5)],
+          ),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected 
+                ? KalaColors.brandGradient[0]
+                : cs.outlineVariant.withOpacity(0.3),
+            width: isSelected ? 2 : 1,
+          ),
+          boxShadow: [
+            if (isSelected)
+              BoxShadow(
+                color: KalaColors.brandGradient[0].withOpacity(0.3),
+                blurRadius: 16,
+                spreadRadius: 0,
+                offset: const Offset(0, 4),
+              )
+            else
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 10,
+                offset: const Offset(0, 2),
+              ),
+          ],
+        ),
+        child: Row(
+          children: [
+            // Left: Gem Icon with glow
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: KalaColors.brandGradient,
+                ),
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: KalaColors.brandGradient[0].withOpacity(0.4),
+                    blurRadius: 12,
+                    spreadRadius: 0,
+                  ),
+                ],
+              ),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  const Icon(LucideIcons.gem, size: 32, color: Colors.white),
+                  // Sparkle effect
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: Icon(
+                      LucideIcons.sparkles,
+                      size: 14,
+                      color: Colors.white.withOpacity(0.8),
                     ),
-                    if (popular)
+                  ),
+                ],
+              ),
+            ),
+            
+            const SizedBox(width: 16),
+            
+            // Middle: Details
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Badge + Title Row
+                  Row(
+                    children: [
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
                           gradient: const LinearGradient(colors: KalaColors.brandGradient),
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(6),
                         ),
-                        child: const Text(
-                          'POPULAR',
-                          style: TextStyle(
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(LucideIcons.flame, size: 10, color: Colors.white),
+                            SizedBox(width: 3),
+                            Text(
+                              'MOST POPULAR',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  // Pack name
+                  Text(
+                    '${pack.label} Pack',
+                    style: TextStyle(
+                      color: cs.onSurface,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  // Gem amount
+                  Row(
+                    children: [
+                      ShaderMask(
+                        shaderCallback: (bounds) => const LinearGradient(
+                          colors: KalaColors.brandGradient,
+                        ).createShader(bounds),
+                        child: Text(
+                          _formatGemAmount(pack.gems),
+                          style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 8,
+                            fontSize: 24,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                       ),
-                  ],
+                      const SizedBox(width: 6),
+                      Text(
+                        'gems',
+                        style: TextStyle(
+                          color: cs.onSurfaceVariant,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            
+            // Right: Price & Selection
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Price
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: isSelected 
+                        ? KalaColors.brandGradient[0]
+                        : cs.primaryContainer,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    isAvailable ? product.price : '...',
+                    style: TextStyle(
+                      color: isSelected ? Colors.white : cs.onPrimaryContainer,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                    ),
+                  ),
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: 8),
+                // Selection indicator
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: isSelected 
+                        ? KalaColors.brandGradient[0]
+                        : cs.surfaceContainerHighest,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: isSelected 
+                          ? KalaColors.brandGradient[0]
+                          : cs.outlineVariant,
+                      width: 2,
+                    ),
+                  ),
+                  child: Icon(
+                    LucideIcons.check,
+                    size: 14,
+                    color: isSelected ? Colors.white : Colors.transparent,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  /// Build compact pack card for horizontal scroll
+  Widget _buildCompactPackCard(ColorScheme cs, GemPackConfig pack, ProductDetails? product) {
+    final bool isSelected = _selectedGemPackId == pack.productId;
+    final bool isAvailable = product != null;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    // Color scheme based on pack tier
+    final List<Color> tierColors = pack.isBestValue
+        ? [Colors.amber.shade600, Colors.orange.shade700]
+        : pack.gems >= 5000
+            ? [Colors.purple.shade400, Colors.purple.shade700]
+            : pack.gems >= 1000
+                ? [Colors.blue.shade400, Colors.blue.shade700]
+                : [Colors.teal.shade400, Colors.teal.shade600];
+    
+    return GestureDetector(
+      onTap: isAvailable ? () {
+        HapticFeedback.selectionClick();
+        setState(() => _selectedGemPackId = pack.productId);
+      } : null,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        width: 105,
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: isSelected
+                ? [tierColors[0].withOpacity(0.2), tierColors[1].withOpacity(0.1)]
+                : isDark
+                    ? [cs.surfaceContainerHigh, cs.surface]
+                    : [Colors.white, cs.surfaceContainerHighest.withOpacity(0.5)],
+          ),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isSelected ? tierColors[0] : cs.outlineVariant.withOpacity(0.3),
+            width: isSelected ? 2 : 1,
+          ),
+          boxShadow: isSelected ? [
+            BoxShadow(
+              color: tierColors[0].withOpacity(0.25),
+              blurRadius: 8,
+              spreadRadius: 0,
+            ),
+          ] : null,
+        ),
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            // Badge for best value - positioned as overlay at top center
+            if (pack.isBestValue)
+              Positioned(
+                top: -16,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(colors: tierColors),
+                      borderRadius: BorderRadius.circular(4),
+                      boxShadow: [
+                        BoxShadow(
+                          color: tierColors[0].withOpacity(0.4),
+                          blurRadius: 4,
+                        ),
+                      ],
+                    ),
+                    child: const Text(
+                      '⭐ BEST',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 8,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            
+            // Main content - centered and fills width
+            Positioned.fill(
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Add top spacing if has badge
+                    if (pack.isBestValue) const SizedBox(height: 2),
+                    
+                    // Gem icon
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(colors: tierColors),
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: tierColors[0].withOpacity(0.3),
+                            blurRadius: 6,
+                          ),
+                        ],
+                      ),
+                      child: const Icon(LucideIcons.gem, size: 14, color: Colors.white),
+                    ),
+                    const SizedBox(height: 6),
+                
+                // Gem amount
                 Text(
-                  price,
+                  _formatGemAmount(pack.gems),
+                  style: TextStyle(
+                    color: isSelected ? tierColors[0] : cs.onSurface,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                
+                // Pack label
+                Text(
+                  pack.label,
                   style: TextStyle(
                     color: cs.onSurfaceVariant,
-                    fontSize: 13,
+                    fontSize: 9,
+                  ),
+                  textAlign: TextAlign.center,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                
+                // Price
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: isSelected 
+                        ? tierColors[0].withOpacity(0.15)
+                        : cs.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    isAvailable ? product.price : '...',
+                    style: TextStyle(
+                      color: isSelected ? tierColors[0] : cs.onSurfaceVariant,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 10,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                
+                // Selection indicator
+                if (isSelected)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 3),
+                    child: Icon(
+                      LucideIcons.checkCircle2,
+                      size: 12,
+                      color: tierColors[0],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  /// Format gem amount (e.g., 10000 -> 10K)
+  String _formatGemAmount(int amount) {
+    if (amount >= 1000) {
+      final k = amount / 1000;
+      return k == k.roundToDouble() ? '${k.toInt()}K' : '${k.toStringAsFixed(1)}K';
+    }
+    return amount.toString();
+  }
+  
+  /// Build the purchase button with selected pack summary
+  Widget _buildPurchaseButton(ColorScheme cs, GemPackConfig pack, ProductDetails product) {
+    final isSignedIn = _authService.isSignedIn;
+    
+    // Determine tier colors based on pack
+    final List<Color> tierColors = pack.isPopular
+        ? KalaColors.brandGradient
+        : pack.isBestValue
+            ? [Colors.amber.shade600, Colors.orange.shade700]
+            : pack.gems >= 5000
+                ? [Colors.purple.shade500, Colors.purple.shade700]
+                : pack.gems >= 1000
+                    ? [Colors.blue.shade500, Colors.blue.shade700]
+                    : [Colors.teal.shade500, Colors.teal.shade700];
+    
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            tierColors[0].withOpacity(0.15),
+            tierColors[1].withOpacity(0.08),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: tierColors[0].withOpacity(0.3)),
+      ),
+      child: Column(
+        children: [
+          // Selected pack summary header
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  tierColors[0].withOpacity(0.1),
+                  Colors.transparent,
+                ],
+              ),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(17)),
+            ),
+            child: Row(
+              children: [
+                // Gem icon
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(colors: tierColors),
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: [
+                      BoxShadow(
+                        color: tierColors[0].withOpacity(0.4),
+                        blurRadius: 8,
+                      ),
+                    ],
+                  ),
+                  child: const Icon(LucideIcons.gem, size: 18, color: Colors.white),
+                ),
+                const SizedBox(width: 12),
+                // Pack details
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Pack name row
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              '${pack.label} Pack',
+                              style: TextStyle(
+                                color: cs.onSurface,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (pack.isPopular || pack.isBestValue) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(colors: tierColors),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                pack.isPopular ? '🔥' : '⭐',
+                                style: const TextStyle(fontSize: 10),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      // Gems row
+                      Row(
+                        children: [
+                          Icon(LucideIcons.gem, size: 12, color: tierColors[0]),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${_formatGemAmount(pack.gems)} gems',
+                            style: TextStyle(
+                              color: cs.onSurfaceVariant,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                // Price tag
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: cs.surface,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: tierColors[0].withOpacity(0.3)),
+                  ),
+                  child: Text(
+                    product.price,
+                    style: TextStyle(
+                      color: tierColors[0],
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 8),
-          GradientButton(
-            label: 'Buy',
-            icon: LucideIcons.shoppingCart,
-            onPressed: _buyCredits,
-            variant: popular ? ButtonVariant.primary : ButtonVariant.secondary,
-            size: ButtonSize.small,
+          
+          // Buy button
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: SizedBox(
+              width: double.infinity,
+              child: _isPurchasing
+                ? Container(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(colors: tierColors),
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: tierColors[0].withOpacity(0.4),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        ),
+                        SizedBox(width: 10),
+                        Text(
+                          'Processing...',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                          ),
+                        ),
+                    ],
+                  ),
+                )
+              : GestureDetector(
+                  onTap: isSignedIn ? () => _purchaseGemPack(pack.productId) : _showSignInPrompt,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(colors: tierColors),
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: tierColors[0].withOpacity(0.4),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          isSignedIn ? LucideIcons.shoppingCart : LucideIcons.logIn,
+                          size: 18,
+                          color: Colors.white,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          isSignedIn ? 'Buy Now' : 'Sign in to Buy',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ),
           ),
         ],
       ),
+    );
+  }
+  
+  /// Purchase a gem pack
+  Future<void> _purchaseGemPack(String productId) async {
+    if (!_authService.isSignedIn) {
+      _showSignInPrompt();
+      return;
+    }
+    
+    HapticFeedback.mediumImpact();
+    
+    // Set up completion callback
+    _purchaseService.onPurchaseComplete = (purchasedProductId, success, error) {
+      if (purchasedProductId == productId) {
+        _purchaseService.onPurchaseComplete = null;
+        if (success) {
+          // Refresh credits to show updated balance
+          _refreshCredits();
+        }
+      }
+    };
+    
+    await _purchaseService.purchaseCreditPack(productId);
+  }
+  
+  /// Restore purchases
+  Future<void> _restorePurchases() async {
+    if (!_authService.isSignedIn) {
+      _showSignInPrompt();
+      return;
+    }
+    
+    HapticFeedback.mediumImpact();
+    
+    // Show loading snackbar
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Row(
+          children: [
+            SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            ),
+            SizedBox(width: 10),
+            Text('Restoring purchases...'),
+          ],
+        ),
+        duration: Duration(seconds: 5),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+    
+    final restored = await _purchaseService.restorePurchases();
+    
+    if (!mounted) return;
+    
+    // Clear the loading snackbar
+    ScaffoldMessenger.of(context).clearSnackBars();
+    
+    if (restored) {
+      // Ad-free was restored successfully
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Row(
+            children: [
+              Icon(LucideIcons.checkCircle2, color: Colors.white, size: 20),
+              SizedBox(width: 10),
+              Text('Ad-free restored successfully!'),
+            ],
+          ),
+          backgroundColor: Colors.green.shade600,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      // Refresh UI
+      setState(() {});
+    } else {
+      // No purchases found or restore failed
+      final error = _purchaseService.errorNotifier.value ?? 'No purchases to restore';
+      
+      // Check if the error is about purchase being linked to another account
+      if (error.contains('another account')) {
+        // Show a more detailed dialog for this case
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(LucideIcons.alertCircle, color: Colors.orange, size: 24),
+                SizedBox(width: 10),
+                Text('Purchase Linked'),
+              ],
+            ),
+            content: const Text(
+              'This ad-free purchase is already linked to a different account.\n\n'
+              'Please sign in with the account you originally used to make the purchase.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      } else {
+        // Show regular snackbar for other errors
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(LucideIcons.info, color: Colors.white, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(error),
+                ),
+              ],
+            ),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+  
+  void _showSignInPrompt() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SignInRequiredScreen(
+          feature: 'Store',
+          onSignInSuccess: () {
+            _refreshCredits();
+          },
+        ),
+        fullscreenDialog: true,
+      ),
+    );
+  }
+  
+  /// Show legal document (Privacy Policy or Terms of Service) in-app
+  /// Fetches content from Pastebin raw URL and displays in a bottom sheet
+  Future<void> _showLegalDocument({
+    required String title,
+    required String rawUrl,
+  }) async {
+    final cs = Theme.of(context).colorScheme;
+    
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: cs.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.85,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (context, scrollController) => Column(
+          children: [
+            // Handle bar
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: cs.onSurfaceVariant.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            
+            // Header
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Icon(
+                    title.contains('Privacy') ? LucideIcons.shield : LucideIcons.fileText,
+                    color: cs.primary,
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: cs.onSurface,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: Icon(LucideIcons.x, color: cs.onSurfaceVariant),
+                  ),
+                ],
+              ),
+            ),
+            
+            Divider(color: cs.outlineVariant.withOpacity(0.3), height: 1),
+            
+            // Content
+            Expanded(
+              child: FutureBuilder<String>(
+                future: _fetchLegalContent(rawUrl),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          CircularProgressIndicator(color: cs.primary),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Loading...',
+                            style: TextStyle(color: cs.onSurfaceVariant),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+                  
+                  if (snapshot.hasError || !snapshot.hasData) {
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(LucideIcons.alertCircle, color: cs.error, size: 48),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Could not load content',
+                              style: TextStyle(
+                                color: cs.onSurface,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Please check your internet connection',
+                              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
+                            ),
+                            const SizedBox(height: 16),
+                            TextButton.icon(
+                              onPressed: () {
+                                Navigator.pop(context);
+                                _showLegalDocument(title: title, rawUrl: rawUrl);
+                              },
+                              icon: const Icon(LucideIcons.refreshCw, size: 16),
+                              label: const Text('Retry'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+                  
+                  return SingleChildScrollView(
+                    controller: scrollController,
+                    padding: const EdgeInsets.all(20),
+                    child: Text(
+                      snapshot.data!,
+                      style: TextStyle(
+                        color: cs.onSurface,
+                        fontSize: 14,
+                        height: 1.6,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  /// Fetch legal content from Pastebin raw URL
+  Future<String> _fetchLegalContent(String rawUrl) async {
+    try {
+      final response = await http.get(Uri.parse(rawUrl));
+      if (response.statusCode == 200) {
+        return response.body;
+      }
+      throw Exception('Failed to load content');
+    } catch (e) {
+      debugPrint('Error fetching legal content: $e');
+      rethrow;
+    }
+  }
+
+  Widget _buildRemoveAdsCard(ColorScheme cs) {
+    // Listen to ad-free status AND products for dynamic price
+    return ValueListenableBuilder<bool>(
+      valueListenable: isAdFreeNotifier,
+      builder: (context, isAdFree, _) {
+        return ValueListenableBuilder<List<ProductDetails>>(
+          valueListenable: _purchaseService.productsNotifier,
+          builder: (context, products, _) {
+            // Get price from store (dynamic, localized)
+            final removeAdsProduct = _purchaseService.removeAdsProduct;
+            final price = removeAdsProduct?.price ?? '...';
+            
+            return Container(
+              padding: const EdgeInsets.all(AppStyles.spacing16),
+              decoration: BoxDecoration(
+                color: isAdFree 
+                  ? Colors.green.withOpacity(0.1) 
+                  : cs.primaryContainer.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(AppStyles.radiusMd),
+                border: Border.all(
+                  color: isAdFree 
+                    ? Colors.green.withOpacity(0.4)
+                    : cs.primary.withOpacity(0.5),
+                  width: 2,
+                ),
+                boxShadow: !isAdFree ? [
+                  BoxShadow(
+                    color: cs.primary.withOpacity(0.15),
+                    blurRadius: 8,
+                    spreadRadius: 0,
+                  ),
+                ] : null,
+              ),
+              child: Row(
+                children: [
+                  // Icon with gradient glow like gem packs
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      gradient: isAdFree 
+                        ? null 
+                        : const LinearGradient(colors: KalaColors.brandGradient),
+                      color: isAdFree ? Colors.green.withOpacity(0.15) : null,
+                      borderRadius: BorderRadius.circular(10),
+                      boxShadow: !isAdFree ? [
+                        BoxShadow(
+                          color: KalaColors.brandGradient[0].withOpacity(0.4),
+                          blurRadius: 12,
+                          spreadRadius: 2,
+                        ),
+                      ] : null,
+                    ),
+                    child: Icon(
+                      isAdFree ? LucideIcons.checkCircle2 : LucideIcons.bellOff,
+                      color: isAdFree ? Colors.green : Colors.white,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Title + badge row - same as credit pack
+                        Wrap(
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          spacing: 6,
+                          runSpacing: 4,
+                          children: [
+                            Text(
+                              isAdFree ? 'Ad-Free Active' : 'Remove Ads',
+                              style: TextStyle(
+                                color: cs.onSurface,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 15,
+                              ),
+                            ),
+                            if (!isAdFree)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(colors: KalaColors.brandGradient),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Text(
+                                  'ONE-TIME',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 8,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        // Price or status - dynamic price from store
+                        Text(
+                          isAdFree ? 'Enjoying ad-free!' : price,
+                          style: TextStyle(
+                            color: isAdFree ? Colors.green.shade700 : cs.onSurfaceVariant,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  if (!isAdFree)
+                    GradientButton(
+                      label: 'Buy',
+                      icon: LucideIcons.shoppingBag,
+                      onPressed: _purchaseRemoveAds,
+                      variant: ButtonVariant.primary,
+                      size: ButtonSize.small,
+                    )
+                  else
+                    const Icon(
+                      LucideIcons.checkCircle,
+                      color: Colors.green,
+                      size: 24,
+                    ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+  
+  void _purchaseRemoveAds() {
+    if (!_authService.isSignedIn) {
+      _showSignInPrompt();
+      return;
+    }
+    
+    final cs = Theme.of(context).colorScheme;
+    final removeAdsProduct = _purchaseService.removeAdsProduct;
+    final price = removeAdsProduct?.price ?? '\$2.99';
+    
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: cs.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          return SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(colors: KalaColors.brandGradient),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      LucideIcons.bellOff,
+                      size: 32,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Remove Ads',
+                    style: TextStyle(
+                      color: cs.onSurface,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Enjoy an ad-free experience with a one-time purchase',
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant,
+                      fontSize: 14,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 20),
+                  
+                  // Benefits
+                  _buildAdFreeBenefit(cs, LucideIcons.bellOff, 'No ads anywhere in the app'),
+                  const SizedBox(height: 10),
+                  _buildAdFreeBenefit(cs, LucideIcons.download, 'Unlimited downloads without ads'),
+                  const SizedBox(height: 10),
+                  _buildAdFreeBenefit(cs, LucideIcons.zap, 'Faster, smoother experience'),
+                  const SizedBox(height: 10),
+                  _buildAdFreeBenefit(cs, LucideIcons.infinity, 'One-time purchase, forever'),
+                  
+                  const SizedBox(height: 24),
+                  
+                  ValueListenableBuilder<IAPState>(
+                    valueListenable: _purchaseService.statusNotifier,
+                    builder: (context, status, _) {
+                      final isPurchasing = status == IAPState.purchasing || 
+                                          status == IAPState.verifying;
+                      
+                      if (removeAdsProduct == null) {
+                        return Container(
+                          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
+                          decoration: BoxDecoration(
+                            color: cs.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            'Product unavailable',
+                            style: TextStyle(color: cs.onSurfaceVariant),
+                          ),
+                        );
+                      }
+                      
+                      return GradientButton(
+                        label: isPurchasing ? 'Processing...' : 'Purchase for $price',
+                        icon: isPurchasing ? null : LucideIcons.shoppingBag,
+                        onPressed: isPurchasing ? null : () async {
+                          HapticFeedback.mediumImpact();
+                          
+                          // Set up completion callback
+                          _purchaseService.onPurchaseComplete = (purchasedProductId, success, error) {
+                            if (purchasedProductId == kRemoveAdsProductId) {
+                              _purchaseService.onPurchaseComplete = null;
+                              Navigator.pop(context);
+                              if (success) {
+                                _showPurchaseSuccessSnackBar(productId: purchasedProductId);
+                              } else if (error != null && error != 'Cancelled') {
+                                _showPurchaseErrorSnackBar(error, productId: purchasedProductId);
+                              }
+                            }
+                          };
+                          
+                          await _purchaseService.purchaseRemoveAds();
+                        },
+                        variant: ButtonVariant.primary,
+                        expanded: true,
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: Text(
+                      'Maybe later',
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+  
+  Widget _buildAdFreeBenefit(ColorScheme cs, IconData icon, String text) {
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: Colors.green),
+        const SizedBox(width: 12),
+        Text(
+          text,
+          style: TextStyle(
+            color: cs.onSurface,
+            fontSize: 14,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -2147,7 +3599,7 @@ class _DailySpinnerPageState extends State<DailySpinnerPage>
       final totalRotation = (fullRotations * 2 * pi) + additionalRotation;
       
       debugPrint('🎰 Spin calculation:');
-      debugPrint('   Won: $wonCredits credits (segment $targetSegment)');
+      debugPrint('   Won: $wonCredits gems (segment $targetSegment)');
       debugPrint('   Segment angle: ${(segmentAngle * 180 / pi).toStringAsFixed(1)}°');
       debugPrint('   Landing offset: ${(landingOffset * 180 / pi).toStringAsFixed(1)}°');
       debugPrint('   Current angle: ${(currentAngle * 180 / pi).toStringAsFixed(1)}°');
@@ -2220,8 +3672,8 @@ class _DailySpinnerPageState extends State<DailySpinnerPage>
             // Celebration icon
             Container(
               padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(colors: KalaColors.brandGradient),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(colors: KalaColors.brandGradient),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
@@ -2254,7 +3706,7 @@ class _DailySpinnerPageState extends State<DailySpinnerPage>
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(LucideIcons.gem, size: 32, color: KalaColors.gold),
+                const Icon(LucideIcons.gem, size: 32, color: KalaColors.gold),
                 const SizedBox(width: 8),
                 ShaderMask(
                   shaderCallback: (bounds) => const LinearGradient(
@@ -2273,7 +3725,7 @@ class _DailySpinnerPageState extends State<DailySpinnerPage>
             ),
             const SizedBox(height: 4),
             Text(
-              credits == 1 ? 'Credit' : 'Credits',
+              credits == 1 ? 'Gem' : 'Gems',
               style: TextStyle(
                 color: cs.onSurfaceVariant,
                 fontSize: 16,
@@ -2361,7 +3813,7 @@ class _DailySpinnerPageState extends State<DailySpinnerPage>
                                       ),
                                     ],
                                   ),
-                                  child: Icon(
+                                  child: const Icon(
                                     LucideIcons.gem,
                                     color: Colors.white,
                                     size: 30,

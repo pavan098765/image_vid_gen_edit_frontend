@@ -21,6 +21,7 @@ import 'package:kala_ai_create_images_videos_with_ai/core/services/user_service.
 import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_button.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/sign_in_prompt.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/themed_native_ad.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/ai_tools/outpaint_canvas_page.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/credits/credits_page.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/result_manager/result_manager_page.dart';
@@ -711,7 +712,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   bool _autoOpenMaskAfterPick = false;
   String? _selectedModeKey;
   String? _activeJobId;
-  bool _fetchingResult = false;
+  final bool _fetchingResult = false;
   
   // Track image processing state to prevent race conditions
   bool _isProcessingImage = false;
@@ -732,7 +733,10 @@ class _GenericToolPageState extends State<GenericToolPage>
   // -------- Style Library --------
   String _selectedStyleCategory = 'All';
   StylePreset? _selectedStyle;
-  Set<String> _favoriteStyles = {};
+  final Set<String> _favoriteStyles = {};
+  
+  // -------- Quick Add Collapsible Section --------
+  bool _isQuickAddExpanded = true;
 
   // -------- Advanced Settings --------
   late AdvancedSettings _advancedSettings;
@@ -849,12 +853,20 @@ class _GenericToolPageState extends State<GenericToolPage>
       _activeJobId = widget.restoreJobId;
       _loading = true;
     }
+    
+    // Listen for ad-free status changes to hide/show native ads
+    isAdFreeNotifier.addListener(_onAdFreeStatusChanged);
 
     debugPrint("🔧 Config for ${widget.config.model}");
     debugPrint("  title=${widget.config.title}");
     debugPrint("  elements=${widget.config.elements?.length}");
     debugPrint("  modes=${widget.config.modes?.keys}");
     debugPrint("  models=${widget.config.models?.length ?? 0}");
+  }
+  
+  void _onAdFreeStatusChanged() {
+    // Rebuild to hide/show native ads when ad-free status changes
+    if (mounted) setState(() {});
   }
 
   /// Initialize the selected model from config
@@ -951,7 +963,7 @@ class _GenericToolPageState extends State<GenericToolPage>
       SnackBar(
         content: Row(
           children: [
-            Icon(LucideIcons.check, color: Colors.white, size: 18),
+            const Icon(LucideIcons.check, color: Colors.white, size: 18),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
@@ -1389,7 +1401,7 @@ class _GenericToolPageState extends State<GenericToolPage>
           Switch(
             value: value,
             onChanged: onChanged,
-            activeColor: cs.primary,
+            activeThumbColor: cs.primary,
           ),
         ],
       ),
@@ -1916,6 +1928,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     _promptTabController.removeListener(_onTabChanged);
     _promptTabController.dispose();
     _glowAnimationController.dispose();
+    isAdFreeNotifier.removeListener(_onAdFreeStatusChanged);
     super.dispose();
   }
 
@@ -2141,7 +2154,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         // Left: Generate text with icon
-                        Icon(
+                        const Icon(
                           LucideIcons.sparkles,
                           color: Colors.white,
                           size: 22,
@@ -2897,14 +2910,14 @@ class _GenericToolPageState extends State<GenericToolPage>
                 fontWeight: FontWeight.w500,
                 fontSize: 14,
               ),
-              tabs: [
+              tabs: const [
                 Tab(
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(LucideIcons.penTool, size: 16),
-                      const SizedBox(width: 6),
-                      const Text('Prompt'),
+                      SizedBox(width: 6),
+                      Text('Prompt'),
                     ],
                   ),
                 ),
@@ -2913,8 +2926,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(LucideIcons.layoutGrid, size: 16),
-                      const SizedBox(width: 6),
-                      const Text('Templates'),
+                      SizedBox(width: 6),
+                      Text('Templates'),
                     ],
                   ),
                 ),
@@ -3107,70 +3120,145 @@ class _GenericToolPageState extends State<GenericToolPage>
           
           const SizedBox(height: 14),
           
-          // Prompt helper chips section
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    LucideIcons.plus,
-                    size: 14,
+          // Collapsible Quick Add section with native ad
+          _buildCollapsibleQuickAddSection(cs),
+        ],
+      ),
+    );
+  }
+
+  /// Build collapsible Quick Add section with native ad
+  /// Shows native ad when collapsed, shows Quick Add chips when expanded
+  Widget _buildCollapsibleQuickAddSection(ColorScheme cs) {
+    // Check if ads should be shown (uses secure shouldShowAds() check)
+    // This requires authentication + server verification for ad-free
+    final bool showAds = shouldShowAds();
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Header row with toggle
+        GestureDetector(
+          onTap: () {
+            setState(() {
+              _isQuickAddExpanded = !_isQuickAddExpanded;
+            });
+          },
+          behavior: HitTestBehavior.opaque,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              children: [
+                AnimatedRotation(
+                  turns: _isQuickAddExpanded ? 0 : -0.25,
+                  duration: const Duration(milliseconds: 200),
+                  child: Icon(
+                    LucideIcons.chevronDown,
+                    size: 16,
                     color: cs.onSurfaceVariant.withOpacity(0.7),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Icon(
+                  LucideIcons.plus,
+                  size: 14,
+                  color: cs.onSurfaceVariant.withOpacity(0.7),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  'Quick add',
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant.withOpacity(0.7),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                if (!_isQuickAddExpanded) ...[
+                  const Spacer(),
+                  Text(
+                    'Tap to expand',
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant.withOpacity(0.4),
+                      fontSize: 10,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        
+        // Animated content
+        AnimatedCrossFade(
+          firstChild: _buildQuickAddChipsContent(cs),
+          secondChild: showAds 
+            ? _buildQuickAddCollapsedWithAd(cs)
+            : const SizedBox(height: 8),
+          crossFadeState: _isQuickAddExpanded 
+            ? CrossFadeState.showFirst 
+            : CrossFadeState.showSecond,
+          duration: const Duration(milliseconds: 250),
+          sizeCurve: Curves.easeInOut,
+        ),
+      ],
+    );
+  }
+  
+  /// Build the Quick Add chips content (expanded state)
+  Widget _buildQuickAddChipsContent(ColorScheme cs) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: promptHelperChips.map((chip) {
+          return InkWell(
+            onTap: () => _appendChipToPrompt(chip),
+            borderRadius: BorderRadius.circular(20),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerHigh,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: cs.outlineVariant.withOpacity(0.3),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    chip.icon,
+                    style: const TextStyle(fontSize: 12),
                   ),
                   const SizedBox(width: 6),
                   Text(
-                    'Quick add:',
+                    chip.label,
                     style: TextStyle(
-                      color: cs.onSurfaceVariant.withOpacity(0.7),
+                      color: cs.onSurface,
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: promptHelperChips.map((chip) {
-                  return InkWell(
-                    onTap: () => _appendChipToPrompt(chip),
-                    borderRadius: BorderRadius.circular(20),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: cs.surfaceContainerHigh,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: cs.outlineVariant.withOpacity(0.3),
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            chip.icon,
-                            style: const TextStyle(fontSize: 12),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            chip.label,
-                            style: TextStyle(
-                              color: cs.onSurface,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-            ],
-          ),
-        ],
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+  
+  /// Build collapsed Quick Add with native ad
+  Widget _buildQuickAddCollapsedWithAd(ColorScheme cs) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: const ThemedNativeAd(
+          height: 120,
+          useSmallTemplate: true,
+        ),
       ),
     );
   }
@@ -6404,7 +6492,7 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
                 child: Container(
                   color: Colors.black12,
                   alignment: Alignment.center,
-                  child: Text("Ad Banner",
+                  child: const Text("Ad Banner",
                       style: TextStyle(color: Colors.black54)),
                 ),
               ),

@@ -610,17 +610,52 @@ class AdService {
     }
 
     final completer = Completer<bool>();
+    bool hasCompleted = false;
+    
+    // Set up callbacks for ad lifecycle
+    _rewardedAd!.fullScreenContentCallback = FullScreenContentCallback(
+      onAdDismissedFullScreenContent: (Ad ad) {
+        debugPrint("📺 Feature gate ad dismissed");
+        ad.dispose();
+        _rewardedAd = null;
+        _isAdReady = false;
+        isAdReadyNotifier.value = false;
+        
+        // Preload next ad for future use
+        loadRewardedAd();
+        
+        if (!hasCompleted) {
+          hasCompleted = true;
+          completer.complete(true); // User watched the ad
+        }
+      },
+      onAdFailedToShowFullScreenContent: (Ad ad, AdError error) {
+        debugPrint("❌ Feature gate ad failed to show: ${error.message}");
+        ad.dispose();
+        _rewardedAd = null;
+        _isAdReady = false;
+        isAdReadyNotifier.value = false;
+        
+        if (!hasCompleted) {
+          hasCompleted = true;
+          completer.complete(false);
+        }
+      },
+    );
     
     try {
       await _rewardedAd!.show(
         onUserEarnedReward: (AdWithoutView ad, RewardItem reward) {
-          debugPrint("🎉 Feature gate ad completed");
-          completer.complete(true);
+          debugPrint("🎉 Feature gate ad reward earned");
+          // Note: completion is handled in onAdDismissedFullScreenContent
         },
       );
     } catch (e) {
       debugPrint("❌ Feature gate ad error: $e");
-      completer.complete(false);
+      if (!hasCompleted) {
+        hasCompleted = true;
+        completer.complete(false);
+      }
     }
 
     return completer.future;

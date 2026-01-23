@@ -1,6 +1,7 @@
 // lib/main.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/file_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/polling_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/thumbnail_service.dart';
@@ -20,6 +21,7 @@ import 'core/app_state.dart';
 import 'core/services/notification_service.dart';
 import 'core/services/user_service.dart';
 import 'core/services/ad_service.dart';
+import 'core/services/integrity_service.dart';
 
 import 'features/image_editor/image_editor_page.dart';
 import 'features/ai_tools/ai_tools_page.dart';
@@ -295,10 +297,102 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   }
 }
 
+/// Shows integrity violation dialog and exits the app
+/// This is called when tampering is detected
+Future<void> _showIntegrityViolationAndExit(IntegrityResult result) async {
+  // Ensure widgets are initialized for showing dialog
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // Run the app with just an error screen
+  runApp(MaterialApp(
+    debugShowCheckedModeBanner: false,
+    home: Scaffold(
+      backgroundColor: const Color(0xFF1A1A2E),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.security,
+                size: 80,
+                color: Colors.redAccent,
+              ),
+              const SizedBox(height: 24),
+              const Text(
+                'Security Alert',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                result.message,
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 16,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'This app cannot run on this device.\n'
+                'Please reinstall from the official app store.',
+                style: TextStyle(
+                  color: Colors.white54,
+                  fontSize: 14,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 32),
+              ElevatedButton(
+                onPressed: () {
+                  // Exit the app
+                  SystemNavigator.pop();
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.redAccent,
+                  padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 16),
+                ),
+                child: const Text(
+                  'Close App',
+                  style: TextStyle(color: Colors.white, fontSize: 16),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  ));
+  
+  // Wait a bit then force exit (in case user doesn't tap button)
+  await Future.delayed(const Duration(seconds: 30));
+  SystemNavigator.pop();
+}
+
 /// App initialization that runs while splash is visible
 /// Returns a Future that completes when all services are ready
 Future<void> initializeApp() async {
   debugPrint("🚀 Starting app initialization...");
+  
+  // ============================================================
+  // INTEGRITY CHECK - Run FIRST before initializing anything else
+  // ============================================================
+  final integrityResult = await IntegrityService.instance.checkIntegrity();
+  if (!integrityResult.passed) {
+    debugPrint("🚨 INTEGRITY CHECK FAILED: ${integrityResult.status}");
+    debugPrint("   Message: ${integrityResult.message}");
+    debugPrint("   Details: ${integrityResult.details}");
+    
+    // Show error and close app
+    await _showIntegrityViolationAndExit(integrityResult);
+    return; // Should not reach here as app exits
+  }
+  debugPrint("✅ Integrity check passed");
   
   // Initialize Firebase first (required for other services)
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
@@ -311,6 +405,24 @@ Future<void> initializeApp() async {
   await ThumbnailService.instance.init();
   await UserService().initialize();
   await AdService.initialize();
+  
+  // ============================================================
+  // AD-FREE STATUS - Requires authentication + server verification
+  // ============================================================
+  // Reset ad-free status - will be verified after auth check
+  resetAdFreeVerification();
+  
+  // Check ad-free status from server (after user service is ready)
+  // This validates the local cached status with the server
+  // Only authenticated users can be ad-free
+  if (currentUserNotifier.value != null) {
+    final isAdFree = await UserService().checkAdFreeStatus();
+    notifyAdFreeStatusChanged(isAdFree, verifiedByServer: true);
+    debugPrint("✅ Ad-free status verified: $isAdFree");
+  } else {
+    debugPrint("ℹ️ User not authenticated - ads will be shown");
+  }
+  
   debugPrint("✅ App state initialized");
 
   // Register background handler for FCM
@@ -682,14 +794,15 @@ class _MainAppScaffold extends StatelessWidget {
             onDestinationSelected: (i) => selectedIndexNotifier.value = i,
             destinations: const [
               NavigationDestination(
-                  icon: Icon(Icons.photo_library), label: "Photo"),
-              NavigationDestination(icon: Icon(Icons.movie), label: "Video"),
+                  icon: Icon(LucideIcons.image), label: "Photo"),
               NavigationDestination(
-                  icon: Icon(Icons.auto_awesome), label: "AI Tools"),
+                  icon: Icon(LucideIcons.video), label: "Video"),
               NavigationDestination(
-                  icon: Icon(LucideIcons.gem), label: "Credits"),
+                  icon: Icon(LucideIcons.sparkles), label: "AI Tools"),
               NavigationDestination(
-                  icon: Icon(Icons.settings), label: "Settings"),
+                  icon: Icon(LucideIcons.store), label: "Store"),
+              NavigationDestination(
+                  icon: Icon(LucideIcons.settings), label: "Settings"),
             ],
           );
         },

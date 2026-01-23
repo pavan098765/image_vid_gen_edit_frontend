@@ -5,6 +5,7 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/ad_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/file_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
@@ -39,6 +40,24 @@ class _EditorPageState extends State<EditorPage> {
     },
     onCloseEditor: (_) {}, // ✅ keep minimal
   );
+  
+  @override
+  void initState() {
+    super.initState();
+    // Listen for ad-free status changes to hide/show native ads
+    isAdFreeNotifier.addListener(_onAdFreeStatusChanged);
+  }
+  
+  @override
+  void dispose() {
+    isAdFreeNotifier.removeListener(_onAdFreeStatusChanged);
+    super.dispose();
+  }
+  
+  void _onAdFreeStatusChanged() {
+    // Rebuild to hide/show native ads when ad-free status changes
+    if (mounted) setState(() {});
+  }
 
   Future<void> _pickImage() async {
     try {
@@ -537,13 +556,16 @@ class _EditorPageState extends State<EditorPage> {
   }
 
   Widget _buildEmptyStateWithAd(BuildContext context) {
+    final showAds = shouldShowAds();
+    
     return Column(
       children: [
-        // Native ad at top (use small template for better space)
-        const ThemedNativeAd(
-          height: 260,
-          useSmallTemplate: false,
-        ),
+        // Native ad at top (only if not ad-free)
+        if (showAds)
+          const ThemedNativeAd(
+            height: 260,
+            useSmallTemplate: false,
+          ),
         // Placeholder in remaining space - with bottom padding for FAB
         Expanded(
           child: Padding(
