@@ -5879,10 +5879,7 @@ class _GenericToolPageState extends State<GenericToolPage>
         }
 
         // --- Build payload ---
-        // IMPORTANT: To avoid GPU OOM with multi-variation batches, we submit
-        // variations as SEPARATE jobs (variations=1 each) when user selects >1.
-        //
-        // This keeps worker behavior identical to "normal" (variations=1) jobs.
+        // Send ONE request with variations: N, server creates N jobs internally
         final modelId = _selectedModelId ?? widget.config.model;
         final int requestedVariations =
             _advancedSettings.variations.clamp(1, 4);
@@ -5893,15 +5890,15 @@ class _GenericToolPageState extends State<GenericToolPage>
           "fcm_token": fcmToken,
           // Root level settings (not in params)
           "enhance_prompt": _advancedSettings.enhancePrompt,
-          // Always submit single-variation jobs; we loop for requestedVariations.
-          "variations": 1,
+          // Server will create N jobs internally based on variations count
+          "variations": requestedVariations,
           ...rootParams,
         };
 
         debugPrint("🎯 Using model: $modelId");
         debugPrint(
           "🔧 Advanced settings - enhance: ${_advancedSettings.enhancePrompt}, "
-          "variations: $requestedVariations (submitted as $requestedVariations separate jobs), "
+          "variations: $requestedVariations, "
           "cfg: ${_advancedSettings.cfgScale}, aspect: ${_advancedSettings.aspectRatio}",
         );
 
@@ -5947,68 +5944,91 @@ class _GenericToolPageState extends State<GenericToolPage>
         final String? originalPrompt = _inputs["prompt"] as String?;
         final List<JobModel> createdJobs = [];
 
-        for (int i = 0; i < requestedVariations; i++) {
-          // Per-job retry loop to avoid duplicating already-submitted jobs.
-          dynamic data;
-          for (int submitAttempt = 1; submitAttempt <= maxRetries; submitAttempt++) {
-            // Clone params per submit to avoid any accidental mutation.
-            final paramsForSubmit = Map<String, dynamic>.from(resolvedParams);
-            if (paramsForSubmit["init_image"] is List) {
-              paramsForSubmit["init_image"] = List<dynamic>.from(paramsForSubmit["init_image"] as List);
-            }
+        // Clone params for submit to avoid any accidental mutation.
+        final paramsForSubmit = Map<String, dynamic>.from(resolvedParams);
+        if (paramsForSubmit["init_image"] is List) {
+          paramsForSubmit["init_image"] = List<dynamic>.from(paramsForSubmit["init_image"] as List);
+        }
 
-            // Backend only expects init_image (not images). If images was set, move it to init_image.
-            if (!paramsForSubmit.containsKey("init_image") &&
-                paramsForSubmit.containsKey("images")) {
-              paramsForSubmit["init_image"] = paramsForSubmit["images"];
-            }
-            // Always remove the "images" key - backend expects only init_image.
-            paramsForSubmit.remove("images");
+        // Backend only expects init_image (not images). If images was set, move it to init_image.
+        if (!paramsForSubmit.containsKey("init_image") &&
+            paramsForSubmit.containsKey("images")) {
+          paramsForSubmit["init_image"] = paramsForSubmit["images"];
+        }
+        // Always remove the "images" key - backend expects only init_image.
+        paramsForSubmit.remove("images");
 
-            final dynamic ii = paramsForSubmit["init_image"];
-            final int iiCount = ii is List
-                ? ii.length
-                : (ii is String && ii.isNotEmpty ? 1 : 0);
-            debugPrint(
-              "🖼️ Submit ${i + 1}/$requestedVariations init_image_count=$iiCount type=${ii.runtimeType}",
-            );
+        final dynamic ii = paramsForSubmit["init_image"];
+        final int iiCount = ii is List
+            ? ii.length
+            : (ii is String && ii.isNotEmpty ? 1 : 0);
+        debugPrint(
+          "🖼️ Submit with variations=$requestedVariations, init_image_count=$iiCount type=${ii.runtimeType}",
+        );
 
-            debugPrint(
-              "🚀 Submitting job ${i + 1}/$requestedVariations (attempt $submitAttempt/$maxRetries)",
-            );
-            final resp = await http
-                .post(
-                  Uri.parse('$controllerUrl/submit'),
-                  headers: headers,
-                  body: jsonEncode(<String, dynamic>{
-                    ...basePayload,
-                    "params": paramsForSubmit,
-                  }),
-                )
-                .timeout(const Duration(seconds: 60));
+        // Submit ONE request - server creates N jobs internally
+        dynamic data;
+        for (int submitAttempt = 1; submitAttempt <= maxRetries; submitAttempt++) {
+          debugPrint(
+            "🚀 Submitting job (variations=$requestedVariations, attempt $submitAttempt/$maxRetries)",
+          );
+          final resp = await http
+              .post(
+                Uri.parse('$controllerUrl/submit'),
+                headers: headers,
+                body: jsonEncode(<String, dynamic>{
+                  ...basePayload,
+                  "params": paramsForSubmit,
+                }),
+              )
+              .timeout(const Duration(seconds: 60));
 
-            if (resp.statusCode == 200) {
-              data = jsonDecode(resp.body);
-              break;
-            }
-
-            debugPrint("❌ Submit ${i + 1}/$requestedVariations failed: ${resp.statusCode} ${resp.body}");
-            if (submitAttempt < maxRetries) {
-              await Future.delayed(const Duration(seconds: 2));
-            }
+          if (resp.statusCode == 200) {
+            data = jsonDecode(resp.body);
+            break;
           }
 
-          if (data == null) {
-            throw Exception("Failed to submit variation ${i + 1}/$requestedVariations after $maxRetries retries");
+          debugPrint("❌ Submit failed: ${resp.statusCode} ${resp.body}");
+          if (submitAttempt < maxRetries) {
+            await Future.delayed(const Duration(seconds: 2));
           }
+        }
 
-          final jobId = data["job_id"];
-          final downloadUrl = data["download_url"] ?? data["downloadUrl"];
-          if (jobId == null) throw Exception("No job_id returned from submit");
+        if (data == null) {
+          throw Exception("Failed to submit job after $maxRetries retries");
+        }
 
-          final bool promptWasEnhanced = data["prompt_enhanced"] ?? false;
-          final String? enhancedPromptFromServer = data["enhanced_prompt"];
+        // Parse response - server may return single job_id or array of job_ids
+        final bool promptWasEnhanced = data["prompt_enhanced"] ?? false;
+        final String? enhancedPromptFromServer = data["enhanced_prompt"];
 
+        // Handle both single and multiple job_ids from response
+        final List<String> jobIds = [];
+        final List<String?> downloadUrls = [];
+        
+        if (data["job_ids"] != null && data["job_ids"] is List) {
+          // Server returned multiple job_ids for variations
+          jobIds.addAll((data["job_ids"] as List).map((e) => e.toString()));
+          if (data["download_urls"] != null && data["download_urls"] is List) {
+            downloadUrls.addAll((data["download_urls"] as List).map((e) => e?.toString()));
+          }
+        } else if (data["job_id"] != null) {
+          // Single job_id (backwards compatibility or variations=1)
+          jobIds.add(data["job_id"].toString());
+          downloadUrls.add(data["download_url"]?.toString() ?? data["downloadUrl"]?.toString());
+        }
+
+        if (jobIds.isEmpty) {
+          throw Exception("No job_id(s) returned from submit");
+        }
+
+        debugPrint("✅ Server created ${jobIds.length} job(s): $jobIds");
+
+        // Create a JobModel for each job_id returned
+        for (int i = 0; i < jobIds.length; i++) {
+          final jobId = jobIds[i];
+          final downloadUrl = i < downloadUrls.length ? downloadUrls[i] : null;
+          
           final String title = await generateFriendlyJobName();
           final newJob = JobModel(
             jobId: jobId,
@@ -6018,8 +6038,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             downloadUrl: downloadUrl,
             status: 'processing',
             inputImagePath: inputImageLocalPath,
-            // Each submitted job is a normal single-variation job.
-            variations: 1,
+            variations: 1, // Each job is a single variation
             allCompleted: false,
             enhancedPrompt: enhancedPromptFromServer,
             promptEnhanced: promptWasEnhanced,
@@ -6040,11 +6059,6 @@ class _GenericToolPageState extends State<GenericToolPage>
             "outputType": widget.config.outputType,
           };
           await prefs.setString("notify_job_$jobId", jsonEncode(jobContext));
-
-          // Small spacing to avoid back-to-back submits spiking memory/traffic.
-          if (i < requestedVariations - 1) {
-            await Future.delayed(const Duration(milliseconds: 250));
-          }
         }
         
         // Jobs are already persisted via addOrUpdateJob - no need for redundant saves
@@ -6062,7 +6076,7 @@ class _GenericToolPageState extends State<GenericToolPage>
           );
         }
 
-        debugPrint("✅ Submitted ${createdJobs.length}/$requestedVariations jobs successfully");
+        debugPrint("✅ Submitted 1 request, created ${createdJobs.length} job(s) for $requestedVariations variation(s)");
         return;
       } catch (e) {
         debugPrint("❌ Job submission attempt $attempt failed: $e");

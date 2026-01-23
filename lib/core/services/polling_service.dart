@@ -214,7 +214,7 @@ class PollingService {
       }
       
       // ✨ Parse enhanced prompt fields
-      final int variations = data['variations'] ?? 1;
+      // Note: Don't overwrite variations - each job in a batch is a single variation
       final bool allCompleted = data['all_completed'] ?? (status == 'completed' || status == 'failed');
       final String? enhancedPrompt = data['enhanced_prompt'];
       final bool promptEnhanced = data['prompt_enhanced'] ?? false;
@@ -238,8 +238,8 @@ class PollingService {
           createdAt: old.createdAt,
           inputImagePath: old.inputImagePath,
           localFilePath: old.localFilePath,
-          // NEW: Variation and prompt fields
-          variations: variations,
+          // Keep original variations (each job is a single variation in the batch)
+          variations: old.variations,
           variationResults: variationResults ?? old.variationResults,
           allCompleted: allCompleted,
           enhancedPrompt: enhancedPrompt ?? old.enhancedPrompt,
@@ -424,7 +424,7 @@ class PollingService {
         }
         
         // ✨ Parse enhanced prompt fields
-        final int variations = data['variations'] ?? 1;
+        // Note: Don't overwrite variations - each job in a batch is a single variation
         final bool allCompleted = data['all_completed'] ?? (status == 'completed' || status == 'failed');
         final String? enhancedPrompt = data['enhanced_prompt'];
         final bool promptEnhanced = data['prompt_enhanced'] ?? false;
@@ -450,8 +450,8 @@ class PollingService {
             createdAt: old.createdAt,
             inputImagePath: old.inputImagePath,
             localFilePath: old.localFilePath,
-            // NEW: Variation and prompt fields
-            variations: variations,
+            // Keep original variations (each job is a single variation in the batch)
+            variations: old.variations,
             variationResults: variationResults ?? old.variationResults,
             allCompleted: allCompleted,
             enhancedPrompt: enhancedPrompt ?? old.enhancedPrompt,
@@ -598,7 +598,8 @@ class PollingService {
           }
           
           // ✨ Parse enhanced prompt fields
-          final int variations = data['variations'] ?? 1;
+          // Note: Don't overwrite variations - each job in a batch is a single variation (variations=1)
+          // The server's 'variations' field represents batch size, not individual job variations
           final bool allCompleted = data['all_completed'] ?? (status == 'completed' || status == 'failed');
           final String? enhancedPrompt = data['enhanced_prompt'];
           final bool promptEnhanced = data['prompt_enhanced'] ?? false;
@@ -613,8 +614,8 @@ class PollingService {
             createdAt: old.createdAt,
             inputImagePath: preservedInputPath, // ✅ guaranteed now
             localFilePath: old.localFilePath,
-            // NEW: Variation and prompt fields
-            variations: variations,
+            // Keep original variations (each job is a single variation in the batch)
+            variations: old.variations,
             variationResults: variationResults ?? old.variationResults,
             allCompleted: allCompleted,
             enhancedPrompt: enhancedPrompt ?? old.enhancedPrompt,
