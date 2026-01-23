@@ -21,7 +21,10 @@ import 'package:pro_video_editor/pro_video_editor.dart';
 import 'package:video_player/video_player.dart';
 
 class VideoEditorPage extends StatefulWidget {
-  const VideoEditorPage({super.key});
+  /// Whether to show the AppBar. Set to false when nested in MediaEditorPage.
+  final bool showAppBar;
+  
+  const VideoEditorPage({super.key, this.showAppBar = true});
 
   @override
   State<VideoEditorPage> createState() => _VideoEditorPageState();
@@ -561,8 +564,14 @@ class _VideoEditorPageState extends State<VideoEditorPage> {
   }
   
   /// Shows a rewarded ad for export gate
-  /// Returns true if ad was completed, false otherwise
+  /// Returns true if ad was completed (or skipped for ad-free users), false otherwise
   Future<bool> _showExportAd() async {
+    // Skip ad entirely if user has purchased Remove Ads
+    if (!shouldShowAds()) {
+      debugPrint('✅ User is ad-free, skipping export ad');
+      return true;
+    }
+    
     // Pre-load ad if not ready
     if (!_adService.isAdReadyNotifier.value) {
       // Show loading indicator
@@ -615,36 +624,88 @@ class _VideoEditorPageState extends State<VideoEditorPage> {
     return WillPopScope(
       onWillPop: _handleSystemBack,
       child: Scaffold(
-        appBar: AppBar(
-          title: const KalaLogoWithIcon(logoHeight: 30, fontSize: 22),
-          actions: [
-            if (_video != null && !_editorOpen)
-              IconButton(
-                icon: const Icon(Icons.edit),
-                tooltip: 'Edit',
-                onPressed: () => setState(() {
-                  _editorOpen = true;
-                  _exportJustCompleted = false;
-                }),
-              ),
-            if (_outputPath != null && !_editorOpen)
-              _isSaving
-                  ? const Padding(
-                      padding: EdgeInsets.all(12),
-                      child: SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    )
-                  : IconButton(
-                      icon: const Icon(Icons.save_alt),
-                      tooltip: 'Save to Gallery',
-                      onPressed: _saveExported,
+        appBar: widget.showAppBar
+            ? AppBar(
+                title: const KalaLogoWithIcon(logoHeight: 30, fontSize: 22),
+                actions: [
+                  if (_video != null && !_editorOpen)
+                    IconButton(
+                      icon: const Icon(Icons.edit),
+                      tooltip: 'Edit',
+                      onPressed: () => setState(() {
+                        _editorOpen = true;
+                        _exportJustCompleted = false;
+                      }),
                     ),
+                  if (_outputPath != null && !_editorOpen)
+                    _isSaving
+                        ? const Padding(
+                            padding: EdgeInsets.all(12),
+                            child: SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          )
+                        : IconButton(
+                            icon: const Icon(Icons.save_alt),
+                            tooltip: 'Save to Gallery',
+                            onPressed: _saveExported,
+                          ),
+                ],
+              )
+            : null,
+        body: Stack(
+          children: [
+            _buildBody(),
+            // Action buttons when AppBar is hidden (nested in MediaEditorPage)
+            if (!widget.showAppBar && _video != null && !_editorOpen)
+              Positioned(
+                top: 8,
+                right: 8,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Edit button
+                    _buildActionButton(
+                      icon: Icons.edit,
+                      tooltip: 'Edit',
+                      onPressed: () => setState(() {
+                        _editorOpen = true;
+                        _exportJustCompleted = false;
+                      }),
+                    ),
+                    if (_outputPath != null) ...[
+                      const SizedBox(width: 8),
+                      // Save button
+                      _isSaving
+                          ? Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.9),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Center(
+                                child: SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                ),
+                              ),
+                            )
+                          : _buildActionButton(
+                              icon: Icons.save_alt,
+                              tooltip: 'Save to Gallery',
+                              onPressed: _saveExported,
+                              isPrimary: true,
+                            ),
+                    ],
+                  ],
+                ),
+              ),
           ],
         ),
-        body: _buildBody(),
         floatingActionButton: _video == null
             ? GradientButton(
                 label: 'Pick Video',
@@ -655,6 +716,37 @@ class _VideoEditorPageState extends State<VideoEditorPage> {
               )
             : null,
         floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+      ),
+    );
+  }
+
+  /// Builds a compact action button for when AppBar is hidden
+  Widget _buildActionButton({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onPressed,
+    bool isPrimary = false,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      color: isPrimary 
+          ? cs.primary 
+          : cs.surface.withValues(alpha: 0.9),
+      borderRadius: BorderRadius.circular(10),
+      elevation: 2,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          width: 40,
+          height: 40,
+          alignment: Alignment.center,
+          child: Icon(
+            icon,
+            size: 22,
+            color: isPrimary ? cs.onPrimary : cs.onSurface,
+          ),
+        ),
       ),
     );
   }
