@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart' show User;
+import 'package:http/http.dart' as http;
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/auth_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/file_service.dart';
@@ -471,7 +472,7 @@ class _SettingsPageState extends State<SettingsPage> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(LucideIcons.checkCircle2, color: Colors.green, size: 48),
+            const Icon(LucideIcons.checkCircle2, color: Colors.green, size: 48),
             const SizedBox(height: 12),
             Text(
               'Email Verified!',
@@ -672,6 +673,160 @@ class _SettingsPageState extends State<SettingsPage> {
       }
     }
   }
+  
+  /// Show legal document (Privacy Policy or Terms of Service) in-app
+  /// Fetches content from Pastebin raw URL and displays in a bottom sheet
+  Future<void> _showLegalDocument({
+    required String title,
+    required String rawUrl,
+  }) async {
+    final cs = Theme.of(context).colorScheme;
+    
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: cs.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.85,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (context, scrollController) => Column(
+          children: [
+            // Handle bar
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: cs.onSurfaceVariant.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            
+            // Header
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Icon(
+                    title.contains('Privacy') ? LucideIcons.shield : LucideIcons.fileText,
+                    color: cs.primary,
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: cs.onSurface,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: Icon(LucideIcons.x, color: cs.onSurfaceVariant),
+                  ),
+                ],
+              ),
+            ),
+            
+            Divider(color: cs.outlineVariant.withOpacity(0.3), height: 1),
+            
+            // Content
+            Expanded(
+              child: FutureBuilder<String>(
+                future: _fetchLegalContent(rawUrl),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          CircularProgressIndicator(color: cs.primary),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Loading...',
+                            style: TextStyle(color: cs.onSurfaceVariant),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+                  
+                  if (snapshot.hasError || !snapshot.hasData) {
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(LucideIcons.alertCircle, color: cs.error, size: 48),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Could not load content',
+                              style: TextStyle(
+                                color: cs.onSurface,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Please check your internet connection',
+                              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
+                            ),
+                            const SizedBox(height: 16),
+                            TextButton.icon(
+                              onPressed: () {
+                                Navigator.pop(context);
+                                _showLegalDocument(title: title, rawUrl: rawUrl);
+                              },
+                              icon: const Icon(LucideIcons.refreshCw, size: 16),
+                              label: const Text('Retry'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+                  
+                  return SingleChildScrollView(
+                    controller: scrollController,
+                    padding: const EdgeInsets.all(20),
+                    child: Text(
+                      snapshot.data!,
+                      style: TextStyle(
+                        color: cs.onSurface,
+                        fontSize: 14,
+                        height: 1.6,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  /// Fetch legal content from Pastebin raw URL
+  Future<String> _fetchLegalContent(String rawUrl) async {
+    try {
+      final response = await http.get(Uri.parse(rawUrl));
+      if (response.statusCode == 200) {
+        return response.body;
+      }
+      throw Exception('Failed to load content');
+    } catch (e) {
+      debugPrint('Error fetching legal content: $e');
+      rethrow;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -832,7 +987,10 @@ class _SettingsPageState extends State<SettingsPage> {
                     icon: LucideIcons.fileText,
                     title: 'Terms of Service',
                     subtitle: 'Read our terms',
-                    onTap: () => _openUrl('https://example.com/terms'),
+                    onTap: () => _showLegalDocument(
+                      title: 'Terms of Service',
+                      rawUrl: 'https://pastebin.com/raw/bprTSU66',
+                    ),
                   ),
                   _buildDivider(cs),
                   _buildSettingsTile(
@@ -840,7 +998,10 @@ class _SettingsPageState extends State<SettingsPage> {
                     icon: LucideIcons.shield,
                     title: 'Privacy Policy',
                     subtitle: 'How we handle your data',
-                    onTap: () => _openUrl('https://example.com/privacy'),
+                    onTap: () => _showLegalDocument(
+                      title: 'Privacy Policy',
+                      rawUrl: 'https://pastebin.com/raw/66qXZNSW',
+                    ),
                   ),
                   _buildDivider(cs),
                   _buildSettingsTile(
@@ -1157,7 +1318,7 @@ class _SettingsPageState extends State<SettingsPage> {
               children: [
                 Row(
                   children: [
-                    Icon(LucideIcons.gift, color: KalaColors.gold, size: 20),
+                    const Icon(LucideIcons.gift, color: KalaColors.gold, size: 20),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
@@ -1292,7 +1453,7 @@ class _SettingsPageState extends State<SettingsPage> {
       onTap: _showAuthSheet,
       splashFactory: NoSplash.splashFactory,
       highlightColor: Colors.transparent,
-      overlayColor: MaterialStateProperty.all(Colors.transparent),
+      overlayColor: WidgetStateProperty.all(Colors.transparent),
       child: Padding(
         padding: const EdgeInsets.all(AppStyles.spacing16),
         child: Row(
@@ -1300,8 +1461,8 @@ class _SettingsPageState extends State<SettingsPage> {
             Container(
               width: 56,
               height: 56,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(colors: KalaColors.brandGradient),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(colors: KalaColors.brandGradient),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
@@ -1324,10 +1485,10 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                   ),
                   const SizedBox(height: 2),
-                  Row(
+                  const Row(
                     children: [
                       Icon(LucideIcons.gift, size: 14, color: KalaColors.gold),
-                      const SizedBox(width: 4),
+                      SizedBox(width: 4),
                       Text(
                         '50 free credits on signup!',
                         style: TextStyle(
@@ -1644,10 +1805,10 @@ class _AuthSheetState extends State<_AuthSheet> {
                       ),
                       if (_isSignUp && !_showForgotPassword) ...[
                         const SizedBox(height: 4),
-                        Row(
+                        const Row(
                           children: [
                             Icon(LucideIcons.gift, size: 16, color: KalaColors.gold),
-                            const SizedBox(width: 4),
+                            SizedBox(width: 4),
                             Text(
                               '50 free credits on signup!',
                               style: TextStyle(

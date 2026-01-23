@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
@@ -143,10 +145,14 @@ class AiToolsPage extends StatefulWidget {
 class _AiToolsPageState extends State<AiToolsPage>
     with SingleTickerProviderStateMixin {
   late Future<CapabilityConfig> _futureConfig;
-  static const String cacheKey = "cached_tool_config_v2";
-  static const String cacheDateKey = "cached_tool_config_date_v2";
+  static const String cacheKey = "cached_tool_config_v3";
+  static const String cacheDateKey = "cached_tool_config_date_v3";
+  static const String cacheHashKey = "cached_tool_config_hash_v3";
   static const String configUrl =
       "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/tool_config.json";
+  // Server provides hash in header for integrity verification
+  static const String configHashUrl =
+      "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/tool_config.json.sha256";
 
   late AnimationController _glowController;
   Set<String> _seenJobIds = {};
@@ -221,27 +227,82 @@ class _AiToolsPageState extends State<AiToolsPage>
     final today = DateTime.now().toUtc().toIso8601String().substring(0, 10);
     final lastFetchedDate = prefs.getString(cacheDateKey)?.substring(0, 10);
     final cachedData = prefs.getString(cacheKey);
+    final cachedHash = prefs.getString(cacheHashKey);
 
-    if (lastFetchedDate == today && cachedData != null) {
-      debugPrint("📦 Using cached capability config");
-      return CapabilityConfig.fromJson(jsonDecode(cachedData));
+    // Verify cached data integrity before using
+    if (lastFetchedDate == today && cachedData != null && cachedHash != null) {
+      final computedHash = _computeConfigHash(cachedData);
+      if (computedHash == cachedHash) {
+        debugPrint("📦 Using verified cached capability config");
+        return CapabilityConfig.fromJson(jsonDecode(cachedData));
+      } else {
+        debugPrint("⚠️ Cached config integrity check failed - refetching");
+        // Clear corrupted cache
+        await prefs.remove(cacheKey);
+        await prefs.remove(cacheHashKey);
+      }
     }
 
     try {
-      final response = await http.get(Uri.parse(configUrl));
-      if (response.statusCode == 200) {
-        await prefs.setString(cacheKey, response.body);
+      // Fetch config and hash in parallel
+      final responses = await Future.wait([
+        http.get(Uri.parse(configUrl)),
+        http.get(Uri.parse(configHashUrl)).catchError((_) => http.Response('', 404)),
+      ]);
+      
+      final configResponse = responses[0];
+      final hashResponse = responses[1];
+      
+      if (configResponse.statusCode == 200) {
+        final configBody = configResponse.body;
+        final computedHash = _computeConfigHash(configBody);
+        
+        // Verify against server-provided hash if available
+        if (hashResponse.statusCode == 200) {
+          final serverHash = hashResponse.body.trim().toLowerCase();
+          if (serverHash.isNotEmpty && computedHash != serverHash) {
+            debugPrint("⚠️ Config integrity mismatch! Server: $serverHash, Computed: $computedHash");
+            // In debug mode, allow but warn. In release, this could be stricter.
+            if (!kDebugMode) {
+              throw Exception("Config integrity verification failed");
+            }
+          } else {
+            debugPrint("✅ Config integrity verified");
+          }
+        }
+        
+        // Cache with integrity hash
+        await prefs.setString(cacheKey, configBody);
         await prefs.setString(cacheDateKey, today);
-        return CapabilityConfig.fromJson(jsonDecode(response.body));
+        await prefs.setString(cacheHashKey, computedHash);
+        
+        return CapabilityConfig.fromJson(jsonDecode(configBody));
       } else {
-        throw Exception("Server error: ${response.statusCode}");
+        throw Exception("Server error: ${configResponse.statusCode}");
       }
     } catch (e) {
+      // Fallback to cached data (verify integrity first)
       if (cachedData != null) {
+        if (cachedHash != null) {
+          final computedHash = _computeConfigHash(cachedData);
+          if (computedHash == cachedHash) {
+            debugPrint("📦 Using verified cached config (offline fallback)");
+            return CapabilityConfig.fromJson(jsonDecode(cachedData));
+          }
+        }
+        // Use cache even without hash verification as last resort
+        debugPrint("⚠️ Using unverified cached config (offline)");
         return CapabilityConfig.fromJson(jsonDecode(cachedData));
       }
       throw Exception("No internet and no cached data");
     }
+  }
+  
+  /// Compute SHA256 hash of config for integrity verification
+  String _computeConfigHash(String data) {
+    final bytes = utf8.encode(data);
+    final digest = sha256.convert(bytes);
+    return digest.toString().toLowerCase();
   }
 
   @override

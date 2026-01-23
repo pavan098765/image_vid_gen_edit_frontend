@@ -159,7 +159,7 @@ class GradientButton extends StatelessWidget {
           onTap: isDisabled ? null : onPressed,
           splashFactory: NoSplash.splashFactory, // Clean tap without splash
           highlightColor: Colors.transparent,
-          overlayColor: MaterialStateProperty.all(Colors.transparent),
+          overlayColor: WidgetStateProperty.all(Colors.transparent),
           child: Padding(
             padding: _getPadding(),
             child: _buildContent(Colors.white, isDisabled),
@@ -194,7 +194,7 @@ class GradientButton extends StatelessWidget {
           onTap: isDisabled ? null : onPressed,
           splashFactory: NoSplash.splashFactory,
           highlightColor: Colors.transparent,
-          overlayColor: MaterialStateProperty.all(Colors.transparent),
+          overlayColor: WidgetStateProperty.all(Colors.transparent),
           child: Padding(
             padding: _getPadding(),
             child: _buildContent(fgColor, isDisabled),
@@ -227,7 +227,7 @@ class GradientButton extends StatelessWidget {
           onTap: isDisabled ? null : onPressed,
           splashFactory: NoSplash.splashFactory,
           highlightColor: Colors.transparent,
-          overlayColor: MaterialStateProperty.all(Colors.transparent),
+          overlayColor: WidgetStateProperty.all(Colors.transparent),
           child: Padding(
             padding: _getPadding(),
             child: _buildContent(fgColor, isDisabled),
@@ -243,7 +243,7 @@ class GradientButton extends StatelessWidget {
         ? cs.onSurfaceVariant.withOpacity(0.4)
         : cs.onSurfaceVariant;
 
-    return Container(
+    return SizedBox(
       width: expanded ? double.infinity : width,
       child: Material(
         color: Colors.transparent,
@@ -252,7 +252,7 @@ class GradientButton extends StatelessWidget {
           onTap: isDisabled ? null : onPressed,
           splashFactory: NoSplash.splashFactory,
           highlightColor: Colors.transparent,
-          overlayColor: MaterialStateProperty.all(Colors.transparent),
+          overlayColor: WidgetStateProperty.all(Colors.transparent),
           child: Padding(
             padding: _getPadding(),
             child: _buildContent(fgColor, isDisabled),
@@ -288,7 +288,7 @@ class GradientButton extends StatelessWidget {
           onTap: isDisabled ? null : onPressed,
           splashFactory: NoSplash.splashFactory,
           highlightColor: Colors.transparent,
-          overlayColor: MaterialStateProperty.all(Colors.transparent),
+          overlayColor: WidgetStateProperty.all(Colors.transparent),
           child: Padding(
             padding: _getPadding(),
             child: _buildContent(Colors.white, isDisabled),
@@ -324,7 +324,7 @@ class GradientButton extends StatelessWidget {
           onTap: isDisabled ? null : onPressed,
           splashFactory: NoSplash.splashFactory,
           highlightColor: Colors.transparent,
-          overlayColor: MaterialStateProperty.all(Colors.transparent),
+          overlayColor: WidgetStateProperty.all(Colors.transparent),
           child: Padding(
             padding: _getPadding(),
             child: _buildContent(Colors.white, isDisabled),

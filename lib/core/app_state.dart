@@ -1,13 +1,18 @@
 // lib/core/app_state.dart
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-// Import user service for credit notifier
+// Import user service for credit notifier and ad-free state
+import 'package:kala_ai_create_images_videos_with_ai/core/services/user_service.dart'
+    show userCreditsNotifier, currentUserNotifier, isLoadingUserNotifier, UserData,
+         isAdFreeNotifier, shouldShowAds, notifyAdFreeStatusChanged, resetAdFreeVerification;
+
+// Re-export for other files that import app_state.dart
 export 'package:kala_ai_create_images_videos_with_ai/core/services/user_service.dart'
-    show userCreditsNotifier, currentUserNotifier, isLoadingUserNotifier, UserData;
+    show userCreditsNotifier, currentUserNotifier, isLoadingUserNotifier, UserData,
+         isAdFreeNotifier, shouldShowAds, notifyAdFreeStatusChanged, resetAdFreeVerification;
 
 /// Global app-level selected index for the bottom navigation.
 final ValueNotifier<int> selectedIndexNotifier = ValueNotifier<int>(0);
@@ -438,9 +443,27 @@ Future<void> loadJobsFromPrefs() async {
 /// Initialize app state once on startup
 Future<void> initAppState() async {
   await loadJobsFromPrefs();
+  await loadAdFreeStatus();
 
   // ✅ Automatically persist whenever the job list changes
   jobListNotifier.addListener(() async {
     await saveJobsToPrefs();
   });
+}
+
+/// Load ad-free status from local storage (for logging only)
+/// SECURITY: This does NOT update isAdFreeNotifier - that requires server verification
+/// Server-side verification happens via UserService.checkAdFreeStatus()
+Future<void> loadAdFreeStatus() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final cachedValue = prefs.getBool('is_ad_free') ?? false;
+    // SECURITY: Do NOT set isAdFreeNotifier here - it bypasses verification
+    // Just log what's in the cache for debugging
+    debugPrint("📦 Cached ad-free status: $cachedValue (awaiting server verification)");
+  } catch (e) {
+    debugPrint("⚠️ Failed to read ad-free cache: $e");
+  }
+  // Always start with ads enabled - server will verify if user is ad-free
+  resetAdFreeVerification();
 }

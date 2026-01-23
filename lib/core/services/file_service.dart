@@ -1194,16 +1194,16 @@ class _ProgressiveImagePreviewState extends State<_ProgressiveImagePreview>
         children: [
           // 🌌 Gradient background
           Container(
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               gradient: RadialGradient(
                 center: Alignment.center,
                 radius: 1.2,
                 colors: [
-                  const Color(0xFF1a1a2e),
-                  const Color(0xFF0d0d14),
+                  Color(0xFF1a1a2e),
+                  Color(0xFF0d0d14),
                   Colors.black,
                 ],
-                stops: const [0.0, 0.6, 1.0],
+                stops: [0.0, 0.6, 1.0],
               ),
             ),
           ),
@@ -1666,16 +1666,16 @@ class _SwipeableMediaPreviewState extends State<_SwipeableMediaPreview>
         children: [
           // 🌌 Gradient background
           Container(
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               gradient: RadialGradient(
                 center: Alignment.center,
                 radius: 1.2,
                 colors: [
-                  const Color(0xFF1a1a2e),
-                  const Color(0xFF0d0d14),
+                  Color(0xFF1a1a2e),
+                  Color(0xFF0d0d14),
                   Colors.black,
                 ],
-                stops: const [0.0, 0.6, 1.0],
+                stops: [0.0, 0.6, 1.0],
               ),
             ),
           ),

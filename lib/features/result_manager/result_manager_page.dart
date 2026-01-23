@@ -4,9 +4,11 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/services/ad_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/file_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/polling_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/thumbnail_service.dart';
@@ -14,6 +16,50 @@ import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_butto
 import 'package:shared_preferences/shared_preferences.dart';
 
 bool isResultManagerOpen = false;
+
+/// Tracks downloads for rewarded ad rate limiting (every 5th download)
+/// Returns true if ad should be shown, false otherwise
+Future<bool> _shouldShowDownloadAd() async {
+  // Disable ads in debug mode
+  if (kDebugMode) return false;
+  
+  // Check if user should see ads (secure check with server verification)
+  if (!shouldShowAds()) return false;
+  
+  final prefs = await SharedPreferences.getInstance();
+  int downloadCount = prefs.getInt('download_count_for_ad') ?? 0;
+  downloadCount++;
+  await prefs.setInt('download_count_for_ad', downloadCount);
+  
+  // Show ad every 5th download
+  return downloadCount % 5 == 0;
+}
+
+/// Show rewarded ad for download rate limiting
+/// Returns true if ad was shown and completed, false if skipped/failed
+Future<bool> _showDownloadRewardedAd(BuildContext context) async {
+  final adService = AdService();
+  
+  // Load ad if not ready
+  if (!adService.isAdReadyNotifier.value) {
+    await adService.loadRewardedAd();
+    // Wait for ad to load (max 5 seconds)
+    for (int i = 0; i < 10; i++) {
+      if (adService.isAdReadyNotifier.value) break;
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
+  }
+  
+  // If ad still not ready, let the download proceed
+  if (!adService.isAdReadyNotifier.value) {
+    debugPrint('⚠️ Ad not available for download gate - proceeding');
+    return false;
+  }
+  
+  // Show the ad
+  final completed = await adService.showAdForFeatureGate();
+  return completed;
+}
 
 class ResultManagerPage extends StatefulWidget {
   const ResultManagerPage({super.key});
@@ -525,7 +571,7 @@ class _ResultManagerPageState extends State<ResultManagerPage>
                             color: _sortBy == 'date' ? cs.primary : null,
                           ),
                           const SizedBox(width: 8),
-                          Text('Sort by Date'),
+                          const Text('Sort by Date'),
                           if (_sortBy == 'date')
                             Icon(
                               _sortAscending ? Icons.arrow_upward : Icons.arrow_downward,
@@ -545,7 +591,7 @@ class _ResultManagerPageState extends State<ResultManagerPage>
                             color: _sortBy == 'status' ? cs.primary : null,
                           ),
                           const SizedBox(width: 8),
-                          Text('Sort by Status'),
+                          const Text('Sort by Status'),
                           if (_sortBy == 'status')
                             Icon(
                               _sortAscending ? Icons.arrow_upward : Icons.arrow_downward,
@@ -565,7 +611,7 @@ class _ResultManagerPageState extends State<ResultManagerPage>
                             color: _sortBy == 'title' ? cs.primary : null,
                           ),
                           const SizedBox(width: 8),
-                          Text('Sort by Title'),
+                          const Text('Sort by Title'),
                           if (_sortBy == 'title')
                             Icon(
                               _sortAscending ? Icons.arrow_upward : Icons.arrow_downward,
@@ -575,12 +621,12 @@ class _ResultManagerPageState extends State<ResultManagerPage>
                         ],
                       ),
                     ),
-                    PopupMenuDivider(),
+                    const PopupMenuDivider(),
                     PopupMenuItem(
                       value: 'toggle_sort',
                       child: Row(
                         children: [
-                          Icon(Icons.swap_vert, size: 20),
+                          const Icon(Icons.swap_vert, size: 20),
                           const SizedBox(width: 8),
                           Text(_sortAscending ? 'Newest First' : 'Oldest First'),
                         ],
@@ -780,6 +826,26 @@ class _JobCardState extends State<JobCard> {
         ),
       );
       return;
+    }
+    
+    // Check if rewarded ad should be shown (every 5th download, unless ad-free)
+    if (await _shouldShowDownloadAd()) {
+      debugPrint('📺 Showing rewarded ad for 5th download');
+      
+      // Show loading indicator while ad loads
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Loading ad...'),
+            duration: Duration(seconds: 1),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      
+      // Show the ad - this is just a rate limiter, doesn't block download
+      await _showDownloadRewardedAd(context);
+      debugPrint('📺 Ad completed or skipped - proceeding with download');
     }
 
     setState(() {
@@ -1067,7 +1133,7 @@ class _JobCardState extends State<JobCard> {
     
     if (failedCount > 0 && successCount > 0) {
       badgeColor = Colors.orange;
-      badgeText = '$successCount/$totalCount (${failedCount} failed)';
+      badgeText = '$successCount/$totalCount ($failedCount failed)';
     } else if (failedCount == totalCount) {
       badgeColor = cs.error;
       badgeIcon = Icons.error_outline;
@@ -1117,9 +1183,9 @@ class _JobCardState extends State<JobCard> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.auto_awesome, size: 14, color: Colors.purple),
+            const Icon(Icons.auto_awesome, size: 14, color: Colors.purple),
             const SizedBox(width: 6),
-            Text(
+            const Text(
               'AI Enhanced',
               style: TextStyle(
                 color: Colors.purple,
@@ -1154,10 +1220,10 @@ class _JobCardState extends State<JobCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
+            const Row(
               children: [
                 Icon(Icons.auto_awesome, size: 16, color: Colors.purple),
-                const SizedBox(width: 8),
+                SizedBox(width: 8),
                 Text(
                   'Enhanced Prompt',
                   style: TextStyle(
@@ -1470,15 +1536,15 @@ class _JobCardState extends State<JobCard> {
 
     // Show saved status with a nice green indicator
     if (isSaved) {
-      return Row(
-        key: const ValueKey('saved'),
+      return const Row(
+        key: ValueKey('saved'),
         children: [
           Icon(
             Icons.check_circle,
             size: 16,
             color: Colors.green,
           ),
-          const SizedBox(width: 8),
+          SizedBox(width: 8),
           Text(
             "SAVED",
             style: TextStyle(

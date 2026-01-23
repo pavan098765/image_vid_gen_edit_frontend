@@ -7,6 +7,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/ad_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/file_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
@@ -75,6 +76,13 @@ class _VideoEditorPageState extends State<VideoEditorPage> {
   void initState() {
     super.initState();
     MediaKit.ensureInitialized();
+    // Listen for ad-free status changes to hide/show native ads
+    isAdFreeNotifier.addListener(_onAdFreeStatusChanged);
+  }
+  
+  void _onAdFreeStatusChanged() {
+    // Rebuild to hide/show native ads when ad-free status changes
+    if (mounted) setState(() {});
   }
 
   // ---------------- Video Picking ----------------
@@ -662,13 +670,16 @@ class _VideoEditorPageState extends State<VideoEditorPage> {
   }
   
   Widget _buildEmptyStateWithAd() {
+    final showAds = shouldShowAds();
+    
     return Column(
       children: [
-        // Native ad at top (use smaller height for better space)
-        const ThemedNativeAd(
-          height: 260,
-          useSmallTemplate: false,
-        ),
+        // Native ad at top (only if not ad-free)
+        if (showAds)
+          const ThemedNativeAd(
+            height: 260,
+            useSmallTemplate: false,
+          ),
         // Placeholder in remaining space - with bottom padding for FAB
         Expanded(
           child: Padding(
@@ -1043,6 +1054,7 @@ class _VideoEditorPageState extends State<VideoEditorPage> {
 
   @override
   void dispose() {
+    isAdFreeNotifier.removeListener(_onAdFreeStatusChanged);
     _disposeControllers();
     super.dispose();
   }

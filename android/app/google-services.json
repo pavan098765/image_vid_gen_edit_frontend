@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "261728295402-a4dcfbk5s297jn1a02rdv9en19uqv9vr.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.shambhutech.kalaai",
+            "certificate_hash": "945d51f6de6dd96577555940a23ddcac54d690c3"
+          }
+        },
+        {
           "client_id": "261728295402-abs36dsrvs49rpapuu5c7t1rlba2beo5.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {

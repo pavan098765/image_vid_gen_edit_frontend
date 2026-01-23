@@ -73,10 +73,10 @@ class SignInPromptCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 2),
-                    Row(
+                    const Row(
                       children: [
                         Icon(LucideIcons.gift, size: 14, color: KalaColors.gold),
-                        const SizedBox(width: 4),
+                        SizedBox(width: 4),
                         Text(
                           '50 free credits on signup!',
                           style: TextStyle(
@@ -102,17 +102,17 @@ class SignInPromptCard extends StatelessWidget {
           const SizedBox(height: 16),
 
           // Benefits list
-          _BenefitRow(
+          const _BenefitRow(
             icon: LucideIcons.zap,
             text: 'Access all AI image & video tools',
           ),
           const SizedBox(height: 8),
-          _BenefitRow(
+          const _BenefitRow(
             icon: LucideIcons.cloud,
             text: 'Sync your work across devices',
           ),
           const SizedBox(height: 8),
-          _BenefitRow(
+          const _BenefitRow(
             icon: LucideIcons.shield,
             text: 'Secure cloud processing',
           ),
@@ -438,11 +438,11 @@ class _SignInRequiredScreenState extends State<SignInRequiredScreen> {
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: KalaColors.gold.withOpacity(0.3)),
           ),
-          child: Row(
+          child: const Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(LucideIcons.gift, size: 18, color: KalaColors.gold),
-              const SizedBox(width: 8),
+              SizedBox(width: 8),
               Text(
                 '50 free credits on signup!',
                 style: TextStyle(
@@ -492,11 +492,11 @@ class _SignInRequiredScreenState extends State<SignInRequiredScreen> {
           ),
         ),
         const SizedBox(height: 16),
-        _BenefitRow(icon: LucideIcons.zap, text: 'Access all AI tools'),
+        const _BenefitRow(icon: LucideIcons.zap, text: 'Access all AI tools'),
         const SizedBox(height: 8),
-        _BenefitRow(icon: LucideIcons.cloud, text: 'Sync across devices'),
+        const _BenefitRow(icon: LucideIcons.cloud, text: 'Sync across devices'),
         const SizedBox(height: 8),
-        _BenefitRow(icon: LucideIcons.shield, text: 'Secure processing'),
+        const _BenefitRow(icon: LucideIcons.shield, text: 'Secure processing'),
       ],
     );
   }
@@ -513,7 +513,7 @@ class _SignInRequiredScreenState extends State<SignInRequiredScreen> {
             color: KalaColors.cyan.withOpacity(0.15),
             shape: BoxShape.circle,
           ),
-          child: Icon(
+          child: const Icon(
             LucideIcons.mailCheck,
             size: 64,
             color: KalaColors.cyan,
@@ -542,7 +542,7 @@ class _SignInRequiredScreenState extends State<SignInRequiredScreen> {
           ),
           child: Row(
             children: [
-              Icon(LucideIcons.gift, color: KalaColors.gold, size: 24),
+              const Icon(LucideIcons.gift, color: KalaColors.gold, size: 24),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
@@ -638,8 +638,8 @@ class _SignInRequiredScreenState extends State<SignInRequiredScreen> {
         // Success icon
         Container(
           padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(colors: KalaColors.brandGradient),
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(colors: KalaColors.brandGradient),
             shape: BoxShape.circle,
           ),
           child: const Icon(
@@ -662,7 +662,7 @@ class _SignInRequiredScreenState extends State<SignInRequiredScreen> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(LucideIcons.checkCircle2, size: 16, color: Colors.green),
+                const Icon(LucideIcons.checkCircle2, size: 16, color: Colors.green),
                 const SizedBox(width: 6),
                 Text(
                   'Email Verified!',
@@ -751,7 +751,7 @@ class _GoogleSignInButton extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppStyles.radiusMd),
         splashFactory: NoSplash.splashFactory,
         highlightColor: Colors.transparent,
-        overlayColor: MaterialStateProperty.all(Colors.transparent),
+        overlayColor: WidgetStateProperty.all(Colors.transparent),
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 14),
           decoration: BoxDecoration(

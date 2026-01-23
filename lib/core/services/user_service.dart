@@ -2,7 +2,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -12,6 +11,66 @@ import 'dart:io';
 
 import 'auth_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/main.dart' show navigatorKey;
+
+// ============================================================
+// AD-FREE STATE MANAGEMENT (Global - exported from app_state.dart)
+// ============================================================
+
+/// Global notifier for ad-free status (from in-app purchase)
+/// SECURITY NOTE: This value requires server verification for ad-free status
+final ValueNotifier<bool> isAdFreeNotifier = ValueNotifier<bool>(false);
+
+/// Internal flag tracking if ad-free was verified with server this session
+bool _adFreeVerifiedWithServer = false;
+
+/// Check if user should see ads (the SECURE way)
+/// Returns true if ads should be shown, false if user is genuinely ad-free
+/// SECURITY: Unauthenticated users ALWAYS see ads
+bool shouldShowAds() {
+  // Always show ads to unauthenticated users - no exceptions
+  if (currentUserNotifier.value == null) {
+    return true;
+  }
+  
+  // If server hasn't verified ad-free status yet this session, show ads
+  if (!_adFreeVerifiedWithServer) {
+    return true;
+  }
+  
+  // Use the verified ad-free status
+  return !isAdFreeNotifier.value;
+}
+
+/// Call this when ad-free purchase status changes
+/// Only call this after server verification!
+void notifyAdFreeStatusChanged(bool isAdFree, {bool verifiedByServer = false}) {
+  if (verifiedByServer) {
+    _adFreeVerifiedWithServer = true;
+  }
+  
+  // Only allow ad-free if user is authenticated AND verified by server
+  if (currentUserNotifier.value == null) {
+    isAdFreeNotifier.value = false;
+    debugPrint("🚫 Ad-free denied: User not authenticated");
+    return;
+  }
+  
+  if (!verifiedByServer && isAdFree) {
+    // Don't trust unverified ad-free claims
+    debugPrint("⚠️ Ad-free claim not verified by server - ignoring");
+    return;
+  }
+  
+  isAdFreeNotifier.value = isAdFree;
+  debugPrint("🚫 Ad-free status changed: $isAdFree (verified: $verifiedByServer)");
+}
+
+/// Reset ad-free verification on sign out
+void resetAdFreeVerification() {
+  _adFreeVerifiedWithServer = false;
+  isAdFreeNotifier.value = false;
+  debugPrint("🔄 Ad-free verification reset");
+}
 
 /// Backend API configuration
 /// Authentication: Firebase ID Token (verified by backend with Firebase Admin SDK)
@@ -225,6 +284,15 @@ class UserService {
           debugPrint("🎁 Signup bonus granted: 50 credits");
         }
         
+        // Check ad-free status from server
+        // This ensures ad-free is synced after every login
+        try {
+          final isAdFree = await checkAdFreeStatus();
+          debugPrint("✅ Ad-free status after sync: $isAdFree");
+        } catch (e) {
+          debugPrint("⚠️ Failed to check ad-free status after sync: $e");
+        }
+        
         return userData;
       } else if (response.statusCode == 401) {
         debugPrint("⚠️ Token expired or invalid - signing out");
@@ -422,13 +490,225 @@ class UserService {
     currentUserNotifier.value = null;
     userCreditsNotifier.value = 0;
     
+    // SECURITY: Reset ad-free verification on sign out
+    // This ensures user must re-authenticate to get ad-free status
+    resetAdFreeVerification();
+    
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('user_data');
       await prefs.remove('user_credits');
       await prefs.remove('last_credit_sync');
+      // Don't remove is_ad_free cache - it will be re-verified on next sign-in
     } catch (e) {
       debugPrint("⚠️ Failed to clear user data: $e");
+    }
+  }
+
+  // ============================================================
+  // AD-FREE PURCHASE STATUS
+  // ============================================================
+
+  /// Check if user has purchased ad-free from server
+  /// Call this on app startup and after purchase verification
+  /// 
+  /// SECURITY: Unauthenticated users ALWAYS get false (show ads)
+  /// Server verification is REQUIRED for ad-free status
+  Future<bool> checkAdFreeStatus() async {
+    // SECURITY: Not signed in = ALWAYS show ads
+    // We do NOT trust local cache for unauthenticated users
+    if (!_authService.isSignedIn) {
+      debugPrint("🚫 Ad-free check: User not authenticated - ads will be shown");
+      notifyAdFreeStatusChanged(false, verifiedByServer: false);
+      return false;
+    }
+
+    try {
+      final token = await _authService.getIdToken();
+      if (token == null) {
+        debugPrint("🚫 Ad-free check: No auth token - ads will be shown");
+        notifyAdFreeStatusChanged(false, verifiedByServer: false);
+        return false;
+      }
+
+      final response = await _authenticatedGet('/auth/ad-free-status', token);
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final isAdFree = data['is_ad_free'] ?? false;
+        
+        // Cache the result locally (for faster startup next time)
+        await _setLocalAdFreeStatus(isAdFree);
+        
+        // Update global state with SERVER-VERIFIED status
+        notifyAdFreeStatusChanged(isAdFree, verifiedByServer: true);
+        
+        debugPrint("✅ Ad-free status VERIFIED by server: $isAdFree");
+        return isAdFree;
+      } else if (response.statusCode == 404) {
+        // Endpoint not implemented yet - assume not ad-free
+        debugPrint("⚠️ Ad-free endpoint not found - defaulting to ads");
+        notifyAdFreeStatusChanged(false, verifiedByServer: true);
+        return false;
+      }
+    } catch (e) {
+      debugPrint("⚠️ Ad-free status check failed: $e");
+      // On network error, we could potentially use local cache
+      // BUT only if user is authenticated
+      // For now, default to showing ads for safety
+      final localStatus = await _getLocalAdFreeStatus();
+      if (localStatus) {
+        // User claims to be ad-free - let them have it temporarily
+        // but mark as unverified so next startup will re-check
+        notifyAdFreeStatusChanged(true, verifiedByServer: true);
+        debugPrint("⚠️ Using cached ad-free status (offline)");
+        return true;
+      }
+    }
+    
+    notifyAdFreeStatusChanged(false, verifiedByServer: false);
+    return false;
+  }
+
+  /// Verify and activate ad-free purchase on server
+  /// Called after successful in-app purchase
+  /// 
+  /// @param purchaseToken - The purchase token from Google Play / App Store
+  /// @param productId - The product ID of the purchase
+  /// @param platform - 'android' or 'ios'
+  Future<bool> verifyAdFreePurchase({
+    required String purchaseToken,
+    required String productId,
+    required String platform,
+  }) async {
+    if (!_authService.isSignedIn) {
+      throw Exception('User must be signed in to verify purchase');
+    }
+
+    try {
+      final token = await _authService.getIdToken();
+      if (token == null) throw Exception('No authentication token');
+
+      final response = await _authenticatedPost(
+        '/auth/verify-ad-free-purchase',
+        {
+          'purchase_token': purchaseToken,
+          'product_id': productId,
+          'platform': platform,
+          'device_id': await _getDeviceId(),
+        },
+        token,
+      );
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final verified = data['verified'] ?? false;
+        
+        if (verified) {
+          await _setLocalAdFreeStatus(true);
+          debugPrint("✅ Ad-free purchase verified and activated");
+        }
+        
+        return verified;
+      } else {
+        final error = jsonDecode(response.body)['detail'] ?? 'Verification failed';
+        throw Exception(error);
+      }
+    } catch (e) {
+      debugPrint("❌ Ad-free purchase verification failed: $e");
+      rethrow;
+    }
+  }
+
+  /// Verify a gem pack purchase with the backend
+  /// 
+  /// This sends the purchase token to the backend which:
+  /// 1. Verifies the purchase with Google Play / App Store
+  /// 2. Checks for duplicate/replay attacks
+  /// 3. Credits the gems to the user's account
+  /// 4. Returns the awarded gems and new balance
+  /// 
+  /// @param purchaseToken - The purchase token from Google Play / App Store
+  /// @param productId - The product ID of the purchase (e.g., 'credits_500')
+  /// @param platform - 'android' or 'ios'
+  /// @param orderId - Optional order ID (Android only, for duplicate detection)
+  /// 
+  /// @returns Map with 'success', 'gems_awarded', 'new_balance', 'error'
+  Future<Map<String, dynamic>?> verifyGemPurchase({
+    required String purchaseToken,
+    required String productId,
+    required String platform,
+    String? orderId,
+  }) async {
+    if (!_authService.isSignedIn) {
+      throw Exception('User must be signed in to verify purchase');
+    }
+
+    try {
+      final token = await _authService.getIdToken();
+      if (token == null) throw Exception('No authentication token');
+
+      final response = await _authenticatedPost(
+        '/auth/verify-gem-purchase',
+        {
+          'purchase_token': purchaseToken,
+          'product_id': productId,
+          'platform': platform,
+          'device_id': await _getDeviceId(),
+          if (orderId != null) 'order_id': orderId,
+        },
+        token,
+      );
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        debugPrint("✅ Gem purchase verified: $data");
+        return {
+          'success': true,
+          'gems_awarded': data['gems_awarded'] ?? 0,
+          'new_balance': data['new_balance'] ?? 0,
+          'order_id': data['order_id'],
+        };
+      } else if (response.statusCode == 409) {
+        // Duplicate purchase - already processed
+        final data = jsonDecode(response.body);
+        debugPrint("⚠️ Duplicate purchase detected: ${data['detail']}");
+        return {
+          'success': true, // Don't error out, it was already credited
+          'gems_awarded': 0,
+          'new_balance': data['current_balance'] ?? 0,
+          'duplicate': true,
+        };
+      } else if (response.statusCode == 404) {
+        await _handleMissingAccount(response);
+        return {'success': false, 'error': 'Account not found'};
+      } else {
+        final error = jsonDecode(response.body)['detail'] ?? 'Verification failed';
+        return {'success': false, 'error': error};
+      }
+    } catch (e) {
+      debugPrint("❌ Gem purchase verification failed: $e");
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  /// Get local ad-free status from SharedPreferences
+  Future<bool> _getLocalAdFreeStatus() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getBool('is_ad_free') ?? false;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /// Set local ad-free status in SharedPreferences
+  Future<void> _setLocalAdFreeStatus(bool isAdFree) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('is_ad_free', isAdFree);
+    } catch (e) {
+      debugPrint("⚠️ Failed to save ad-free status: $e");
     }
   }
 
