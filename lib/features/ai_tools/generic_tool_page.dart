@@ -5951,25 +5951,19 @@ class _GenericToolPageState extends State<GenericToolPage>
           // Per-job retry loop to avoid duplicating already-submitted jobs.
           dynamic data;
           for (int submitAttempt = 1; submitAttempt <= maxRetries; submitAttempt++) {
-            // Clone params per submit to avoid any accidental mutation and to guarantee
-            // image inputs are always present (some backends accept `init_image` or `images`).
+            // Clone params per submit to avoid any accidental mutation.
             final paramsForSubmit = Map<String, dynamic>.from(resolvedParams);
             if (paramsForSubmit["init_image"] is List) {
               paramsForSubmit["init_image"] = List<dynamic>.from(paramsForSubmit["init_image"] as List);
             }
-            if (paramsForSubmit["images"] is List) {
-              paramsForSubmit["images"] = List<dynamic>.from(paramsForSubmit["images"] as List);
-            }
 
-            // If one alias exists, mirror it to the other (worker checks both).
+            // Backend only expects init_image (not images). If images was set, move it to init_image.
             if (!paramsForSubmit.containsKey("init_image") &&
                 paramsForSubmit.containsKey("images")) {
               paramsForSubmit["init_image"] = paramsForSubmit["images"];
             }
-            if (!paramsForSubmit.containsKey("images") &&
-                paramsForSubmit.containsKey("init_image")) {
-              paramsForSubmit["images"] = paramsForSubmit["init_image"];
-            }
+            // Always remove the "images" key - backend expects only init_image.
+            paramsForSubmit.remove("images");
 
             final dynamic ii = paramsForSubmit["init_image"];
             final int iiCount = ii is List
