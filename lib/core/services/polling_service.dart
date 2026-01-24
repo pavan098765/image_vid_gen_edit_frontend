@@ -226,6 +226,14 @@ class PollingService {
       final idx = jobs.indexWhere((j) => j.jobId == jobId);
       if (idx != -1) {
         final old = jobs[idx];
+        
+        // 🛡️ NEVER downgrade terminal status (completed/failed → processing)
+        String finalStatus = status;
+        if ((old.status == 'completed' || old.status == 'failed') && status == 'processing') {
+          debugPrint("🛡️ FCM: Blocking status downgrade for job $jobId: ${old.status} → $status");
+          finalStatus = old.status;
+        }
+        
         jobs[idx] = JobModel(
           jobId: old.jobId,
           title: old.title,
@@ -234,7 +242,7 @@ class PollingService {
           downloadUrl: (downloadUrl != null && downloadUrl.isNotEmpty)
               ? downloadUrl
               : old.downloadUrl,
-          status: status.isNotEmpty ? status : old.status,
+          status: finalStatus.isNotEmpty ? finalStatus : old.status,
           createdAt: old.createdAt,
           inputImagePath: old.inputImagePath,
           localFilePath: old.localFilePath,
@@ -439,6 +447,13 @@ class PollingService {
           final finalUrl = (downloadUrl != null && downloadUrl.isNotEmpty)
               ? downloadUrl
               : old.downloadUrl;
+          
+          // 🛡️ NEVER downgrade terminal status (completed/failed → processing)
+          String finalStatus = status;
+          if ((old.status == 'completed' || old.status == 'failed') && status == 'processing') {
+            debugPrint("🛡️ refreshNow: Blocking status downgrade for job $jobId: ${old.status} → $status");
+            finalStatus = old.status;
+          }
 
           jobs[idx] = JobModel(
             jobId: old.jobId,
@@ -446,7 +461,7 @@ class PollingService {
             model: old.model,
             outputType: old.outputType,
             downloadUrl: finalUrl,
-            status: status.isNotEmpty ? status : old.status,
+            status: finalStatus.isNotEmpty ? finalStatus : old.status,
             createdAt: old.createdAt,
             inputImagePath: old.inputImagePath,
             localFilePath: old.localFilePath,
@@ -460,7 +475,7 @@ class PollingService {
           );
 
           debugPrint(
-              "✅ Refreshed job=$jobId → $status (url: ${finalUrl != null ? 'present' : 'none'})");
+              "✅ Refreshed job=$jobId → $finalStatus (url: ${finalUrl != null ? 'present' : 'none'})");
         }
         jobListNotifier.value = jobs;
       }
@@ -603,6 +618,13 @@ class PollingService {
           final bool allCompleted = data['all_completed'] ?? (status == 'completed' || status == 'failed');
           final String? enhancedPrompt = data['enhanced_prompt'];
           final bool promptEnhanced = data['prompt_enhanced'] ?? false;
+          
+          // 🛡️ NEVER downgrade terminal status (completed/failed → processing)
+          String finalStatus = status;
+          if ((old.status == 'completed' || old.status == 'failed') && status == 'processing') {
+            debugPrint("🛡️ refreshProcessingJobs: Blocking status downgrade for job $jobId: ${old.status} → $status");
+            finalStatus = old.status;
+          }
 
           jobs[idx] = JobModel(
             jobId: old.jobId,
@@ -610,7 +632,7 @@ class PollingService {
             model: old.model,
             outputType: old.outputType,
             downloadUrl: finalUrl,
-            status: status.isNotEmpty ? status : old.status,
+            status: finalStatus.isNotEmpty ? finalStatus : old.status,
             createdAt: old.createdAt,
             inputImagePath: preservedInputPath, // ✅ guaranteed now
             localFilePath: old.localFilePath,

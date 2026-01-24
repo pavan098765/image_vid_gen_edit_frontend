@@ -35,6 +35,11 @@ const String kCredits2500ProductId = 'credits_2500';
 const String kCredits5000ProductId = 'credits_5000';
 const String kCredits10000ProductId = 'credits_10000';
 
+/// VIP pack product IDs (consumable, server-tracked expiration)
+const String kVipWeeklyProductId = 'vip_pack_weekly';
+const String kVipMonthlyProductId = 'vip_pack_monthly';
+const String kVipYearlyProductId = 'vip_pack_yearly';
+
 /// All product IDs to load
 const Set<String> kProductIds = {
   kRemoveAdsProductId,
@@ -45,6 +50,16 @@ const Set<String> kProductIds = {
   kCredits2500ProductId,
   kCredits5000ProductId,
   kCredits10000ProductId,
+  kVipWeeklyProductId,
+  kVipMonthlyProductId,
+  kVipYearlyProductId,
+};
+
+/// VIP pack product IDs set
+const Set<String> kVipProductIds = {
+  kVipWeeklyProductId,
+  kVipMonthlyProductId,
+  kVipYearlyProductId,
 };
 
 /// Gem pack configurations (for UI display & backend mapping)
@@ -74,6 +89,30 @@ const List<GemPackConfig> kGemPacks = [
   GemPackConfig(productId: kCredits2500ProductId, gems: 2500, label: 'Super'),
   GemPackConfig(productId: kCredits5000ProductId, gems: 5000, label: 'Ultra'),
   GemPackConfig(productId: kCredits10000ProductId, gems: 10000, label: 'Legendary', isBestValue: true),
+];
+
+/// VIP pack configurations (for UI display)
+class VipPackConfig {
+  final String productId;
+  final String label;
+  final int days;
+  final bool isPopular;
+  final String? savings;
+  
+  const VipPackConfig({
+    required this.productId,
+    required this.label,
+    required this.days,
+    this.isPopular = false,
+    this.savings,
+  });
+}
+
+/// All VIP packs
+const List<VipPackConfig> kVipPacks = [
+  VipPackConfig(productId: kVipWeeklyProductId, label: 'Weekly', days: 7),
+  VipPackConfig(productId: kVipMonthlyProductId, label: 'Monthly', days: 30, isPopular: true),
+  VipPackConfig(productId: kVipYearlyProductId, label: 'Yearly', days: 365, savings: 'Save 50%'),
 ];
 
 // ============================================================
@@ -309,6 +348,26 @@ class PurchaseService {
     return await _purchaseProduct(product, isConsumable: true);
   }
   
+  /// Purchase a VIP pack
+  /// VIP packs are consumable products with server-tracked expiration
+  Future<bool> purchaseVipPack(String productId) async {
+    final product = getProduct(productId);
+    if (product == null) {
+      errorNotifier.value = "VIP pack not available";
+      return false;
+    }
+    
+    // VIP packs can be purchased multiple times to extend duration
+    return await _purchaseProduct(product, isConsumable: true);
+  }
+  
+  /// Get VIP pack products
+  List<ProductDetails> get vipPackProducts {
+    return productsNotifier.value
+        .where((p) => kVipProductIds.contains(p.id))
+        .toList();
+  }
+  
   /// Internal purchase method
   Future<bool> _purchaseProduct(ProductDetails product, {required bool isConsumable}) async {
     // Check if user is signed in (required for server verification)
@@ -496,7 +555,7 @@ class PurchaseService {
         throw Exception("Unsupported platform");
       }
       
-      // Determine if this is the remove ads product
+      // Determine product type and verify accordingly
       if (purchase.productID == kRemoveAdsProductId) {
         // Verify ad-free purchase with backend
         final verified = await UserService().verifyAdFreePurchase(
@@ -511,6 +570,25 @@ class PurchaseService {
           debugPrint("✅ Ad-free purchase verified and activated!");
         } else {
           throw Exception("Server verification failed");
+        }
+      } else if (kVipProductIds.contains(purchase.productID)) {
+        // VIP pack purchase - verify with backend
+        debugPrint("👑 Verifying VIP pack purchase: ${purchase.productID}");
+        
+        final result = await UserService().verifyVipPurchase(
+          purchaseToken: purchaseToken,
+          productId: purchase.productID,
+          platform: platform,
+        );
+        
+        if (result['success'] == true) {
+          debugPrint("✅ VIP purchase verified! Expires: ${result['expires_at']}");
+          
+          // VIP status is already updated by verifyVipPurchase
+          // Just refresh to ensure UI is synced
+          await UserService().checkVipStatus();
+        } else {
+          throw Exception(result['error'] ?? "VIP verification failed");
         }
       } else {
         // Credit pack purchase - verify with backend

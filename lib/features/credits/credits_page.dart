@@ -1254,115 +1254,32 @@ class _CreditsPageState extends State<CreditsPage> {
 
   Widget _buildCreditsContent(ColorScheme cs) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(AppStyles.spacing24),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       child: Column(
         children: [
-          // Credits display card
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(AppStyles.spacing24),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  KalaColors.purple.withOpacity(0.15),
-                  KalaColors.cyan.withOpacity(0.1),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(AppStyles.radiusLg),
-              border: Border.all(
-                color: KalaColors.purple.withOpacity(0.3),
-              ),
-            ),
-            child: Column(
-              children: [
-                // Icon with gradient
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(colors: KalaColors.brandGradient),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    LucideIcons.gem,
-                    size: 32,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: AppStyles.spacing16),
-                Text(
-                  'Your Gems',
-                  style: TextStyle(
-                    color: cs.onSurfaceVariant,
-                    fontSize: 14,
-                  ),
-                ),
-                const SizedBox(height: AppStyles.spacing8),
-                ValueListenableBuilder<int>(
-                  valueListenable: userCreditsNotifier,
-                  builder: (context, credits, _) {
-                    return ShaderMask(
-                      shaderCallback: (bounds) => const LinearGradient(
-                        colors: KalaColors.brandGradient,
-                      ).createShader(bounds),
-                      child: Text(
-                        '$credits',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 56,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(height: AppStyles.spacing8),
-                Text(
-                  'Use gems to generate AI content',
-                  style: TextStyle(
-                    color: cs.onSurfaceVariant.withOpacity(0.7),
-                    fontSize: 13,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: AppStyles.spacing32),
+          // Compact gem balance header
+          _buildCompactGemBalance(cs),
+          const SizedBox(height: 24),
           
-          // Daily Spinner Section
-          _buildSectionHeader(cs, 'Daily Bonus', LucideIcons.sparkles),
-          const SizedBox(height: AppStyles.spacing12),
-          
-          // Daily Spinner Card
-          _buildDailySpinnerCard(cs),
-          const SizedBox(height: AppStyles.spacing24),
-          
-          // Earn Credits Section
-          _buildSectionHeader(cs, 'Earn Gems', LucideIcons.gift),
-          const SizedBox(height: AppStyles.spacing12),
-          
-          // Watch Ad Card
-          _buildWatchAdCard(cs),
-          const SizedBox(height: AppStyles.spacing24),
+          // Free Gems Section - Combined Daily Spin + Ads
+          _buildSectionHeader(cs, 'Free Gems', LucideIcons.gift),
+          const SizedBox(height: 10),
+          _buildFreeGemsRow(cs),
+          const SizedBox(height: 24),
           
           // Buy Gems Section
           _buildSectionHeader(cs, 'Buy Gems', LucideIcons.store),
-          const SizedBox(height: AppStyles.spacing12),
-          
-          // Gem Packs Grid
+          const SizedBox(height: 10),
           _buildGemPacksSection(cs),
           
-          const SizedBox(height: AppStyles.spacing24),
+          const SizedBox(height: 24),
           
-          // Remove Ads Section
-          _buildSectionHeader(cs, 'Remove Ads', LucideIcons.bellOff),
-          const SizedBox(height: AppStyles.spacing12),
+          // Premium Section - Combined Remove Ads + VIP
+          _buildSectionHeader(cs, 'Premium', LucideIcons.crown),
+          const SizedBox(height: 10),
+          _buildPremiumSection(cs),
           
-          // Remove Ads Card
-          _buildRemoveAdsCard(cs),
-          
-          const SizedBox(height: AppStyles.spacing24),
+          const SizedBox(height: 20),
           
           // Restore Purchases link
           Center(
@@ -1447,610 +1364,6 @@ class _CreditsPageState extends State<CreditsPage> {
     );
   }
 
-  Widget _buildWatchAdCard(ColorScheme cs) {
-    final bool hasReachedLimit = _adStatus?.hasReachedLimit ?? false;
-    final bool isLoading = _isCheckingAdEligibility || _isShowingAd;
-    final int earnedToday = _adStatus?.creditsEarnedToday ?? 0;
-    final int dailyLimit = _adStatus?.dailyLimit ?? 30;
-    final bool isDisabled = _needsEmailVerification;
-    final bool isInCooldown = _adCooldownDuration.inSeconds > 0;
-    final adAvailability = _adService.availabilityNotifier.value;
-    final bool isAdUnavailable = adAvailability == AdAvailability.unavailable;
-    final bool isAdLoading = adAvailability == AdAvailability.loading;
-    
-    // Active state - can watch ads (not disabled, not at limit)
-    final bool isActive = !isDisabled && !hasReachedLimit;
-    
-    return GestureDetector(
-      onTap: isDisabled ? _showVerificationRequiredSheet : null,
-      child: Container(
-        padding: const EdgeInsets.all(AppStyles.spacing16),
-        decoration: BoxDecoration(
-          color: hasReachedLimit 
-              ? Colors.green.withOpacity(0.1) // Completed state
-              : isActive 
-                  ? cs.primaryContainer.withOpacity(0.15) // Active state
-                  : cs.surfaceContainerHighest.withOpacity(0.3), // Disabled state
-          borderRadius: BorderRadius.circular(AppStyles.radiusMd),
-          border: Border.all(
-            color: hasReachedLimit 
-                ? Colors.green.withOpacity(0.4)
-                : isActive 
-                    ? cs.primary.withOpacity(0.5)
-                    : cs.outline.withOpacity(0.2),
-            width: isActive || hasReachedLimit ? 2 : 1,
-          ),
-          boxShadow: isActive ? [
-            BoxShadow(
-              color: cs.primary.withOpacity(0.15),
-              blurRadius: 8,
-              spreadRadius: 0,
-            ),
-          ] : null,
-        ),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                // Icon with gradient glow like gem packs (when active)
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    gradient: isActive 
-                        ? const LinearGradient(colors: KalaColors.brandGradient)
-                        : null,
-                    color: hasReachedLimit 
-                        ? Colors.green.withOpacity(0.15)
-                        : isActive ? null : cs.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(10),
-                    boxShadow: isActive ? [
-                      BoxShadow(
-                        color: KalaColors.brandGradient[0].withOpacity(0.4),
-                        blurRadius: 12,
-                        spreadRadius: 2,
-                      ),
-                    ] : null,
-                  ),
-                  child: Icon(
-                    hasReachedLimit 
-                        ? LucideIcons.checkCircle2 
-                        : isDisabled 
-                            ? LucideIcons.mailWarning 
-                            : LucideIcons.playCircle, 
-                    color: hasReachedLimit 
-                        ? Colors.green 
-                        : isActive ? Colors.white : cs.onSurfaceVariant,
-                    size: 20,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Title + badge row - same as other cards
-                      Wrap(
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        spacing: 6,
-                        runSpacing: 4,
-                        children: [
-                          Text(
-                            hasReachedLimit ? 'Daily Limit Reached' : 'Watch Ad',
-                            style: TextStyle(
-                              color: isDisabled ? cs.onSurfaceVariant : cs.onSurface,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 15,
-                            ),
-                          ),
-                          if (isActive && !hasReachedLimit)
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                gradient: const LinearGradient(colors: KalaColors.brandGradient),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: const Text(
-                                'FREE',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 8,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-                      // Status text
-                      if (isDisabled)
-                        Row(
-                          children: [
-                            Icon(LucideIcons.shieldAlert, size: 12, color: Colors.orange.shade700),
-                            const SizedBox(width: 4),
-                            Expanded(
-                              child: Text(
-                                'Verify email to unlock',
-                                style: TextStyle(
-                                  color: Colors.orange.shade700,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ),
-                          ],
-                        )
-                      else if (hasReachedLimit)
-                        Text(
-                          'Resets in ${_formatAdResetCountdown(_adResetCountdownDuration)}',
-                          style: TextStyle(
-                            color: Colors.green.shade700,
-                            fontSize: 13,
-                          ),
-                        )
-                      else if (isInCooldown && _adStatus != null)
-                        // Show progress indicator during cooldown (timer is on button)
-                        _buildAdProgressIndicator(cs, _adStatus!)
-                      else if (isAdUnavailable)
-                        Text(
-                          'No ads available',
-                          style: TextStyle(
-                            color: cs.error,
-                            fontSize: 13,
-                          ),
-                        )
-                      else ...[
-                        // Show progress toward next credit with visual indicator
-                        if (_adStatus != null && _adStatus!.adsRequiredForCredit == 2) ...[
-                          _buildAdProgressIndicator(cs, _adStatus!),
-                        ] else ...[
-                          Text(
-                            '$earnedToday/$dailyLimit gems earned today',
-                            style: TextStyle(
-                              color: cs.onSurfaceVariant,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ],
-                  ),
-                ),
-                if (isDisabled)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.shade100.withOpacity(0.3),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.orange.shade300.withOpacity(0.5)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(LucideIcons.mail, size: 14, color: Colors.orange.shade700),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Verify',
-                          style: TextStyle(
-                            color: Colors.orange.shade700,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                else if (isLoading)
-                  SizedBox(
-                    width: 32,
-                    height: 32,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: cs.primary,
-                    ),
-                  )
-                else if (hasReachedLimit)
-                  const Icon(
-                    LucideIcons.checkCircle,
-                    color: Colors.green,
-                    size: 24,
-                  )
-                // Show cooldown timer between ads
-                else if (isInCooldown)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.shade100.withOpacity(0.3),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.orange.shade300.withOpacity(0.5)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(LucideIcons.clock, size: 14, color: Colors.orange.shade700),
-                        const SizedBox(width: 4),
-                        Text(
-                          '${_adCooldownDuration.inSeconds}s',
-                          style: TextStyle(
-                            color: Colors.orange.shade700,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                // Show when no ads available (low fill rate)
-                else if (isAdUnavailable)
-                  GestureDetector(
-                    onTap: () => _adService.forceRefreshAd(),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: cs.errorContainer.withOpacity(0.3),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: cs.error.withOpacity(0.3)),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(LucideIcons.refreshCw, size: 14, color: cs.error),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Retry',
-                            style: TextStyle(
-                              color: cs.error,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  )
-                // Show when ad is loading in background
-                else if (isAdLoading && !_adService.isAdReadyNotifier.value)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: cs.primaryContainer.withOpacity(0.3),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: cs.primary,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          'Loading...',
-                          style: TextStyle(
-                            color: cs.primary,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                else
-                  GradientButton(
-                    label: 'Watch',
-                    icon: LucideIcons.play,
-                    onPressed: _watchAdForCredits,
-                    variant: ButtonVariant.primary,
-                    size: ButtonSize.small,
-                  ),
-              ],
-            ),
-            // Progress bar showing daily limit
-            if (!_isCheckingAdEligibility && earnedToday > 0 && !isDisabled) ...[
-              const SizedBox(height: 12),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: earnedToday / dailyLimit,
-                  backgroundColor: cs.surfaceContainerHighest,
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    hasReachedLimit ? cs.outline : cs.primary,
-                  ),
-                  minHeight: 4,
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-  
-  /// Build progress indicator showing ads watched toward next credit
-  Widget _buildAdProgressIndicator(ColorScheme cs, RewardedAdStatus status) {
-    final adsWatched = status.adsWatchedToday;
-    final adsRequired = status.adsRequiredForCredit;
-    final adsInCurrentCycle = adsWatched % adsRequired; // 0 or 1
-    final willEarnNext = adsInCurrentCycle == 1; // Next ad (2nd) will earn credit
-    final creditsEarned = status.creditsEarnedToday;
-    final dailyLimit = status.dailyLimit;
-    
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Progress dots showing current cycle progress
-        Row(
-          children: [
-            // Circle 1 - filled if we've watched at least 1 ad in this cycle
-            Container(
-              width: 14,
-              height: 14,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: adsInCurrentCycle >= 1 ? cs.primary : cs.surfaceContainerHighest,
-                border: Border.all(
-                  color: adsInCurrentCycle >= 1 ? cs.primary : cs.outline.withOpacity(0.4),
-                  width: 1.5,
-                ),
-              ),
-              child: adsInCurrentCycle >= 1
-                  ? Icon(LucideIcons.check, size: 8, color: cs.onPrimary)
-                  : null,
-            ),
-            const SizedBox(width: 4),
-            // Circle 2 - always empty (resets after earning credit)
-            Container(
-              width: 14,
-              height: 14,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: cs.surfaceContainerHighest,
-                border: Border.all(
-                  color: cs.outline.withOpacity(0.4),
-                  width: 1.5,
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            // Status text with gem icon - use Flexible to prevent overflow
-            Flexible(
-              child: Text.rich(
-                TextSpan(
-                  children: [
-                    TextSpan(
-                      text: willEarnNext ? 'Next = +1 ' : '2 ads = 1 ',
-                      style: TextStyle(
-                        color: willEarnNext ? Colors.amber.shade700 : cs.onSurfaceVariant,
-                        fontSize: 12,
-                        fontWeight: willEarnNext ? FontWeight.w600 : FontWeight.w400,
-                      ),
-                    ),
-                    WidgetSpan(
-                      alignment: PlaceholderAlignment.middle,
-                      child: Icon(
-                        LucideIcons.gem,
-                        size: 11,
-                        color: willEarnNext ? Colors.amber.shade700 : cs.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        // Credits earned today
-        Text(
-          '$creditsEarned/$dailyLimit gems today',
-          style: TextStyle(
-            color: cs.onSurfaceVariant.withOpacity(0.7),
-            fontSize: 11,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDailySpinnerCard(ColorScheme cs) {
-    final bool showCountdown = !_canSpin && !_isCheckingSpinEligibility && !_needsEmailVerification;
-    final bool isDisabled = _needsEmailVerification;
-    
-    // Active state - can spin (not disabled, not on cooldown)
-    final bool isActive = !isDisabled && _canSpin && !_isCheckingSpinEligibility;
-    
-    return GestureDetector(
-      onTap: isDisabled ? _showVerificationRequiredSheet : _openDailySpinner,
-      child: Container(
-        padding: const EdgeInsets.all(AppStyles.spacing16),
-        decoration: BoxDecoration(
-          color: showCountdown 
-              ? Colors.green.withOpacity(0.1) // Used state (like completed)
-              : isActive 
-                  ? cs.primaryContainer.withOpacity(0.15) // Active state
-                  : cs.surfaceContainerHighest.withOpacity(0.3), // Disabled/loading state
-          borderRadius: BorderRadius.circular(AppStyles.radiusMd),
-          border: Border.all(
-            color: showCountdown 
-                ? Colors.green.withOpacity(0.4)
-                : isActive 
-                    ? cs.primary.withOpacity(0.5)
-                    : cs.outline.withOpacity(0.2),
-            width: isActive || showCountdown ? 2 : 1,
-          ),
-          boxShadow: isActive ? [
-            BoxShadow(
-              color: cs.primary.withOpacity(0.15),
-              blurRadius: 8,
-              spreadRadius: 0,
-            ),
-          ] : null,
-        ),
-        child: Row(
-          children: [
-            // Icon with gradient glow like other cards (when active)
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                gradient: isActive 
-                    ? const LinearGradient(colors: KalaColors.brandGradient)
-                    : null,
-                color: showCountdown 
-                    ? Colors.green.withOpacity(0.15)
-                    : isActive ? null : cs.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(10),
-                boxShadow: isActive ? [
-                  BoxShadow(
-                    color: KalaColors.brandGradient[0].withOpacity(0.4),
-                    blurRadius: 12,
-                    spreadRadius: 2,
-                  ),
-                ] : null,
-              ),
-              child: Icon(
-                showCountdown 
-                    ? LucideIcons.checkCircle2 
-                    : isDisabled 
-                        ? LucideIcons.mailWarning 
-                        : LucideIcons.gift,
-                color: showCountdown 
-                    ? Colors.green 
-                    : isActive ? Colors.white : cs.onSurfaceVariant,
-                size: 20,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Title + badge row - same as other cards
-                  Wrap(
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    spacing: 6,
-                    runSpacing: 4,
-                    children: [
-                      Text(
-                        showCountdown ? 'Spin Used' : 'Lucky Spin',
-                        style: TextStyle(
-                          color: isDisabled ? cs.onSurfaceVariant : cs.onSurface,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 15,
-                        ),
-                      ),
-                      if (_isCheckingSpinEligibility && !isDisabled)
-                        SizedBox(
-                          width: 12,
-                          height: 12,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: cs.primary,
-                          ),
-                        )
-                      else if (isActive)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(colors: KalaColors.brandGradient),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Text(
-                            'FREE',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 8,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 2),
-                  // Status text
-                  if (isDisabled)
-                    Row(
-                      children: [
-                        Icon(LucideIcons.shieldAlert, size: 12, color: Colors.orange.shade700),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            'Verify email to unlock',
-                            style: TextStyle(
-                              color: Colors.orange.shade700,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                      ],
-                    )
-                  else if (showCountdown)
-                    Text(
-                      'Next spin in ${_formatSpinCountdown(_spinCountdownDuration)}',
-                      style: TextStyle(
-                        color: Colors.green.shade700,
-                        fontSize: 13,
-                      ),
-                    )
-                  else
-                    Text(
-                      'Win up to 30 gems daily!',
-                      style: TextStyle(
-                        color: cs.onSurfaceVariant,
-                        fontSize: 13,
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            if (isDisabled)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.orange.shade100.withOpacity(0.3),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.orange.shade300.withOpacity(0.5)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(LucideIcons.mail, size: 14, color: Colors.orange.shade700),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Verify',
-                      style: TextStyle(
-                        color: Colors.orange.shade700,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              )
-            else if (isActive)
-              GradientButton(
-                label: 'Spin',
-                icon: LucideIcons.sparkles,
-                onPressed: _openDailySpinner,
-                variant: ButtonVariant.primary,
-                size: ButtonSize.small,
-              )
-            else if (showCountdown)
-              const Icon(
-                LucideIcons.checkCircle,
-                color: Colors.green,
-                size: 24,
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildSectionHeader(ColorScheme cs, String title, IconData icon) {
     return Row(
       children: [
@@ -2066,6 +1379,573 @@ class _CreditsPageState extends State<CreditsPage> {
           ),
         ),
       ],
+    );
+  }
+  
+  /// Compact gem balance card - streamlined hero section
+  Widget _buildCompactGemBalance(ColorScheme cs) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            KalaColors.purple.withOpacity(0.12),
+            KalaColors.cyan.withOpacity(0.08),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: KalaColors.purple.withOpacity(0.2)),
+      ),
+      child: Row(
+        children: [
+          // Gem icon
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(colors: KalaColors.brandGradient),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(LucideIcons.gem, size: 24, color: Colors.white),
+          ),
+          const SizedBox(width: 16),
+          // Balance info
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Your Gems',
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
+                    fontSize: 13,
+                  ),
+                ),
+                ValueListenableBuilder<int>(
+                  valueListenable: userCreditsNotifier,
+                  builder: (context, credits, _) {
+                    return ShaderMask(
+                      shaderCallback: (bounds) => const LinearGradient(
+                        colors: KalaColors.brandGradient,
+                      ).createShader(bounds),
+                      child: Text(
+                        '$credits',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 36,
+                          fontWeight: FontWeight.bold,
+                          height: 1.1,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+          // VIP Badge if active, otherwise show gems never expire
+          ValueListenableBuilder<VipStatus>(
+            valueListenable: vipStatusNotifier,
+            builder: (context, vipStatus, _) {
+              if (vipStatus.isVip) {
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Colors.amber.shade600, Colors.orange.shade700],
+                    ),
+                    borderRadius: BorderRadius.circular(8),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.amber.withOpacity(0.3),
+                        blurRadius: 8,
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(LucideIcons.crown, size: 14, color: Colors.white),
+                      const SizedBox(width: 4),
+                      Text(
+                        'VIP',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest.withOpacity(0.5),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(LucideIcons.infinity, size: 14, color: cs.primary),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Never expires',
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+  
+  /// Free gems section - Daily Spin, Watch Ads, and Offerwall
+  Widget _buildFreeGemsRow(ColorScheme cs) {
+    return Column(
+      children: [
+        // Row 1: Daily Spin and Watch Ads
+        Row(
+          children: [
+            Expanded(child: _buildCompactDailySpinCard(cs)),
+            const SizedBox(width: 10),
+            Expanded(child: _buildWatchAdsCard(cs)),
+          ],
+        ),
+        const SizedBox(height: 10),
+        // Offerwall placeholder
+        _buildOfferwallPlaceholder(cs),
+      ],
+    );
+  }
+  
+  /// Offerwall placeholder card
+  Widget _buildOfferwallPlaceholder(ColorScheme cs) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withOpacity(0.3),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: cs.outline.withOpacity(0.15)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: cs.primaryContainer.withOpacity(0.3),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(LucideIcons.gift, size: 20, color: cs.primary),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Offerwall',
+                  style: TextStyle(
+                    color: cs.onSurface,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  'Complete offers for gems',
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: cs.primaryContainer.withOpacity(0.3),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              'Coming Soon',
+              style: TextStyle(
+                color: cs.primary,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  /// Compact Daily Spin card for row layout
+  Widget _buildCompactDailySpinCard(ColorScheme cs) {
+    final bool showCountdown = !_canSpin && !_isCheckingSpinEligibility && !_needsEmailVerification;
+    final bool isDisabled = _needsEmailVerification;
+    final bool isActive = !isDisabled && _canSpin && !_isCheckingSpinEligibility;
+    
+    return GestureDetector(
+      onTap: isDisabled ? _showVerificationRequiredSheet : _openDailySpinner,
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: showCountdown 
+              ? Colors.green.withOpacity(0.08)
+              : isActive 
+                  ? cs.primaryContainer.withOpacity(0.12)
+                  : cs.surfaceContainerHighest.withOpacity(0.3),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: showCountdown 
+                ? Colors.green.withOpacity(0.3)
+                : isActive 
+                    ? cs.primary.withOpacity(0.4)
+                    : cs.outline.withOpacity(0.15),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    gradient: isActive 
+                        ? const LinearGradient(colors: KalaColors.brandGradient)
+                        : null,
+                    color: showCountdown 
+                        ? Colors.green.withOpacity(0.12)
+                        : isActive ? null : cs.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    showCountdown ? LucideIcons.checkCircle2 : LucideIcons.gift,
+                    size: 16,
+                    color: showCountdown 
+                        ? Colors.green 
+                        : isActive ? Colors.white : cs.onSurfaceVariant,
+                  ),
+                ),
+                const Spacer(),
+                if (isActive)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(colors: KalaColors.brandGradient),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Text(
+                      'FREE',
+                      style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Lucky Spin',
+              style: TextStyle(
+                color: cs.onSurface,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              showCountdown 
+                  ? _formatSpinCountdown(_spinCountdownDuration)
+                  : isActive ? 'Win up to 30 💎' : 'Verify email',
+              style: TextStyle(
+                color: showCountdown ? Colors.green.shade700 : cs.onSurfaceVariant,
+                fontSize: 11,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  /// Watch Ads card with 2 ads = 1 gem progress display
+  Widget _buildWatchAdsCard(ColorScheme cs) {
+    final bool hasReachedLimit = _adStatus?.hasReachedLimit ?? false;
+    final bool isLoading = _isCheckingAdEligibility || _isShowingAd;
+    final bool isDisabled = _needsEmailVerification;
+    final bool isInCooldown = _adCooldownDuration.inSeconds > 0;
+    final bool isActive = !isDisabled && !hasReachedLimit && !isInCooldown;
+    final int adsWatchedToday = _adStatus?.adsWatchedToday ?? 0;
+    final int earnedToday = _adStatus?.creditsEarnedToday ?? 0;
+    
+    // Progress toward next gem (0 or 1 ad watched toward next gem)
+    final int progressToNextGem = adsWatchedToday % 2;
+    
+    return GestureDetector(
+      onTap: isDisabled 
+          ? _showVerificationRequiredSheet 
+          : (isActive && !isLoading) ? _watchAdForCredits : null,
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: hasReachedLimit 
+              ? Colors.green.withOpacity(0.08)
+              : isActive 
+                  ? cs.primaryContainer.withOpacity(0.12)
+                  : cs.surfaceContainerHighest.withOpacity(0.3),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: hasReachedLimit 
+                ? Colors.green.withOpacity(0.3)
+                : isActive 
+                    ? cs.primary.withOpacity(0.4)
+                    : cs.outline.withOpacity(0.15),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    gradient: isActive 
+                        ? const LinearGradient(colors: KalaColors.brandGradient)
+                        : null,
+                    color: hasReachedLimit 
+                        ? Colors.green.withOpacity(0.12)
+                        : isActive ? null : cs.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: isLoading
+                      ? SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: cs.primary),
+                        )
+                      : Icon(
+                          hasReachedLimit ? LucideIcons.checkCircle2 : LucideIcons.playCircle,
+                          size: 16,
+                          color: hasReachedLimit 
+                              ? Colors.green 
+                              : isActive ? Colors.white : cs.onSurfaceVariant,
+                        ),
+                ),
+                const Spacer(),
+                if (isInCooldown)
+                  Text(
+                    '${_adCooldownDuration.inSeconds}s',
+                    style: TextStyle(
+                      color: Colors.orange.shade700,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  )
+                else if (isActive && !hasReachedLimit)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(colors: KalaColors.brandGradient),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Text(
+                      'FREE',
+                      style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Watch Ads',
+              style: TextStyle(
+                color: cs.onSurface,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 4),
+            // Progress indicator: 2 ads = 1 gem
+            if (hasReachedLimit) ...[
+              Text(
+                'Limit reached',
+                style: TextStyle(color: Colors.green.shade700, fontSize: 11),
+              ),
+            ] else if (isDisabled) ...[
+              Text(
+                'Verify email',
+                style: TextStyle(color: cs.onSurfaceVariant, fontSize: 11),
+              ),
+            ] else ...[
+              // Visual progress: 2 dots showing progress to next gem
+              Row(
+                children: [
+                  // Progress dots
+                  Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: progressToNextGem >= 1 ? cs.primary : cs.surfaceContainerHighest,
+                      border: Border.all(
+                        color: cs.primary.withOpacity(0.5),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: progressToNextGem >= 1 
+                        ? Icon(LucideIcons.check, size: 8, color: cs.onPrimary)
+                        : null,
+                  ),
+                  const SizedBox(width: 3),
+                  Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: cs.surfaceContainerHighest,
+                      border: Border.all(
+                        color: cs.outline.withOpacity(0.3),
+                        width: 1.5,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    '= 1💎',
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    '$earnedToday/30 💎',
+                    style: TextStyle(
+                      color: cs.primary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+  
+  /// Premium section - Combined Remove Ads + VIP
+  Widget _buildPremiumSection(ColorScheme cs) {
+    return Column(
+      children: [
+        // Remove Ads - Compact inline
+        _buildCompactRemoveAdsCard(cs),
+        const SizedBox(height: 10),
+        // VIP Section
+        _buildVipSection(cs),
+      ],
+    );
+  }
+  
+  /// Compact Remove Ads card
+  Widget _buildCompactRemoveAdsCard(ColorScheme cs) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: isAdFreeNotifier,
+      builder: (context, isAdFree, _) {
+        final removeAdsProduct = _purchaseService.removeAdsProduct;
+        final price = removeAdsProduct?.price ?? '...';
+        
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: isAdFree 
+                ? Colors.green.withOpacity(0.08)
+                : cs.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isAdFree 
+                  ? Colors.green.withOpacity(0.3)
+                  : cs.outlineVariant.withOpacity(0.4),
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: isAdFree 
+                      ? Colors.green.withOpacity(0.12)
+                      : cs.primaryContainer.withOpacity(0.5),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  isAdFree ? LucideIcons.checkCircle2 : LucideIcons.bellOff,
+                  size: 18,
+                  color: isAdFree ? Colors.green : cs.primary,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      isAdFree ? 'Ad-Free Active' : 'Remove Ads',
+                      style: TextStyle(
+                        color: cs.onSurface,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      isAdFree ? 'Enjoying ad-free!' : 'One-time purchase',
+                      style: TextStyle(
+                        color: isAdFree ? Colors.green.shade700 : cs.onSurfaceVariant,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (!isAdFree)
+                GestureDetector(
+                  onTap: _purchaseRemoveAds,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: cs.primaryContainer,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      price,
+                      style: TextStyle(
+                        color: cs.primary,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                )
+              else
+                Icon(LucideIcons.checkCircle, color: Colors.green, size: 20),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -2674,7 +2554,7 @@ class _CreditsPageState extends State<CreditsPage> {
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: Text(
-                                pack.isPopular ? '🔥' : '⭐',
+                                pack.isPopular ? '🔥POPULAR' : '⭐BEST',
                                 style: const TextStyle(fontSize: 10),
                               ),
                             ),
@@ -3101,137 +2981,6 @@ class _CreditsPageState extends State<CreditsPage> {
     }
   }
 
-  Widget _buildRemoveAdsCard(ColorScheme cs) {
-    // Listen to ad-free status AND products for dynamic price
-    return ValueListenableBuilder<bool>(
-      valueListenable: isAdFreeNotifier,
-      builder: (context, isAdFree, _) {
-        return ValueListenableBuilder<List<ProductDetails>>(
-          valueListenable: _purchaseService.productsNotifier,
-          builder: (context, products, _) {
-            // Get price from store (dynamic, localized)
-            final removeAdsProduct = _purchaseService.removeAdsProduct;
-            final price = removeAdsProduct?.price ?? '...';
-            
-            return Container(
-              padding: const EdgeInsets.all(AppStyles.spacing16),
-              decoration: BoxDecoration(
-                color: isAdFree 
-                  ? Colors.green.withOpacity(0.1) 
-                  : cs.primaryContainer.withOpacity(0.15),
-                borderRadius: BorderRadius.circular(AppStyles.radiusMd),
-                border: Border.all(
-                  color: isAdFree 
-                    ? Colors.green.withOpacity(0.4)
-                    : cs.primary.withOpacity(0.5),
-                  width: 2,
-                ),
-                boxShadow: !isAdFree ? [
-                  BoxShadow(
-                    color: cs.primary.withOpacity(0.15),
-                    blurRadius: 8,
-                    spreadRadius: 0,
-                  ),
-                ] : null,
-              ),
-              child: Row(
-                children: [
-                  // Icon with gradient glow like gem packs
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      gradient: isAdFree 
-                        ? null 
-                        : const LinearGradient(colors: KalaColors.brandGradient),
-                      color: isAdFree ? Colors.green.withOpacity(0.15) : null,
-                      borderRadius: BorderRadius.circular(10),
-                      boxShadow: !isAdFree ? [
-                        BoxShadow(
-                          color: KalaColors.brandGradient[0].withOpacity(0.4),
-                          blurRadius: 12,
-                          spreadRadius: 2,
-                        ),
-                      ] : null,
-                    ),
-                    child: Icon(
-                      isAdFree ? LucideIcons.checkCircle2 : LucideIcons.bellOff,
-                      color: isAdFree ? Colors.green : Colors.white,
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Title + badge row - same as credit pack
-                        Wrap(
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          spacing: 6,
-                          runSpacing: 4,
-                          children: [
-                            Text(
-                              isAdFree ? 'Ad-Free Active' : 'Remove Ads',
-                              style: TextStyle(
-                                color: cs.onSurface,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 15,
-                              ),
-                            ),
-                            if (!isAdFree)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  gradient: const LinearGradient(colors: KalaColors.brandGradient),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: const Text(
-                                  'ONE-TIME',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 8,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 2),
-                        // Price or status - dynamic price from store
-                        Text(
-                          isAdFree ? 'Enjoying ad-free!' : price,
-                          style: TextStyle(
-                            color: isAdFree ? Colors.green.shade700 : cs.onSurfaceVariant,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  if (!isAdFree)
-                    GradientButton(
-                      label: 'Buy',
-                      icon: LucideIcons.shoppingBag,
-                      onPressed: _purchaseRemoveAds,
-                      variant: ButtonVariant.primary,
-                      size: ButtonSize.small,
-                    )
-                  else
-                    const Icon(
-                      LucideIcons.checkCircle,
-                      color: Colors.green,
-                      size: 24,
-                    ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-  
   void _purchaseRemoveAds() {
     if (!_authService.isSignedIn) {
       _showSignInPrompt();
@@ -3378,6 +3127,886 @@ class _CreditsPageState extends State<CreditsPage> {
           ),
         ),
       ],
+    );
+  }
+  
+  // ============================================================
+  // VIP MEMBERSHIP SECTION
+  // ============================================================
+  
+  /// Build VIP membership section with status and purchase options
+  Widget _buildVipSection(ColorScheme cs) {
+    return ValueListenableBuilder<VipStatus>(
+      valueListenable: vipStatusNotifier,
+      builder: (context, vipStatus, _) {
+        if (vipStatus.isVip) {
+          return _buildActiveVipCard(cs, vipStatus);
+        }
+        return _buildVipPurchaseCard(cs);
+      },
+    );
+  }
+
+  /// Build card showing active VIP status - premium design
+  Widget _buildActiveVipCard(ColorScheme cs, VipStatus status) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Colors.amber.shade700.withOpacity(0.15),
+            Colors.orange.shade800.withOpacity(0.08),
+            Colors.amber.shade600.withOpacity(0.12),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          stops: const [0.0, 0.5, 1.0],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Colors.amber.shade600.withOpacity(0.4),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.amber.withOpacity(0.15),
+            blurRadius: 12,
+            spreadRadius: 0,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // Header section with gradient overlay
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  Colors.amber.shade600.withOpacity(0.1),
+                  Colors.transparent,
+                ],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+              ),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(15)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // First row: Icon + Title + Extend button
+                Row(
+                  children: [
+                    // Crown icon with glow
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [Colors.amber.shade500, Colors.orange.shade700],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(10),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.amber.withOpacity(0.4),
+                            blurRadius: 10,
+                            spreadRadius: 0,
+                          ),
+                        ],
+                      ),
+                      child: const Icon(LucideIcons.crown, color: Colors.white, size: 20),
+                    ),
+                    const SizedBox(width: 12),
+                    // Title and status
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          ShaderMask(
+                            shaderCallback: (bounds) => LinearGradient(
+                              colors: [Colors.amber.shade600, Colors.orange.shade700],
+                            ).createShader(bounds),
+                            child: const Text(
+                              'VIP Member',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              Icon(LucideIcons.timer, size: 11, color: Colors.amber.shade700),
+                              const SizedBox(width: 4),
+                              Text(
+                                '${status.daysRemaining} days left',
+                                style: TextStyle(
+                                  color: Colors.amber.shade800,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    // ACTIVE badge
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                      margin: const EdgeInsets.only(right: 8),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [Colors.green.shade500, Colors.green.shade700],
+                        ),
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(LucideIcons.checkCircle2, size: 9, color: Colors.white),
+                          SizedBox(width: 2),
+                          Text(
+                            'ACTIVE',
+                            style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w700),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Extend button
+                    GestureDetector(
+                      onTap: () => _showVipPurchaseSheet(cs),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [Colors.amber.shade600, Colors.orange.shade700],
+                          ),
+                          borderRadius: BorderRadius.circular(8),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.amber.withOpacity(0.3),
+                              blurRadius: 6,
+                            ),
+                          ],
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(LucideIcons.plus, size: 12, color: Colors.white),
+                            SizedBox(width: 3),
+                            Text(
+                              'Extend',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          // Benefits section
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                _buildVipActiveBenefit(LucideIcons.layers, 'Bulk Edit'),
+                _buildVipActiveBenefit(LucideIcons.copy, '4 Variants'),
+                _buildVipActiveBenefit(LucideIcons.maximize2, 'Free Upscale'),
+                _buildVipActiveBenefit(LucideIcons.zap, '25 Concurrent Jobs'),
+                _buildVipActiveBenefit(LucideIcons.eyeOff, 'Ad-Free'),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildVipActiveBenefit(IconData icon, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.amber.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.amber.withOpacity(0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: Colors.amber.shade700),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(
+              color: Colors.amber.shade800,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+
+  Widget _buildVipBenefitRow(ColorScheme cs, IconData icon, String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 14, color: cs.primary),
+          const SizedBox(width: 10),
+          Text(
+            text,
+            style: TextStyle(color: cs.onSurface, fontSize: 13),
+          ),
+        ],
+      ),
+    );
+  }
+
+
+  /// Build card with VIP purchase options - premium design
+  Widget _buildVipPurchaseCard(ColorScheme cs) {
+    return ValueListenableBuilder<List<ProductDetails>>(
+      valueListenable: _purchaseService.productsNotifier,
+      builder: (context, products, _) {
+        return Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                Colors.amber.shade700.withOpacity(0.08),
+                Colors.orange.shade800.withOpacity(0.04),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: Colors.amber.shade600.withOpacity(0.25),
+              width: 1,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Premium header with subtle gradient overlay
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.amber.shade600.withOpacity(0.08),
+                      Colors.transparent,
+                    ],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(15)),
+                ),
+                child: Row(
+                  children: [
+                    // Crown icon with glow effect
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [Colors.amber.shade500, Colors.orange.shade700],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.amber.withOpacity(0.35),
+                            blurRadius: 10,
+                            spreadRadius: 0,
+                          ),
+                        ],
+                      ),
+                      child: const Icon(LucideIcons.crown, color: Colors.white, size: 22),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          ShaderMask(
+                            shaderCallback: (bounds) => LinearGradient(
+                              colors: [Colors.amber.shade600, Colors.orange.shade700],
+                            ).createShader(bounds),
+                            child: const Text(
+                              'VIP Membership',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 17,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Unlock premium features',
+                            style: TextStyle(
+                              color: cs.onSurfaceVariant,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              
+              // Benefits preview
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Wrap(
+                  spacing: 10,
+                  runSpacing: 6,
+                  children: [
+                    _buildVipBenefitTag(cs, LucideIcons.layers, 'Bulk Edit'),
+                    _buildVipBenefitTag(cs, LucideIcons.copy, '4 Variants'),
+                    _buildVipBenefitTag(cs, LucideIcons.maximize2, 'Free Upscale'),
+                    _buildVipBenefitTag(cs, LucideIcons.zap, 'Unlimited'),
+                  ],
+                ),
+              ),
+              
+              const SizedBox(height: 14),
+              
+              // Purchase options
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                child: Column(
+                  children: kVipPacks.map((pack) => Padding(
+                    padding: EdgeInsets.only(bottom: pack != kVipPacks.last ? 8 : 0),
+                    child: _buildVipPackOptionCard(cs, pack, products),
+                  )).toList(),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+  
+  Widget _buildVipBenefitTag(ColorScheme cs, IconData icon, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.amber.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: Colors.amber.withOpacity(0.2)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 11, color: Colors.amber.shade700),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              color: Colors.amber.shade800,
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildVipPackOptionCard(ColorScheme cs, VipPackConfig pack, List<ProductDetails> products) {
+    final hasProduct = products.any((p) => p.id == pack.productId);
+    final product = hasProduct ? products.firstWhere((p) => p.id == pack.productId) : null;
+    final price = hasProduct ? product!.price : '...';
+    final bool isPopular = pack.productId == kVipMonthlyProductId;
+    final bool hasBadge = isPopular || pack.savings != null;
+    
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: hasProduct ? () => _purchaseVipPack(pack.productId) : null,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            gradient: isPopular 
+                ? LinearGradient(
+                    colors: [
+                      Colors.amber.shade600.withOpacity(0.12),
+                      Colors.orange.shade700.withOpacity(0.08),
+                    ],
+                  )
+                : null,
+            color: isPopular ? null : cs.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isPopular 
+                  ? Colors.amber.shade600.withOpacity(0.5)
+                  : cs.outlineVariant.withOpacity(0.3),
+              width: isPopular ? 1.5 : 1,
+            ),
+          ),
+          child: Row(
+            children: [
+              // Duration icon
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  gradient: isPopular 
+                      ? LinearGradient(colors: [Colors.amber.shade500, Colors.orange.shade700])
+                      : null,
+                  color: isPopular ? null : cs.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  pack.days <= 7 ? LucideIcons.calendar : 
+                  pack.days <= 30 ? LucideIcons.calendarDays : 
+                  LucideIcons.calendarRange,
+                  size: 16,
+                  color: isPopular ? Colors.white : cs.primary,
+                ),
+              ),
+              const SizedBox(width: 10),
+              // Label and badge column
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // First row: label and days
+                    Row(
+                      children: [
+                        Text(
+                          pack.label,
+                          style: TextStyle(
+                            color: cs.onSurface,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          '${pack.days}d',
+                          style: TextStyle(
+                            color: cs.onSurfaceVariant,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                    // Second row: badge (if any)
+                    if (hasBadge) ...[
+                      const SizedBox(height: 3),
+                      if (isPopular)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(colors: [Colors.amber.shade600, Colors.orange.shade700]),
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                          child: const Text(
+                            '⭐ POPULAR',
+                            style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),
+                          ),
+                        )
+                      else if (pack.savings != null)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: Colors.green.shade600,
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                          child: Text(
+                            pack.savings!,
+                            style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Price button - fixed width to prevent overlap
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: isPopular 
+                        ? [Colors.amber.shade600, Colors.orange.shade700]
+                        : [cs.primary, cs.primary],
+                  ),
+                  borderRadius: BorderRadius.circular(8),
+                  boxShadow: isPopular ? [
+                    BoxShadow(
+                      color: Colors.amber.withOpacity(0.3),
+                      blurRadius: 6,
+                    ),
+                  ] : null,
+                ),
+                child: Text(
+                  price,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+  
+  
+  /// Purchase VIP pack
+  void _purchaseVipPack(String productId) {
+    if (!_authService.isSignedIn) {
+      _showSignInPrompt();
+      return;
+    }
+    
+    final cs = Theme.of(context).colorScheme;
+    final product = _purchaseService.getProduct(productId);
+    final pack = kVipPacks.firstWhere((p) => p.productId == productId);
+    
+    // Show confirmation bottom sheet
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: cs.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Padding(
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          top: 20,
+          bottom: MediaQuery.of(context).viewPadding.bottom + 20,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Header
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(colors: [cs.primary, cs.tertiary]),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Icon(LucideIcons.crown, color: Colors.white, size: 32),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'VIP ${pack.label}',
+              style: TextStyle(
+                color: cs.onSurface,
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${pack.days} days of premium features',
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 20),
+            
+            // Benefits
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerHigh,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                children: [
+                  _buildVipBenefitRow(cs, LucideIcons.layers, 'Bulk edit up to 10 images'),
+                  _buildVipBenefitRow(cs, LucideIcons.copy, 'Up to 4 variations per job'),
+                  _buildVipBenefitRow(cs, LucideIcons.maximize2, 'Free upscaling'),
+                  _buildVipBenefitRow(cs, LucideIcons.zap, '25 concurrent jobs (vs 5 for free)'),
+                  _buildVipBenefitRow(cs, LucideIcons.eyeOff, 'Ad-free experience'),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            
+            // Purchase button
+            ValueListenableBuilder<IAPState>(
+              valueListenable: _purchaseService.statusNotifier,
+              builder: (context, status, _) {
+                final isPurchasing = status == IAPState.purchasing || 
+                                    status == IAPState.verifying;
+                final price = product?.price ?? '...';
+                
+                if (product == null) {
+                  return Container(
+                    padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      'Product unavailable',
+                      style: TextStyle(color: cs.onSurfaceVariant),
+                    ),
+                  );
+                }
+                
+                return GradientButton(
+                  label: isPurchasing ? 'Processing...' : 'Purchase for $price',
+                  icon: isPurchasing ? null : LucideIcons.crown,
+                  onPressed: isPurchasing ? null : () async {
+                    HapticFeedback.mediumImpact();
+                    
+                    // Set up completion callback
+                    _purchaseService.onPurchaseComplete = (purchasedProductId, success, error) {
+                      if (purchasedProductId == productId) {
+                        _purchaseService.onPurchaseComplete = null;
+                        Navigator.pop(context);
+                        if (success) {
+                          _showVipPurchaseSuccessSnackBar();
+                        } else if (error != null && error != 'Cancelled') {
+                          _showPurchaseErrorSnackBar(error, productId: purchasedProductId);
+                        }
+                      }
+                    };
+                    
+                    await _purchaseService.purchaseVipPack(productId);
+                  },
+                  variant: ButtonVariant.primary,
+                  expanded: true,
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(
+                'Maybe later',
+                style: TextStyle(
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showVipPurchaseSheet(ColorScheme cs) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: cs.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => Padding(
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          top: 20,
+          bottom: MediaQuery.of(sheetContext).viewPadding.bottom + 20,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Extend VIP Membership',
+              style: TextStyle(
+                color: cs.onSurface,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 16),
+            ValueListenableBuilder<List<ProductDetails>>(
+              valueListenable: _purchaseService.productsNotifier,
+              builder: (context, products, _) {
+                return Column(
+                  children: [
+                    for (final pack in kVipPacks) ...[
+                      _buildVipPackOptionForExtend(cs, pack, products, sheetContext),
+                      if (pack != kVipPacks.last) const SizedBox(height: 10),
+                    ],
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: 16),
+            TextButton(
+              onPressed: () => Navigator.pop(sheetContext),
+              child: Text(
+                'Cancel',
+                style: TextStyle(color: cs.onSurfaceVariant),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// VIP pack option specifically for extend sheet - closes extend sheet before purchase
+  Widget _buildVipPackOptionForExtend(
+    ColorScheme cs, 
+    VipPackConfig pack,
+    List<ProductDetails> products,
+    BuildContext sheetContext,
+  ) {
+    // Get price from store (dynamic, localized) - safely handle empty/missing products
+    final hasProduct = products.any((p) => p.id == pack.productId);
+    final product = hasProduct 
+        ? products.firstWhere((p) => p.id == pack.productId) 
+        : null;
+    final price = hasProduct ? product!.price : '...';
+    
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: hasProduct ? () {
+          // Close the extend sheet first, then open purchase sheet
+          Navigator.pop(sheetContext);
+          _purchaseVipPack(pack.productId);
+        } : null,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: cs.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: cs.outlineVariant.withOpacity(0.4),
+              width: 1,
+            ),
+          ),
+          child: Row(
+            children: [
+              // Duration icon
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: cs.primaryContainer.withOpacity(0.5),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  pack.days <= 7 ? LucideIcons.calendar : 
+                  pack.days <= 30 ? LucideIcons.calendarDays : 
+                  LucideIcons.calendarRange,
+                  size: 18,
+                  color: cs.primary,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          pack.label,
+                          style: TextStyle(
+                            color: cs.onSurface,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        if (pack.savings != null) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade600,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              pack.savings!,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 9,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    Text(
+                      '${pack.days} days of VIP access',
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Price
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.amber.shade600, Colors.orange.shade700],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  price,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showVipPurchaseSuccessSnackBar() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Row(
+          children: [
+            Icon(LucideIcons.crown, color: Colors.white, size: 18),
+            SizedBox(width: 10),
+            Text('VIP activated! Enjoy premium features.'),
+          ],
+        ),
+        backgroundColor: Colors.green.shade600,
+        duration: const Duration(seconds: 4),
+      ),
     );
   }
 }

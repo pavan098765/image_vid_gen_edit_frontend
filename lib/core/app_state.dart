@@ -4,15 +4,19 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-// Import user service for credit notifier and ad-free state
+// Import user service for credit notifier, ad-free state, and VIP state
 import 'package:kala_ai_create_images_videos_with_ai/core/services/user_service.dart'
     show userCreditsNotifier, currentUserNotifier, isLoadingUserNotifier, UserData,
-         isAdFreeNotifier, shouldShowAds, notifyAdFreeStatusChanged, resetAdFreeVerification;
+         isAdFreeNotifier, shouldShowAds, notifyAdFreeStatusChanged, resetAdFreeVerification,
+         VipStatus, vipStatusNotifier, isVipUser, getMaxVariations, canUseBulkEdit, 
+         isUpscaleFree, notifyVipStatusChanged, resetVipVerification;
 
 // Re-export for other files that import app_state.dart
 export 'package:kala_ai_create_images_videos_with_ai/core/services/user_service.dart'
     show userCreditsNotifier, currentUserNotifier, isLoadingUserNotifier, UserData,
-         isAdFreeNotifier, shouldShowAds, notifyAdFreeStatusChanged, resetAdFreeVerification;
+         isAdFreeNotifier, shouldShowAds, notifyAdFreeStatusChanged, resetAdFreeVerification,
+         VipStatus, vipStatusNotifier, isVipUser, getMaxVariations, canUseBulkEdit,
+         isUpscaleFree, notifyVipStatusChanged, resetVipVerification;
 
 /// Global app-level selected index for the bottom navigation.
 final ValueNotifier<int> selectedIndexNotifier = ValueNotifier<int>(0);
@@ -347,6 +351,14 @@ Future<void> updateJobFields({
 
   if (idx >= 0) {
     final old = list[idx];
+    
+    // 🛡️ NEVER downgrade terminal status (completed/failed → processing)
+    String finalStatus = status ?? old.status;
+    if ((old.status == 'completed' || old.status == 'failed') && 
+        status != null && status == 'processing') {
+      debugPrint("🛡️ updateJobFields: Blocking status downgrade for job $jobId: ${old.status} → $status");
+      finalStatus = old.status;
+    }
 
     list[idx] = JobModel(
       jobId: old.jobId,
@@ -356,7 +368,7 @@ Future<void> updateJobFields({
       downloadUrl: (downloadUrl != null && downloadUrl.isNotEmpty)
           ? downloadUrl
           : old.downloadUrl,
-      status: status ?? old.status,
+      status: finalStatus,
       createdAt: old.createdAt,
 
       // ✅ Preserve paths by default
@@ -466,4 +478,250 @@ Future<void> loadAdFreeStatus() async {
   }
   // Always start with ads enabled - server will verify if user is ad-free
   resetAdFreeVerification();
+}
+
+// ==================== RATE LIMITING ====================
+// Protects server from overload by limiting concurrent processing jobs
+// Non-VIP: max 5 processing jobs, VIP: max 25 processing jobs
+
+/// Maximum concurrent processing jobs allowed
+/// Non-VIP: 5, VIP: 25
+int getMaxConcurrentJobs() {
+  return isVipUser() ? 25 : 5;
+}
+
+/// Server job timeout in minutes (matches backend timeout)
+/// Jobs older than this while still "processing" are considered stale
+const int _jobTimeoutMinutes = 30;
+
+/// Cooldown period in seconds after a batch submission
+/// Prevents rapid-fire submissions that could overwhelm the server
+const int _batchCooldownSeconds = 5;
+
+/// Track the last batch submission time for cooldown
+DateTime? _lastBatchSubmissionTime;
+
+/// Get count of jobs currently in processing state
+/// IMPORTANT: This is used for rate limiting - do not modify to include other states
+int getProcessingJobsCount() {
+  // Clean up stale jobs first
+  _cleanupStaleProcessingJobs();
+  
+  final jobs = jobListNotifier.value;
+  int count = 0;
+  for (final job in jobs) {
+    if (job.status == 'processing') {
+      count++;
+    }
+  }
+  return count;
+}
+
+/// Get the number of available job slots
+/// Returns 0 if user has reached their limit
+int getAvailableJobSlots() {
+  final maxJobs = getMaxConcurrentJobs();
+  final currentProcessing = getProcessingJobsCount();
+  final available = maxJobs - currentProcessing;
+  return available > 0 ? available : 0;
+}
+
+/// Check if user can submit a specific number of jobs
+/// Returns true if submission is allowed, false otherwise
+bool canSubmitJobs(int jobCount) {
+  final available = getAvailableJobSlots();
+  return available >= jobCount;
+}
+
+/// Smart rate limit check for job submission
+/// Returns null if allowed, or an error message if blocked
+/// 
+/// This function implements intelligent rate limiting:
+/// 1. Checks concurrent job limit (5 non-VIP, 25 VIP)
+/// 2. Enforces cooldown between batch submissions
+/// 3. Handles bulk mode intelligently - blocks entire batch if it would exceed limit
+/// 4. Cleans up stale "processing" jobs that timed out
+String? checkRateLimitForSubmission(int jobsToSubmit) {
+  // 1. Clean up any stale processing jobs first
+  _cleanupStaleProcessingJobs();
+  
+  final maxJobs = getMaxConcurrentJobs();
+  final currentProcessing = getProcessingJobsCount();
+  final available = maxJobs - currentProcessing;
+  
+  // 2. Check cooldown for batch submissions (> 3 jobs)
+  if (jobsToSubmit > 3 && _lastBatchSubmissionTime != null) {
+    final elapsed = DateTime.now().difference(_lastBatchSubmissionTime!).inSeconds;
+    if (elapsed < _batchCooldownSeconds) {
+      final remaining = _batchCooldownSeconds - elapsed;
+      return 'Please wait $remaining seconds before submitting another batch';
+    }
+  }
+  
+  // 3. Check if submission would exceed limit
+  if (jobsToSubmit > available) {
+    if (available == 0) {
+      // No slots available at all
+      final vipHint = isVipUser() 
+          ? 'You have $currentProcessing jobs processing. Please wait for some to complete.'
+          : 'You have $currentProcessing jobs processing. Upgrade to VIP for 25 concurrent jobs!';
+      return 'Job limit reached ($currentProcessing/$maxJobs). $vipHint';
+    } else {
+      // Some slots available but not enough for this batch
+      final vipHint = isVipUser() 
+          ? '' 
+          : ' Upgrade to VIP for 25 concurrent jobs!';
+      return 'Cannot submit $jobsToSubmit jobs. Only $available slots available ($currentProcessing/$maxJobs processing).$vipHint';
+    }
+  }
+  
+  return null; // Submission allowed
+}
+
+/// Record that a batch submission was made (for cooldown tracking)
+void recordBatchSubmission(int jobCount) {
+  if (jobCount > 3) {
+    _lastBatchSubmissionTime = DateTime.now();
+    debugPrint("🕐 Batch submission recorded: $jobCount jobs at ${_lastBatchSubmissionTime}");
+  }
+}
+
+/// Clean up stale processing jobs
+/// Jobs that have been "processing" for longer than the timeout are marked as failed
+/// This prevents zombie jobs from blocking the rate limit
+void _cleanupStaleProcessingJobs() {
+  final jobs = jobListNotifier.value;
+  final now = DateTime.now();
+  bool hasChanges = false;
+  
+  for (final job in jobs) {
+    if (job.status == 'processing') {
+      final age = now.difference(job.createdAt);
+      if (age.inMinutes > _jobTimeoutMinutes) {
+        // Job has been processing too long - mark as failed
+        job.status = 'failed';
+        hasChanges = true;
+        debugPrint("⏰ Marked stale job as failed: ${job.jobId} (age: ${age.inMinutes} min)");
+      }
+    }
+  }
+  
+  if (hasChanges) {
+    // Trigger update
+    jobListNotifier.value = List<JobModel>.from(jobs);
+    debugPrint("🧹 Cleaned up stale processing jobs");
+  }
+}
+
+/// Force cleanup of stale jobs (can be called manually)
+Future<void> cleanupStaleJobs() async {
+  _cleanupStaleProcessingJobs();
+  await saveJobsToPrefs();
+}
+
+// ----------------------------------------------------
+// 🗑️ DELETED JOBS TRACKING
+// ----------------------------------------------------
+// Prevents FCM notifications from recreating deleted jobs
+
+const String _deletedJobsKey = 'deleted_job_ids';
+const int _maxDeletedJobsToTrack = 300; // Limit to prevent bloat
+
+/// Mark a job ID as deleted so FCM won't recreate it
+Future<void> markJobAsDeleted(String jobId) async {
+  if (jobId.isEmpty) return;
+  
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final deletedList = prefs.getStringList(_deletedJobsKey) ?? [];
+    
+    if (!deletedList.contains(jobId)) {
+      deletedList.add(jobId);
+      
+      // Trim old entries if list gets too long (FIFO)
+      while (deletedList.length > _maxDeletedJobsToTrack) {
+        deletedList.removeAt(0);
+      }
+      
+      await prefs.setStringList(_deletedJobsKey, deletedList);
+      debugPrint("🗑️ Marked job $jobId as deleted (${deletedList.length} tracked)");
+    }
+  } catch (e) {
+    debugPrint("⚠️ Failed to mark job as deleted: $e");
+  }
+}
+
+/// Mark multiple job IDs as deleted
+Future<void> markJobsAsDeleted(List<String> jobIds) async {
+  if (jobIds.isEmpty) return;
+  
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final deletedList = prefs.getStringList(_deletedJobsKey) ?? [];
+    
+    for (final jobId in jobIds) {
+      if (jobId.isNotEmpty && !deletedList.contains(jobId)) {
+        deletedList.add(jobId);
+      }
+    }
+    
+    // Trim old entries if list gets too long (FIFO)
+    while (deletedList.length > _maxDeletedJobsToTrack) {
+      deletedList.removeAt(0);
+    }
+    
+    await prefs.setStringList(_deletedJobsKey, deletedList);
+    debugPrint("🗑️ Marked ${jobIds.length} jobs as deleted (${deletedList.length} tracked)");
+  } catch (e) {
+    debugPrint("⚠️ Failed to mark jobs as deleted: $e");
+  }
+}
+
+/// Check if a job ID was previously deleted
+Future<bool> isJobDeleted(String jobId) async {
+  if (jobId.isEmpty) return false;
+  
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final deletedList = prefs.getStringList(_deletedJobsKey) ?? [];
+    return deletedList.contains(jobId);
+  } catch (e) {
+    debugPrint("⚠️ Failed to check deleted job: $e");
+    return false;
+  }
+}
+
+/// Synchronous version for use in background isolate (reads directly from prefs)
+List<String> getDeletedJobIdsSync(SharedPreferences prefs) {
+  return prefs.getStringList(_deletedJobsKey) ?? [];
+}
+
+/// Clear the deleted jobs list (for testing/debugging)
+Future<void> clearDeletedJobsList() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_deletedJobsKey);
+    debugPrint("🧹 Cleared deleted jobs list");
+  } catch (e) {
+    debugPrint("⚠️ Failed to clear deleted jobs list: $e");
+  }
+}
+
+/// Get rate limit status for display
+/// Returns a map with useful info for UI
+Map<String, dynamic> getRateLimitStatus() {
+  _cleanupStaleProcessingJobs();
+  
+  final maxJobs = getMaxConcurrentJobs();
+  final currentProcessing = getProcessingJobsCount();
+  final available = maxJobs - currentProcessing;
+  
+  return {
+    'maxJobs': maxJobs,
+    'currentProcessing': currentProcessing,
+    'available': available,
+    'isVip': isVipUser(),
+    'percentUsed': maxJobs > 0 ? (currentProcessing / maxJobs * 100).round() : 0,
+    'canSubmit': available > 0,
+  };
 }
