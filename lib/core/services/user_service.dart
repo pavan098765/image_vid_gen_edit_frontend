@@ -26,10 +26,20 @@ bool _adFreeVerifiedWithServer = false;
 /// Check if user should see ads (the SECURE way)
 /// Returns true if ads should be shown, false if user is genuinely ad-free
 /// SECURITY: Unauthenticated users ALWAYS see ads
+/// 
+/// Ad-free applies in two cases:
+/// 1. User purchased standalone "Remove Ads" (permanent)
+/// 2. User has active VIP membership (duration-based)
 bool shouldShowAds() {
   // Always show ads to unauthenticated users - no exceptions
   if (currentUserNotifier.value == null) {
     return true;
+  }
+  
+  // VIP BENEFIT: Active VIP members get ad-free experience
+  // VIP status is verified by server, so we can trust it
+  if (_vipVerifiedWithServer && vipStatusNotifier.value.isVip) {
+    return false; // VIP members don't see ads
   }
   
   // If server hasn't verified ad-free status yet this session, show ads
@@ -37,7 +47,7 @@ bool shouldShowAds() {
     return true;
   }
   
-  // Use the verified ad-free status
+  // Use the verified ad-free status (standalone purchase)
   return !isAdFreeNotifier.value;
 }
 
@@ -70,6 +80,130 @@ void resetAdFreeVerification() {
   _adFreeVerifiedWithServer = false;
   isAdFreeNotifier.value = false;
   debugPrint("🔄 Ad-free verification reset");
+}
+
+// ============================================================
+// VIP STATE MANAGEMENT (Global - exported from app_state.dart)
+// ============================================================
+
+/// VIP status data including expiration
+class VipStatus {
+  final bool isVip;
+  final DateTime? expiresAt;
+  final String? productId;
+  final DateTime? purchasedAt;
+  final int daysRemaining;
+
+  VipStatus({
+    required this.isVip,
+    this.expiresAt,
+    this.productId,
+    this.purchasedAt,
+    this.daysRemaining = 0,
+  });
+
+  factory VipStatus.notVip() => VipStatus(isVip: false, daysRemaining: 0);
+
+  factory VipStatus.fromJson(Map<String, dynamic> json) {
+    return VipStatus(
+      isVip: json['is_vip'] ?? false,
+      expiresAt: json['expires_at'] != null 
+          ? DateTime.tryParse(json['expires_at']) 
+          : null,
+      productId: json['product_id'],
+      purchasedAt: json['purchased_at'] != null 
+          ? DateTime.tryParse(json['purchased_at']) 
+          : null,
+      daysRemaining: json['days_remaining'] ?? 0,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'is_vip': isVip,
+    'expires_at': expiresAt?.toIso8601String(),
+    'product_id': productId,
+    'purchased_at': purchasedAt?.toIso8601String(),
+    'days_remaining': daysRemaining,
+  };
+}
+
+/// Global notifier for VIP status
+/// SECURITY NOTE: This value requires server verification
+final ValueNotifier<VipStatus> vipStatusNotifier = ValueNotifier<VipStatus>(VipStatus.notVip());
+
+/// Internal flag tracking if VIP was verified with server this session
+bool _vipVerifiedWithServer = false;
+
+/// Check if user is VIP (the SECURE way)
+/// SECURITY: Unauthenticated users are NEVER VIP
+bool isVipUser() {
+  // Always deny VIP to unauthenticated users
+  if (currentUserNotifier.value == null) {
+    return false;
+  }
+  
+  // If server hasn't verified VIP status yet this session, deny VIP
+  if (!_vipVerifiedWithServer) {
+    return false;
+  }
+  
+  // Check if VIP is still valid (not expired)
+  final status = vipStatusNotifier.value;
+  if (!status.isVip) return false;
+  
+  // Check expiration
+  if (status.expiresAt != null && DateTime.now().isAfter(status.expiresAt!)) {
+    return false;
+  }
+  
+  return true;
+}
+
+/// Get max variations based on VIP status
+/// Non-VIP: max 2, VIP: max 4
+int getMaxVariations() {
+  return isVipUser() ? 4 : 2;
+}
+
+/// Check if bulk edit is allowed (VIP only)
+bool canUseBulkEdit() {
+  return isVipUser();
+}
+
+/// Check if upscale should be free (VIP benefit)
+bool isUpscaleFree() {
+  return isVipUser();
+}
+
+/// Call this when VIP status changes
+/// Only call this after server verification!
+void notifyVipStatusChanged(VipStatus status, {bool verifiedByServer = false}) {
+  if (verifiedByServer) {
+    _vipVerifiedWithServer = true;
+  }
+  
+  // Only allow VIP if user is authenticated AND verified by server
+  if (currentUserNotifier.value == null) {
+    vipStatusNotifier.value = VipStatus.notVip();
+    debugPrint("👑 VIP denied: User not authenticated");
+    return;
+  }
+  
+  if (!verifiedByServer && status.isVip) {
+    // Don't trust unverified VIP claims
+    debugPrint("⚠️ VIP claim not verified by server - ignoring");
+    return;
+  }
+  
+  vipStatusNotifier.value = status;
+  debugPrint("👑 VIP status changed: ${status.isVip} (expires: ${status.expiresAt}, days: ${status.daysRemaining})");
+}
+
+/// Reset VIP verification on sign out
+void resetVipVerification() {
+  _vipVerifiedWithServer = false;
+  vipStatusNotifier.value = VipStatus.notVip();
+  debugPrint("🔄 VIP verification reset");
 }
 
 /// Backend API configuration
@@ -293,6 +427,15 @@ class UserService {
           debugPrint("⚠️ Failed to check ad-free status after sync: $e");
         }
         
+        // Check VIP status from server
+        // This ensures VIP is synced after every login
+        try {
+          final vipStatus = await checkVipStatus();
+          debugPrint("👑 VIP status after sync: ${vipStatus.isVip} (days: ${vipStatus.daysRemaining})");
+        } catch (e) {
+          debugPrint("⚠️ Failed to check VIP status after sync: $e");
+        }
+        
         return userData;
       } else if (response.statusCode == 401) {
         debugPrint("⚠️ Token expired or invalid - signing out");
@@ -494,12 +637,16 @@ class UserService {
     // This ensures user must re-authenticate to get ad-free status
     resetAdFreeVerification();
     
+    // SECURITY: Reset VIP verification on sign out
+    // This ensures user must re-authenticate to get VIP status
+    resetVipVerification();
+    
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('user_data');
       await prefs.remove('user_credits');
       await prefs.remove('last_credit_sync');
-      // Don't remove is_ad_free cache - it will be re-verified on next sign-in
+      // Don't remove is_ad_free or vip_status cache - they will be re-verified on next sign-in
     } catch (e) {
       debugPrint("⚠️ Failed to clear user data: $e");
     }
@@ -709,6 +856,182 @@ class UserService {
       await prefs.setBool('is_ad_free', isAdFree);
     } catch (e) {
       debugPrint("⚠️ Failed to save ad-free status: $e");
+    }
+  }
+
+  // ============================================================
+  // VIP STATUS MANAGEMENT
+  // ============================================================
+
+  /// Check if user has active VIP status from server
+  /// Call this on app startup and after purchase verification
+  /// 
+  /// SECURITY: Unauthenticated users are NEVER VIP
+  /// Server verification is REQUIRED for VIP status
+  Future<VipStatus> checkVipStatus() async {
+    // SECURITY: Not signed in = NEVER VIP
+    if (!_authService.isSignedIn) {
+      notifyVipStatusChanged(VipStatus.notVip(), verifiedByServer: true);
+      return VipStatus.notVip();
+    }
+
+    try {
+      final token = await _authService.getIdToken();
+      if (token == null) {
+        notifyVipStatusChanged(VipStatus.notVip(), verifiedByServer: true);
+        return VipStatus.notVip();
+      }
+
+      final response = await _authenticatedGet('/auth/vip-status', token);
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final status = VipStatus.fromJson(data);
+        
+        // Cache the result locally
+        await _setLocalVipStatus(status);
+        
+        // Update global state with SERVER-VERIFIED status
+        notifyVipStatusChanged(status, verifiedByServer: true);
+        
+        debugPrint("👑 VIP status VERIFIED by server: ${status.isVip} (days: ${status.daysRemaining})");
+        return status;
+      } else if (response.statusCode == 404) {
+        // Endpoint not implemented yet - assume not VIP
+        notifyVipStatusChanged(VipStatus.notVip(), verifiedByServer: true);
+        return VipStatus.notVip();
+      } else {
+        throw Exception("VIP status check failed: ${response.statusCode}");
+      }
+    } catch (e) {
+      debugPrint("⚠️ VIP status check failed: $e");
+      // On error, try to use cached status (offline support)
+      final localStatus = await _getLocalVipStatus();
+      if (localStatus.isVip && localStatus.expiresAt != null) {
+        // Check if still valid based on cached expiry
+        if (DateTime.now().isBefore(localStatus.expiresAt!)) {
+          notifyVipStatusChanged(localStatus, verifiedByServer: true);
+          debugPrint("⚠️ Using cached VIP status (offline)");
+          return localStatus;
+        }
+      }
+    }
+    
+    notifyVipStatusChanged(VipStatus.notVip(), verifiedByServer: true);
+    return VipStatus.notVip();
+  }
+
+  /// Verify and activate VIP purchase on server
+  /// Called after successful in-app purchase
+  /// 
+  /// @param purchaseToken - The purchase token from Google Play / App Store
+  /// @param productId - The product ID (vip_pack_weekly, vip_pack_monthly, vip_pack_yearly)
+  /// @param platform - 'android' or 'ios'
+  Future<Map<String, dynamic>> verifyVipPurchase({
+    required String purchaseToken,
+    required String productId,
+    required String platform,
+  }) async {
+    if (!_authService.isSignedIn) {
+      throw Exception('User must be signed in to verify VIP purchase');
+    }
+
+    try {
+      final token = await _authService.getIdToken();
+      if (token == null) throw Exception('No authentication token');
+
+      final response = await _authenticatedPost(
+        '/auth/verify-vip-purchase',
+        {
+          'purchase_token': purchaseToken,
+          'product_id': productId,
+          'platform': platform,
+          'device_id': await _getDeviceId(),
+        },
+        token,
+      );
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final verified = data['verified'] ?? false;
+        
+        if (verified) {
+          // Update VIP status immediately after successful verification
+          final status = VipStatus(
+            isVip: data['is_vip'] ?? true,
+            expiresAt: data['expires_at'] != null 
+                ? DateTime.tryParse(data['expires_at']) 
+                : null,
+            productId: productId,
+            purchasedAt: DateTime.now(),
+            daysRemaining: data['days_granted'] ?? 0,
+          );
+          
+          await _setLocalVipStatus(status);
+          notifyVipStatusChanged(status, verifiedByServer: true);
+          
+          debugPrint("👑 VIP purchase verified! Expires: ${status.expiresAt}");
+          
+          return {
+            'success': true,
+            'verified': true,
+            'is_vip': status.isVip,
+            'expires_at': status.expiresAt?.toIso8601String(),
+            'days_granted': data['days_granted'],
+            'message': data['message'] ?? 'VIP activated!',
+          };
+        }
+        
+        return {
+          'success': false,
+          'verified': false,
+          'error': data['message'] ?? 'Verification failed',
+        };
+      } else if (response.statusCode == 409) {
+        // Purchase already used
+        final error = jsonDecode(response.body)['detail'] ?? 'Purchase already used';
+        return {
+          'success': false,
+          'verified': false,
+          'error': error,
+          'already_used': true,
+        };
+      } else {
+        final error = jsonDecode(response.body)['detail'] ?? 'Verification failed';
+        throw Exception(error);
+      }
+    } catch (e) {
+      debugPrint("❌ VIP purchase verification failed: $e");
+      return {
+        'success': false,
+        'verified': false,
+        'error': e.toString(),
+      };
+    }
+  }
+
+  /// Get local VIP status from SharedPreferences
+  Future<VipStatus> _getLocalVipStatus() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonStr = prefs.getString('vip_status');
+      if (jsonStr != null) {
+        final json = jsonDecode(jsonStr);
+        return VipStatus.fromJson(json);
+      }
+    } catch (e) {
+      debugPrint("⚠️ Failed to read VIP status cache: $e");
+    }
+    return VipStatus.notVip();
+  }
+
+  /// Set local VIP status in SharedPreferences
+  Future<void> _setLocalVipStatus(VipStatus status) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('vip_status', jsonEncode(status.toJson()));
+    } catch (e) {
+      debugPrint("⚠️ Failed to save VIP status: $e");
     }
   }
 

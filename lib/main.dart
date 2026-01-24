@@ -49,6 +49,12 @@ Future<void> _mergeAndPersistJobMap(Map<String, dynamic> jobMap) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.reload(); // ✅ ensure latest copy before merge
 
+    final jobId = jobMap['job_id']?.toString();
+    if (jobId == null || jobId.isEmpty) return;
+
+    // 🛡️ Check if this job was previously deleted - don't recreate it
+    final deletedJobIds = getDeletedJobIdsSync(prefs);
+    
     final jsonStr = prefs.getString('jobs');
     final existing = jsonStr == null
         ? <Map<String, dynamic>>[]
@@ -56,14 +62,12 @@ Future<void> _mergeAndPersistJobMap(Map<String, dynamic> jobMap) async {
             .map((e) => Map<String, dynamic>.from(e))
             .toList();
 
-    final jobId = jobMap['job_id']?.toString();
-    if (jobId == null || jobId.isEmpty) return;
-
     final status = (jobMap['status'] ?? '').toString();
     final downloadUrl = (jobMap['download_url'] ?? '').toString();
 
     final idx = existing.indexWhere((e) => e['jobId'] == jobId);
     if (idx != -1) {
+      // Job exists - update it
       final old = existing[idx];
       existing[idx] = {
         'jobId': jobId,
@@ -77,7 +81,12 @@ Future<void> _mergeAndPersistJobMap(Map<String, dynamic> jobMap) async {
         'localFilePath': old['localFilePath'],
         'inputImagePath': old['inputImagePath'],
       };
+    } else if (deletedJobIds.contains(jobId)) {
+      // 🛡️ Job was deleted - don't recreate it
+      debugPrint("🛡️ [FCM] Ignoring notification for deleted job $jobId");
+      return;
     } else {
+      // New job - create entry
       existing.insert(0, {
         'jobId': jobId,
         'title': jobMap['title'] ?? jobId,
@@ -194,6 +203,9 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.reload(); // ✅ ensure we have freshest data
 
+    // 🛡️ Check if this job was previously deleted - don't recreate it
+    final deletedJobIds = getDeletedJobIdsSync(prefs);
+
     final jsonStr = prefs.getString('jobs');
     final existing = jsonStr == null
         ? <Map<String, dynamic>>[]
@@ -204,6 +216,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     final idx = existing.indexWhere((e) => e['jobId'] == jobId);
 
     if (idx >= 0) {
+      // Job exists - update it
       final old = existing[idx];
 
       // 🧠 Preserve paths if they existed before
@@ -222,13 +235,17 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
             : (old['status'] ?? 'processing'),
         'createdAt': old['createdAt'] ?? DateTime.now().toIso8601String(),
 
-        // ✅ Preserve file paths even if isolate didn’t have them
+        // ✅ Preserve file paths even if isolate didn't have them
         'localFilePath': preservedLocalPath,
         'inputImagePath': preservedInputImagePath,
       };
 
       debugPrint(
           "🟣 [FCM isolate] Preserved inputImagePath for $jobId → $preservedInputImagePath");
+    } else if (deletedJobIds.contains(jobId)) {
+      // 🛡️ Job was deleted - don't recreate it, skip notification too
+      debugPrint("🛡️ [FCM Background] Ignoring notification for deleted job $jobId");
+      return;
     } else {
       // 🔹 New job record — no previous entry to merge from
       existing.insert(0, {
@@ -476,6 +493,36 @@ Future<void> initializeApp() async {
     final title = (data['title'] ?? '').toString();
     final model = (data['model'] ?? '').toString();
     final outputType = (data['outputType'] ?? '').toString();
+
+    // 🐛 DEBUG: Show raw FCM data in snackbar (REMOVE AFTER DEBUGGING)
+    if (navigatorKey.currentContext != null) {
+      final debugInfo = '''
+🔔 FCM DEBUG
+job_id: $jobId
+raw_status: ${data['status']}
+normalized: $normalizedStatus
+title: $title
+model: $model
+notif_title: ${message.notification?.title}
+notif_body: ${message.notification?.body}
+download_url: ${downloadUrl.isNotEmpty ? '${downloadUrl.substring(0, 50)}...' : 'empty'}
+all_data: ${data.keys.join(', ')}
+''';
+      ScaffoldMessenger.of(navigatorKey.currentContext!).showSnackBar(
+        SnackBar(
+          content: Text(debugInfo, style: const TextStyle(fontSize: 11)),
+          duration: const Duration(seconds: 15),
+          backgroundColor: Colors.black87,
+          behavior: SnackBarBehavior.floating,
+          action: SnackBarAction(
+            label: 'Dismiss',
+            textColor: Colors.cyan,
+            onPressed: () {},
+          ),
+        ),
+      );
+    }
+    // 🐛 END DEBUG
 
     if (jobId.isNotEmpty) {
       await _applyFcmUpdate({

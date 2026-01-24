@@ -649,9 +649,10 @@ class AdvancedSettings {
   bool upscaleOutput;
   String quality; // 'Low', 'Medium', 'High'
   String aspectRatio; // 'Default', '1:1', '9:16', '16:9', '4:3', '3:4'
-  int variations; // 1-4
+  int variations; // 1-4 (VIP: max 4, non-VIP: max 2)
   int videoDuration; // 3, 5, 8 seconds
   double cfgScale; // 0.1 - 15.0
+  bool bulkEditEnabled; // VIP only - process multiple images with same settings
   
   AdvancedSettings({
     this.enhancePrompt = false,
@@ -661,6 +662,7 @@ class AdvancedSettings {
     this.variations = 1,
     this.videoDuration = 5,
     this.cfgScale = 1.0,
+    this.bulkEditEnabled = false,
   });
   
   AdvancedSettings copyWith({
@@ -671,6 +673,7 @@ class AdvancedSettings {
     int? variations,
     int? videoDuration,
     double? cfgScale,
+    bool? bulkEditEnabled,
   }) {
     return AdvancedSettings(
       enhancePrompt: enhancePrompt ?? this.enhancePrompt,
@@ -680,6 +683,7 @@ class AdvancedSettings {
       variations: variations ?? this.variations,
       cfgScale: cfgScale ?? this.cfgScale,
       videoDuration: videoDuration ?? this.videoDuration,
+      bulkEditEnabled: bulkEditEnabled ?? this.bulkEditEnabled,
     );
   }
 }
@@ -755,20 +759,73 @@ class _GenericToolPageState extends State<GenericToolPage>
   // -------- Upscale (2x/4x switch) --------
   int _scaleFactor = 2;
   bool _upscaleEnabled = false;
+  
+  // -------- Bulk Edit (VIP only) --------
+  // Stores multiple images for bulk processing (max 10 for VIP)
+  List<Uint8List> _bulkImages = [];
+  // Stores masks for each bulk image (for inpaint/erase tools)
+  List<Uint8List?> _bulkMasks = [];
+  // Stores outpaint configurations for each bulk image (for expand scene)
+  List<Map<String, String>?> _bulkOutpaintConfigs = [];
+  static const int _maxBulkImages = 10;
+  // Max total jobs per submission (images × variations) to prevent server overload
+  static const int _maxTotalJobs = 25;
+  
+  /// Check if tool requires mask for each image (inpaint/erase tools)
+  bool get _requiresMask {
+    final model = widget.config.model.toLowerCase();
+    final mode = _selectedModeKey?.toLowerCase() ?? "";
+    final paramMode = (widget.config.params?["mode"]?.toString().toLowerCase() ?? "");
+    return model.contains("inpaint") ||
+           model.contains("lama") ||
+           mode.contains("inpaint") ||
+           paramMode.contains("inpaint") ||
+           paramMode.contains("lama");
+  }
+  
+  /// Check if tool is outpaint (expand scene)
+  bool get _isOutpaint => widget.config.model == "diffusers_outpaint";
+  
+  /// Check if this is an upscaler tool (e.g., "Upscale Image")
+  /// Upscalers have upscale always enabled by default
+  bool get _isUpscalerTool {
+    final title = widget.config.title.toLowerCase();
+    final model = widget.config.model.toLowerCase();
+    // Check by title or model name
+    return title.contains('upscale') || 
+           model == 'aurasrv2' || 
+           model == 'swin2sr' || 
+           model == 'realesrgan';
+  }
+  
+  /// Check if bulk mode should be available for this tool
+  bool get _supportsBulkEdit {
+    // Check if tool has init_image OR image input (image/video editing tools)
+    // Upscale tool uses 'image' instead of 'init_image'
+    final hasInitImage = widget.config.inputs.any((i) => i['id'] == 'init_image');
+    final hasImageInput = widget.config.inputs.any((i) => i['id'] == 'image' && i['type'] == 'image');
+    // Bulk edit is for editing tools that take images as input
+    // This includes image editing, inpainting, outpainting, upscaling, and video animation
+    return hasInitImage || hasImageInput;
+  }
 
   /// Calculate the total credit cost for this job
+  /// VIP users get FREE upscale
   int _calculateTotalCost() {
     // Use model-specific cost if available
     final baseCost = _currentModelCost;
     final upscaleCost = _currentModelUpscaleCost;
     final offer = _currentModelOffer;
-    final variations = _advancedSettings.variations;
+    final variations = _advancedSettings.variations.clamp(1, getMaxVariations());
     
     // Check if upscale is enabled - use advanced settings, not _inputs
     final bool isUpscaled = _advancedSettings.upscaleOutput && _scaleFactor > 1;
+    
+    // VIP users get FREE upscale
+    final bool freeUpscale = isUpscaleFree();
 
-    // Base cost per variation
-    final int basePerVariation = baseCost + (isUpscaled ? upscaleCost : 0);
+    // Base cost per variation (VIP: no upscale cost)
+    final int basePerVariation = baseCost + (isUpscaled && !freeUpscale ? upscaleCost : 0);
     
     // Apply offer discount
     int costPerVariation = basePerVariation;
@@ -776,8 +833,14 @@ class _GenericToolPageState extends State<GenericToolPage>
       costPerVariation = (basePerVariation * (1 - offer / 100)).round();
     }
     
-    // Multiply by variations
-    return costPerVariation * variations;
+    // Calculate total images (1 for normal, N for bulk edit)
+    final int imageCount = _advancedSettings.bulkEditEnabled && _bulkImages.isNotEmpty 
+        ? _bulkImages.length 
+        : 1;
+    
+    // Total = cost per variation × variations × number of images
+    // For bulk edit: each image gets processed with N variations
+    return costPerVariation * variations * imageCount;
   }
 
   // Dynamic element cache
@@ -834,6 +897,12 @@ class _GenericToolPageState extends State<GenericToolPage>
 
     // Initialize advanced settings with defaults
     _advancedSettings = AdvancedSettings();
+    
+    // Auto-enable upscale for upscaler tools (always on, can't be toggled off)
+    if (_isUpscalerTool) {
+      _advancedSettings = _advancedSettings.copyWith(upscaleOutput: true);
+      _upscaleEnabled = true;
+    }
 
     // Initialize glow animation for generate button
     _glowAnimationController = AnimationController(
@@ -856,6 +925,9 @@ class _GenericToolPageState extends State<GenericToolPage>
     
     // Listen for ad-free status changes to hide/show native ads
     isAdFreeNotifier.addListener(_onAdFreeStatusChanged);
+    
+    // Listen for job list changes to update rate limit status in real-time
+    jobListNotifier.addListener(_onJobListChanged);
 
     debugPrint("🔧 Config for ${widget.config.model}");
     debugPrint("  title=${widget.config.title}");
@@ -866,6 +938,12 @@ class _GenericToolPageState extends State<GenericToolPage>
   
   void _onAdFreeStatusChanged() {
     // Rebuild to hide/show native ads when ad-free status changes
+    if (mounted) setState(() {});
+  }
+  
+  void _onJobListChanged() {
+    // Rebuild to update rate limit status when jobs complete
+    // This makes the "X slots free" hint update in real-time
     if (mounted) setState(() {});
   }
 
@@ -1209,14 +1287,17 @@ class _GenericToolPageState extends State<GenericToolPage>
                           const SizedBox(height: 12),
                         ],
                         
-                        // Upscale Toggle
+                        // Upscale Toggle (locked for upscaler tools)
                         _buildSettingToggle(
                           cs: cs,
                           icon: LucideIcons.maximize2,
                           title: 'Upscale Output',
-                          subtitle: 'Higher resolution result (+5 credits)',
+                          subtitle: _isUpscalerTool 
+                              ? 'Always enabled for upscaler tools' 
+                              : 'Higher resolution result (+5 credits) - Free for VIP users',
                           value: _advancedSettings.upscaleOutput,
-                          onChanged: (v) {
+                          locked: _isUpscalerTool, // Lock for upscaler tools
+                          onChanged: _isUpscalerTool ? null : (v) {
                             setSheetState(() {
                               setState(() {
                                 _advancedSettings = _advancedSettings.copyWith(upscaleOutput: v);
@@ -1261,20 +1342,25 @@ class _GenericToolPageState extends State<GenericToolPage>
                         const SizedBox(height: 16),
                         
                         // Variations Slider (for image generation)
+                        // VIP users: max 4, Non-VIP: max 2
                         if (widget.config.outputType == 'image') ...[
                           _buildSettingSlider(
                             cs: cs,
                             icon: LucideIcons.copy,
                             title: 'Variations',
-                            subtitle: 'Number of images to generate',
-                            value: _advancedSettings.variations.toDouble(),
+                            subtitle: isVipUser() 
+                                ? 'VIP: Up to 4 variations' 
+                                : 'Up to 2 variations (VIP: 4)',
+                            value: _advancedSettings.variations.toDouble().clamp(1, getMaxVariations().toDouble()),
                             min: 1,
-                            max: 4,
-                            divisions: 3,
+                            max: getMaxVariations().toDouble(),
+                            divisions: getMaxVariations() - 1,
                             onChanged: (v) {
                               setSheetState(() {
                                 setState(() {
-                                  _advancedSettings = _advancedSettings.copyWith(variations: v.round());
+                                  _advancedSettings = _advancedSettings.copyWith(
+                                    variations: v.round().clamp(1, getMaxVariations()),
+                                  );
                                 });
                               });
                             },
@@ -1354,7 +1440,8 @@ class _GenericToolPageState extends State<GenericToolPage>
     required String title,
     required String subtitle,
     required bool value,
-    required ValueChanged<bool> onChanged,
+    ValueChanged<bool>? onChanged,
+    bool locked = false,
   }) {
     return Container(
       padding: const EdgeInsets.all(12),
@@ -1380,13 +1467,21 @@ class _GenericToolPageState extends State<GenericToolPage>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: cs.onSurface,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
+                Row(
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        color: cs.onSurface,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    if (locked) ...[
+                      const SizedBox(width: 6),
+                      Icon(LucideIcons.lock, size: 12, color: cs.primary),
+                    ],
+                  ],
                 ),
                 Text(
                   subtitle,
@@ -1400,8 +1495,188 @@ class _GenericToolPageState extends State<GenericToolPage>
           ),
           Switch(
             value: value,
-            onChanged: onChanged,
+            onChanged: locked ? null : onChanged,
             activeThumbColor: cs.primary,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Build bulk edit toggle with VIP badge (VIP only feature)
+  /// Show dialog prompting user to upgrade to VIP
+  void _showVipRequiredDialog(ColorScheme cs, String featureName) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: cs.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header with crown icon
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.amber.shade600, Colors.orange.shade700],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.amber.withOpacity(0.3),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: const Icon(LucideIcons.crown, color: Colors.white, size: 28),
+              ),
+              const SizedBox(height: 16),
+              
+              // Title
+              Text(
+                'VIP Feature',
+                style: TextStyle(
+                  color: cs.onSurface,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 8),
+              
+              // Description
+              Text(
+                '$featureName requires VIP membership',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: cs.onSurfaceVariant,
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(height: 20),
+              
+              // Benefits container
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHigh,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: cs.outlineVariant.withOpacity(0.3),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    _buildVipBenefit(cs, LucideIcons.layers, 'Bulk edit up to 10 images'),
+                    _buildVipBenefit(cs, LucideIcons.copy, 'Up to 4 variations'),
+                    _buildVipBenefit(cs, LucideIcons.maximize2, 'Free upscaling'),
+                    _buildVipBenefit(cs, LucideIcons.zap, '25 concurrent jobs (5x more!)'),
+                    _buildVipBenefit(cs, LucideIcons.eyeOff, 'Ad-free experience'),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              
+              // Buttons
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        side: BorderSide(color: cs.outlineVariant),
+                      ),
+                      child: Text(
+                        'Maybe Later',
+                        style: TextStyle(color: cs.onSurfaceVariant),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [Colors.amber.shade600, Colors.orange.shade700],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(10),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.amber.withOpacity(0.3),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: () {
+                            // Close the dialog first
+                            Navigator.pop(ctx);
+                            // Navigate back to main page and then to Credits tab
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              // Pop the GenericToolPage to go back to main scaffold
+                              if (Navigator.canPop(context)) {
+                                Navigator.pop(context);
+                              }
+                              // Then navigate to Credits page (index 3)
+                              selectedIndexNotifier.value = 3;
+                            });
+                          },
+                          borderRadius: BorderRadius.circular(10),
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 12),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(LucideIcons.crown, color: Colors.white, size: 18),
+                                SizedBox(width: 6),
+                                Text(
+                                  'Get VIP',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 15,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildVipBenefit(ColorScheme cs, IconData icon, String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        children: [
+          Icon(icon, size: 14, color: cs.primary),
+          const SizedBox(width: 8),
+          Text(
+            text,
+            style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
           ),
         ],
       ),
@@ -1929,6 +2204,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     _promptTabController.dispose();
     _glowAnimationController.dispose();
     isAdFreeNotifier.removeListener(_onAdFreeStatusChanged);
+    jobListNotifier.removeListener(_onJobListChanged);
     super.dispose();
   }
 
@@ -1945,6 +2221,42 @@ class _GenericToolPageState extends State<GenericToolPage>
   bool _areRequiredInputsFilled() {
     // Don't allow generation while an image is being processed
     if (_isProcessingImage) return false;
+    
+    // Check if bulk edit mode is enabled
+    final isBulkMode = _advancedSettings.bulkEditEnabled && isVipUser();
+    
+    // Calculate total jobs for rate limit check
+    final variations = _advancedSettings.variations.clamp(1, getMaxVariations());
+    final int imageCount = isBulkMode && _bulkImages.isNotEmpty ? _bulkImages.length : 1;
+    final int totalJobsToSubmit = imageCount * variations;
+    
+    // Check rate limit - don't allow if it would exceed concurrent job limit
+    final rateLimitError = checkRateLimitForSubmission(totalJobsToSubmit);
+    if (rateLimitError != null) return false;
+    
+    // Check total job limit for bulk edit
+    if (isBulkMode && _bulkImages.isNotEmpty) {
+      final totalJobs = _bulkImages.length * variations;
+      if (totalJobs > _maxTotalJobs) return false;
+      
+      // For inpaint tools in bulk mode, all images must have masks
+      if (_requiresMask) {
+        for (int i = 0; i < _bulkImages.length; i++) {
+          if (i >= _bulkMasks.length || _bulkMasks[i] == null) {
+            return false;
+          }
+        }
+      }
+      
+      // For outpaint tools in bulk mode, all images must have placement config
+      if (_isOutpaint) {
+        for (int i = 0; i < _bulkImages.length; i++) {
+          if (i >= _bulkOutpaintConfigs.length || _bulkOutpaintConfigs[i] == null) {
+            return false;
+          }
+        }
+      }
+    }
     
     final elements = _currentElements;
     
@@ -1968,16 +2280,25 @@ class _GenericToolPageState extends State<GenericToolPage>
           break;
           
         case "image_upload":
-          // Image is required - check if it exists and is not empty
-          final imageData = _inputs[inputRef];
-          if (imageData == null) return false;
-          if (imageData is List && imageData.isEmpty) return false;
+          // In bulk mode, check bulk images instead of single image
+          if (isBulkMode && _supportsBulkEdit) {
+            // Bulk mode: require at least one bulk image
+            if (_bulkImages.isEmpty) return false;
+          } else {
+            // Single mode: check normal image input
+            final imageData = _inputs[inputRef];
+            if (imageData == null) return false;
+            if (imageData is List && imageData.isEmpty) return false;
+          }
           break;
           
         case "painter":
-          // Mask is required for inpainting modes
-          final maskData = _inputs[inputRef];
-          if (maskData == null) return false;
+          // Mask is required for inpainting modes (in single mode)
+          // In bulk mode, masks are checked separately above
+          if (!isBulkMode) {
+            final maskData = _inputs[inputRef];
+            if (maskData == null) return false;
+          }
           break;
       }
     }
@@ -1992,6 +2313,66 @@ class _GenericToolPageState extends State<GenericToolPage>
     // Show processing message while image is being loaded
     if (_isProcessingImage) {
       return ["Image loading..."]; // Special message for processing state
+    }
+    
+    // Check if bulk edit mode is enabled
+    final isBulkMode = _advancedSettings.bulkEditEnabled && isVipUser();
+    
+    // Calculate total jobs for rate limit check
+    final variations = _advancedSettings.variations.clamp(1, getMaxVariations());
+    final int imageCount = isBulkMode && _bulkImages.isNotEmpty ? _bulkImages.length : 1;
+    final int totalJobsToSubmit = imageCount * variations;
+    
+    // Check rate limit - provide helpful context instead of blocking message
+    final rateLimitError = checkRateLimitForSubmission(totalJobsToSubmit);
+    if (rateLimitError != null) {
+      final status = getRateLimitStatus();
+      final current = status['currentProcessing'] as int;
+      final available = status['available'] as int;
+      
+      // Different messages based on context
+      if (available == 0) {
+        // No slots available - show friendly waiting message
+        return ["⏳ $current jobs running • Wait for completion"];
+      } else if (totalJobsToSubmit > available) {
+        // Some slots available but not enough
+        return ["⏳ $available slot${available > 1 ? 's' : ''} free • Need $totalJobsToSubmit"];
+      }
+      return ["⏳ Processing $current jobs..."];
+    }
+    
+    // Check total job limit for bulk edit
+    if (isBulkMode && _bulkImages.isNotEmpty) {
+      final totalJobs = _bulkImages.length * variations;
+      if (totalJobs > _maxTotalJobs) {
+        return ["Max $_maxTotalJobs jobs allowed"];
+      }
+      
+      // Check bulk masks for inpaint tools
+      if (_requiresMask) {
+        int missingMasks = 0;
+        for (int i = 0; i < _bulkImages.length; i++) {
+          if (i >= _bulkMasks.length || _bulkMasks[i] == null) {
+            missingMasks++;
+          }
+        }
+        if (missingMasks > 0) {
+          return ["$missingMasks image(s) need masks"];
+        }
+      }
+      
+      // Check bulk outpaint configs for expand scene
+      if (_isOutpaint) {
+        int missingConfigs = 0;
+        for (int i = 0; i < _bulkImages.length; i++) {
+          if (i >= _bulkOutpaintConfigs.length || _bulkOutpaintConfigs[i] == null) {
+            missingConfigs++;
+          }
+        }
+        if (missingConfigs > 0) {
+          return ["$missingConfigs image(s) need placement"];
+        }
+      }
     }
     
     final elements = _currentElements;
@@ -2016,16 +2397,27 @@ class _GenericToolPageState extends State<GenericToolPage>
           break;
           
         case "image_upload":
-          final imageData = _inputs[inputRef];
-          if (imageData == null || (imageData is List && imageData.isEmpty)) {
-            missing.add("Image");
+          // In bulk mode, check bulk images instead of single image
+          if (isBulkMode && _supportsBulkEdit) {
+            if (_bulkImages.isEmpty) {
+              missing.add("Images");
+            }
+          } else {
+            final imageData = _inputs[inputRef];
+            if (imageData == null || (imageData is List && imageData.isEmpty)) {
+              missing.add("Image");
+            }
           }
           break;
           
         case "painter":
-          final maskData = _inputs[inputRef];
-          if (maskData == null) {
-            missing.add("Mask");
+          // Mask is required for inpainting modes (in single mode)
+          // In bulk mode, masks are checked separately above
+          if (!isBulkMode) {
+            final maskData = _inputs[inputRef];
+            if (maskData == null) {
+              missing.add("Mask");
+            }
           }
           break;
       }
@@ -2762,6 +3154,280 @@ class _GenericToolPageState extends State<GenericToolPage>
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error picking image: $e')),
         );
+      }
+    }
+  }
+
+  /// Pick multiple images for bulk edit (VIP only)
+  Future<void> _pickBulkImages() async {
+    if (!canUseBulkEdit()) {
+      final cs = Theme.of(context).colorScheme;
+      _showVipRequiredDialog(cs, 'Bulk Edit');
+      return;
+    }
+    
+    try {
+      final files = await picker.pickMultiImage(
+        imageQuality: 85,
+        limit: _maxBulkImages,
+      );
+      
+      if (files.isEmpty) return;
+      
+      setState(() => _isProcessingImage = true);
+      
+      final List<Uint8List> newImages = [];
+      for (final file in files) {
+        if (newImages.length >= _maxBulkImages) break;
+        final bytes = await file.readAsBytes();
+        newImages.add(bytes);
+      }
+      
+      if (mounted) {
+        setState(() {
+          _bulkImages = newImages;
+          _isProcessingImage = false;
+        });
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${newImages.length} images selected for bulk edit'),
+            backgroundColor: Theme.of(context).colorScheme.primary,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ Error picking bulk images: $e');
+      if (mounted) {
+        setState(() => _isProcessingImage = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error selecting images: $e')),
+        );
+      }
+    }
+  }
+
+  /// Clear all bulk images
+  void _clearBulkImages() {
+    setState(() {
+      _bulkImages.clear();
+      _bulkMasks.clear();
+      _bulkOutpaintConfigs.clear();
+    });
+  }
+
+  Widget _buildBulkImagesGrid(ColorScheme cs) {
+    // Calculate item height based on whether we need mask/outpaint editing
+    final double itemHeight = (_requiresMask || _isOutpaint) ? 130 : 100;
+    
+    return SizedBox(
+      height: itemHeight,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        itemCount: _bulkImages.length,
+        itemBuilder: (context, index) {
+          final hasMask = index < _bulkMasks.length && _bulkMasks[index] != null;
+          final hasOutpaintConfig = index < _bulkOutpaintConfigs.length && _bulkOutpaintConfigs[index] != null;
+          
+          return Padding(
+            padding: EdgeInsets.only(right: index < _bulkImages.length - 1 ? 8 : 0),
+            child: Column(
+              children: [
+                Stack(
+                  children: [
+                    Container(
+                      width: 100,
+                      height: 100,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: _requiresMask && !hasMask 
+                              ? cs.error.withOpacity(0.5)
+                              : cs.primary.withOpacity(0.3),
+                          width: 1.5,
+                        ),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            Image.memory(
+                              _bulkImages[index],
+                              fit: BoxFit.cover,
+                            ),
+                            // Show mask overlay if exists
+                            if (hasMask)
+                              ColorFiltered(
+                                colorFilter: ColorFilter.mode(
+                                  Colors.red.withOpacity(0.3),
+                                  BlendMode.srcATop,
+                                ),
+                                child: Image.memory(
+                                  _bulkMasks[index]!,
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    // Remove button
+                    Positioned(
+                      top: 4,
+                      right: 4,
+                      child: GestureDetector(
+                        onTap: () => _removeBulkImageAt(index),
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: cs.error,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            LucideIcons.x,
+                            size: 12,
+                            color: cs.onError,
+                          ),
+                        ),
+                      ),
+                    ),
+                    // Index badge
+                    Positioned(
+                      bottom: 4,
+                      left: 4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: cs.surface.withOpacity(0.9),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          '${index + 1}',
+                          style: TextStyle(
+                            color: cs.onSurface,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                    // Mask/Outpaint status badge
+                    if (_requiresMask || _isOutpaint)
+                      Positioned(
+                        bottom: 4,
+                        right: 4,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: (hasMask || hasOutpaintConfig)
+                                ? Colors.green.withOpacity(0.9)
+                                : cs.error.withOpacity(0.9),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Icon(
+                            (hasMask || hasOutpaintConfig)
+                                ? LucideIcons.check
+                                : LucideIcons.alertCircle,
+                            size: 10,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                // Edit mask/outpaint button
+                if (_requiresMask || _isOutpaint) ...[
+                  const SizedBox(height: 4),
+                  GestureDetector(
+                    onTap: () => _editBulkImageConfig(index),
+                    child: Container(
+                      width: 100,
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      decoration: BoxDecoration(
+                        color: (hasMask || hasOutpaintConfig)
+                            ? cs.primaryContainer.withOpacity(0.5)
+                            : cs.errorContainer.withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            _requiresMask ? LucideIcons.paintbrush : LucideIcons.move,
+                            size: 12,
+                            color: (hasMask || hasOutpaintConfig) ? cs.primary : cs.error,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            _requiresMask 
+                                ? (hasMask ? 'Edit' : 'Mask')
+                                : (hasOutpaintConfig ? 'Edit' : 'Place'),
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: (hasMask || hasOutpaintConfig) ? cs.primary : cs.error,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+  
+  /// Remove bulk image at index along with its mask and outpaint config
+  void _removeBulkImageAt(int index) {
+    setState(() {
+      _bulkImages.removeAt(index);
+      if (index < _bulkMasks.length) {
+        _bulkMasks.removeAt(index);
+      }
+      if (index < _bulkOutpaintConfigs.length) {
+        _bulkOutpaintConfigs.removeAt(index);
+      }
+    });
+  }
+  
+  /// Edit mask or outpaint config for a bulk image
+  Future<void> _editBulkImageConfig(int index) async {
+    if (index >= _bulkImages.length) return;
+    
+    if (_requiresMask) {
+      // Open mask editor for this image
+      final mask = await _openMaskEditor(_bulkImages[index]);
+      if (mask != null && mounted) {
+        setState(() {
+          // Ensure list is long enough
+          while (_bulkMasks.length <= index) {
+            _bulkMasks.add(null);
+          }
+          _bulkMasks[index] = mask;
+        });
+      }
+    } else if (_isOutpaint) {
+      // Open outpaint canvas for this image
+      final result = await Navigator.push<Map<String, String>>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => OutpaintCanvasPage(imageBytes: _bulkImages[index]),
+          fullscreenDialog: true,
+        ),
+      );
+      if (result != null && mounted) {
+        setState(() {
+          // Ensure list is long enough
+          while (_bulkOutpaintConfigs.length <= index) {
+            _bulkOutpaintConfigs.add(null);
+          }
+          _bulkOutpaintConfigs[index] = result;
+        });
       }
     }
   }
@@ -3934,62 +4600,386 @@ class _GenericToolPageState extends State<GenericToolPage>
     );
   }
 
-  // -------- Image Upload --------
+  // -------- Image Upload with Bulk Edit Support --------
   Widget _buildImageUpload(String ref) {
+    final cs = Theme.of(context).colorScheme;
     final input = _effectiveInputConfig(ref);
     final hasImage = _inputs[ref] != null && 
         (_inputs[ref] is List && (_inputs[ref] as List).isNotEmpty);
+    final isVip = isVipUser();
+    final isBulkMode = _advancedSettings.bulkEditEnabled && isVip;
+    
+    // Only show bulk mode option for tools that support it (have init_image input)
+    final showBulkOption = _supportsBulkEdit;
 
     return _buildCard(
-      elevated: hasImage,
+      elevated: hasImage || _bulkImages.isNotEmpty,
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Image preview with elegant border
-          _buildImagePreview(ref),
-          const SizedBox(height: 16),
+          // Mode Switch (Single / Bulk) - only for VIP with image output
+          if (showBulkOption) ...[
+            _buildImageModeSwitch(cs, isVip, isBulkMode),
+            const SizedBox(height: 16),
+          ],
+          
+          // Content based on mode
+          if (isBulkMode)
+            _buildBulkImagesContent(cs)
+          else ...[
+            // Single image mode - normal upload
+            _buildImagePreview(ref),
+            const SizedBox(height: 16),
+            // Buttons row
+            if (hasImage)
+              Row(
+                children: [
+                  // Change image button
+                  Expanded(
+                    child: GradientButton(
+                      icon: LucideIcons.imagePlus,
+                      label: "Change",
+                      onPressed: () => _pickImage(input),
+                      variant: ButtonVariant.primary,
+                      size: ButtonSize.medium,
+                      expanded: true,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  // Remove button
+                  GradientButton(
+                    icon: LucideIcons.trash2,
+                    label: "Remove",
+                    onPressed: () {
+                      setState(() {
+                        _inputs.remove(ref);
+                        _inputs.remove("${ref}_path");
+                      });
+                    },
+                    variant: ButtonVariant.secondary,
+                    size: ButtonSize.medium,
+                    expanded: false,
+                  ),
+                ],
+              )
+            else
+              GradientButton(
+                icon: LucideIcons.upload,
+                label: "Upload Image",
+                onPressed: () => _pickImage(input),
+                variant: ButtonVariant.primary,
+                size: ButtonSize.medium,
+                expanded: true,
+              ),
+          ],
+        ],
+      ),
+    );
+  }
 
-          // Upload button (full width)
-          _buildActionButton(
-            icon: hasImage ? LucideIcons.imagePlus : LucideIcons.upload,
-            label: hasImage ? "Change Image" : "Upload Image",
-            onPressed: () => _pickImage(input),
-            isPrimary: true,
+  /// Build the mode switch between Single Image and Bulk Edit
+  Widget _buildImageModeSwitch(ColorScheme cs, bool isVip, bool isBulkMode) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          // Single Image option
+          Expanded(
+            child: GestureDetector(
+              onTap: () {
+                if (isBulkMode) {
+                  setState(() {
+                    _advancedSettings = _advancedSettings.copyWith(bulkEditEnabled: false);
+                  });
+                }
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: !isBulkMode ? cs.primary : Colors.transparent,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      LucideIcons.image,
+                      size: 16,
+                      color: !isBulkMode ? cs.onPrimary : cs.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Single',
+                      style: TextStyle(
+                        color: !isBulkMode ? cs.onPrimary : cs.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          // Bulk Edit option
+          Expanded(
+            child: GestureDetector(
+              onTap: () {
+                if (isVip) {
+                  if (!isBulkMode) {
+                    setState(() {
+                      _advancedSettings = _advancedSettings.copyWith(bulkEditEnabled: true);
+                    });
+                  }
+                } else {
+                  _showVipRequiredDialog(cs, 'Bulk Edit');
+                }
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: isBulkMode ? cs.primary : Colors.transparent,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      LucideIcons.layers,
+                      size: 16,
+                      color: isBulkMode ? cs.onPrimary : cs.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Bulk',
+                      style: TextStyle(
+                        color: isBulkMode ? cs.onPrimary : cs.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                    ),
+                    // VIP badge for non-VIP users
+                    if (!isVip) ...[
+                      const SizedBox(width: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(colors: [cs.primary, cs.tertiary]),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          'VIP',
+                          style: TextStyle(
+                            color: cs.onPrimary,
+                            fontSize: 8,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
-  // Reusable action button - uses consistent button variants
-  Widget _buildActionButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback onPressed,
-    bool isPrimary = false,
-  }) {
-    if (isPrimary) {
-      return GradientButton(
-        icon: icon,
-        label: label,
-        onPressed: onPressed,
-        variant: ButtonVariant.primary,
-        size: ButtonSize.medium,
-        expanded: true,
-      );
-    }
+  /// Build the bulk images content (replaces single image upload when bulk mode enabled)
+  Widget _buildBulkImagesContent(ColorScheme cs) {
+    final variations = _advancedSettings.variations.clamp(1, getMaxVariations());
+    final totalJobs = _bulkImages.isEmpty ? 0 : _bulkImages.length * variations;
+    final bool exceedsLimit = totalJobs > _maxTotalJobs;
     
-    return GradientButton(
-      icon: icon,
-      label: label,
-      onPressed: onPressed,
-      variant: ButtonVariant.secondary,
-      size: ButtonSize.medium,
-      expanded: true,
+    // Calculate max images allowed based on current variations
+    final int maxImagesForVariations = (_maxTotalJobs / variations).floor();
+    final int effectiveMaxImages = maxImagesForVariations.clamp(1, _maxBulkImages);
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Info bar showing count and jobs
+        if (_bulkImages.isNotEmpty) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: exceedsLimit 
+                  ? cs.errorContainer.withOpacity(0.3) 
+                  : cs.primaryContainer.withOpacity(0.3),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: exceedsLimit 
+                    ? cs.error.withOpacity(0.3)
+                    : cs.primary.withOpacity(0.2),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  exceedsLimit ? LucideIcons.alertTriangle : LucideIcons.info, 
+                  size: 16, 
+                  color: exceedsLimit ? cs.error : cs.primary,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${_bulkImages.length} images × $variations variations = $totalJobs jobs',
+                        style: TextStyle(
+                          color: cs.onSurface,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      if (exceedsLimit)
+                        Text(
+                          'Max $_maxTotalJobs jobs allowed. Reduce images or variations.',
+                          style: TextStyle(
+                            color: cs.error,
+                            fontSize: 11,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                GestureDetector(
+                  onTap: _clearBulkImages,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: cs.errorContainer.withOpacity(0.5),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Icon(LucideIcons.trash2, size: 14, color: cs.error),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+        
+        // Images grid or empty state
+        if (_bulkImages.isEmpty)
+          _buildBulkEmptyState(cs)
+        else
+          _buildBulkImagesGrid(cs),
+        
+        const SizedBox(height: 12),
+        
+        // Add images button (limit based on variations)
+        GradientButton(
+          icon: _bulkImages.isEmpty ? LucideIcons.imagePlus : LucideIcons.plus,
+          label: _bulkImages.isEmpty 
+              ? 'Select Images (up to $effectiveMaxImages)' 
+              : 'Add More (${_bulkImages.length}/$effectiveMaxImages)',
+          onPressed: _bulkImages.length >= effectiveMaxImages ? null : _pickBulkImages,
+          variant: _bulkImages.isEmpty ? ButtonVariant.primary : ButtonVariant.secondary,
+          size: ButtonSize.medium,
+          expanded: true,
+        ),
+      ],
     );
   }
 
+  /// Build empty state for bulk images
+  Widget _buildBulkEmptyState(ColorScheme cs) {
+    final variations = _advancedSettings.variations.clamp(1, getMaxVariations());
+    final int maxImagesForVariations = (_maxTotalJobs / variations).floor();
+    final int effectiveMaxImages = maxImagesForVariations.clamp(1, _maxBulkImages);
+    
+    // Hint for tools that need per-image configuration
+    String? extraHint;
+    if (_requiresMask) {
+      extraHint = 'You\'ll draw a mask for each image';
+    } else if (_isOutpaint) {
+      extraHint = 'You\'ll set placement for each image';
+    }
+    
+    return Container(
+      height: extraHint != null ? 200 : 180,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            cs.surfaceContainerHigh.withOpacity(0.8),
+            cs.surfaceContainerHighest.withOpacity(0.4),
+          ],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: cs.outlineVariant.withOpacity(0.3),
+          width: 1.5,
+        ),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(colors: [cs.primary.withOpacity(0.2), cs.tertiary.withOpacity(0.1)]),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(LucideIcons.layers, size: 32, color: cs.primary),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Select multiple images',
+            style: TextStyle(
+              color: cs.onSurface,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Up to $effectiveMaxImages images × $variations var = ${effectiveMaxImages * variations} jobs max',
+            style: TextStyle(
+              color: cs.onSurfaceVariant,
+              fontSize: 12,
+            ),
+          ),
+          if (extraHint != null) ...[
+            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  _requiresMask ? LucideIcons.paintbrush : LucideIcons.move,
+                  size: 12,
+                  color: cs.primary,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  extraHint,
+                  style: TextStyle(
+                    color: cs.primary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // Reusable action button - uses consistent button variants
   Widget _buildImagePreview(String ref) {
     final cs = Theme.of(context).colorScheme;
     final data = _inputs[ref];
@@ -4871,28 +5861,75 @@ class _GenericToolPageState extends State<GenericToolPage>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Missing inputs hint (shown when button is disabled)
+          // Status hint (shown when button is disabled)
           AnimatedSize(
             duration: const Duration(milliseconds: 200),
             child: !isEnabled && missingInputs.isNotEmpty
-                ? Container(
+                ? Builder(
+                    builder: (context) {
+                      // Check if this is a rate limit message (contains ⏳)
+                      final isRateLimitHint = missingInputs.first.contains('⏳');
+                      final isProcessing = _isProcessingImage;
+                      
+                      // Choose colors based on hint type
+                      final Color bgColor;
+                      final Color borderColor;
+                      final Color textColor;
+                      final IconData hintIcon;
+                      
+                      if (isProcessing) {
+                        bgColor = cs.primaryContainer.withOpacity(0.3);
+                        borderColor = cs.primary.withOpacity(0.2);
+                        textColor = cs.primary.withOpacity(0.9);
+                        hintIcon = LucideIcons.loader;
+                      } else if (isRateLimitHint) {
+                        // Rate limit - use amber/orange for "busy" feeling
+                        bgColor = Colors.amber.withOpacity(0.15);
+                        borderColor = Colors.amber.withOpacity(0.3);
+                        textColor = Colors.amber.shade800;
+                        hintIcon = LucideIcons.sparkles;
+                      } else {
+                        // Missing input - use subtle red
+                        bgColor = cs.errorContainer.withOpacity(0.3);
+                        borderColor = cs.error.withOpacity(0.2);
+                        textColor = cs.error.withOpacity(0.9);
+                        hintIcon = LucideIcons.alertCircle;
+                      }
+                      
+                      // Format message for display
+                      final String displayMessage;
+                      if (isProcessing) {
+                        displayMessage = "Processing image...";
+                      } else if (isRateLimitHint) {
+                        // Remove emoji and show cleaner message
+                        displayMessage = missingInputs.first.replaceAll('⏳ ', '');
+                      } else {
+                        displayMessage = "Add ${missingInputs.join(' & ')} to continue";
+                      }
+                      
+                      // Calculate jobs for rate limit sheet
+                      final variations = _advancedSettings.variations.clamp(1, getMaxVariations());
+                      final int imageCount = _advancedSettings.bulkEditEnabled && _bulkImages.isNotEmpty 
+                          ? _bulkImages.length 
+                          : 1;
+                      final int totalJobsToSubmit = imageCount * variations;
+                      
+                      return GestureDetector(
+                        onTap: isRateLimitHint ? () => _showRateLimitErrorSheet('', totalJobsToSubmit) : null,
+                        child: Container(
                     margin: const EdgeInsets.only(bottom: 10),
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                     decoration: BoxDecoration(
-                      color: _isProcessingImage 
-                          ? cs.primaryContainer.withOpacity(0.3)
-                          : cs.errorContainer.withOpacity(0.3),
+                          color: bgColor,
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                        color: _isProcessingImage
-                            ? cs.primary.withOpacity(0.2)
-                            : cs.error.withOpacity(0.2),
+                            color: borderColor,
                       ),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        if (_isProcessingImage)
+                            if (isProcessing)
                           SizedBox(
                             width: 14,
                             height: 14,
@@ -4903,30 +5940,41 @@ class _GenericToolPageState extends State<GenericToolPage>
                           )
                         else
                           Icon(
-                            LucideIcons.alertCircle,
+                                hintIcon,
                             size: 14,
-                            color: cs.error.withOpacity(0.8),
+                                color: textColor,
                           ),
                         const SizedBox(width: 8),
                         Flexible(
                           child: Text(
-                            _isProcessingImage 
-                                ? "Processing image..."
-                                : "Add ${missingInputs.join(' & ')} to continue",
+                                displayMessage,
                             style: TextStyle(
-                              color: _isProcessingImage
-                                  ? cs.primary.withOpacity(0.9)
-                                  : cs.error.withOpacity(0.9),
+                                  color: textColor,
                               fontSize: 12,
                               fontWeight: FontWeight.w500,
                             ),
                           ),
                         ),
+                        // Add "tap for details" indicator for rate limit hints
+                        if (isRateLimitHint) ...[
+                          const SizedBox(width: 8),
+                          Icon(
+                            LucideIcons.chevronRight,
+                            size: 14,
+                            color: textColor.withOpacity(0.6),
+                          ),
+                        ],
                       ],
                     ),
+                        ),
+                      );
+                    },
                   )
                 : const SizedBox.shrink(),
           ),
+          
+          // Settings summary row (model + upscale indicator)
+          _buildSettingsSummary(cs),
           
           // Settings button + Generate button row
           Row(
@@ -4964,24 +6012,163 @@ class _GenericToolPageState extends State<GenericToolPage>
     );
   }
 
+  /// Build settings summary showing model name and upscale status
+  Widget _buildSettingsSummary(ColorScheme cs) {
+    // Get model name
+    final modelName = _selectedModelData?['name'] as String? ?? 
+        widget.config.models?.firstWhere(
+          (m) => m['id'] == widget.config.model,
+          orElse: () => {'name': widget.config.model},
+        )['name'] as String? ?? 
+        widget.config.model;
+    
+    // Check upscale status
+    final isUpscaled = _advancedSettings.upscaleOutput;
+    final scaleFactor = _scaleFactor;
+    final variations = _advancedSettings.variations;
+    
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: GestureDetector(
+        onTap: _showAdvancedSettings,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerLow.withOpacity(0.5),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: cs.outlineVariant.withOpacity(0.15),
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                LucideIcons.info,
+                size: 14,
+                color: cs.onSurfaceVariant.withOpacity(0.6),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    // Model name chip
+                    _buildSummaryChip(
+                      cs,
+                      icon: LucideIcons.cpu,
+                      label: modelName,
+                      highlight: true,
+                    ),
+                    // Upscale status chip
+                    _buildSummaryChip(
+                      cs,
+                      icon: isUpscaled ? LucideIcons.maximize2 : LucideIcons.minimize2,
+                      label: isUpscaled ? '${scaleFactor}x Upscale' : 'No Upscale',
+                      highlight: isUpscaled,
+                      isPositive: isUpscaled,
+                    ),
+                    // Variations (if > 1)
+                    if (variations > 1)
+                      _buildSummaryChip(
+                        cs,
+                        icon: LucideIcons.copy,
+                        label: '${variations}x Variants',
+                        highlight: true,
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 4),
+              Icon(
+                LucideIcons.chevronRight,
+                size: 14,
+                color: cs.onSurfaceVariant.withOpacity(0.4),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Build a small chip for settings summary
+  Widget _buildSummaryChip(
+    ColorScheme cs, {
+    required IconData icon,
+    required String label,
+    bool highlight = false,
+    bool isPositive = true,
+  }) {
+    final chipColor = highlight 
+        ? (isPositive ? cs.primary : cs.tertiary)
+        : cs.onSurfaceVariant;
+        
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(
+        color: highlight 
+            ? chipColor.withOpacity(0.1)
+            : cs.surfaceContainerHigh.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+          color: highlight 
+              ? chipColor.withOpacity(0.2)
+              : cs.outlineVariant.withOpacity(0.1),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: 11,
+            color: chipColor.withOpacity(highlight ? 1.0 : 0.6),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              color: chipColor.withOpacity(highlight ? 0.9 : 0.7),
+              fontSize: 11,
+              fontWeight: highlight ? FontWeight.w600 : FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Build the animated generate button with glow effect
   Widget _buildAnimatedGenerateButton() {
     final cs = Theme.of(context).colorScheme;
     final offer = _currentModelOffer;
-    final variations = _advancedSettings.variations;
+    final variations = _advancedSettings.variations.clamp(1, getMaxVariations());
     
     // Check if upscale is enabled
     final bool isUpscaled = _advancedSettings.upscaleOutput && _scaleFactor > 1;
+    
+    // VIP benefits
+    final int imageCount = _advancedSettings.bulkEditEnabled && _bulkImages.isNotEmpty 
+        ? _bulkImages.length 
+        : 1;
+    
+    // Total jobs = images × variations
+    final int totalJobs = imageCount * variations;
 
     // Use the unified cost calculation that includes variations
     final totalCost = _calculateTotalCost();
     
-    // Calculate cost before discount (for showing strikethrough if offer)
+    // Calculate cost before discount (for showing strikethrough if offer or VIP free upscale)
     final baseCostPerVariation = _currentModelCost + (isUpscaled ? _currentModelUpscaleCost : 0);
-    final totalBeforeDiscount = baseCostPerVariation * variations;
+    final totalBeforeDiscount = baseCostPerVariation * variations * imageCount;
 
     // Check if button should be enabled
     final isEnabled = _areRequiredInputsFilled();
+    
+    // Check if we have multiple images or variations (show compact summary)
+    final bool showJobCount = totalJobs > 1;
 
     return AnimatedBuilder(
       animation: _glowAnimationController,
@@ -5024,7 +6211,15 @@ class _GenericToolPageState extends State<GenericToolPage>
               child: Material(
                 color: Colors.transparent,
                 child: InkWell(
-                  onTap: isEnabled ? _handleGenerateTap : null,
+                  onTap: isEnabled 
+                      ? _handleGenerateTap 
+                      : () {
+                          // When disabled, check if it's due to rate limit and show the sheet
+                          final rateLimitError = checkRateLimitForSubmission(totalJobs);
+                          if (rateLimitError != null) {
+                            _showRateLimitErrorSheet(rateLimitError, totalJobs);
+                          }
+                        },
                   borderRadius: BorderRadius.circular(16),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
@@ -5051,85 +6246,63 @@ class _GenericToolPageState extends State<GenericToolPage>
                         
                         // Divider
                         Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 12),
+                          margin: const EdgeInsets.symmetric(horizontal: 10),
                           height: 20,
                           width: 1,
                           color: Colors.white.withOpacity(0.3),
                         ),
                         
-                        // Variations badge (show if > 1)
-                        if (variations > 1) ...[
+                        // Compact job count badge (when multiple jobs)
+                        if (showJobCount) ...[
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                             decoration: BoxDecoration(
                               color: Colors.white.withOpacity(0.15),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: Colors.white.withOpacity(0.2),
-                                width: 1,
-                              ),
+                              borderRadius: BorderRadius.circular(6),
                             ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  LucideIcons.layers,
-                                  size: 13,
-                                  color: Colors.white.withOpacity(0.9),
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  "$variations",
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
+                            child: Text(
+                              "${totalJobs}x",
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
                           const SizedBox(width: 6),
                         ],
                         
-                        // Cost display
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                LucideIcons.gem,
-                                size: 14,
-                                color: Colors.white.withOpacity(0.9),
-                              ),
-                              const SizedBox(width: 4),
-                              if (offer > 0 && totalBeforeDiscount != totalCost) ...[
-                                Text(
-                                  "$totalBeforeDiscount",
-                                  style: TextStyle(
-                                    color: Colors.white.withOpacity(0.6),
-                                    fontSize: 12,
-                                    decoration: TextDecoration.lineThrough,
-                                    decorationColor: Colors.white.withOpacity(0.6),
-                                  ),
-                                ),
-                                const SizedBox(width: 3),
-                              ],
+                        // Cost display (compact)
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              LucideIcons.gem,
+                              size: 14,
+                              color: Colors.white.withOpacity(0.9),
+                            ),
+                            const SizedBox(width: 3),
+                            if (offer > 0 && totalBeforeDiscount != totalCost) ...[
                               Text(
-                                "$totalCost",
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w700,
+                                "$totalBeforeDiscount",
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.5),
+                                  fontSize: 11,
+                                  decoration: TextDecoration.lineThrough,
+                                  decorationColor: Colors.white.withOpacity(0.5),
                                 ),
                               ),
+                              const SizedBox(width: 2),
                             ],
-                          ),
+                            Text(
+                              "$totalCost",
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -5144,11 +6317,386 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   /// Handle generate tap with haptic feedback
-  void _handleGenerateTap() {
+  void _handleGenerateTap() async {
     // Trigger haptic feedback
     HapticFeedback.mediumImpact();
+    
+    // Check if bulk mode is enabled - show confirmation dialog
+    final isBulkMode = _advancedSettings.bulkEditEnabled && _bulkImages.isNotEmpty;
+    if (isBulkMode) {
+      final confirmed = await _showBulkConfirmationDialog();
+      if (!confirmed) return; // User cancelled
+    }
+    
     // Call the actual job runner
     _runJob();
+  }
+
+  /// Show confirmation dialog for bulk mode with job details
+  Future<bool> _showBulkConfirmationDialog() async {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    // Gather job information
+    final variations = _advancedSettings.variations.clamp(1, getMaxVariations());
+    final imageCount = _bulkImages.length;
+    final totalJobs = imageCount * variations;
+    final totalCost = _calculateTotalCost();
+    final isUpscaled = _advancedSettings.upscaleOutput && _scaleFactor > 1;
+    final freeUpscale = isUpscaleFree();
+    
+    // Get model name
+    final modelName = _selectedModelData?['name'] as String? ?? 
+        widget.config.models?.firstWhere(
+          (m) => m['id'] == widget.config.model,
+          orElse: () => {'name': widget.config.title},
+        )['name'] as String? ?? 
+        widget.config.title;
+    
+    final result = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1A1A2E) : cs.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          border: Border.all(
+            color: cs.primary.withOpacity(0.2),
+            width: 1,
+          ),
+        ),
+        child: Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 12,
+            // Account for both keyboard (viewInsets) and system nav bar (viewPadding)
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 
+                    MediaQuery.of(ctx).viewPadding.bottom + 20,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Handle bar
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: cs.onSurface.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 20),
+              
+              // Header with icon
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      KalaColors.purple.withOpacity(0.2),
+                      KalaColors.cyan.withOpacity(0.2),
+                    ],
+                  ),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  LucideIcons.layers,
+                  size: 32,
+                  color: cs.primary,
+                ),
+              ),
+              const SizedBox(height: 16),
+              
+              Text(
+                'Confirm Bulk Generation',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: cs.onSurface,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'You\'re about to generate multiple results',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: cs.onSurface.withOpacity(0.7),
+                ),
+              ),
+              const SizedBox(height: 24),
+              
+              // Job details card
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest.withOpacity(0.5),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: cs.outline.withOpacity(0.1),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    // Tool name
+                    _buildConfirmDetailRow(
+                      cs,
+                      icon: LucideIcons.sparkles,
+                      label: 'Tool',
+                      value: widget.config.title,
+                      iconColor: KalaColors.purple,
+                    ),
+                    const SizedBox(height: 12),
+                    
+                    // Model
+                    _buildConfirmDetailRow(
+                      cs,
+                      icon: LucideIcons.cpu,
+                      label: 'Model',
+                      value: modelName,
+                      iconColor: KalaColors.cyan,
+                    ),
+                    const SizedBox(height: 12),
+                    
+                    // Images
+                    _buildConfirmDetailRow(
+                      cs,
+                      icon: LucideIcons.image,
+                      label: 'Images',
+                      value: '$imageCount image${imageCount > 1 ? 's' : ''}',
+                      iconColor: Colors.blue,
+                    ),
+                    const SizedBox(height: 12),
+                    
+                    // Variations
+                    _buildConfirmDetailRow(
+                      cs,
+                      icon: LucideIcons.copy,
+                      label: 'Variations',
+                      value: '$variations per image',
+                      iconColor: Colors.orange,
+                    ),
+                    const SizedBox(height: 12),
+                    
+                    // Upscale
+                    if (isUpscaled)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: _buildConfirmDetailRow(
+                          cs,
+                          icon: LucideIcons.maximize,
+                          label: 'Upscale',
+                          value: '${_scaleFactor}x${freeUpscale ? ' (FREE VIP)' : ''}',
+                          iconColor: Colors.green,
+                          valueColor: freeUpscale ? Colors.green : null,
+                        ),
+                      ),
+                    
+                    // Divider
+                    Divider(color: cs.outline.withOpacity(0.2)),
+                    const SizedBox(height: 12),
+                    
+                    // Total jobs
+                    _buildConfirmDetailRow(
+                      cs,
+                      icon: LucideIcons.layoutGrid,
+                      label: 'Total Jobs',
+                      value: '$totalJobs',
+                      iconColor: cs.primary,
+                      isBold: true,
+                    ),
+                    const SizedBox(height: 12),
+                    
+                    // Total cost
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(
+                            LucideIcons.gem,
+                            size: 18,
+                            color: Colors.amber,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          'Total Cost',
+                          style: TextStyle(
+                            color: cs.onSurface.withOpacity(0.7),
+                            fontSize: 14,
+                          ),
+                        ),
+                        const Spacer(),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                Colors.amber.withOpacity(0.2),
+                                Colors.orange.withOpacity(0.2),
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                LucideIcons.gem,
+                                size: 16,
+                                color: Colors.amber,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '$totalCost',
+                                style: const TextStyle(
+                                  color: Colors.amber,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+              
+              // Action buttons
+              Row(
+                children: [
+                  // Cancel button
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        side: BorderSide(color: cs.outline.withOpacity(0.3)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: Text(
+                        'Cancel',
+                        style: TextStyle(
+                          color: cs.onSurface.withOpacity(0.7),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  
+                  // Confirm button
+                  Expanded(
+                    flex: 2,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [KalaColors.purple, KalaColors.cyan],
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: KalaColors.purple.withOpacity(0.3),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: () => Navigator.pop(ctx, true),
+                          borderRadius: BorderRadius.circular(12),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(
+                                  LucideIcons.sparkles,
+                                  color: Colors.white,
+                                  size: 18,
+                                ),
+                                const SizedBox(width: 8),
+                                const Text(
+                                  'Generate',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    
+    return result ?? false;
+  }
+
+  /// Helper to build a detail row in the confirmation dialog
+  Widget _buildConfirmDetailRow(
+    ColorScheme cs, {
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color iconColor,
+    Color? valueColor,
+    bool isBold = false,
+  }) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: iconColor.withOpacity(0.15),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(
+            icon,
+            size: 18,
+            color: iconColor,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Text(
+          label,
+          style: TextStyle(
+            color: cs.onSurface.withOpacity(0.7),
+            fontSize: 14,
+          ),
+        ),
+        const Spacer(),
+        Text(
+          value,
+          style: TextStyle(
+            color: valueColor ?? cs.onSurface,
+            fontWeight: isBold ? FontWeight.bold : FontWeight.w600,
+            fontSize: isBold ? 16 : 14,
+          ),
+        ),
+      ],
+    );
   }
 
   Widget _buildModeSelector() {
@@ -5430,6 +6978,397 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   // ----------------------------------------------------
+  // ⏱️ RATE LIMIT STATUS SHEET
+  // ----------------------------------------------------
+
+  void _showRateLimitErrorSheet(String errorMessage, int jobsRequested) {
+    final cs = Theme.of(context).colorScheme;
+    final status = getRateLimitStatus();
+    final isVip = status['isVip'] as bool;
+    final maxJobs = status['maxJobs'] as int;
+    final currentProcessing = status['currentProcessing'] as int;
+    final available = status['available'] as int;
+    final percentUsed = status['percentUsed'] as int;
+    
+    // Dynamic title and subtitle based on situation
+    final String title;
+    final String subtitle;
+    final IconData icon;
+    final Color iconColor;
+    
+    if (available == 0) {
+      title = 'Your Jobs Are Running! 🚀';
+      subtitle = 'All $maxJobs slots are busy processing your creations';
+      icon = LucideIcons.sparkles;
+      iconColor = cs.primary;
+    } else if (jobsRequested > available) {
+      title = 'Almost There! ⏳';
+      subtitle = 'You want $jobsRequested jobs but only $available slot${available > 1 ? 's' : ''} available';
+      icon = LucideIcons.clock;
+      iconColor = Colors.amber.shade600;
+    } else {
+      title = 'Processing Jobs';
+      subtitle = '$currentProcessing jobs currently running';
+      icon = LucideIcons.loader;
+      iconColor = cs.tertiary;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: cs.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Animated icon container
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      iconColor.withOpacity(0.15),
+                      iconColor.withOpacity(0.05),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: iconColor.withOpacity(0.2),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Icon(icon, size: 36, color: iconColor),
+              ),
+              const SizedBox(height: 16),
+
+              // Dynamic title
+              Text(
+                title,
+                style: TextStyle(
+                  color: cs.onSurface,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 6),
+
+              // Subtitle
+              Text(
+                subtitle,
+                style: TextStyle(
+                  color: cs.onSurfaceVariant,
+                  fontSize: 14,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 20),
+
+              // Live status display with animated progress
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest.withOpacity(0.5),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: cs.outlineVariant.withOpacity(0.2),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    // Progress bar with gradient
+                    Stack(
+                      children: [
+                        Container(
+                          height: 12,
+                          decoration: BoxDecoration(
+                            color: cs.outlineVariant.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                        ),
+                        FractionallySizedBox(
+                          widthFactor: maxJobs > 0 ? currentProcessing / maxJobs : 0,
+                          child: Container(
+                            height: 12,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: percentUsed >= 100
+                                    ? [Colors.orange, Colors.red.shade400]
+                                    : percentUsed >= 75
+                                        ? [Colors.amber, Colors.orange]
+                                        : [cs.primary, cs.tertiary],
+                              ),
+                              borderRadius: BorderRadius.circular(6),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: (percentUsed >= 100 ? Colors.orange : cs.primary)
+                                      .withOpacity(0.3),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    // Percentage text
+                    Text(
+                      '$percentUsed% capacity used',
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant.withOpacity(0.7),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    // Status pills row
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildStatusPill(
+                            cs,
+                            icon: LucideIcons.loader,
+                            label: 'Running',
+                            value: currentProcessing,
+                            color: cs.tertiary,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _buildStatusPill(
+                            cs,
+                            icon: LucideIcons.plus,
+                            label: 'Available',
+                            value: available,
+                            color: available > 0 ? cs.primary : cs.error,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _buildStatusPill(
+                            cs,
+                            icon: LucideIcons.gauge,
+                            label: 'Limit',
+                            value: maxJobs,
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              
+              // Helpful suggestion
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: cs.primaryContainer.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: cs.primary.withOpacity(0.2)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(LucideIcons.lightbulb, size: 18, color: cs.primary),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        available == 0
+                            ? 'Jobs complete quickly! Check Results to see progress.'
+                            : jobsRequested > available
+                                ? 'Reduce to $available job${available > 1 ? 's' : ''} or wait for others to finish.'
+                                : 'Your jobs are processing. New results will appear soon!',
+                        style: TextStyle(
+                          color: cs.onSurface,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Actions
+              Row(
+                children: [
+                  Expanded(
+                    child: GradientButton(
+                      icon: LucideIcons.eye,
+                      label: 'Results',
+                      onPressed: () {
+                        Navigator.pop(sheetContext);
+                        // Navigate to result manager
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const ResultManagerPage(),
+                          ),
+                        );
+                      },
+                      variant: ButtonVariant.secondary,
+                      size: ButtonSize.large,
+                      expanded: true,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  if (!isVip)
+                    Expanded(
+                      child: GradientButton(
+                        icon: LucideIcons.crown,
+                        label: 'Get VIP',
+                        onPressed: () {
+                          Navigator.pop(sheetContext);
+                          // Navigate to credits page for VIP purchase
+                          selectedIndexNotifier.value = 3;
+                        },
+                        variant: ButtonVariant.primary,
+                        size: ButtonSize.large,
+                        expanded: true,
+                      ),
+                    )
+                  else
+                    Expanded(
+                      child: GradientButton(
+                        icon: LucideIcons.checkCircle,
+                        label: 'OK',
+                        onPressed: () => Navigator.pop(sheetContext),
+                        variant: ButtonVariant.primary,
+                        size: ButtonSize.large,
+                        expanded: true,
+                      ),
+                    ),
+                ],
+              ),
+              
+              // Tip for VIP users
+              if (isVip) ...[
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: cs.primaryContainer.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: cs.primary.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(LucideIcons.lightbulb, size: 18, color: cs.primary),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'As a VIP, you can have up to $maxJobs concurrent jobs. Wait for some to complete or check the Results page.',
+                          style: TextStyle(
+                            color: cs.onSurface,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              
+              // Upgrade tip for non-VIP
+              if (!isVip) ...[
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        Colors.amber.withOpacity(0.15),
+                        Colors.orange.withOpacity(0.1),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.amber.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(LucideIcons.crown, size: 18, color: Colors.amber.shade700),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Upgrade to VIP for 25 concurrent jobs (5x more!) plus bulk edit, free upscale & more!',
+                          style: TextStyle(
+                            color: cs.onSurface,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatusPill(
+    ColorScheme cs, {
+    required IconData icon,
+    required String label,
+    required int value,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 14, color: color),
+              const SizedBox(width: 4),
+              Text(
+                '$value',
+                style: TextStyle(
+                  color: color,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: TextStyle(
+              color: cs.onSurfaceVariant.withOpacity(0.8),
+              fontSize: 10,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ----------------------------------------------------
   // 🛰️ JOB SUBMISSION + POLLING
   // ----------------------------------------------------
 
@@ -5445,6 +7384,25 @@ class _GenericToolPageState extends State<GenericToolPage>
     _isSubmittingJob = true;
 
     final cs = Theme.of(context).colorScheme;
+
+    // --- Calculate total jobs for rate limiting ---
+    final variations = _advancedSettings.variations.clamp(1, getMaxVariations());
+    final int imageCount = _advancedSettings.bulkEditEnabled && _bulkImages.isNotEmpty 
+        ? _bulkImages.length 
+        : 1;
+    final int totalJobsToSubmit = imageCount * variations;
+    
+    // --- RATE LIMITING CHECK ---
+    // Prevents server overload by limiting concurrent processing jobs
+    // Non-VIP: max 5 processing, VIP: max 25 processing
+    final rateLimitError = checkRateLimitForSubmission(totalJobsToSubmit);
+    if (rateLimitError != null) {
+      _isSubmittingJob = false;
+      if (mounted) {
+        _showRateLimitErrorSheet(rateLimitError, totalJobsToSubmit);
+      }
+      return;
+    }
 
     // --- Check if user is signed in ---
     if (!AuthService().isSignedIn) {
@@ -5881,8 +7839,15 @@ class _GenericToolPageState extends State<GenericToolPage>
         // --- Build payload ---
         // Send ONE request with variations: N, server creates N jobs internally
         final modelId = _selectedModelId ?? widget.config.model;
+        // Server enforces max variations: 2 for non-VIP, 4 for VIP
+        // Client-side clamp is just for preview - server is authoritative
         final int requestedVariations =
-            _advancedSettings.variations.clamp(1, 4);
+            _advancedSettings.variations.clamp(1, getMaxVariations());
+        
+        // Check if bulk edit is enabled (VIP only)
+        final bool isBulkEdit = _advancedSettings.bulkEditEnabled && 
+            _bulkImages.isNotEmpty && 
+            canUseBulkEdit();
 
         final basePayload = <String, dynamic>{
           "model": modelId,
@@ -5891,14 +7856,60 @@ class _GenericToolPageState extends State<GenericToolPage>
           // Root level settings (not in params)
           "enhance_prompt": _advancedSettings.enhancePrompt,
           // Server will create N jobs internally based on variations count
+          // Server enforces VIP limits (max 2 for non-VIP, max 4 for VIP)
           "variations": requestedVariations,
+          // Bulk edit flag - server validates VIP status before processing
+          "is_bulk": isBulkEdit,
           ...rootParams,
         };
+        
+        // Add bulk images if bulk edit is enabled
+        if (isBulkEdit) {
+          // Convert bulk images to base64 for submission
+          final List<String> bulkImagesBase64 = _bulkImages
+              .map((bytes) => base64Encode(bytes))
+              .toList();
+          basePayload["bulk_images"] = bulkImagesBase64;
+          
+          // Remove single init_image from params when bulk edit is enabled
+          // Server will use bulk_images instead
+          resolvedParams.remove("init_image");
+          resolvedParams.remove("image");
+          debugPrint("📦 Bulk edit enabled: ${_bulkImages.length} images");
+          
+          // Add bulk masks if this is an inpaint tool
+          if (_requiresMask && _bulkMasks.isNotEmpty) {
+            final List<String?> bulkMasksBase64 = [];
+            for (int i = 0; i < _bulkImages.length; i++) {
+              if (i < _bulkMasks.length && _bulkMasks[i] != null) {
+                bulkMasksBase64.add(base64Encode(_bulkMasks[i]!));
+              } else {
+                bulkMasksBase64.add(null);
+              }
+            }
+            basePayload["bulk_masks"] = bulkMasksBase64;
+            debugPrint("🎭 Added ${bulkMasksBase64.where((m) => m != null).length} masks for bulk edit");
+          }
+          
+          // Add bulk outpaint configs if this is an outpaint tool
+          if (_isOutpaint && _bulkOutpaintConfigs.isNotEmpty) {
+            final List<Map<String, String>?> configs = [];
+            for (int i = 0; i < _bulkImages.length; i++) {
+              if (i < _bulkOutpaintConfigs.length) {
+                configs.add(_bulkOutpaintConfigs[i]);
+              } else {
+                configs.add(null);
+              }
+            }
+            basePayload["bulk_outpaint_configs"] = configs;
+            debugPrint("🖼️ Added ${configs.where((c) => c != null).length} outpaint configs for bulk edit");
+          }
+        }
 
         debugPrint("🎯 Using model: $modelId");
         debugPrint(
           "🔧 Advanced settings - enhance: ${_advancedSettings.enhancePrompt}, "
-          "variations: $requestedVariations, "
+          "variations: $requestedVariations, bulk: $isBulkEdit, "
           "cfg: ${_advancedSettings.cfgScale}, aspect: ${_advancedSettings.aspectRatio}",
         );
 
@@ -5913,27 +7924,43 @@ class _GenericToolPageState extends State<GenericToolPage>
           "Authorization": "Bearer $firebaseToken",
         };
 
-        // Save input preview once (reused for all submitted jobs)
+        // Save input preview(s) - for bulk edit, save each image separately
         String? inputImageLocalPath;
+        List<String> bulkImagePaths = [];
+        
         try {
-          final imageInput = widget.config.inputs
-              .firstWhere((i) => i["type"] == "image", orElse: () => {});
-          if (imageInput.isNotEmpty) {
-            final id = imageInput["id"];
-            final dat = _inputs[id];
-            if (dat != null &&
-                dat is List &&
-                dat.isNotEmpty &&
-                dat.first is Uint8List) {
-              final tmpDir = await FileService.getTempDir();
+          final tmpDir = await FileService.getTempDir();
+          final timestamp = DateTime.now().millisecondsSinceEpoch;
+          
+          if (isBulkEdit && _bulkImages.isNotEmpty) {
+            // For bulk edit: save each bulk image to disk for preview
+            for (int imgIdx = 0; imgIdx < _bulkImages.length; imgIdx++) {
               final thumbFile = File(
-                  '${tmpDir.path}/thumb_${DateTime.now().millisecondsSinceEpoch}.jpg');
-              await thumbFile.writeAsBytes(dat.first as Uint8List, flush: true);
-              inputImageLocalPath = thumbFile.path;
-            } else {
-              final existingPath = _inputs["${id}_path"];
-              if (existingPath != null && File(existingPath).existsSync()) {
-                inputImageLocalPath = existingPath;
+                  '${tmpDir.path}/bulk_thumb_${timestamp}_$imgIdx.jpg');
+              await thumbFile.writeAsBytes(_bulkImages[imgIdx], flush: true);
+              bulkImagePaths.add(thumbFile.path);
+            }
+            debugPrint("📷 Saved ${bulkImagePaths.length} bulk image previews");
+          } else {
+            // For single image: save the input image
+            final imageInput = widget.config.inputs
+                .firstWhere((i) => i["type"] == "image", orElse: () => {});
+            if (imageInput.isNotEmpty) {
+              final id = imageInput["id"];
+              final dat = _inputs[id];
+              if (dat != null &&
+                  dat is List &&
+                  dat.isNotEmpty &&
+                  dat.first is Uint8List) {
+                final thumbFile = File(
+                    '${tmpDir.path}/thumb_$timestamp.jpg');
+                await thumbFile.writeAsBytes(dat.first as Uint8List, flush: true);
+                inputImageLocalPath = thumbFile.path;
+              } else {
+                final existingPath = _inputs["${id}_path"];
+                if (existingPath != null && File(existingPath).existsSync()) {
+                  inputImageLocalPath = existingPath;
+                }
               }
             }
           }
@@ -6025,9 +8052,23 @@ class _GenericToolPageState extends State<GenericToolPage>
         debugPrint("✅ Server created ${jobIds.length} job(s): $jobIds");
 
         // Create a JobModel for each job_id returned
+        // For bulk edit: jobs are ordered as [img1_var1, img1_var2, ..., img2_var1, img2_var2, ...]
         for (int i = 0; i < jobIds.length; i++) {
           final jobId = jobIds[i];
           final downloadUrl = i < downloadUrls.length ? downloadUrls[i] : null;
+          
+          // Determine which input image this job corresponds to
+          String? jobInputImagePath;
+          if (isBulkEdit && bulkImagePaths.isNotEmpty) {
+            // Calculate which bulk image this job belongs to
+            // Server creates jobs in order: img0_var0, img0_var1, img1_var0, img1_var1, ...
+            final imageIndex = i ~/ requestedVariations;
+            if (imageIndex < bulkImagePaths.length) {
+              jobInputImagePath = bulkImagePaths[imageIndex];
+            }
+          } else {
+            jobInputImagePath = inputImageLocalPath;
+          }
           
           final String title = await generateFriendlyJobName();
           final newJob = JobModel(
@@ -6037,7 +8078,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             outputType: widget.config.outputType,
             downloadUrl: downloadUrl,
             status: 'processing',
-            inputImagePath: inputImageLocalPath,
+            inputImagePath: jobInputImagePath,
             variations: 1, // Each job is a single variation
             allCompleted: false,
             enhancedPrompt: enhancedPromptFromServer,
@@ -6062,6 +8103,9 @@ class _GenericToolPageState extends State<GenericToolPage>
         }
         
         // Jobs are already persisted via addOrUpdateJob - no need for redundant saves
+
+        // Record batch submission for rate limiting cooldown
+        recordBatchSubmission(createdJobs.length);
 
         // Credits are deducted server-side during job processing
         await UserService().refreshCredits();

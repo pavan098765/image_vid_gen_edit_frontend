@@ -371,6 +371,9 @@ class _ResultManagerPageState extends State<ResultManagerPage>
             deleteGalleryFile: deleteGalleryFiles);
       }
 
+      // 🛡️ Mark deleted jobs so FCM won't recreate them
+      await markJobsAsDeleted(selectedIdsCopy.toList());
+
       jobListNotifier.value = jobs
           .where((j) => !selectedIdsCopy.contains(j.jobId))
           .toList();
@@ -1694,6 +1697,9 @@ class _JobCardState extends State<JobCard> {
     if (confirmed == true) {
       await FileService.deleteJobFiles(widget.job,
           deleteGalleryFile: deleteGalleryFile);
+
+      // 🛡️ Mark deleted job so FCM won't recreate it
+      await markJobAsDeleted(widget.job.jobId);
 
       jobListNotifier.value = jobListNotifier.value
           .where((j) => j.jobId != widget.job.jobId)

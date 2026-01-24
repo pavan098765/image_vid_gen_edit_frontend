@@ -165,6 +165,10 @@ class _SettingsPageState extends State<SettingsPage> {
     if (confirmed != true) return;
 
     try {
+      // 🛡️ Mark all jobs as deleted so FCM won't recreate them
+      final allJobIds = jobListNotifier.value.map((j) => j.jobId).toList();
+      await markJobsAsDeleted(allJobIds);
+      
       jobListNotifier.value = [];
       await saveJobsToPrefs();
       await _calculateCacheSize();
