@@ -1463,14 +1463,14 @@ class _CreditsPageState extends State<CreditsPage> {
                       ),
                     ],
                   ),
-                  child: Row(
+                  child: const Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(LucideIcons.crown, size: 14, color: Colors.white),
-                      const SizedBox(width: 4),
+                      Icon(LucideIcons.crown, size: 14, color: Colors.white),
+                      SizedBox(width: 4),
                       Text(
                         'VIP',
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: Colors.white,
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
@@ -1941,7 +1941,7 @@ class _CreditsPageState extends State<CreditsPage> {
                   ),
                 )
               else
-                Icon(LucideIcons.checkCircle, color: Colors.green, size: 20),
+                const Icon(LucideIcons.checkCircle, color: Colors.green, size: 20),
             ],
           ),
         );

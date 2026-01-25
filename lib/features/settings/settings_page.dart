@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart' show User;
 import 'package:http/http.dart' as http;
@@ -1138,7 +1137,8 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Widget _buildAccountTile(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final userName = _authService.userName ?? 'User';
+    final rawUserName = _authService.userName;
+    final userName = (rawUserName == null || rawUserName.isEmpty) ? 'User' : rawUserName;
     final userEmail = _authService.userEmail ?? '';
     final photoUrl = _authService.userPhotoUrl;
     final isVerified = _authService.isEmailVerified;
@@ -1207,6 +1207,9 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _buildAvatar(ColorScheme cs, String userName, String? photoUrl) {
+    // Safely get the first character, fallback to 'U' if empty
+    final initial = userName.isNotEmpty ? userName[0].toUpperCase() : 'U';
+    
     return Container(
       width: 56,
       height: 56,
@@ -1229,7 +1232,7 @@ class _SettingsPageState extends State<SettingsPage> {
       child: photoUrl == null
           ? Center(
               child: Text(
-                userName[0].toUpperCase(),
+                initial,
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 24,

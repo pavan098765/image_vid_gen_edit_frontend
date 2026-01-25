@@ -1,6 +1,5 @@
 // lib/core/widgets/sign_in_prompt.dart
 import 'package:firebase_auth/firebase_auth.dart' show UserCredential;
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/auth_service.dart';
