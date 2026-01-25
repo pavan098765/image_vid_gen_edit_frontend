@@ -3804,6 +3804,11 @@ class _GenericToolPageState extends State<GenericToolPage>
 
   /// Build quick tags content
   Widget _buildQuickTagsContent(ColorScheme cs) {
+    // Split chips into 2 rows
+    final midPoint = (promptHelperChips.length / 2).ceil();
+    final firstRow = promptHelperChips.sublist(0, midPoint);
+    final secondRow = promptHelperChips.sublist(midPoint);
+    
     return Padding(
       key: const ValueKey('tags'),
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
@@ -3818,39 +3823,97 @@ class _GenericToolPageState extends State<GenericToolPage>
             ),
           ),
           const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: promptHelperChips.map((chip) {
-              return GestureDetector(
-                onTap: () => _appendChipToPrompt(chip),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: cs.surfaceContainerHigh,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: cs.outlineVariant.withOpacity(0.25),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(chip.icon, style: const TextStyle(fontSize: 14)),
-                      const SizedBox(width: 6),
-                      Text(
-                        chip.label,
-                        style: TextStyle(
-                          color: cs.onSurface,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
+          // 2 rows of horizontal scrollable chips
+          SizedBox(
+            height: 90,
+            child: Column(
+              children: [
+                // First row
+                SizedBox(
+                  height: 45,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: firstRow.length,
+                    itemBuilder: (context, index) {
+                      final chip = firstRow[index];
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 8, bottom: 8),
+                        child: GestureDetector(
+                          onTap: () => _appendChipToPrompt(chip),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: cs.surfaceContainerHigh,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: cs.outlineVariant.withOpacity(0.25),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(chip.icon, style: const TextStyle(fontSize: 14)),
+                                const SizedBox(width: 6),
+                                Text(
+                                  chip.label,
+                                  style: TextStyle(
+                                    color: cs.onSurface,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
-                      ),
-                    ],
+                      );
+                    },
                   ),
                 ),
-              );
-            }).toList(),
+                // Second row
+                SizedBox(
+                  height: 40,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: secondRow.length,
+                    itemBuilder: (context, index) {
+                      final chip = secondRow[index];
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: GestureDetector(
+                          onTap: () => _appendChipToPrompt(chip),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: cs.surfaceContainerHigh,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: cs.outlineVariant.withOpacity(0.25),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(chip.icon, style: const TextStyle(fontSize: 14)),
+                                const SizedBox(width: 6),
+                                Text(
+                                  chip.label,
+                                  style: TextStyle(
+                                    color: cs.onSurface,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 8),
         ],

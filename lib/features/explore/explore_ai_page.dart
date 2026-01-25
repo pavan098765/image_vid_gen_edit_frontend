@@ -283,6 +283,8 @@ class _ExploreAIPageState extends State<ExploreAIPage>
   String? _loadError;
   int _selectedCategoryIndex = 0; // 0 = "All", 1+ = specific categories
   bool _proToolsExpanded = false; // Pro Tools section collapse state
+  int _visibleTemplateCount = 16; // For lazy loading templates
+  static const int _templateBatchSize = 12; // Load more increment
 
   // Controllers
   late ScrollController _scrollController;
@@ -446,8 +448,10 @@ class _ExploreAIPageState extends State<ExploreAIPage>
     if (index < 0 || index > _categories.length) return; // 0 = All, 1+ = categories
     
     HapticFeedback.lightImpact();
-    setState(() => _selectedCategoryIndex = index);
-    // Don't scroll to top - let user keep their position
+    setState(() {
+      _selectedCategoryIndex = index;
+      _visibleTemplateCount = 16; // Reset pagination on category change
+    });
   }
 
   /// Get all templates for "All" tab
@@ -763,51 +767,139 @@ class _ExploreAIPageState extends State<ExploreAIPage>
     );
   }
 
-  /// Build staggered grid with varying card sizes for visual interest
+  /// Determine template priority (for content-aware sizing)
+  /// Returns: 3 = featured, 2 = trending/new, 1 = normal
+  int _getTemplatePriority(Map<String, dynamic> template) {
+    final badges = (template['badges'] as List<dynamic>?) ?? [];
+    final badgeStr = badges.map((b) => b.toString().toLowerCase()).join(' ');
+    
+    // Featured templates get highest priority
+    if (badgeStr.contains('featured') || badgeStr.contains('⭐')) return 3;
+    // Trending/New/Hot get medium priority
+    if (badgeStr.contains('trending') || badgeStr.contains('🔥') || 
+        badgeStr.contains('new') || badgeStr.contains('hot')) return 2;
+    return 1;
+  }
+
+  /// Build smart template grid with content-aware sizing and pagination
   Widget _buildStaggeredTemplateGrid(ColorScheme cs, bool isDark, List<String> templateIds) {
     final widgets = <Widget>[];
     
-    // Group templates into rows with varying patterns
-    int index = 0;
-    while (index < templateIds.length) {
-      // Pattern: Large + Small | Small + Small | Large full-width
-      final patternIndex = (index ~/ 2) % 3;
-      
-      if (patternIndex == 0 && index + 1 < templateIds.length) {
-        // Row with 1 large (60%) + 1 small (40%)
-        widgets.add(
-          _buildTemplateRow(cs, isDark, [
-            _TemplateSizeConfig(templateIds[index], 0.58, 200),
-            _TemplateSizeConfig(templateIds[index + 1], 0.38, 200),
-          ]),
-        );
-        index += 2;
-      } else if (patternIndex == 1 && index + 1 < templateIds.length) {
-        // Row with 2 equal cards
-        widgets.add(
-          _buildTemplateRow(cs, isDark, [
-            _TemplateSizeConfig(templateIds[index], 0.48, 180),
-            _TemplateSizeConfig(templateIds[index + 1], 0.48, 180),
-          ]),
-        );
-        index += 2;
-      } else if (patternIndex == 2) {
-        // Full-width featured card
-        widgets.add(
-          _buildTemplateRow(cs, isDark, [
-            _TemplateSizeConfig(templateIds[index], 1.0, 220),
-          ]),
-        );
-        index += 1;
+    // Sort templates: Featured first, then Trending/New, then rest
+    final sortedIds = List<String>.from(templateIds);
+    sortedIds.sort((a, b) {
+      final templateA = _templates[a] as Map<String, dynamic>?;
+      final templateB = _templates[b] as Map<String, dynamic>?;
+      if (templateA == null || templateB == null) return 0;
+      return _getTemplatePriority(templateB).compareTo(_getTemplatePriority(templateA));
+    });
+    
+    // Limit to visible count for lazy loading
+    final visibleIds = sortedIds.take(_visibleTemplateCount).toList();
+    final hasMore = sortedIds.length > _visibleTemplateCount;
+    final totalCount = sortedIds.length;
+    
+    // Section 1: Featured templates (full-width, if any)
+    final featuredIds = <String>[];
+    final regularIds = <String>[];
+    
+    for (final id in visibleIds) {
+      final template = _templates[id] as Map<String, dynamic>?;
+      if (template != null && _getTemplatePriority(template) >= 3) {
+        featuredIds.add(id);
       } else {
-        // Single remaining card
-        widgets.add(
-          _buildTemplateRow(cs, isDark, [
-            _TemplateSizeConfig(templateIds[index], 0.48, 180),
-          ]),
-        );
-        index += 1;
+        regularIds.add(id);
       }
+    }
+    
+    // Limit featured to max 2 full-width cards
+    final displayFeatured = featuredIds.take(2).toList();
+    regularIds.insertAll(0, featuredIds.skip(2)); // Move excess featured to regular
+    
+    // Build featured cards (full-width)
+    for (final id in displayFeatured) {
+      final template = _templates[id] as Map<String, dynamic>?;
+      if (template == null) continue;
+      
+      widgets.add(
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: SizedBox(
+            height: 200,
+            child: _TemplateCard(
+              template: template,
+              capabilities: _capabilities,
+              isDark: isDark,
+              onTap: () => _showTemplateConfigSheet(template),
+            ),
+          ),
+        ),
+      );
+    }
+    
+    // Section 2: Regular templates in uniform 2-column grid
+    // Group into pairs, with trending/new getting slightly taller cards
+    for (int i = 0; i < regularIds.length; i += 2) {
+      final id1 = regularIds[i];
+      final template1 = _templates[id1] as Map<String, dynamic>?;
+      
+      // Check if we have a second template
+      final hasSecond = i + 1 < regularIds.length;
+      final id2 = hasSecond ? regularIds[i + 1] : null;
+      final template2 = id2 != null ? _templates[id2] as Map<String, dynamic>? : null;
+      
+      // Determine row height based on content priority
+      final priority1 = template1 != null ? _getTemplatePriority(template1) : 1;
+      final priority2 = template2 != null ? _getTemplatePriority(template2) : 1;
+      final maxPriority = priority1 > priority2 ? priority1 : priority2;
+      final rowHeight = maxPriority >= 2 ? 200.0 : 180.0;
+      
+      widgets.add(
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: SizedBox(
+            height: rowHeight,
+            child: Row(
+              children: [
+                // First card
+                Expanded(
+                  child: template1 != null
+                      ? _TemplateCard(
+                          template: template1,
+                          capabilities: _capabilities,
+                          isDark: isDark,
+                          onTap: () => _showTemplateConfigSheet(template1),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+                const SizedBox(width: 12),
+                // Second card (or empty space if odd number)
+                Expanded(
+                  child: template2 != null
+                      ? _TemplateCard(
+                          template: template2,
+                          capabilities: _capabilities,
+                          isDark: isDark,
+                          onTap: () => _showTemplateConfigSheet(template2),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+    
+    // "Load More" button if there are more templates
+    if (hasMore) {
+      final remaining = totalCount - _visibleTemplateCount;
+      widgets.add(
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: _buildLoadMoreButton(cs, isDark, remaining),
+        ),
+      );
     }
     
     // Add "See All" button for current category (not for "All" tab)
@@ -830,35 +922,39 @@ class _ExploreAIPageState extends State<ExploreAIPage>
     );
   }
 
-  Widget _buildTemplateRow(ColorScheme cs, bool isDark, List<_TemplateSizeConfig> configs) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        children: configs.asMap().entries.map((entry) {
-          final i = entry.key;
-          final config = entry.value;
-          final template = _templates[config.templateId] as Map<String, dynamic>?;
-          
-          if (template == null) return const SizedBox.shrink();
-          
-          return Expanded(
-            flex: (config.widthFraction * 100).toInt(),
-            child: Padding(
-              padding: EdgeInsets.only(
-                right: i < configs.length - 1 ? 12 : 0,
-              ),
-              child: SizedBox(
-                height: config.height,
-                child: _TemplateCard(
-                  template: template,
-                  capabilities: _capabilities,
-                  isDark: isDark,
-                  onTap: () => _showTemplateConfigSheet(template),
-                ),
+  Widget _buildLoadMoreButton(ColorScheme cs, bool isDark, int remaining) {
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.lightImpact();
+        setState(() {
+          _visibleTemplateCount += _templateBatchSize;
+        });
+      },
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: cs.outlineVariant.withValues(alpha: 0.3),
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(LucideIcons.chevronDown, size: 18, color: cs.primary),
+            const SizedBox(width: 8),
+            Text(
+              'Load More ($remaining more)',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: cs.onSurface,
               ),
             ),
-          );
-        }).toList(),
+          ],
+        ),
       ),
     );
   }
@@ -4478,7 +4574,11 @@ class _CategoryTemplatesPageState extends State<_CategoryTemplatesPage> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final title = widget.category['title'] as String? ?? 'Templates';
     final templateIds = (widget.category['templates'] as List<dynamic>?) ?? [];
-    final catId = widget.category['id'] as String? ?? '';
+    
+    // Get color and icon from config (OTA-updateable)
+    final colorHex = widget.category['color'] as String? ?? '#8B5CF6';
+    final color = _parseHexColor(colorHex);
+    final iconName = widget.category['icon'] as String? ?? 'grid';
 
     return Scaffold(
       backgroundColor: cs.surface,
@@ -4495,13 +4595,13 @@ class _CategoryTemplatesPageState extends State<_CategoryTemplatesPage> {
             Container(
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
-                color: _getCategoryColor(catId).withValues(alpha: 0.15),
+                color: color.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(
-                _getCategoryIcon(catId),
+                _resolveIconName(iconName),
                 size: 16,
-                color: _getCategoryColor(catId),
+                color: color,
               ),
             ),
             const SizedBox(width: 10),
@@ -4542,44 +4642,6 @@ class _CategoryTemplatesPageState extends State<_CategoryTemplatesPage> {
       ),
     );
   }
-
-  Color _getCategoryColor(String catId) {
-    switch (catId.toLowerCase()) {
-      case 'trending':
-        return KalaColors.magenta;
-      case 'video':
-        return KalaColors.gold;
-      case 'photo':
-        return KalaColors.purple;
-      case 'enhance':
-        return KalaColors.cyan;
-      case 'styles':
-        return KalaColors.purple;
-      case 'fun':
-        return KalaColors.magenta;
-      default:
-        return KalaColors.cyan;
-    }
-  }
-
-  IconData _getCategoryIcon(String catId) {
-    switch (catId.toLowerCase()) {
-      case 'trending':
-        return LucideIcons.flame;
-      case 'video':
-        return LucideIcons.film;
-      case 'photo':
-        return LucideIcons.image;
-      case 'enhance':
-        return LucideIcons.sparkles;
-      case 'styles':
-        return LucideIcons.palette;
-      case 'fun':
-        return LucideIcons.smile;
-      default:
-        return LucideIcons.grid;
-    }
-  }
 }
 
 // =============================================================================
@@ -4598,12 +4660,111 @@ class _TabItem {
   });
 }
 
-class _TemplateSizeConfig {
-  final String templateId;
-  final double widthFraction; // 0.0 - 1.0
-  final double height;
+// =============================================================================
+// HELPER FUNCTIONS - Used across multiple classes (OTA-updateable from config)
+// =============================================================================
 
-  const _TemplateSizeConfig(this.templateId, this.widthFraction, this.height);
+/// Parse hex color string from config (e.g., "#FF6B35" -> Color)
+Color _parseHexColor(String hexColor) {
+  try {
+    final hex = hexColor.replaceFirst('#', '');
+    if (hex.length == 6) {
+      return Color(int.parse(hex, radix: 16) + 0xFF000000);
+    } else if (hex.length == 8) {
+      return Color(int.parse(hex, radix: 16));
+    }
+  } catch (_) {}
+  return KalaColors.purple; // Default fallback
+}
+
+/// Resolve icon name string from config to IconData
+/// Supports common Lucide icon names used in categories
+IconData _resolveIconName(String iconName) {
+  switch (iconName.toLowerCase()) {
+    // Category icons
+    case 'flame':
+    case 'fire':
+      return LucideIcons.flame;
+    case 'film':
+    case 'video':
+      return LucideIcons.film;
+    case 'image':
+    case 'photo':
+      return LucideIcons.image;
+    case 'sparkles':
+    case 'enhance':
+    case 'magic':
+      return LucideIcons.sparkles;
+    case 'palette':
+    case 'styles':
+    case 'art':
+      return LucideIcons.palette;
+    case 'smile':
+    case 'fun':
+    case 'emoji':
+      return LucideIcons.smile;
+    case 'wand':
+    case 'wand2':
+      return LucideIcons.wand2;
+    case 'star':
+      return LucideIcons.star;
+    case 'heart':
+      return LucideIcons.heart;
+    case 'zap':
+    case 'lightning':
+      return LucideIcons.zap;
+    case 'camera':
+      return LucideIcons.camera;
+    case 'music':
+    case 'audio':
+      return LucideIcons.music;
+    case 'paintbrush':
+    case 'brush':
+      return LucideIcons.paintbrush;
+    case 'crop':
+      return LucideIcons.crop;
+    case 'layers':
+      return LucideIcons.layers;
+    case 'eye':
+      return LucideIcons.eye;
+    case 'sun':
+    case 'sunmedium':
+      return LucideIcons.sunMedium;
+    case 'moon':
+      return LucideIcons.moon;
+    case 'cloud':
+      return LucideIcons.cloud;
+    case 'clock':
+    case 'time':
+      return LucideIcons.clock;
+    case 'user':
+    case 'person':
+      return LucideIcons.user;
+    case 'users':
+    case 'people':
+      return LucideIcons.users;
+    case 'crown':
+    case 'premium':
+      return LucideIcons.crown;
+    case 'gift':
+      return LucideIcons.gift;
+    case 'trophy':
+      return LucideIcons.trophy;
+    case 'target':
+      return LucideIcons.target;
+    case 'refresh':
+    case 'refreshcw':
+      return LucideIcons.refreshCw;
+    case 'download':
+      return LucideIcons.download;
+    case 'upload':
+      return LucideIcons.upload;
+    case 'share':
+      return LucideIcons.share;
+    case 'grid':
+    default:
+      return LucideIcons.grid;
+  }
 }
 
 // =============================================================================
@@ -4920,9 +5081,11 @@ class _CategoryDetailPageState extends State<_CategoryDetailPage> {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final title = widget.category['title'] as String? ?? 'Category';
-    final catId = widget.category['id'] as String? ?? '';
+    
+    // Get color and icon from config (OTA-updateable)
     final colorHex = widget.category['color'] as String? ?? '#8B5CF6';
-    final color = Color(int.parse(colorHex.substring(1), radix: 16) + 0xFF000000);
+    final color = _parseHexColor(colorHex);
+    final iconName = widget.category['icon'] as String? ?? 'grid';
     
     // Get subcategories
     final subcategories = (widget.category['subcategories'] as List<dynamic>?) ?? [];
@@ -4947,7 +5110,7 @@ class _CategoryDetailPageState extends State<_CategoryDetailPage> {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(
-                _getCategoryIcon(catId),
+                _resolveIconName(iconName),
                 size: 16,
                 color: color,
               ),
@@ -5053,24 +5216,5 @@ class _CategoryDetailPageState extends State<_CategoryDetailPage> {
         );
       },
     );
-  }
-
-  IconData _getCategoryIcon(String catId) {
-    switch (catId.toLowerCase()) {
-      case 'trending':
-        return LucideIcons.flame;
-      case 'video':
-        return LucideIcons.film;
-      case 'photo':
-        return LucideIcons.image;
-      case 'enhance':
-        return LucideIcons.sparkles;
-      case 'styles':
-        return LucideIcons.palette;
-      case 'fun':
-        return LucideIcons.smile;
-      default:
-        return LucideIcons.grid;
-    }
   }
 }
