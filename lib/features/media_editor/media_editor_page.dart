@@ -38,10 +38,10 @@ class _MediaEditorPageState extends State<MediaEditorPage>
       ),
       body: IndexedStack(
         index: _selectedMode,
-        children: [
+        children: const [
           // Pass showAppBar: false to avoid double AppBars
-          const EditorPage(showAppBar: false),
-          const VideoEditorPage(showAppBar: false),
+          EditorPage(showAppBar: false),
+          VideoEditorPage(showAppBar: false),
         ],
       ),
     );

@@ -90,388 +90,7 @@ class GenericToolConfig {
 }
 
 /// --------------------------------------
-///  PROMPT TEMPLATES SYSTEM
-///  - Predefined templates to help users get started
-///  - Organized by category and compatible modes
-/// --------------------------------------
-
-class PromptTemplate {
-  final String id;
-  final String title;
-  final String prompt;
-  final String category;
-  final String icon; // emoji or lucide icon name
-  final String? preview; // optional preview image URL
-  final List<String> compatibleModes; // e.g., ['text_to_image', 'text_to_video']
-  final List<String> tags;
-
-  const PromptTemplate({
-    required this.id,
-    required this.title,
-    required this.prompt,
-    required this.category,
-    required this.icon,
-    this.preview,
-    required this.compatibleModes,
-    this.tags = const [],
-  });
-}
-
-/// Template categories with metadata
-class TemplateCategory {
-  final String id;
-  final String name;
-  final String icon;
-  final Color color;
-  
-  const TemplateCategory({
-    required this.id,
-    required this.name,
-    required this.icon,
-    required this.color,
-  });
-}
-
-/// All template categories
-const List<TemplateCategory> templateCategories = [
-  TemplateCategory(id: 'popular', name: 'Popular', icon: '🔥', color: Color(0xFFFF6B6B)),
-  TemplateCategory(id: 'art_styles', name: 'Art Styles', icon: '🎨', color: Color(0xFF8B5CF6)),
-  TemplateCategory(id: 'photography', name: 'Photography', icon: '📸', color: Color(0xFF3B82F6)),
-  TemplateCategory(id: 'fantasy', name: 'Fantasy', icon: '🧙', color: Color(0xFF10B981)),
-  TemplateCategory(id: 'portraits', name: 'Portraits', icon: '👤', color: Color(0xFFF59E0B)),
-  TemplateCategory(id: 'landscapes', name: 'Landscapes', icon: '🏔️', color: Color(0xFF06B6D4)),
-  TemplateCategory(id: 'anime', name: 'Anime', icon: '🎌', color: Color(0xFFEC4899)),
-  TemplateCategory(id: 'video', name: 'Video', icon: '🎬', color: Color(0xFFEF4444)),
-];
-
-/// Comprehensive list of prompt templates
-const List<PromptTemplate> allPromptTemplates = [
-  // --- POPULAR ---
-  PromptTemplate(
-    id: 'cinematic_portrait',
-    title: 'Cinematic Portrait',
-    prompt: 'Cinematic portrait photography, dramatic lighting, shallow depth of field, professional studio lighting, 8K resolution, highly detailed skin texture',
-    category: 'popular',
-    icon: '🎬',
-    compatibleModes: ['text_to_image', 'image_to_image'],
-    tags: ['portrait', 'cinematic', 'professional'],
-  ),
-  PromptTemplate(
-    id: 'magical_forest',
-    title: 'Magical Forest',
-    prompt: 'Enchanted forest with glowing mushrooms, mystical fog, ethereal light rays piercing through ancient trees, fantasy atmosphere, magical particles floating in the air',
-    category: 'popular',
-    icon: '🌲',
-    compatibleModes: ['text_to_image', 'text_to_video'],
-    tags: ['fantasy', 'nature', 'mystical'],
-  ),
-  PromptTemplate(
-    id: 'neon_cyberpunk',
-    title: 'Neon Cyberpunk',
-    prompt: 'Cyberpunk city street at night, neon signs reflecting on wet pavement, futuristic architecture, holographic advertisements, rain-soaked atmosphere, blade runner style',
-    category: 'popular',
-    icon: '🌃',
-    compatibleModes: ['text_to_image', 'text_to_video', 'image_to_video'],
-    tags: ['cyberpunk', 'neon', 'futuristic'],
-  ),
-  PromptTemplate(
-    id: 'anime_hero',
-    title: 'Anime Hero',
-    prompt: 'Anime character with dynamic pose, wind-swept hair, glowing aura, detailed anime art style, vibrant colors, dramatic action scene, manga illustration quality',
-    category: 'popular',
-    icon: '⚡',
-    compatibleModes: ['text_to_image', 'image_to_image'],
-    tags: ['anime', 'action', 'character'],
-  ),
-  
-  // --- ART STYLES ---
-  PromptTemplate(
-    id: 'oil_painting',
-    title: 'Classic Oil Painting',
-    prompt: 'Classical oil painting style, rich brush strokes, Renaissance lighting, museum quality artwork, masterful technique, fine art gallery piece',
-    category: 'art_styles',
-    icon: '🖼️',
-    compatibleModes: ['text_to_image', 'image_to_image'],
-    tags: ['oil painting', 'classical', 'fine art'],
-  ),
-  PromptTemplate(
-    id: 'watercolor',
-    title: 'Watercolor Art',
-    prompt: 'Delicate watercolor painting, soft color blends, gentle brush strokes, artistic paper texture, dreamy atmosphere, watercolor illustration style',
-    category: 'art_styles',
-    icon: '🎨',
-    compatibleModes: ['text_to_image', 'image_to_image'],
-    tags: ['watercolor', 'soft', 'artistic'],
-  ),
-  PromptTemplate(
-    id: 'digital_art',
-    title: 'Digital Art',
-    prompt: 'High quality digital art, crisp details, vibrant digital painting, professional concept art, trending on ArtStation, digital illustration masterpiece',
-    category: 'art_styles',
-    icon: '💻',
-    compatibleModes: ['text_to_image', 'image_to_image'],
-    tags: ['digital', 'modern', 'concept art'],
-  ),
-  PromptTemplate(
-    id: 'pop_art',
-    title: 'Pop Art Style',
-    prompt: 'Bold pop art style, Andy Warhol inspired, bright contrasting colors, halftone dots, comic book aesthetic, retro 60s vibes',
-    category: 'art_styles',
-    icon: '🎭',
-    compatibleModes: ['text_to_image', 'image_to_image'],
-    tags: ['pop art', 'retro', 'bold'],
-  ),
-  PromptTemplate(
-    id: 'impressionist',
-    title: 'Impressionist',
-    prompt: 'Impressionist painting style, visible brush strokes, light and color emphasis, Claude Monet inspired, soft atmospheric effects, plein air quality',
-    category: 'art_styles',
-    icon: '🌸',
-    compatibleModes: ['text_to_image', 'image_to_image'],
-    tags: ['impressionist', 'monet', 'artistic'],
-  ),
-  PromptTemplate(
-    id: 'minimalist',
-    title: 'Minimalist',
-    prompt: 'Clean minimalist design, simple geometric shapes, limited color palette, negative space, modern aesthetic, elegant simplicity',
-    category: 'art_styles',
-    icon: '⬜',
-    compatibleModes: ['text_to_image', 'image_to_image'],
-    tags: ['minimalist', 'clean', 'modern'],
-  ),
-  
-  // --- PHOTOGRAPHY ---
-  PromptTemplate(
-    id: 'studio_portrait',
-    title: 'Studio Portrait',
-    prompt: 'Professional studio portrait, softbox lighting, clean background, commercial photography quality, sharp focus on eyes, beauty retouching',
-    category: 'photography',
-    icon: '📷',
-    compatibleModes: ['text_to_image', 'image_to_image'],
-    tags: ['portrait', 'studio', 'professional'],
-  ),
-  PromptTemplate(
-    id: 'golden_hour',
-    title: 'Golden Hour',
-    prompt: 'Golden hour photography, warm sunset lighting, lens flare, magical hour atmosphere, professional outdoor photography, natural golden tones',
-    category: 'photography',
-    icon: '🌅',
-    compatibleModes: ['text_to_image', 'image_to_image', 'text_to_video'],
-    tags: ['sunset', 'warm', 'outdoor'],
-  ),
-  PromptTemplate(
-    id: 'black_white',
-    title: 'Black & White',
-    prompt: 'Dramatic black and white photography, high contrast, fine art monochrome, rich tonal range, Ansel Adams style, timeless elegance',
-    category: 'photography',
-    icon: '⚫',
-    compatibleModes: ['text_to_image', 'image_to_image'],
-    tags: ['monochrome', 'classic', 'dramatic'],
-  ),
-  PromptTemplate(
-    id: 'macro',
-    title: 'Macro Photography',
-    prompt: 'Extreme macro photography, incredible detail, shallow depth of field, water droplets, nature close-up, scientific precision, vivid textures',
-    category: 'photography',
-    icon: '🔬',
-    compatibleModes: ['text_to_image', 'image_to_image'],
-    tags: ['macro', 'detail', 'nature'],
-  ),
-  PromptTemplate(
-    id: 'street_photo',
-    title: 'Street Photography',
-    prompt: 'Candid street photography, urban environment, authentic moment captured, natural lighting, documentary style, storytelling composition',
-    category: 'photography',
-    icon: '🚶',
-    compatibleModes: ['text_to_image', 'image_to_image'],
-    tags: ['street', 'candid', 'urban'],
-  ),
-  
-  // --- FANTASY ---
-  PromptTemplate(
-    id: 'dragon',
-    title: 'Majestic Dragon',
-    prompt: 'Majestic dragon with iridescent scales, breathing fire, perched on mountain peak, epic fantasy art, dramatic lighting, detailed creature design',
-    category: 'fantasy',
-    icon: '🐉',
-    compatibleModes: ['text_to_image', 'text_to_video'],
-    tags: ['dragon', 'epic', 'creature'],
-  ),
-  PromptTemplate(
-    id: 'fairy',
-    title: 'Ethereal Fairy',
-    prompt: 'Delicate fairy with luminescent wings, surrounded by glowing flowers, magical forest setting, fantasy art, ethereal lighting, whimsical atmosphere',
-    category: 'fantasy',
-    icon: '🧚',
-    compatibleModes: ['text_to_image', 'image_to_image'],
-    tags: ['fairy', 'magical', 'whimsical'],
-  ),
-  PromptTemplate(
-    id: 'wizard',
-    title: 'Powerful Wizard',
-    prompt: 'Ancient wizard casting spell, magical energy swirling, mystical runes glowing, dramatic cape flowing, epic fantasy character, detailed robes and staff',
-    category: 'fantasy',
-    icon: '🧙',
-    compatibleModes: ['text_to_image', 'image_to_image', 'text_to_video'],
-    tags: ['wizard', 'magic', 'character'],
-  ),
-  PromptTemplate(
-    id: 'castle',
-    title: 'Fantasy Castle',
-    prompt: 'Magnificent fantasy castle on floating island, waterfalls cascading into clouds, magical architecture, ethereal atmosphere, epic fantasy landscape',
-    category: 'fantasy',
-    icon: '🏰',
-    compatibleModes: ['text_to_image', 'text_to_video'],
-    tags: ['castle', 'landscape', 'epic'],
-  ),
-  
-  // --- PORTRAITS ---
-  PromptTemplate(
-    id: 'glamour',
-    title: 'Glamour Portrait',
-    prompt: 'Glamorous portrait, perfect makeup, beauty lighting, fashion magazine quality, flawless skin, professional retouching, high fashion style',
-    category: 'portraits',
-    icon: '💄',
-    compatibleModes: ['text_to_image', 'image_to_image'],
-    tags: ['glamour', 'beauty', 'fashion'],
-  ),
-  PromptTemplate(
-    id: 'character_portrait',
-    title: 'Character Portrait',
-    prompt: 'Detailed character portrait, expressive eyes, personality-rich expression, professional lighting, game character quality, intricate details',
-    category: 'portraits',
-    icon: '🎭',
-    compatibleModes: ['text_to_image', 'image_to_image'],
-    tags: ['character', 'expressive', 'detailed'],
-  ),
-  PromptTemplate(
-    id: 'royal_portrait',
-    title: 'Royal Portrait',
-    prompt: 'Regal royal portrait, ornate clothing, crown jewels, Renaissance style, noble bearing, oil painting aesthetic, museum masterpiece quality',
-    category: 'portraits',
-    icon: '👑',
-    compatibleModes: ['text_to_image', 'image_to_image'],
-    tags: ['royal', 'classical', 'elegant'],
-  ),
-  
-  // --- LANDSCAPES ---
-  PromptTemplate(
-    id: 'mountain_vista',
-    title: 'Mountain Vista',
-    prompt: 'Breathtaking mountain landscape, snow-capped peaks, dramatic clouds, alpine meadows, professional landscape photography, panoramic view',
-    category: 'landscapes',
-    icon: '🏔️',
-    compatibleModes: ['text_to_image', 'text_to_video'],
-    tags: ['mountain', 'nature', 'panoramic'],
-  ),
-  PromptTemplate(
-    id: 'ocean_sunset',
-    title: 'Ocean Sunset',
-    prompt: 'Stunning ocean sunset, vibrant orange and purple sky, calm waves reflecting colors, peaceful beach scene, professional seascape photography',
-    category: 'landscapes',
-    icon: '🌊',
-    compatibleModes: ['text_to_image', 'text_to_video', 'image_to_video'],
-    tags: ['ocean', 'sunset', 'peaceful'],
-  ),
-  PromptTemplate(
-    id: 'aurora',
-    title: 'Northern Lights',
-    prompt: 'Spectacular aurora borealis, dancing green and purple lights, starry night sky, snow-covered landscape, Iceland scenery, long exposure photography',
-    category: 'landscapes',
-    icon: '🌌',
-    compatibleModes: ['text_to_image', 'text_to_video'],
-    tags: ['aurora', 'night', 'spectacular'],
-  ),
-  PromptTemplate(
-    id: 'tropical',
-    title: 'Tropical Paradise',
-    prompt: 'Pristine tropical beach, crystal clear turquoise water, white sand, palm trees, paradise island, travel photography, vacation vibes',
-    category: 'landscapes',
-    icon: '🏝️',
-    compatibleModes: ['text_to_image', 'text_to_video'],
-    tags: ['tropical', 'beach', 'paradise'],
-  ),
-  
-  // --- ANIME ---
-  PromptTemplate(
-    id: 'anime_portrait',
-    title: 'Anime Portrait',
-    prompt: 'Beautiful anime character portrait, large expressive eyes, detailed hair, soft shading, high quality anime art, visual novel style',
-    category: 'anime',
-    icon: '👧',
-    compatibleModes: ['text_to_image', 'image_to_image'],
-    tags: ['anime', 'portrait', 'cute'],
-  ),
-  PromptTemplate(
-    id: 'anime_action',
-    title: 'Anime Action Scene',
-    prompt: 'Dynamic anime action scene, speed lines, energy effects, dramatic pose, shounen manga style, intense battle moment, detailed animation quality',
-    category: 'anime',
-    icon: '💥',
-    compatibleModes: ['text_to_image', 'image_to_image'],
-    tags: ['anime', 'action', 'dynamic'],
-  ),
-  PromptTemplate(
-    id: 'anime_landscape',
-    title: 'Anime Landscape',
-    prompt: 'Beautiful anime background art, Studio Ghibli inspired, lush scenery, dreamy clouds, magical atmosphere, detailed environment art',
-    category: 'anime',
-    icon: '🌸',
-    compatibleModes: ['text_to_image', 'text_to_video'],
-    tags: ['anime', 'landscape', 'ghibli'],
-  ),
-  PromptTemplate(
-    id: 'chibi',
-    title: 'Chibi Style',
-    prompt: 'Adorable chibi character, big head small body, kawaii style, cute expression, pastel colors, mascot design quality',
-    category: 'anime',
-    icon: '🥰',
-    compatibleModes: ['text_to_image', 'image_to_image'],
-    tags: ['chibi', 'cute', 'kawaii'],
-  ),
-  
-  // --- VIDEO ---
-  PromptTemplate(
-    id: 'cinematic_pan',
-    title: 'Cinematic Pan',
-    prompt: 'Smooth cinematic camera pan across epic landscape, golden hour lighting, film grain, movie quality, dramatic reveal, professional cinematography',
-    category: 'video',
-    icon: '🎥',
-    compatibleModes: ['text_to_video', 'image_to_video'],
-    tags: ['cinematic', 'pan', 'smooth'],
-  ),
-  PromptTemplate(
-    id: 'timelapse',
-    title: 'Timelapse Style',
-    prompt: 'Stunning timelapse video, clouds moving rapidly, changing light, day to night transition, hyperlapse quality, smooth motion',
-    category: 'video',
-    icon: '⏱️',
-    compatibleModes: ['text_to_video'],
-    tags: ['timelapse', 'clouds', 'motion'],
-  ),
-  PromptTemplate(
-    id: 'slow_motion',
-    title: 'Slow Motion',
-    prompt: 'Dramatic slow motion footage, water droplets splashing, fabric flowing gracefully, high frame rate quality, artistic slow-mo effect',
-    category: 'video',
-    icon: '🐌',
-    compatibleModes: ['text_to_video', 'image_to_video'],
-    tags: ['slow motion', 'dramatic', 'artistic'],
-  ),
-  PromptTemplate(
-    id: 'animation_loop',
-    title: 'Seamless Loop',
-    prompt: 'Perfectly looping animation, subtle continuous movement, ambient atmosphere, calm aesthetic, seamless transition, satisfying loop',
-    category: 'video',
-    icon: '🔄',
-    compatibleModes: ['text_to_video', 'image_to_video'],
-    tags: ['loop', 'animation', 'seamless'],
-  ),
-];
-
-/// --------------------------------------
-///  PROMPT HELPER CHIPS
-///  - Quick tags to append to prompts
+///  PROMPT HELPER CHIPS (Quick-add tags)
 /// --------------------------------------
 
 class PromptChip {
@@ -728,19 +347,14 @@ class _GenericToolPageState extends State<GenericToolPage>
   // Controllers
   final TextEditingController _promptController = TextEditingController();
 
-  // -------- Prompt/Templates Tab System --------
-  late TabController _promptTabController;
-  int _selectedTabIndex = 0; // 0 = Prompt, 1 = Templates
-  PromptTemplate? _selectedTemplate;
-  String _selectedTemplateCategory = 'popular';
-
   // -------- Style Library --------
   String _selectedStyleCategory = 'All';
   StylePreset? _selectedStyle;
   final Set<String> _favoriteStyles = {};
   
-  // -------- Quick Add Collapsible Section --------
-  bool _isQuickAddExpanded = true;
+  // -------- Prompt Enhancer Section --------
+  bool _isEnhancerExpanded = true;
+  int _enhancerTabIndex = 0; // 0 = Styles, 1 = Quick Tags
 
   // -------- Advanced Settings --------
   late AdvancedSettings _advancedSettings;
@@ -764,9 +378,9 @@ class _GenericToolPageState extends State<GenericToolPage>
   // Stores multiple images for bulk processing (max 10 for VIP)
   List<Uint8List> _bulkImages = [];
   // Stores masks for each bulk image (for inpaint/erase tools)
-  List<Uint8List?> _bulkMasks = [];
+  final List<Uint8List?> _bulkMasks = [];
   // Stores outpaint configurations for each bulk image (for expand scene)
-  List<Map<String, String>?> _bulkOutpaintConfigs = [];
+  final List<Map<String, String>?> _bulkOutpaintConfigs = [];
   static const int _maxBulkImages = 10;
   // Max total jobs per submission (images × variations) to prevent server overload
   static const int _maxTotalJobs = 25;
@@ -891,10 +505,6 @@ class _GenericToolPageState extends State<GenericToolPage>
 
     _previewPageController = PageController();
 
-    // Initialize tab controller for Prompt/Templates
-    _promptTabController = TabController(length: 2, vsync: this);
-    _promptTabController.addListener(_onTabChanged);
-
     // Initialize advanced settings with defaults
     _advancedSettings = AdvancedSettings();
     
@@ -979,92 +589,6 @@ class _GenericToolPageState extends State<GenericToolPage>
   /// Get the current model's offer discount
   int get _currentModelOffer => 
       _selectedModelData?['offer'] as int? ?? widget.config.offer;
-
-  void _onTabChanged() {
-    if (_promptTabController.indexIsChanging) {
-      setState(() {
-        _selectedTabIndex = _promptTabController.index;
-      });
-    }
-  }
-
-  /// Get the current mode identifier for template filtering
-  String get _currentModeIdentifier {
-    // Check if we have a selected mode
-    if (_selectedModeKey != null) {
-      return _selectedModeKey!;
-    }
-    // Determine mode from output type and inputs
-    final hasImageInput = widget.config.inputs.any((i) => i['type'] == 'image');
-    final outputType = widget.config.outputType;
-    
-    if (outputType == 'video') {
-      return hasImageInput ? 'image_to_video' : 'text_to_video';
-    }
-    return hasImageInput ? 'image_to_image' : 'text_to_image';
-  }
-
-  /// Get templates filtered for the current mode
-  List<PromptTemplate> get _compatibleTemplates {
-    final mode = _currentModeIdentifier;
-    return allPromptTemplates.where((t) => 
-      t.compatibleModes.contains(mode) ||
-      t.compatibleModes.any((m) => mode.contains(m.split('_').last))
-    ).toList();
-  }
-
-  /// Get templates by category
-  List<PromptTemplate> _getTemplatesByCategory(String categoryId) {
-    return _compatibleTemplates.where((t) => t.category == categoryId).toList();
-  }
-
-  /// Get available categories (only show categories with compatible templates)
-  List<TemplateCategory> get _availableCategories {
-    final availableIds = _compatibleTemplates.map((t) => t.category).toSet();
-    return templateCategories.where((c) => availableIds.contains(c.id)).toList();
-  }
-
-  /// Select a template and auto-fill the prompt
-  void _selectTemplate(PromptTemplate template) {
-    setState(() {
-      _selectedTemplate = template;
-      _promptController.text = template.prompt;
-      _inputs['prompt'] = template.prompt;
-      // Switch to prompt tab to show the filled prompt
-      _promptTabController.animateTo(0);
-      _selectedTabIndex = 0;
-    });
-    
-    // Show a subtle confirmation
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(LucideIcons.check, color: Colors.white, size: 18),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                '"${template.title}" applied! Edit the prompt if needed.',
-                style: const TextStyle(fontWeight: FontWeight.w500),
-              ),
-            ),
-          ],
-        ),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        duration: const Duration(seconds: 2),
-        backgroundColor: Theme.of(context).colorScheme.primary,
-      ),
-    );
-  }
-
-  /// Clear the selected template
-  void _clearTemplate() {
-    setState(() {
-      _selectedTemplate = null;
-    });
-  }
 
   // -------- Prompt Helper Chips --------
   
@@ -1165,6 +689,7 @@ class _GenericToolPageState extends State<GenericToolPage>
         _favoriteStyles.add(styleId);
       }
     });
+    HapticFeedback.lightImpact();
   }
 
   /// Apply random style
@@ -1631,8 +1156,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                               if (Navigator.canPop(context)) {
                                 Navigator.pop(context);
                               }
-                              // Then navigate to Credits page (index 3)
-                              selectedIndexNotifier.value = 3;
+                              // Then navigate to Credits page (index 2)
+                              selectedIndexNotifier.value = 2;
                             });
                           },
                           borderRadius: BorderRadius.circular(10),
@@ -2200,8 +1725,6 @@ class _GenericToolPageState extends State<GenericToolPage>
     WidgetsBinding.instance.removeObserver(this);
     _promptController.dispose();
     _previewPageController.dispose();
-    _promptTabController.removeListener(_onTabChanged);
-    _promptTabController.dispose();
     _glowAnimationController.dispose();
     isAdFreeNotifier.removeListener(_onAdFreeStatusChanged);
     jobListNotifier.removeListener(_onJobListChanged);
@@ -3528,104 +3051,85 @@ class _GenericToolPageState extends State<GenericToolPage>
     }
   }
 
-  // -------- Prompt with Templates Tab System --------
+  // -------- Prompt Input Section --------
   Widget _buildPrompt(String ref) {
-    final cs = Theme.of(context).colorScheme;
     final label = widget.config.inputs
             .firstWhere((i) => i["id"] == ref, orElse: () => {})["label"] ??
         "Describe what you want to create";
 
-    return _buildCard(
-      padding: const EdgeInsets.all(0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Tab bar header
-          Container(
-            decoration: BoxDecoration(
-              color: cs.surfaceContainerHigh.withOpacity(0.5),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-            ),
-            child: TabBar(
-              controller: _promptTabController,
-              indicatorSize: TabBarIndicatorSize.tab,
-              dividerColor: Colors.transparent,
-              indicatorPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              indicator: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: KalaColors.brandGradient,
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(10),
-                boxShadow: [
-                  BoxShadow(
-                    color: KalaColors.purple.withOpacity(0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              labelColor: Colors.white,
-              unselectedLabelColor: cs.onSurfaceVariant,
-              labelStyle: const TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
-              ),
-              unselectedLabelStyle: const TextStyle(
-                fontWeight: FontWeight.w500,
-                fontSize: 14,
-              ),
-              tabs: const [
-                Tab(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(LucideIcons.penTool, size: 16),
-                      SizedBox(width: 6),
-                      Text('Prompt'),
-                    ],
-                  ),
-                ),
-                Tab(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(LucideIcons.layoutGrid, size: 16),
-                      SizedBox(width: 6),
-                      Text('Templates'),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          
-          // Tab content - only show selected tab to avoid extra space
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 200),
-            child: _selectedTabIndex == 0
-                ? _buildPromptTabContent(ref, label)
-                : _buildTemplatesTabContent(),
-          ),
-        ],
-      ),
-    );
+    return _buildPromptContent(ref, label);
   }
 
-  /// Build the Prompt tab content with guided input
-  Widget _buildPromptTabContent(String ref, String label) {
+  /// Build the Prompt content with guided input and style pills
+  Widget _buildPromptContent(String ref, String label) {
     final cs = Theme.of(context).colorScheme;
     final promptLength = _promptController.text.length;
     final showCharCounter = promptLength > 0;
     
-    return Padding(
+    return _buildCard(
       padding: const EdgeInsets.all(12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Applied template/style indicator
-          if (_selectedTemplate != null || _selectedStyle != null) ...[
+          // Header with Explore link
+          Row(
+            children: [
+              Icon(LucideIcons.penTool, size: 16, color: cs.primary),
+              const SizedBox(width: 8),
+              Text(
+                'Prompt',
+                style: TextStyle(
+                  color: cs.onSurface,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const Spacer(),
+              // Link to Explore for templates
+              GestureDetector(
+                onTap: () {
+                  Navigator.pop(context);
+                  selectedIndexNotifier.value = AppTabs.explore;
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        KalaColors.purple.withOpacity(0.15),
+                        KalaColors.magenta.withOpacity(0.15),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: KalaColors.purple.withOpacity(0.3),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(LucideIcons.sparkles, size: 12, color: KalaColors.purple),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Browse Templates',
+                        style: TextStyle(
+                          color: KalaColors.purple,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(width: 2),
+                      Icon(LucideIcons.arrowRight, size: 10, color: KalaColors.purple),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          
+          // Applied style indicator (only for styles now)
+          if (_selectedStyle != null) ...[
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
@@ -3638,15 +3142,13 @@ class _GenericToolPageState extends State<GenericToolPage>
               child: Row(
                 children: [
                   Text(
-                    _selectedTemplate?.icon ?? _selectedStyle?.icon ?? '✨',
+                    _selectedStyle!.icon,
                     style: const TextStyle(fontSize: 16),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      _selectedTemplate != null
-                          ? 'Template: ${_selectedTemplate!.title}'
-                          : 'Style: ${_selectedStyle!.name}',
+                      'Style: ${_selectedStyle!.name}',
                       style: TextStyle(
                         color: cs.primary,
                         fontSize: 13,
@@ -3656,13 +3158,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                   ),
                   InkWell(
                     onTap: () {
-                      if (_selectedTemplate != null) {
-                        _clearTemplate();
-                      }
-                      if (_selectedStyle != null) {
-                        _removeStyleFromPrompt(_selectedStyle!);
-                        setState(() => _selectedStyle = null);
-                      }
+                      _removeStyleFromPrompt(_selectedStyle!);
+                      setState(() => _selectedStyle = null);
                     },
                     borderRadius: BorderRadius.circular(12),
                     child: Padding(
@@ -3690,7 +3187,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             maxLines: 4,
             minLines: 3,
             decoration: InputDecoration(
-              hintText: 'Describe what you want, or choose a template...',
+              hintText: 'Describe what you want to create...',
               hintStyle: TextStyle(
                 color: cs.onSurfaceVariant.withOpacity(0.5),
                 fontSize: 15,
@@ -3729,7 +3226,6 @@ class _GenericToolPageState extends State<GenericToolPage>
                       onPressed: () {
                         _promptController.clear();
                         _inputs[ref] = '';
-                        _clearTemplate();
                         if (_selectedStyle != null) {
                           setState(() => _selectedStyle = null);
                         }
@@ -3786,227 +3282,320 @@ class _GenericToolPageState extends State<GenericToolPage>
           
           const SizedBox(height: 14),
           
-          // Collapsible Quick Add section with native ad
-          _buildCollapsibleQuickAddSection(cs),
+          // Style & Tags section (Quick style presets + helper tags)
+          _buildPromptEnhancerSection(cs),
+        ],
+      ),
+    );
+  }
+  
+  /// Build unified Style & Tags section (Visual styles + Quick helper tags)
+  Widget _buildPromptEnhancerSection(ColorScheme cs) {
+    final bool showAds = shouldShowAds();
+    final styles = _getStylesByCategory(_selectedStyleCategory);
+    
+    return Container(
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHigh.withOpacity(0.3),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: cs.outlineVariant.withOpacity(0.15),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header with toggle and actions
+          GestureDetector(
+            onTap: () => setState(() => _isEnhancerExpanded = !_isEnhancerExpanded),
+            behavior: HitTestBehavior.opaque,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    KalaColors.purple.withOpacity(0.08),
+                    KalaColors.magenta.withOpacity(0.05),
+                  ],
+                ),
+                borderRadius: BorderRadius.vertical(
+                  top: const Radius.circular(16),
+                  bottom: _isEnhancerExpanded ? Radius.zero : const Radius.circular(16),
+                ),
+              ),
+              child: Row(
+                children: [
+                  // Animated chevron
+                  AnimatedRotation(
+                    turns: _isEnhancerExpanded ? 0 : -0.25,
+                    duration: const Duration(milliseconds: 200),
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: KalaColors.purple.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Icon(
+                        LucideIcons.chevronDown,
+                        size: 14,
+                        color: KalaColors.purple,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  // Title with icon
+                  Icon(LucideIcons.sparkle, size: 16, color: KalaColors.purple),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Style & Tags',
+                    style: TextStyle(
+                      color: cs.onSurface,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  // Selected style indicator (flexible to prevent overflow)
+                  if (_selectedStyle != null) ...[
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: cs.primary.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(_selectedStyle!.icon, style: const TextStyle(fontSize: 10)),
+                            const SizedBox(width: 3),
+                            Flexible(
+                              child: Text(
+                                _selectedStyle!.name,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: cs.primary,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(width: 8),
+                  const Spacer(),
+                  // Random button
+                  if (_isEnhancerExpanded)
+                    GestureDetector(
+                      onTap: _applyRandomStyle,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              KalaColors.purple.withOpacity(0.15),
+                              KalaColors.magenta.withOpacity(0.15),
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: KalaColors.purple.withOpacity(0.3),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(LucideIcons.shuffle, size: 12, color: KalaColors.purple),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Random',
+                              style: TextStyle(
+                                color: KalaColors.purple,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          
+          // Expandable content
+          AnimatedSize(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeInOut,
+            child: _isEnhancerExpanded
+                ? Column(
+                    children: [
+                      // Tab selector (Styles / Quick Tags)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        child: Row(
+                          children: [
+                            _buildEnhancerTab(cs, 0, 'Styles', LucideIcons.palette, styles.length),
+                            const SizedBox(width: 8),
+                            _buildEnhancerTab(cs, 1, 'Quick Tags', LucideIcons.tag, promptHelperChips.length),
+                          ],
+                        ),
+                      ),
+                      
+                      // Content based on selected tab
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 200),
+                        child: _enhancerTabIndex == 0
+                            ? _buildStylesContent(cs, styles)
+                            : _buildQuickTagsContent(cs),
+                      ),
+                      
+                      // Show ad when collapsed (if applicable)
+                      const SizedBox(height: 8),
+                    ],
+                  )
+                : showAds
+                    ? Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: const ThemedNativeAd(
+                            height: 100,
+                            useSmallTemplate: true,
+                          ),
+                        ),
+                      )
+                    : const SizedBox.shrink(),
+          ),
         ],
       ),
     );
   }
 
-  /// Build collapsible Quick Add section with native ad
-  /// Shows native ad when collapsed, shows Quick Add chips when expanded
-  Widget _buildCollapsibleQuickAddSection(ColorScheme cs) {
-    // Check if ads should be shown (uses secure shouldShowAds() check)
-    // This requires authentication + server verification for ad-free
-    final bool showAds = shouldShowAds();
+  /// Build enhancer tab button
+  Widget _buildEnhancerTab(ColorScheme cs, int index, String label, IconData icon, int count) {
+    final isSelected = _enhancerTabIndex == index;
     
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Header row with toggle
-        GestureDetector(
-          onTap: () {
-            setState(() {
-              _isQuickAddExpanded = !_isQuickAddExpanded;
-            });
-          },
-          behavior: HitTestBehavior.opaque,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Row(
-              children: [
-                AnimatedRotation(
-                  turns: _isQuickAddExpanded ? 0 : -0.25,
-                  duration: const Duration(milliseconds: 200),
-                  child: Icon(
-                    LucideIcons.chevronDown,
-                    size: 16,
-                    color: cs.onSurfaceVariant.withOpacity(0.7),
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Icon(
-                  LucideIcons.plus,
-                  size: 14,
-                  color: cs.onSurfaceVariant.withOpacity(0.7),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  'Quick add',
-                  style: TextStyle(
-                    color: cs.onSurfaceVariant.withOpacity(0.7),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                if (!_isQuickAddExpanded) ...[
-                  const Spacer(),
-                  Text(
-                    'Tap to expand',
-                    style: TextStyle(
-                      color: cs.onSurfaceVariant.withOpacity(0.4),
-                      fontSize: 10,
-                    ),
-                  ),
-                ],
-              ],
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _enhancerTabIndex = index),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: isSelected 
+                ? cs.primary.withOpacity(0.12)
+                : cs.surfaceContainerHigh.withOpacity(0.5),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isSelected 
+                  ? cs.primary.withOpacity(0.4)
+                  : cs.outlineVariant.withOpacity(0.15),
+              width: isSelected ? 1.5 : 1,
             ),
           ),
-        ),
-        
-        // Animated content
-        AnimatedCrossFade(
-          firstChild: _buildQuickAddChipsContent(cs),
-          secondChild: showAds 
-            ? _buildQuickAddCollapsedWithAd(cs)
-            : const SizedBox(height: 8),
-          crossFadeState: _isQuickAddExpanded 
-            ? CrossFadeState.showFirst 
-            : CrossFadeState.showSecond,
-          duration: const Duration(milliseconds: 250),
-          sizeCurve: Curves.easeInOut,
-        ),
-      ],
-    );
-  }
-  
-  /// Build the Quick Add chips content (expanded state)
-  Widget _buildQuickAddChipsContent(ColorScheme cs) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: promptHelperChips.map((chip) {
-          return InkWell(
-            onTap: () => _appendChipToPrompt(chip),
-            borderRadius: BorderRadius.circular(20),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: cs.surfaceContainerHigh,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: cs.outlineVariant.withOpacity(0.3),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 14,
+                color: isSelected ? cs.primary : cs.onSurfaceVariant.withOpacity(0.7),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  color: isSelected ? cs.primary : cs.onSurfaceVariant.withOpacity(0.8),
+                  fontSize: 12,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                 ),
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    chip.icon,
-                    style: const TextStyle(fontSize: 12),
+              const SizedBox(width: 4),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                decoration: BoxDecoration(
+                  color: isSelected 
+                      ? cs.primary.withOpacity(0.2)
+                      : cs.onSurfaceVariant.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '$count',
+                  style: TextStyle(
+                    color: isSelected ? cs.primary : cs.onSurfaceVariant.withOpacity(0.6),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
                   ),
-                  const SizedBox(width: 6),
-                  Text(
-                    chip.label,
-                    style: TextStyle(
-                      color: cs.onSurface,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-  
-  /// Build collapsed Quick Add with native ad
-  Widget _buildQuickAddCollapsedWithAd(ColorScheme cs) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: const ThemedNativeAd(
-          height: 120,
-          useSmallTemplate: true,
+            ],
+          ),
         ),
       ),
     );
   }
 
-  /// Build the Templates tab content with Style Library
-  Widget _buildTemplatesTabContent() {
-    final cs = Theme.of(context).colorScheme;
-    final categories = _availableCategories;
-    final templates = _getTemplatesByCategory(_selectedTemplateCategory);
-    final styles = _getStylesByCategory(_selectedStyleCategory);
-    
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(12),
+  /// Build styles content with categories and style cards
+  Widget _buildStylesContent(ColorScheme cs, List<StylePreset> styles) {
+    return Padding(
+      key: const ValueKey('styles'),
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ========== PROMPT TEMPLATES SECTION ==========
-          Row(
-            children: [
-              Icon(LucideIcons.fileText, size: 16, color: cs.primary),
-              const SizedBox(width: 8),
-              Text(
-                'Prompt Templates',
-                style: TextStyle(
-                  color: cs.onSurface,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          
-          // Category filter chips
+          // Category filter
           SizedBox(
-            height: 36,
+            height: 32,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
-              itemCount: categories.length,
+              itemCount: styleCategories.length,
               itemBuilder: (context, index) {
-                final category = categories[index];
-                final isSelected = _selectedTemplateCategory == category.id;
+                final category = styleCategories[index];
+                final isSelected = _selectedStyleCategory == category;
+                final isFavorites = category == 'Favorites';
+                final favCount = _favoriteStyles.length;
                 
                 return Padding(
-                  padding: EdgeInsets.only(
-                    right: 8,
-                    left: index == 0 ? 0 : 0,
-                  ),
-                  child: InkWell(
-                    onTap: () {
-                      setState(() {
-                        _selectedTemplateCategory = category.id;
-                      });
-                    },
-                    borderRadius: BorderRadius.circular(18),
+                  padding: const EdgeInsets.only(right: 8),
+                  child: GestureDetector(
+                    onTap: () => setState(() => _selectedStyleCategory = category),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 200),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
                         color: isSelected 
-                            ? category.color.withOpacity(0.2)
+                            ? (isFavorites ? Colors.red.withOpacity(0.15) : cs.secondary.withOpacity(0.15))
                             : cs.surfaceContainerHigh,
-                        borderRadius: BorderRadius.circular(18),
+                        borderRadius: BorderRadius.circular(16),
                         border: Border.all(
                           color: isSelected 
-                              ? category.color.withOpacity(0.5)
+                              ? (isFavorites ? Colors.red.withOpacity(0.4) : cs.secondary.withOpacity(0.4))
                               : cs.outlineVariant.withOpacity(0.2),
                         ),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          if (isFavorites) ...[
+                            Icon(
+                              Icons.favorite,
+                              size: 12,
+                              color: isSelected ? Colors.red : cs.onSurfaceVariant.withOpacity(0.6),
+                            ),
+                            const SizedBox(width: 4),
+                          ],
                           Text(
-                            category.icon,
-                            style: const TextStyle(fontSize: 14),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            category.name,
+                            isFavorites ? 'Favorites ($favCount)' : category,
                             style: TextStyle(
-                              color: isSelected ? category.color : cs.onSurfaceVariant,
-                              fontSize: 13,
+                              color: isSelected 
+                                  ? (isFavorites ? Colors.red : cs.secondary)
+                                  : cs.onSurfaceVariant.withOpacity(0.8),
+                              fontSize: 12,
                               fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                             ),
                           ),
@@ -4018,27 +3607,34 @@ class _GenericToolPageState extends State<GenericToolPage>
               },
             ),
           ),
+          const SizedBox(height: 10),
           
-          const SizedBox(height: 12),
-          
-          // Template grid
-          if (templates.isEmpty)
+          // Empty state for favorites
+          if (styles.isEmpty && _selectedStyleCategory == 'Favorites')
             Container(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.symmetric(vertical: 20),
               child: Center(
                 child: Column(
                   children: [
                     Icon(
-                      LucideIcons.searchX,
-                      size: 32,
-                      color: cs.onSurfaceVariant.withOpacity(0.4),
+                      LucideIcons.heart,
+                      size: 28,
+                      color: cs.onSurfaceVariant.withOpacity(0.3),
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'No templates available for this mode',
+                      'No favorites yet',
                       style: TextStyle(
-                        color: cs.onSurfaceVariant.withOpacity(0.6),
-                        fontSize: 14,
+                        color: cs.onSurfaceVariant.withOpacity(0.5),
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Long-press any style to add to favorites',
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant.withOpacity(0.35),
+                        fontSize: 11,
                       ),
                     ),
                   ],
@@ -4046,62 +3642,206 @@ class _GenericToolPageState extends State<GenericToolPage>
               ),
             )
           else
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                mainAxisSpacing: 10,
-                crossAxisSpacing: 10,
-                childAspectRatio: 1.4,
+            // Styles grid (2 rows of scrollable cards)
+            SizedBox(
+              height: 90,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: styles.length,
+                itemBuilder: (context, index) {
+                  final style = styles[index];
+                  final isSelected = _selectedStyle?.id == style.id;
+                  final isFavorite = _favoriteStyles.contains(style.id);
+                  
+                  return _buildStyleChip(cs, style, isSelected, isFavorite);
+                },
               ),
-              itemCount: templates.length,
-              itemBuilder: (context, index) {
-                final template = templates[index];
-                final isSelected = _selectedTemplate?.id == template.id;
-                
-                return _buildTemplateCard(template, isSelected);
-              },
             ),
-          
-          const SizedBox(height: 24),
-          
-          // ========== STYLE LIBRARY SECTION ==========
-          Row(
+        ],
+      ),
+    );
+  }
+
+  /// Build individual style chip with favorite support
+  Widget _buildStyleChip(ColorScheme cs, StylePreset style, bool isSelected, bool isFavorite) {
+    // Get category color
+    final categoryColors = {
+      'Fun': const Color(0xFFFF6B6B),
+      'Realistic': const Color(0xFF3B82F6),
+      'Artistic': const Color(0xFF8B5CF6),
+      'Anime': const Color(0xFFEC4899),
+      'Cinematic': const Color(0xFFF59E0B),
+    };
+    final accentColor = categoryColors[style.category] ?? cs.secondary;
+    
+    return Padding(
+      padding: const EdgeInsets.only(right: 10),
+      child: GestureDetector(
+        onTap: () => _selectStyle(style),
+        onLongPress: () {
+          _toggleFavoriteStyle(style.id);
+          ScaffoldMessenger.of(context).clearSnackBars();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  Icon(
+                    _favoriteStyles.contains(style.id) ? Icons.favorite : LucideIcons.heart,
+                    color: Colors.white,
+                    size: 16,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    _favoriteStyles.contains(style.id)
+                        ? 'Added "${style.name}" to favorites'
+                        : 'Removed "${style.name}" from favorites',
+                  ),
+                ],
+              ),
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              duration: const Duration(seconds: 2),
+              backgroundColor: _favoriteStyles.contains(style.id) ? Colors.red : cs.inverseSurface,
+            ),
+          );
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          width: 100,
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            gradient: isSelected
+                ? LinearGradient(
+                    colors: [
+                      accentColor.withOpacity(0.2),
+                      accentColor.withOpacity(0.1),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  )
+                : null,
+            color: isSelected ? null : cs.surfaceContainerHigh,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: isSelected 
+                  ? accentColor.withOpacity(0.5)
+                  : cs.outlineVariant.withOpacity(0.2),
+              width: isSelected ? 2 : 1,
+            ),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: accentColor.withOpacity(0.15),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(LucideIcons.palette, size: 16, color: cs.secondary),
-              const SizedBox(width: 8),
-              Text(
-                'Style Library',
-                style: TextStyle(
-                  color: cs.onSurface,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
+              // Top row: Icon + Favorite/Check
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: accentColor.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(style.icon, style: const TextStyle(fontSize: 14)),
+                  ),
+                  if (isSelected)
+                    Container(
+                      padding: const EdgeInsets.all(3),
+                      decoration: BoxDecoration(
+                        color: accentColor,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(LucideIcons.check, size: 10, color: Colors.white),
+                    )
+                  else if (isFavorite)
+                    const Icon(Icons.favorite, size: 14, color: Colors.red),
+                ],
               ),
               const Spacer(),
-              // Random style button
-              InkWell(
-                onTap: _applyRandomStyle,
-                borderRadius: BorderRadius.circular(16),
+              // Name
+              Text(
+                style.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: isSelected ? accentColor : cs.onSurface,
+                  fontSize: 11,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                ),
+              ),
+              // Category badge
+              const SizedBox(height: 2),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                decoration: BoxDecoration(
+                  color: accentColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  style.category,
+                  style: TextStyle(
+                    color: accentColor.withOpacity(0.8),
+                    fontSize: 8,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Build quick tags content
+  Widget _buildQuickTagsContent(ColorScheme cs) {
+    return Padding(
+      key: const ValueKey('tags'),
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Tap to add to your prompt',
+            style: TextStyle(
+              color: cs.onSurfaceVariant.withOpacity(0.5),
+              fontSize: 11,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: promptHelperChips.map((chip) {
+              return GestureDetector(
+                onTap: () => _appendChipToPrompt(chip),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
-                    color: cs.secondaryContainer.withOpacity(0.5),
-                    borderRadius: BorderRadius.circular(16),
+                    color: cs.surfaceContainerHigh,
+                    borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                      color: cs.secondary.withOpacity(0.3),
+                      color: cs.outlineVariant.withOpacity(0.25),
                     ),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(LucideIcons.shuffle, size: 14, color: cs.secondary),
-                      const SizedBox(width: 4),
+                      Text(chip.icon, style: const TextStyle(fontSize: 14)),
+                      const SizedBox(width: 6),
                       Text(
-                        'Random',
+                        chip.label,
                         style: TextStyle(
-                          color: cs.secondary,
+                          color: cs.onSurface,
                           fontSize: 12,
                           fontWeight: FontWeight.w500,
                         ),
@@ -4109,493 +3849,11 @@ class _GenericToolPageState extends State<GenericToolPage>
                     ],
                   ),
                 ),
-              ),
-            ],
+              );
+            }).toList(),
           ),
-          const SizedBox(height: 10),
-          
-          // Style category filter
-          SizedBox(
-            height: 34,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: styleCategories.length,
-              itemBuilder: (context, index) {
-                final category = styleCategories[index];
-                final isSelected = _selectedStyleCategory == category;
-                
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: InkWell(
-                    onTap: () {
-                      setState(() {
-                        _selectedStyleCategory = category;
-                      });
-                    },
-                    borderRadius: BorderRadius.circular(16),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: isSelected 
-                            ? cs.secondary.withOpacity(0.2)
-                            : cs.surfaceContainerHigh,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: isSelected 
-                              ? cs.secondary.withOpacity(0.5)
-                              : cs.outlineVariant.withOpacity(0.2),
-                        ),
-                      ),
-                      child: Text(
-                        category,
-                        style: TextStyle(
-                          color: isSelected ? cs.secondary : cs.onSurfaceVariant,
-                          fontSize: 12,
-                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-          
-          const SizedBox(height: 12),
-          
-          // Style grid
-          if (styles.isEmpty && _selectedStyleCategory == 'Favorite')
-            Container(
-              padding: const EdgeInsets.all(24),
-              child: Center(
-                child: Column(
-                  children: [
-                    Icon(
-                      LucideIcons.heart,
-                      size: 32,
-                      color: cs.onSurfaceVariant.withOpacity(0.4),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'No favorite styles yet',
-                      style: TextStyle(
-                        color: cs.onSurfaceVariant.withOpacity(0.6),
-                        fontSize: 14,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Tap the heart on any style to save it',
-                      style: TextStyle(
-                        color: cs.onSurfaceVariant.withOpacity(0.4),
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            )
-          else
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                mainAxisSpacing: 10,
-                crossAxisSpacing: 10,
-                childAspectRatio: 1.3,
-              ),
-              itemCount: styles.length,
-              itemBuilder: (context, index) {
-                final style = styles[index];
-                final isSelected = _selectedStyle?.id == style.id;
-                final isFavorite = _favoriteStyles.contains(style.id);
-                
-                return _buildStyleCard(style, isSelected, isFavorite);
-              },
-            ),
+          const SizedBox(height: 8),
         ],
-      ),
-    );
-  }
-
-  /// Build individual style card with visual preview
-  Widget _buildStyleCard(StylePreset style, bool isSelected, bool isFavorite) {
-    final cs = Theme.of(context).colorScheme;
-    
-    // Color based on category
-    final categoryColors = {
-      'Fun': const Color(0xFFFF6B6B),
-      'Realistic': const Color(0xFF3B82F6),
-      'Painting': const Color(0xFF8B5CF6),
-      'Anime': const Color(0xFFEC4899),
-      'Cinematic': const Color(0xFFF59E0B),
-    };
-    final cardColor = categoryColors[style.category] ?? cs.secondary;
-    
-    return InkWell(
-      onTap: () => _selectStyle(style),
-      borderRadius: BorderRadius.circular(14),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: isSelected 
-                ? cardColor.withOpacity(0.6)
-                : cs.outlineVariant.withOpacity(0.2),
-            width: isSelected ? 2 : 1,
-          ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: cardColor.withOpacity(0.25),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ]
-              : null,
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(13),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              // Background - Image or Gradient
-              if (style.previewUrl != null)
-                Image.network(
-                  style.previewUrl!,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => _buildStyleGradient(cardColor),
-                )
-              else
-                _buildStyleGradient(cardColor),
-              
-              // Gradient overlay for text readability
-              Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.transparent,
-                      Colors.black.withOpacity(0.75),
-                    ],
-                    stops: const [0.35, 1.0],
-                  ),
-                ),
-              ),
-              
-              // Content
-              Padding(
-                padding: const EdgeInsets.all(10),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Top row - Icon, Featured badge, Favorite
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        // Style icon
-                        Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            style.icon,
-                            style: const TextStyle(fontSize: 16),
-                          ),
-                        ),
-                        // Right side - Featured or Selection indicator
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (style.isFeatured)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                                margin: const EdgeInsets.only(right: 4),
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    colors: [Colors.amber.shade600, Colors.orange.shade600],
-                                  ),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: const Text(
-                                  '★',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 10,
-                                  ),
-                                ),
-                              ),
-                            if (isSelected)
-                              Container(
-                                padding: const EdgeInsets.all(4),
-                                decoration: const BoxDecoration(
-                                  color: Colors.white,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(
-                                  LucideIcons.check,
-                                  size: 12,
-                                  color: cardColor,
-                                ),
-                              ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    
-                    const Spacer(),
-                    
-                    // Bottom content
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                style.name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(height: 1),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.15),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  style.category,
-                                  style: TextStyle(
-                                    color: Colors.white.withOpacity(0.85),
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        // Favorite button
-                        InkWell(
-                          onTap: () => _toggleFavoriteStyle(style.id),
-                          borderRadius: BorderRadius.circular(14),
-                          child: Container(
-                            padding: const EdgeInsets.all(5),
-                            decoration: BoxDecoration(
-                              color: isFavorite 
-                                  ? Colors.red.withOpacity(0.3)
-                                  : Colors.white.withOpacity(0.15),
-                              shape: BoxShape.circle,
-                            ),
-                            child: isFavorite
-                                ? const Icon(Icons.favorite, size: 14, color: Colors.red)
-                                : Icon(LucideIcons.heart, size: 14, color: Colors.white.withOpacity(0.8)),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// Build gradient background for style card
-  Widget _buildStyleGradient(Color baseColor) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            baseColor.withOpacity(0.9),
-            baseColor.withOpacity(0.5),
-            Colors.black.withOpacity(0.7),
-          ],
-          stops: const [0.0, 0.4, 1.0],
-        ),
-      ),
-    );
-  }
-
-  /// Build individual template card with visual preview
-  Widget _buildTemplateCard(PromptTemplate template, bool isSelected) {
-    final cs = Theme.of(context).colorScheme;
-    final category = templateCategories.firstWhere(
-      (c) => c.id == template.category,
-      orElse: () => templateCategories.first,
-    );
-    
-    return InkWell(
-      onTap: () => _selectTemplate(template),
-      borderRadius: BorderRadius.circular(14),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: isSelected 
-                ? category.color.withOpacity(0.6)
-                : cs.outlineVariant.withOpacity(0.2),
-            width: isSelected ? 2 : 1,
-          ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: category.color.withOpacity(0.25),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ]
-              : null,
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(13),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              // Background - Image or Gradient
-              if (template.preview != null)
-                Image.network(
-                  template.preview!,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => _buildTemplateGradient(category.color),
-                )
-              else
-                _buildTemplateGradient(category.color),
-              
-              // Gradient overlay for text readability
-              Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.transparent,
-                      Colors.black.withOpacity(0.7),
-                    ],
-                    stops: const [0.3, 1.0],
-                  ),
-                ),
-              ),
-              
-              // Content
-              Padding(
-                padding: const EdgeInsets.all(10),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Top row - Icon and check
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        // Category icon
-                        Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            template.icon,
-                            style: const TextStyle(fontSize: 16),
-                          ),
-                        ),
-                        // Selection indicator
-                        if (isSelected)
-                          Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: const BoxDecoration(
-                              color: Colors.white,
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              LucideIcons.check,
-                              size: 14,
-                              color: category.color,
-                            ),
-                          ),
-                      ],
-                    ),
-                    
-                    const Spacer(),
-                    
-                    // Title
-                    Text(
-                      template.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    
-                    // Tags
-                    if (template.tags.isNotEmpty)
-                      Wrap(
-                        spacing: 4,
-                        children: template.tags.take(2).map((tag) {
-                          return Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              tag,
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.9),
-                                fontSize: 9,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// Build gradient background for template card
-  Widget _buildTemplateGradient(Color baseColor) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            baseColor.withOpacity(0.8),
-            baseColor.withOpacity(0.4),
-            Colors.black.withOpacity(0.6),
-          ],
-          stops: const [0.0, 0.5, 1.0],
-        ),
       ),
     );
   }
@@ -6600,7 +5858,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                     flex: 2,
                     child: Container(
                       decoration: BoxDecoration(
-                        gradient: LinearGradient(
+                        gradient: const LinearGradient(
                           colors: [KalaColors.purple, KalaColors.cyan],
                         ),
                         borderRadius: BorderRadius.circular(12),
@@ -6617,18 +5875,18 @@ class _GenericToolPageState extends State<GenericToolPage>
                         child: InkWell(
                           onTap: () => Navigator.pop(ctx, true),
                           borderRadius: BorderRadius.circular(12),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 14),
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                const Icon(
+                                Icon(
                                   LucideIcons.sparkles,
                                   color: Colors.white,
                                   size: 18,
                                 ),
-                                const SizedBox(width: 8),
-                                const Text(
+                                SizedBox(width: 8),
+                                Text(
                                   'Generate',
                                   style: TextStyle(
                                     color: Colors.white,
@@ -7233,7 +6491,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                         onPressed: () {
                           Navigator.pop(sheetContext);
                           // Navigate to credits page for VIP purchase
-                          selectedIndexNotifier.value = 3;
+                          selectedIndexNotifier.value = 2;
                         },
                         variant: ButtonVariant.primary,
                         size: ButtonSize.large,

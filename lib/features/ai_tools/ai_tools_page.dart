@@ -155,8 +155,6 @@ class _AiToolsPageState extends State<AiToolsPage>
       "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/tool_config.json.sha256";
 
   late AnimationController _glowController;
-  Set<String> _seenJobIds = {};
-  static const String _seenJobsKey = 'seen_completed_job_ids';
 
   @override
   void initState() {
@@ -168,57 +166,20 @@ class _AiToolsPageState extends State<AiToolsPage>
       duration: const Duration(seconds: 2),
     )..repeat(reverse: true);
 
-    _loadSeenJobs();
-    jobListNotifier.addListener(_checkCompletedJobs);
+    // Listen to shared seen jobs and job list changes
+    seenJobIdsNotifier.addListener(_onSeenJobsChanged);
+    jobListNotifier.addListener(_onSeenJobsChanged);
   }
 
-  Future<void> _loadSeenJobs() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final seenList = prefs.getStringList(_seenJobsKey) ?? [];
-      _seenJobIds = seenList.toSet();
-      setState(() {});
-    } catch (e) {
-      debugPrint('⚠️ Failed to load seen jobs: $e');
-    }
-  }
-
-  Future<void> _markAllCompletedAsSeen() async {
-    try {
-      final completedJobs = jobListNotifier.value
-          .where((j) => j.status == 'completed')
-          .map((j) => j.jobId)
-          .toList();
-      _seenJobIds.addAll(completedJobs);
-
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setStringList(_seenJobsKey, _seenJobIds.toList());
-      setState(() {});
-    } catch (e) {
-      debugPrint('⚠️ Failed to save seen jobs: $e');
-    }
-  }
-
-  void _checkCompletedJobs() {
-    setState(() {
-      // Trigger rebuild to update count
-    });
-  }
-
-  int _getUnseenCompletedCount() {
-    return jobListNotifier.value
-        .where((j) => j.status == 'completed' && !_seenJobIds.contains(j.jobId))
-        .length;
-  }
-
-  bool _hasUnseenCompleted() {
-    return _getUnseenCompletedCount() > 0;
+  void _onSeenJobsChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
     _glowController.dispose();
-    jobListNotifier.removeListener(_checkCompletedJobs);
+    seenJobIdsNotifier.removeListener(_onSeenJobsChanged);
+    jobListNotifier.removeListener(_onSeenJobsChanged);
     super.dispose();
   }
 
@@ -315,42 +276,59 @@ class _AiToolsPageState extends State<AiToolsPage>
         backgroundColor: cs.surface,
         elevation: 0,
         centerTitle: false,
-        titleSpacing: 16,
+        titleSpacing: 0,
+        leading: IconButton(
+          icon: Icon(LucideIcons.arrowLeft, color: cs.onSurface),
+          onPressed: () => Navigator.pop(context),
+        ),
         title: const KalaLogoWithIcon(logoHeight: 30, fontSize: 22),
         actions: [
-          // Credits Chip
+          // Credits Chip (navigable to credits page)
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: ValueListenableBuilder<int>(
               valueListenable: userCreditsNotifier,
-              builder: (_, credits, __) => Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: cs.primaryContainer.withOpacity(0.85),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: cs.primary,
-                    width: 1.2,
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      LucideIcons.gem,
+              builder: (_, credits, __) => GestureDetector(
+                onTap: () {
+                  // Pop back to main scaffold, then switch to credits tab
+                  Navigator.pop(context);
+                  selectedIndexNotifier.value = 2; // Credits/Store page
+                },
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: cs.primaryContainer.withValues(alpha: 0.85),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
                       color: cs.primary,
-                      size: 18,
+                      width: 1.2,
                     ),
-                    const SizedBox(width: 6),
-                    Text(
-                      "$credits",
-                      style: TextStyle(
-                        color: cs.onPrimaryContainer,
-                        fontWeight: FontWeight.w800,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        LucideIcons.gem,
+                        color: cs.primary,
+                        size: 16,
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 6),
+                      Text(
+                        "$credits",
+                        style: TextStyle(
+                          color: cs.onPrimaryContainer,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Icon(
+                        LucideIcons.plus,
+                        color: cs.primary,
+                        size: 14,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -362,8 +340,8 @@ class _AiToolsPageState extends State<AiToolsPage>
             child: ValueListenableBuilder<List<JobModel>>(
               valueListenable: jobListNotifier,
               builder: (_, jobs, __) {
-                final unseenCount = _getUnseenCompletedCount();
-                final hasUnseen = _hasUnseenCompleted();
+                final unseenCount = getUnseenCompletedJobCount();
+                final hasUnseen = hasUnseenCompletedJobs();
 
                 return AnimatedBuilder(
                   animation: _glowController,
@@ -378,8 +356,8 @@ class _AiToolsPageState extends State<AiToolsPage>
                         // Glow effect container
                         if (hasUnseen)
                           Container(
-                            width: 48,
-                            height: 48,
+                            width: 44,
+                            height: 44,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               boxShadow: [
@@ -400,8 +378,8 @@ class _AiToolsPageState extends State<AiToolsPage>
                           ),
                         // Main button
                         Container(
-                          width: 48,
-                          height: 48,
+                          width: 44,
+                          height: 44,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             color: hasUnseen
@@ -419,7 +397,7 @@ class _AiToolsPageState extends State<AiToolsPage>
                             child: InkWell(
                               borderRadius: BorderRadius.circular(24),
                               onTap: () {
-                                _markAllCompletedAsSeen();
+                                markAllCompletedJobsAsSeen();
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
@@ -429,7 +407,7 @@ class _AiToolsPageState extends State<AiToolsPage>
                               },
                               child: Icon(
                                 LucideIcons.folderCheck,
-                                size: 28,
+                                size: 24,
                                 color:
                                     hasUnseen ? cs.primary : cs.onSurface,
                               ),

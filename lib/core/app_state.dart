@@ -35,6 +35,51 @@ void notifyEmailVerificationChanged(bool isVerified) {
 /// Global theme mode notifier - controls app-wide theme
 final ValueNotifier<ThemeMode> themeModeNotifier = ValueNotifier<ThemeMode>(ThemeMode.system);
 
+/// Global seen jobs notifier - tracks which completed jobs user has seen
+/// Shared between ai_tools_page and explore_ai_page
+final ValueNotifier<Set<String>> seenJobIdsNotifier = ValueNotifier<Set<String>>({});
+const String _seenJobsKey = 'seen_completed_job_ids';
+
+/// Load seen jobs from SharedPreferences
+Future<void> loadSeenJobs() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final seenList = prefs.getStringList(_seenJobsKey) ?? [];
+    seenJobIdsNotifier.value = seenList.toSet();
+  } catch (e) {
+    debugPrint('⚠️ Failed to load seen jobs: $e');
+  }
+}
+
+/// Mark all completed jobs as seen
+Future<void> markAllCompletedJobsAsSeen() async {
+  try {
+    final completedJobs = jobListNotifier.value
+        .where((j) => j.status == 'completed')
+        .map((j) => j.jobId)
+        .toList();
+    final updatedSet = Set<String>.from(seenJobIdsNotifier.value)..addAll(completedJobs);
+    seenJobIdsNotifier.value = updatedSet;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_seenJobsKey, updatedSet.toList());
+  } catch (e) {
+    debugPrint('⚠️ Failed to save seen jobs: $e');
+  }
+}
+
+/// Get count of unseen completed jobs
+int getUnseenCompletedJobCount() {
+  return jobListNotifier.value
+      .where((j) => j.status == 'completed' && !seenJobIdsNotifier.value.contains(j.jobId))
+      .length;
+}
+
+/// Check if there are unseen completed jobs
+bool hasUnseenCompletedJobs() {
+  return getUnseenCompletedJobCount() > 0;
+}
+
 /// App Settings that can be read from anywhere
 class AppSettings {
   static bool highQualityPreviews = true;
@@ -81,12 +126,12 @@ class AppSettings {
 
 /// Helpful constants for default tab indices.
 /// Adjust if you reorder the tabs in main.dart.
+/// Navigation: Editor (0), AI Explore (1), Store/Credits (2), Settings (3)
 class AppTabs {
   static const int editor = 0;
-  static const int video = 1;
-  static const int aiTools = 2;
-  static const int credits = 3;
-  static const int settings = 4;
+  static const int explore = 1;
+  static const int credits = 2;
+  static const int settings = 3;
 }
 
 /// Represents a single variation result from the backend
@@ -582,7 +627,7 @@ String? checkRateLimitForSubmission(int jobsToSubmit) {
 void recordBatchSubmission(int jobCount) {
   if (jobCount > 3) {
     _lastBatchSubmissionTime = DateTime.now();
-    debugPrint("🕐 Batch submission recorded: $jobCount jobs at ${_lastBatchSubmissionTime}");
+    debugPrint("🕐 Batch submission recorded: $jobCount jobs at $_lastBatchSubmissionTime");
   }
 }
 

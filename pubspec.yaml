@@ -71,6 +71,7 @@ dependencies:
   # Video-Editing
   pro_video_editor: ^0.3.0
   animated_text_kit: ^4.3.0
+  video_thumbnail: ^0.5.3  # For extracting thumbnails from videos
 
   ### Choose one player below
   video_player: ^2.10.0

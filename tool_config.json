@@ -1,4 +1,435 @@
 {
+  "explore": {
+    "categories": [
+      {
+        "id": "trending",
+        "title": "🔥 Trending",
+        "icon": "flame",
+        "color": "#FF6B35",
+        "subcategories": [
+          {
+            "id": "trending_hot",
+            "title": "Hot Right Now",
+            "templates": ["animate_portrait", "glow_up_photo", "ai_headshot"]
+          },
+          {
+            "id": "trending_new",
+            "title": "New Arrivals",
+            "templates": ["cyberpunk_style", "neon_glow", "slow_motion_effect"]
+          }
+        ],
+        "templates": ["animate_portrait", "glow_up_photo", "ai_headshot", "cyberpunk_style", "neon_glow"]
+      },
+      {
+        "id": "video",
+        "title": "🎬 Video",
+        "icon": "video",
+        "color": "#F59E0B",
+        "subcategories": [
+          {
+            "id": "video_animate",
+            "title": "Photo Animation",
+            "templates": ["animate_portrait", "slow_motion_effect"]
+          },
+          {
+            "id": "video_create",
+            "title": "Text to Video",
+            "templates": ["cinematic_video"]
+          }
+        ],
+        "templates": ["animate_portrait", "cinematic_video", "slow_motion_effect"]
+      },
+      {
+        "id": "photo",
+        "title": "📸 Photo",
+        "icon": "camera",
+        "color": "#8B5CF6",
+        "subcategories": [
+          {
+            "id": "photo_enhance",
+            "title": "Enhancement",
+            "templates": ["glow_up_photo", "hd_upscale"]
+          },
+          {
+            "id": "photo_professional",
+            "title": "Professional",
+            "templates": ["ai_headshot", "remove_bg_quick"]
+          }
+        ],
+        "templates": ["glow_up_photo", "ai_headshot", "remove_bg_quick", "hd_upscale"]
+      },
+      {
+        "id": "enhance",
+        "title": "✨ Enhance",
+        "icon": "sparkles",
+        "color": "#10B981",
+        "subcategories": [
+          {
+            "id": "enhance_quality",
+            "title": "Quality Boost",
+            "templates": ["hd_upscale", "glow_up_photo"]
+          },
+          {
+            "id": "enhance_cleanup",
+            "title": "Cleanup Tools",
+            "templates": ["remove_bg_quick"]
+          }
+        ],
+        "templates": ["glow_up_photo", "hd_upscale", "remove_bg_quick"]
+      },
+      {
+        "id": "styles",
+        "title": "🎨 Styles",
+        "icon": "palette",
+        "color": "#EC4899",
+        "subcategories": [
+          {
+            "id": "styles_artistic",
+            "title": "Artistic",
+            "templates": ["oil_painting", "watercolor_art", "sketch_portrait"]
+          },
+          {
+            "id": "styles_modern",
+            "title": "Modern & Digital",
+            "templates": ["cyberpunk_style", "neon_glow", "pop_art"]
+          },
+          {
+            "id": "styles_anime",
+            "title": "Anime & Cartoon",
+            "templates": ["anime_portrait", "cartoon_me", "comic_book"]
+          }
+        ],
+        "templates": ["anime_portrait", "oil_painting", "cyberpunk_style", "watercolor_art", "sketch_portrait", "pop_art", "neon_glow"]
+      },
+      {
+        "id": "fun",
+        "title": "🎉 Fun",
+        "icon": "party-popper",
+        "color": "#06B6D4",
+        "subcategories": [
+          {
+            "id": "fun_characters",
+            "title": "Character Styles",
+            "templates": ["cartoon_me", "caricature", "comic_book"]
+          },
+          {
+            "id": "fun_retro",
+            "title": "Retro Vibes",
+            "templates": ["vintage_filter", "pixel_art"]
+          }
+        ],
+        "templates": ["anime_portrait", "cartoon_me", "vintage_filter", "pixel_art", "caricature", "comic_book"]
+      }
+    ],
+    "templates": {
+      "animate_portrait": {
+        "id": "animate_portrait",
+        "title": "Animate Portrait",
+        "subtitle": "Bring photos to life with motion",
+        "media_type": "image",
+        "output_type": "video",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/animate_portrait.mp4",
+        "preview_type": "video",
+        "badges": ["🔥 Trending", "Video"],
+        "capability": "animate_image",
+        "model": "fastwan_22_5b",
+        "preferred_model": "fastwan_22_5b",
+        "job_config": {
+          "prompt": "Natural subtle motion, gentle head movement, blinking eyes, soft breathing, cinematic quality",
+          "scale_factor": 1
+        }
+      },
+      "glow_up_photo": {
+        "id": "glow_up_photo",
+        "title": "Glow Up Photo",
+        "subtitle": "Enhance lighting & skin instantly",
+        "media_type": "image",
+        "output_type": "image",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/glow_up.jpg",
+        "badges": ["✨ Popular"],
+        "capability": "edit_image",
+        "model": "flux_kontext_dev",
+        "preferred_model": "flux_kontext_dev",
+        "job_config": {
+          "prompt": "Professional photo enhancement, soft glowing skin, balanced lighting, subtle retouching, natural look, high quality",
+          "scale_factor": 2
+        }
+      },
+      "ai_headshot": {
+        "id": "ai_headshot",
+        "title": "AI Headshot",
+        "subtitle": "Professional profile photos",
+        "media_type": "image",
+        "output_type": "image",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/headshot.jpg",
+        "badges": ["Professional"],
+        "capability": "edit_image",
+        "model": "flux_kontext_dev",
+        "preferred_model": "flux_kontext_dev",
+        "job_config": {
+          "prompt": "Professional headshot photo, studio lighting, clean background, sharp focus, business attire appearance, LinkedIn profile quality",
+          "scale_factor": 2
+        }
+      },
+      "anime_portrait": {
+        "id": "anime_portrait",
+        "title": "Anime Portrait",
+        "subtitle": "Transform into anime style",
+        "media_type": "image",
+        "output_type": "image",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/anime.jpg",
+        "badges": ["🎨 Art"],
+        "capability": "edit_image",
+        "model": "qwen_image_edit",
+        "preferred_model": "qwen_image_edit",
+        "job_config": {
+          "prompt": "Anime style portrait, detailed eyes, soft shading, studio ghibli inspired, vibrant colors, clean linework, beautiful anime character",
+          "scale_factor": 2
+        }
+      },
+      "remove_bg_quick": {
+        "id": "remove_bg_quick",
+        "title": "Remove Background",
+        "subtitle": "One-tap background removal",
+        "media_type": "image",
+        "output_type": "image",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/remove_bg.jpg",
+        "badges": ["⚡ Quick"],
+        "capability": "remove_background",
+        "model": "basic_utils",
+        "preferred_model": "basic_utils",
+        "job_config": {
+          "scale_factor": 2
+        }
+      },
+      "hd_upscale": {
+        "id": "hd_upscale",
+        "title": "HD Upscale",
+        "subtitle": "Enhance resolution & clarity",
+        "media_type": "image",
+        "output_type": "image",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/upscale.jpg",
+        "badges": ["HD"],
+        "capability": "upscale",
+        "model": "aurasrv2",
+        "preferred_model": "aurasrv2",
+        "job_config": {
+          "scale_factor": 4
+        }
+      },
+      "cinematic_video": {
+        "id": "cinematic_video",
+        "title": "Cinematic Video",
+        "subtitle": "Hollywood-style from text",
+        "media_type": "none",
+        "output_type": "video",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/cinematic.mp4",
+        "preview_type": "video",
+        "badges": ["🎬 Pro"],
+        "capability": "create_video",
+        "model": "fastwan_22_5b",
+        "preferred_model": "fastwan_22_5b",
+        "show_prompt": true,
+        "prompt_placeholder": "Describe your cinematic scene...",
+        "job_config": {
+          "scale_factor": 1
+        }
+      },
+      "oil_painting": {
+        "id": "oil_painting",
+        "title": "Oil Painting",
+        "subtitle": "Classic art masterpiece style",
+        "media_type": "image",
+        "output_type": "image",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/oil_painting.jpg",
+        "badges": ["🎨 Art"],
+        "capability": "edit_image",
+        "model": "qwen_image_edit",
+        "preferred_model": "qwen_image_edit",
+        "job_config": {
+          "prompt": "Oil painting style, rich brushstrokes, classical art technique, museum quality, vivid colors, canvas texture, masterpiece painting",
+          "scale_factor": 2
+        }
+      },
+      "cyberpunk_style": {
+        "id": "cyberpunk_style",
+        "title": "Cyberpunk Style",
+        "subtitle": "Futuristic neon aesthetic",
+        "media_type": "image",
+        "output_type": "image",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/cyberpunk.jpg",
+        "badges": ["🌆 Sci-Fi"],
+        "capability": "edit_image",
+        "model": "qwen_image_edit",
+        "preferred_model": "qwen_image_edit",
+        "job_config": {
+          "prompt": "Cyberpunk style, neon lights, futuristic cityscape background, holographic effects, rain-soaked streets, blade runner aesthetic, vibrant pink and blue lighting",
+          "scale_factor": 2
+        }
+      },
+      "cartoon_me": {
+        "id": "cartoon_me",
+        "title": "Cartoon Me",
+        "subtitle": "Pixar-style cartoon avatar",
+        "media_type": "image",
+        "output_type": "image",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/cartoon.jpg",
+        "badges": ["🎭 Fun"],
+        "capability": "edit_image",
+        "model": "qwen_image_edit",
+        "preferred_model": "qwen_image_edit",
+        "job_config": {
+          "prompt": "3D cartoon style, Pixar animation quality, expressive features, smooth render, vibrant colors, friendly character design, CGI quality",
+          "scale_factor": 2
+        }
+      },
+      "vintage_filter": {
+        "id": "vintage_filter",
+        "title": "Vintage Filter",
+        "subtitle": "Retro film photography look",
+        "media_type": "image",
+        "output_type": "image",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/vintage.jpg",
+        "badges": ["📷 Retro"],
+        "capability": "edit_image",
+        "model": "qwen_image_edit",
+        "preferred_model": "qwen_image_edit",
+        "job_config": {
+          "prompt": "Vintage film photography, warm color grading, subtle film grain, nostalgic mood, 1970s aesthetic, soft vignette, analog camera look",
+          "scale_factor": 2
+        }
+      },
+      "slow_motion_effect": {
+        "id": "slow_motion_effect",
+        "title": "Slow Motion",
+        "subtitle": "Dramatic slow-mo from photos",
+        "media_type": "image",
+        "output_type": "video",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/slowmo.mp4",
+        "preview_type": "video",
+        "badges": ["🎬 Cinematic"],
+        "capability": "animate_image",
+        "model": "fastwan_22_5b",
+        "preferred_model": "fastwan_22_5b",
+        "job_config": {
+          "prompt": "Slow motion cinematic movement, dramatic pause, hair flowing gracefully, fabric rippling, particles floating, time frozen moment, ultra smooth motion",
+          "scale_factor": 1
+        }
+      },
+      "watercolor_art": {
+        "id": "watercolor_art",
+        "title": "Watercolor Art",
+        "subtitle": "Soft, flowing watercolor painting",
+        "media_type": "image",
+        "output_type": "image",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/watercolor.jpg",
+        "badges": ["🎨 Art"],
+        "capability": "edit_image",
+        "model": "qwen_image_edit",
+        "preferred_model": "qwen_image_edit",
+        "job_config": {
+          "prompt": "Watercolor painting style, soft washes, flowing colors, delicate brush strokes, artistic paper texture, dreamy atmosphere, professional watercolor art",
+          "scale_factor": 2
+        }
+      },
+      "sketch_portrait": {
+        "id": "sketch_portrait",
+        "title": "Pencil Sketch",
+        "subtitle": "Hand-drawn pencil portrait",
+        "media_type": "image",
+        "output_type": "image",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/sketch.jpg",
+        "badges": ["✏️ Classic"],
+        "capability": "edit_image",
+        "model": "qwen_image_edit",
+        "preferred_model": "qwen_image_edit",
+        "job_config": {
+          "prompt": "Pencil sketch portrait, detailed shading, graphite drawing, realistic charcoal art, fine lines, artistic hatching, professional sketch",
+          "scale_factor": 2
+        }
+      },
+      "pop_art": {
+        "id": "pop_art",
+        "title": "Pop Art",
+        "subtitle": "Andy Warhol inspired style",
+        "media_type": "image",
+        "output_type": "image",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/popart.jpg",
+        "badges": ["🎨 Retro"],
+        "capability": "edit_image",
+        "model": "qwen_image_edit",
+        "preferred_model": "qwen_image_edit",
+        "job_config": {
+          "prompt": "Pop art style, bold colors, high contrast, Andy Warhol inspired, comic book halftone dots, vibrant artistic poster",
+          "scale_factor": 2
+        }
+      },
+      "neon_glow": {
+        "id": "neon_glow",
+        "title": "Neon Glow",
+        "subtitle": "Electric neon light effect",
+        "media_type": "image",
+        "output_type": "image",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/neon.jpg",
+        "badges": ["✨ Glow"],
+        "capability": "edit_image",
+        "model": "qwen_image_edit",
+        "preferred_model": "qwen_image_edit",
+        "job_config": {
+          "prompt": "Neon glow effect, electric light trails, vibrant pink and blue neon, dark background, glowing outlines, synthwave aesthetic, dramatic lighting",
+          "scale_factor": 2
+        }
+      },
+      "pixel_art": {
+        "id": "pixel_art",
+        "title": "Pixel Art",
+        "subtitle": "Retro 8-bit game style",
+        "media_type": "image",
+        "output_type": "image",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/pixel.jpg",
+        "badges": ["🎮 Retro"],
+        "capability": "edit_image",
+        "model": "qwen_image_edit",
+        "preferred_model": "qwen_image_edit",
+        "job_config": {
+          "prompt": "Pixel art style, 8-bit retro gaming aesthetic, blocky pixels, limited color palette, nostalgic video game character, sprite art",
+          "scale_factor": 2
+        }
+      },
+      "caricature": {
+        "id": "caricature",
+        "title": "Caricature",
+        "subtitle": "Exaggerated funny portrait",
+        "media_type": "image",
+        "output_type": "image",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/caricature.jpg",
+        "badges": ["😂 Fun"],
+        "capability": "edit_image",
+        "model": "qwen_image_edit",
+        "preferred_model": "qwen_image_edit",
+        "job_config": {
+          "prompt": "Caricature art style, exaggerated features, humorous portrait, cartoon proportions, expressive face, professional caricature artist quality",
+          "scale_factor": 2
+        }
+      },
+      "comic_book": {
+        "id": "comic_book",
+        "title": "Comic Book",
+        "subtitle": "Marvel/DC superhero style",
+        "media_type": "image",
+        "output_type": "image",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/comic.jpg",
+        "badges": ["💥 Hero"],
+        "capability": "edit_image",
+        "model": "qwen_image_edit",
+        "preferred_model": "qwen_image_edit",
+        "job_config": {
+          "prompt": "Comic book style, bold outlines, dramatic shading, superhero aesthetic, action pose, vibrant colors, Marvel DC inspired, dynamic composition",
+          "scale_factor": 2
+        }
+      }
+    }
+  },
   "capabilities": [
     {
       "id": "create_image",
@@ -644,5 +1075,155 @@
         }
       ]
     }
-  ]
+  ],
+  "stylePresets": {
+    "categories": ["All", "Favorites", "Fun", "Realistic", "Artistic", "Anime", "Cinematic"],
+    "presets": [
+      {
+        "id": "cartoon_3d",
+        "name": "3D Cartoon",
+        "category": "Fun",
+        "promptSnippet": "Pixar 3D animation style, colorful, rounded shapes, playful lighting",
+        "icon": "🎪",
+        "featured": true
+      },
+      {
+        "id": "comic_book",
+        "name": "Comic Book",
+        "category": "Fun",
+        "promptSnippet": "comic book style, bold outlines, halftone dots, speech bubbles aesthetic",
+        "icon": "💥"
+      },
+      {
+        "id": "clay_render",
+        "name": "Clay Render",
+        "category": "Fun",
+        "promptSnippet": "claymation style, soft clay texture, stop motion aesthetic, handcrafted look",
+        "icon": "🎨"
+      },
+      {
+        "id": "sticker",
+        "name": "Sticker Style",
+        "category": "Fun",
+        "promptSnippet": "cute sticker design, white outline, kawaii aesthetic, glossy finish",
+        "icon": "🏷️"
+      },
+      {
+        "id": "photo_real",
+        "name": "Photorealistic",
+        "category": "Realistic",
+        "promptSnippet": "photorealistic, DSLR quality, natural lighting, 8K resolution, sharp details",
+        "icon": "📷",
+        "featured": true
+      },
+      {
+        "id": "product_shot",
+        "name": "Product Shot",
+        "category": "Realistic",
+        "promptSnippet": "professional product photography, studio lighting, clean white background",
+        "icon": "🛍️"
+      },
+      {
+        "id": "fashion",
+        "name": "Fashion Editorial",
+        "category": "Realistic",
+        "promptSnippet": "high fashion editorial, Vogue magazine quality, dramatic pose, designer aesthetic",
+        "icon": "👗"
+      },
+      {
+        "id": "documentary",
+        "name": "Documentary",
+        "category": "Realistic",
+        "promptSnippet": "documentary photography style, candid moment, natural light, authentic",
+        "icon": "🎞️"
+      },
+      {
+        "id": "oil_classic",
+        "name": "Oil Painting",
+        "category": "Artistic",
+        "promptSnippet": "classical oil painting, rich brush strokes, Renaissance masters style, museum quality",
+        "icon": "🖼️",
+        "featured": true
+      },
+      {
+        "id": "watercolor",
+        "name": "Watercolor",
+        "category": "Artistic",
+        "promptSnippet": "watercolor painting, soft color blends, paper texture, artistic drips",
+        "icon": "💧"
+      },
+      {
+        "id": "impressionist",
+        "name": "Impressionist",
+        "category": "Artistic",
+        "promptSnippet": "impressionist painting, visible brush strokes, light and color emphasis, Monet style",
+        "icon": "🌸"
+      },
+      {
+        "id": "digital_art",
+        "name": "Digital Art",
+        "category": "Artistic",
+        "promptSnippet": "professional digital art, trending on ArtStation, concept art quality",
+        "icon": "💻"
+      },
+      {
+        "id": "anime_modern",
+        "name": "Modern Anime",
+        "category": "Anime",
+        "promptSnippet": "modern anime style, detailed shading, vibrant colors, high quality animation",
+        "icon": "🎌",
+        "featured": true
+      },
+      {
+        "id": "ghibli",
+        "name": "Studio Ghibli",
+        "category": "Anime",
+        "promptSnippet": "Studio Ghibli style, Hayao Miyazaki aesthetic, magical realism, detailed backgrounds",
+        "icon": "🏯"
+      },
+      {
+        "id": "manga",
+        "name": "Manga Panel",
+        "category": "Anime",
+        "promptSnippet": "manga illustration style, black and white, screentones, dynamic composition",
+        "icon": "📖"
+      },
+      {
+        "id": "chibi",
+        "name": "Chibi",
+        "category": "Anime",
+        "promptSnippet": "chibi style, cute proportions, big head small body, kawaii expressions",
+        "icon": "🥰"
+      },
+      {
+        "id": "film_noir",
+        "name": "Film Noir",
+        "category": "Cinematic",
+        "promptSnippet": "film noir style, black and white, dramatic shadows, 1940s detective aesthetic",
+        "icon": "🎬",
+        "featured": true
+      },
+      {
+        "id": "blockbuster",
+        "name": "Blockbuster",
+        "category": "Cinematic",
+        "promptSnippet": "Hollywood blockbuster look, epic scale, cinematic color grading, anamorphic lens",
+        "icon": "🎥"
+      },
+      {
+        "id": "scifi",
+        "name": "Sci-Fi Epic",
+        "category": "Cinematic",
+        "promptSnippet": "science fiction aesthetic, futuristic technology, epic space opera, blade runner vibes",
+        "icon": "🚀"
+      },
+      {
+        "id": "horror",
+        "name": "Horror",
+        "category": "Cinematic",
+        "promptSnippet": "horror movie aesthetic, unsettling atmosphere, dark shadows, eerie lighting",
+        "icon": "👻"
+      }
+    ]
+  }
 }

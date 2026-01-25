@@ -24,7 +24,6 @@ import 'core/services/ad_service.dart';
 import 'core/services/integrity_service.dart';
 
 import 'features/media_editor/media_editor_page.dart';
-import 'features/ai_tools/ai_tools_page.dart';
 import 'features/ai_tools/generic_tool_page.dart';
 import 'features/explore/explore_ai_page.dart';
 import 'features/credits/credits_page.dart';
@@ -418,6 +417,7 @@ Future<void> initializeApp() async {
   // Initialize persistent app state
   await initAppState();
   await AppSettings.load();
+  await loadSeenJobs(); // Load shared seen jobs state
   await FileService.loadPreviewCache();
   await ThumbnailService.instance.init();
   await UserService().initialize();
@@ -494,6 +494,22 @@ Future<void> initializeApp() async {
     final model = (data['model'] ?? '').toString();
     final outputType = (data['outputType'] ?? '').toString();
 
+    // 🛡️ EMPTY NOTIFICATION CHECK
+    // Server sometimes sends empty data payloads for bulk/variation jobs
+    // When this happens, trigger a refresh instead of showing confusing notifications
+    if (data.isEmpty || jobId.isEmpty) {
+      debugPrint("⚠️ FCM received empty data payload - triggering job refresh");
+      debugPrint("   notification.title: ${message.notification?.title}");
+      debugPrint("   notification.body: ${message.notification?.body}");
+      debugPrint("   data keys: ${data.keys.toList()}");
+      
+      // Trigger a refresh to catch any updates the empty notification was about
+      await PollingService.instance.refreshProcessingJobs(forceRefresh: true);
+      
+      // Don't show notification for empty data - it's confusing
+      return;
+    }
+
     // 🐛 DEBUG: Show raw FCM data in snackbar (REMOVE AFTER DEBUGGING)
     if (navigatorKey.currentContext != null) {
       final debugInfo = '''
@@ -505,13 +521,13 @@ title: $title
 model: $model
 notif_title: ${message.notification?.title}
 notif_body: ${message.notification?.body}
-download_url: ${downloadUrl.isNotEmpty ? '${downloadUrl.substring(0, 50)}...' : 'empty'}
+download_url: ${downloadUrl.isNotEmpty ? '${downloadUrl.substring(0, 50.clamp(0, downloadUrl.length))}...' : 'empty'}
 all_data: ${data.keys.join(', ')}
 ''';
       ScaffoldMessenger.of(navigatorKey.currentContext!).showSnackBar(
         SnackBar(
           content: Text(debugInfo, style: const TextStyle(fontSize: 11)),
-          duration: const Duration(seconds: 15),
+          duration: const Duration(seconds: 10),
           backgroundColor: Colors.black87,
           behavior: SnackBarBehavior.floating,
           action: SnackBarAction(
@@ -524,16 +540,14 @@ all_data: ${data.keys.join(', ')}
     }
     // 🐛 END DEBUG
 
-    if (jobId.isNotEmpty) {
-      await _applyFcmUpdate({
-        'job_id': jobId,
-        'status': normalizedStatus,
-        'download_url': downloadUrl,
-        'title': title,
-        'model': model,
-        'outputType': outputType,
-      });
-    }
+    await _applyFcmUpdate({
+      'job_id': jobId,
+      'status': normalizedStatus,
+      'download_url': downloadUrl,
+      'title': title,
+      'model': model,
+      'outputType': outputType,
+    });
 
     // Use normalizedStatus for notification content (not raw status which might be empty)
     // Also check if server notification is valid (not generic/incomplete)
@@ -720,7 +734,7 @@ void _openResultManager() async {
   }
 
   await _refreshJobsAfterNotification(); // 🆕 Force refresh
-  selectedIndexNotifier.value = 1; // AI Tools tab (index 1 after navigation restructure)
+  selectedIndexNotifier.value = 1; // AI Explore tab
   _openOrReplaceResultManager();
 }
 
@@ -755,9 +769,9 @@ class KalaAIApp extends StatefulWidget {
 class _KalaAIAppState extends State<KalaAIApp> {
   bool _showSplash = true;
 
+  // Navigation: Editor, AI Explore, Store, Settings (AI Tools accessible from Explore)
   final List<Widget> _pages = const [
     MediaEditorPage(),
-    AiToolsPage(),
     ExploreAIPage(),
     CreditsPage(),
     SettingsPage(),
@@ -821,6 +835,9 @@ class _MainAppScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
     return Scaffold(
       body: SafeArea(
         child: ValueListenableBuilder<int>(
@@ -836,26 +853,149 @@ class _MainAppScaffold extends StatelessWidget {
       bottomNavigationBar: ValueListenableBuilder<int>(
         valueListenable: selectedIndexNotifier,
         builder: (_, currentIndex, __) {
-          return NavigationBar(
-            selectedIndex: currentIndex,
-            onDestinationSelected: (i) => selectedIndexNotifier.value = i,
-            destinations: const [
-              NavigationDestination(
-                  icon: Icon(LucideIcons.penTool), label: "Editor"),
-              NavigationDestination(
-                  icon: Icon(LucideIcons.sparkles), label: "AI Tools"),
-              NavigationDestination(
-                  icon: Icon(LucideIcons.compass), label: "Explore"),
-              NavigationDestination(
-                  icon: Icon(LucideIcons.store), label: "Store"),
-              NavigationDestination(
-                  icon: Icon(LucideIcons.settings), label: "Settings"),
-            ],
+          return _ModernBottomNav(
+            currentIndex: currentIndex,
+            onTap: (i) => selectedIndexNotifier.value = i,
+            colorScheme: cs,
+            isDark: isDark,
           );
         },
       ),
     );
   }
+}
+
+// Custom modern bottom navigation bar with curves
+class _ModernBottomNav extends StatelessWidget {
+  final int currentIndex;
+  final ValueChanged<int> onTap;
+  final ColorScheme colorScheme;
+  final bool isDark;
+
+  const _ModernBottomNav({
+    required this.currentIndex,
+    required this.onTap,
+    required this.colorScheme,
+    required this.isDark,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = colorScheme;
+    
+    // Navigation items configuration
+    final items = [
+      _NavItem(icon: LucideIcons.palette, label: 'Editor'),
+      _NavItem(icon: LucideIcons.sparkles, label: 'AI Explore'),
+      _NavItem(icon: LucideIcons.gem, label: 'Store'),
+      _NavItem(icon: LucideIcons.settings, label: 'Settings'),
+    ];
+
+    return Container(
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        boxShadow: [
+          BoxShadow(
+            color: isDark 
+                ? Colors.black.withValues(alpha: 0.3)
+                : Colors.black.withValues(alpha: 0.08),
+            blurRadius: 16,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: List.generate(items.length, (index) {
+              final item = items[index];
+              final isSelected = index == currentIndex;
+              
+              return Expanded(
+                child: GestureDetector(
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    onTap(index);
+                  },
+                  behavior: HitTestBehavior.opaque,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    curve: Curves.easeOutCubic,
+                    padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Icon with animated container
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          curve: Curves.easeOutCubic,
+                          padding: EdgeInsets.symmetric(
+                            horizontal: isSelected ? 16 : 10,
+                            vertical: isSelected ? 8 : 6,
+                          ),
+                          decoration: BoxDecoration(
+                            gradient: isSelected
+                                ? LinearGradient(
+                                    colors: [
+                                      cs.primary.withValues(alpha: 0.2),
+                                      cs.secondary.withValues(alpha: 0.15),
+                                    ],
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                  )
+                                : null,
+                            color: isSelected ? null : Colors.transparent,
+                            borderRadius: BorderRadius.circular(14),
+                            border: isSelected
+                                ? Border.all(
+                                    color: cs.primary.withValues(alpha: 0.3),
+                                    width: 1,
+                                  )
+                                : null,
+                          ),
+                          child: Icon(
+                            item.icon,
+                            size: isSelected ? 26 : 24,
+                            color: isSelected 
+                                ? cs.primary 
+                                : cs.onSurfaceVariant.withValues(alpha: 0.7),
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        // Label
+                        AnimatedDefaultTextStyle(
+                          duration: const Duration(milliseconds: 200),
+                          style: TextStyle(
+                            fontSize: isSelected ? 12 : 11,
+                            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                            color: isSelected 
+                                ? cs.primary 
+                                : cs.onSurfaceVariant.withValues(alpha: 0.7),
+                          ),
+                          child: Text(item.label),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NavItem {
+  final IconData icon;
+  final String label;
+  
+  const _NavItem({required this.icon, required this.label});
 }
 
 // ----------------------------------------------------
