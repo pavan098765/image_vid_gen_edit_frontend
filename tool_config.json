@@ -1,4 +1,243 @@
 {
+  "explore": {
+    "categories": [
+      {
+        "id": "trending",
+        "title": "🔥 Trending",
+        "icon": "flame",
+        "color": "#FF6B35",
+        "templates": ["animate_portrait", "glow_up_photo", "ai_headshot"]
+      },
+      {
+        "id": "video",
+        "title": "🎬 Video",
+        "icon": "video",
+        "color": "#F59E0B",
+        "templates": ["animate_portrait", "cinematic_video", "slow_motion_effect"]
+      },
+      {
+        "id": "photo",
+        "title": "📸 Photo",
+        "icon": "camera",
+        "color": "#8B5CF6",
+        "templates": ["glow_up_photo", "ai_headshot", "remove_bg_quick"]
+      },
+      {
+        "id": "enhance",
+        "title": "✨ Enhance",
+        "icon": "sparkles",
+        "color": "#10B981",
+        "templates": ["glow_up_photo", "hd_upscale", "remove_bg_quick"]
+      },
+      {
+        "id": "styles",
+        "title": "🎨 Styles",
+        "icon": "palette",
+        "color": "#EC4899",
+        "templates": ["anime_portrait", "oil_painting", "cyberpunk_style"]
+      },
+      {
+        "id": "fun",
+        "title": "🎉 Fun",
+        "icon": "party-popper",
+        "color": "#06B6D4",
+        "templates": ["anime_portrait", "cartoon_me", "vintage_filter"]
+      }
+    ],
+    "templates": {
+      "animate_portrait": {
+        "id": "animate_portrait",
+        "title": "Animate Portrait",
+        "subtitle": "Bring photos to life with motion",
+        "media_type": "image",
+        "output_type": "video",
+        "preview_asset": "assets/explore/animate_portrait.jpg",
+        "badges": ["🔥 Trending", "Video"],
+        "capability": "animate_image",
+        "model": "fastwan_22_5b",
+        "preferred_model": "fastwan_22_5b",
+        "job_config": {
+          "prompt": "Natural subtle motion, gentle head movement, blinking eyes, soft breathing, cinematic quality",
+          "scale_factor": 1
+        }
+      },
+      "glow_up_photo": {
+        "id": "glow_up_photo",
+        "title": "Glow Up Photo",
+        "subtitle": "Enhance lighting & skin instantly",
+        "media_type": "image",
+        "output_type": "image",
+        "preview_asset": "assets/explore/glow_up.jpg",
+        "badges": ["✨ Popular"],
+        "capability": "edit_image",
+        "model": "flux_kontext_dev",
+        "preferred_model": "flux_kontext_dev",
+        "job_config": {
+          "prompt": "Professional photo enhancement, soft glowing skin, balanced lighting, subtle retouching, natural look, high quality",
+          "scale_factor": 2
+        }
+      },
+      "ai_headshot": {
+        "id": "ai_headshot",
+        "title": "AI Headshot",
+        "subtitle": "Professional profile photos",
+        "media_type": "image",
+        "output_type": "image",
+        "preview_asset": "assets/explore/headshot.jpg",
+        "badges": ["Professional"],
+        "capability": "edit_image",
+        "model": "flux_kontext_dev",
+        "preferred_model": "flux_kontext_dev",
+        "job_config": {
+          "prompt": "Professional headshot photo, studio lighting, clean background, sharp focus, business attire appearance, LinkedIn profile quality",
+          "scale_factor": 2
+        }
+      },
+      "anime_portrait": {
+        "id": "anime_portrait",
+        "title": "Anime Portrait",
+        "subtitle": "Transform into anime style",
+        "media_type": "image",
+        "output_type": "image",
+        "preview_asset": "assets/explore/anime.jpg",
+        "badges": ["🎨 Art"],
+        "capability": "edit_image",
+        "model": "qwen_image_edit",
+        "preferred_model": "qwen_image_edit",
+        "job_config": {
+          "prompt": "Anime style portrait, detailed eyes, soft shading, studio ghibli inspired, vibrant colors, clean linework, beautiful anime character",
+          "scale_factor": 2
+        }
+      },
+      "remove_bg_quick": {
+        "id": "remove_bg_quick",
+        "title": "Remove Background",
+        "subtitle": "One-tap background removal",
+        "media_type": "image",
+        "output_type": "image",
+        "preview_asset": "assets/explore/remove_bg.jpg",
+        "badges": ["⚡ Quick"],
+        "capability": "remove_background",
+        "model": "basic_utils",
+        "preferred_model": "basic_utils",
+        "job_config": {
+          "scale_factor": 2
+        }
+      },
+      "hd_upscale": {
+        "id": "hd_upscale",
+        "title": "HD Upscale",
+        "subtitle": "Enhance resolution & clarity",
+        "media_type": "image",
+        "output_type": "image",
+        "preview_asset": "assets/explore/upscale.jpg",
+        "badges": ["HD"],
+        "capability": "upscale",
+        "model": "aurasrv2",
+        "preferred_model": "aurasrv2",
+        "job_config": {
+          "scale_factor": 4
+        }
+      },
+      "cinematic_video": {
+        "id": "cinematic_video",
+        "title": "Cinematic Video",
+        "subtitle": "Hollywood-style from text",
+        "media_type": "none",
+        "output_type": "video",
+        "preview_asset": "assets/explore/cinematic.jpg",
+        "badges": ["🎬 Pro"],
+        "capability": "create_video",
+        "model": "fastwan_22_5b",
+        "preferred_model": "fastwan_22_5b",
+        "show_prompt": true,
+        "prompt_placeholder": "Describe your cinematic scene...",
+        "job_config": {
+          "scale_factor": 1
+        }
+      },
+      "oil_painting": {
+        "id": "oil_painting",
+        "title": "Oil Painting",
+        "subtitle": "Classic art masterpiece style",
+        "media_type": "image",
+        "output_type": "image",
+        "preview_asset": "assets/explore/oil_painting.jpg",
+        "badges": ["🎨 Art"],
+        "capability": "edit_image",
+        "model": "qwen_image_edit",
+        "preferred_model": "qwen_image_edit",
+        "job_config": {
+          "prompt": "Oil painting style, rich brushstrokes, classical art technique, museum quality, vivid colors, canvas texture, masterpiece painting",
+          "scale_factor": 2
+        }
+      },
+      "cyberpunk_style": {
+        "id": "cyberpunk_style",
+        "title": "Cyberpunk Style",
+        "subtitle": "Futuristic neon aesthetic",
+        "media_type": "image",
+        "output_type": "image",
+        "preview_asset": "assets/explore/cyberpunk.jpg",
+        "badges": ["🌆 Sci-Fi"],
+        "capability": "edit_image",
+        "model": "qwen_image_edit",
+        "preferred_model": "qwen_image_edit",
+        "job_config": {
+          "prompt": "Cyberpunk style, neon lights, futuristic cityscape background, holographic effects, rain-soaked streets, blade runner aesthetic, vibrant pink and blue lighting",
+          "scale_factor": 2
+        }
+      },
+      "cartoon_me": {
+        "id": "cartoon_me",
+        "title": "Cartoon Me",
+        "subtitle": "Pixar-style cartoon avatar",
+        "media_type": "image",
+        "output_type": "image",
+        "preview_asset": "assets/explore/cartoon.jpg",
+        "badges": ["🎭 Fun"],
+        "capability": "edit_image",
+        "model": "qwen_image_edit",
+        "preferred_model": "qwen_image_edit",
+        "job_config": {
+          "prompt": "3D cartoon style, Pixar animation quality, expressive features, smooth render, vibrant colors, friendly character design, CGI quality",
+          "scale_factor": 2
+        }
+      },
+      "vintage_filter": {
+        "id": "vintage_filter",
+        "title": "Vintage Filter",
+        "subtitle": "Retro film photography look",
+        "media_type": "image",
+        "output_type": "image",
+        "preview_asset": "assets/explore/vintage.jpg",
+        "badges": ["📷 Retro"],
+        "capability": "edit_image",
+        "model": "qwen_image_edit",
+        "preferred_model": "qwen_image_edit",
+        "job_config": {
+          "prompt": "Vintage film photography, warm color grading, subtle film grain, nostalgic mood, 1970s aesthetic, soft vignette, analog camera look",
+          "scale_factor": 2
+        }
+      },
+      "slow_motion_effect": {
+        "id": "slow_motion_effect",
+        "title": "Slow Motion",
+        "subtitle": "Dramatic slow-mo from photos",
+        "media_type": "image",
+        "output_type": "video",
+        "preview_asset": "assets/explore/slowmo.jpg",
+        "badges": ["🎬 Cinematic"],
+        "capability": "animate_image",
+        "model": "fastwan_22_5b",
+        "preferred_model": "fastwan_22_5b",
+        "job_config": {
+          "prompt": "Slow motion cinematic movement, dramatic pause, hair flowing gracefully, fabric rippling, particles floating, time frozen moment, ultra smooth motion",
+          "scale_factor": 1
+        }
+      }
+    }
+  },
   "capabilities": [
     {
       "id": "create_image",

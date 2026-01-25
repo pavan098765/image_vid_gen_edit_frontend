@@ -6617,18 +6617,18 @@ class _GenericToolPageState extends State<GenericToolPage>
                         child: InkWell(
                           onTap: () => Navigator.pop(ctx, true),
                           borderRadius: BorderRadius.circular(12),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 14),
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                const Icon(
+                                Icon(
                                   LucideIcons.sparkles,
                                   color: Colors.white,
                                   size: 18,
                                 ),
-                                const SizedBox(width: 8),
-                                const Text(
+                                SizedBox(width: 8),
+                                Text(
                                   'Generate',
                                   style: TextStyle(
                                     color: Colors.white,
