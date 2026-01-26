@@ -1166,6 +1166,8 @@ class _SettingsPageState extends State<SettingsPage> {
                     fontWeight: FontWeight.w700,
                     fontSize: 17,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
                 Text(
@@ -1174,10 +1176,13 @@ class _SettingsPageState extends State<SettingsPage> {
                     color: cs.onSurfaceVariant.withOpacity(0.7),
                     fontSize: 14,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
           ),
+          const SizedBox(width: 8),
           // Verified badge
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -1273,6 +1278,8 @@ class _SettingsPageState extends State<SettingsPage> {
                         fontWeight: FontWeight.w700,
                         fontSize: 17,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 2),
                     Text(
@@ -1281,10 +1288,13 @@ class _SettingsPageState extends State<SettingsPage> {
                         color: cs.onSurfaceVariant.withOpacity(0.7),
                         fontSize: 14,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
               ),
+              const SizedBox(width: 8),
               // Pending badge
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),

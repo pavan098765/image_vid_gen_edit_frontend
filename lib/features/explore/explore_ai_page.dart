@@ -489,19 +489,27 @@ class _ExploreAIPageState extends State<ExploreAIPage>
       final cachedData = prefs.getString(_cacheKey);
       final cachedHash = prefs.getString(_cacheHashKey);
 
-      if (lastFetchedDate == today && cachedData != null && cachedHash != null) {
+      // Load cached config immediately for instant UI (non-blocking)
+      if (cachedData != null && cachedHash != null) {
         final computedHash = _computeConfigHash(cachedData);
         if (computedHash == cachedHash) {
           debugPrint("📦 Explore: Using verified cached config");
           _parseConfig(cachedData);
+          
+          // Check for updates in background only if cache is older than today
+          // (avoid unnecessary checks if we just fetched today)
+          if (lastFetchedDate != today) {
+            _checkForConfigUpdates(prefs, today, cachedHash);
+          }
           return;
         }
       }
 
+      // No valid cache - fetch from network with timeout
       try {
         final responses = await Future.wait([
-          http.get(Uri.parse(_configUrl)),
-          http.get(Uri.parse(_configHashUrl)).catchError((_) => http.Response('', 404)),
+          http.get(Uri.parse(_configUrl)).timeout(const Duration(seconds: 10)),
+          http.get(Uri.parse(_configHashUrl)).timeout(const Duration(seconds: 5)).catchError((_) => http.Response('', 404)),
         ]);
 
         final configResponse = responses[0];
@@ -543,26 +551,93 @@ class _ExploreAIPageState extends State<ExploreAIPage>
       });
     }
   }
+  
+  /// Check for config updates in background (non-blocking)
+  Future<void> _checkForConfigUpdates(SharedPreferences prefs, String today, String currentHash) async {
+    try {
+      final hashResponse = await http.get(Uri.parse(_configHashUrl))
+          .timeout(const Duration(seconds: 5))
+          .catchError((_) => http.Response('', 404));
+      
+      if (hashResponse.statusCode == 200) {
+        final serverHash = hashResponse.body.trim().toLowerCase();
+        if (serverHash.isNotEmpty && serverHash != currentHash) {
+          // Config updated - fetch new version
+          debugPrint("🔄 Explore: Config updated, fetching new version...");
+          final configResponse = await http.get(Uri.parse(_configUrl))
+              .timeout(const Duration(seconds: 10));
+          
+          if (configResponse.statusCode == 200) {
+            final configBody = configResponse.body;
+            final computedHash = _computeConfigHash(configBody);
+            
+            await prefs.setString(_cacheKey, configBody);
+            await prefs.setString(_cacheDateKey, today);
+            await prefs.setString(_cacheHashKey, computedHash);
+            
+            if (mounted) {
+              _parseConfig(configBody);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ Background config update check failed: $e');
+      // Silently fail - user already has cached config
+    }
+  }
 
   void _parseConfig(String jsonStr) {
-    final config = jsonDecode(jsonStr) as Map<String, dynamic>;
+    // Parse JSON in isolate for better performance (non-blocking UI)
+    compute(_parseConfigInIsolate, jsonStr).then((parsed) {
+      if (!mounted) return;
+      
+      _exploreConfig = parsed['explore'] as Map<String, dynamic>?;
+      _categories = _exploreConfig?['categories'] ?? [];
+      _templates = _exploreConfig?['templates'] ?? {};
+      _capabilitiesList = parsed['capabilities'] ?? []; // Store raw list for AI tools preview
+      _capabilities = _buildCapabilitiesMap(_capabilitiesList);
+      
+      // Initialize hero slideshow with random templates
+      _initHeroSlideUrls();
 
-    _exploreConfig = config['explore'] as Map<String, dynamic>?;
-    _categories = _exploreConfig?['categories'] ?? [];
-    _templates = _exploreConfig?['templates'] ?? {};
-    _capabilitiesList = config['capabilities'] ?? []; // Store raw list for AI tools preview
-    _capabilities = _buildCapabilitiesMap(_capabilitiesList);
-    
-    // Initialize hero slideshow with random templates
-    _initHeroSlideUrls();
+      setState(() => _isLoading = false);
 
-    setState(() => _isLoading = false);
-
-    // Start animations
-    _headerAnimController.forward();
-    Future.delayed(const Duration(milliseconds: 200), () {
-      _cardRevealController.forward();
+      // Start animations
+      _headerAnimController.forward();
+      Future.delayed(const Duration(milliseconds: 200), () {
+        _cardRevealController.forward();
+      });
+    }).catchError((e) {
+      debugPrint('❌ Failed to parse config: $e');
+      // Fallback: parse synchronously if compute fails
+      try {
+        final config = jsonDecode(jsonStr) as Map<String, dynamic>;
+        _exploreConfig = config['explore'] as Map<String, dynamic>?;
+        _categories = _exploreConfig?['categories'] ?? [];
+        _templates = _exploreConfig?['templates'] ?? {};
+        _capabilitiesList = config['capabilities'] ?? [];
+        _capabilities = _buildCapabilitiesMap(_capabilitiesList);
+        _initHeroSlideUrls();
+        setState(() => _isLoading = false);
+        _headerAnimController.forward();
+        Future.delayed(const Duration(milliseconds: 200), () {
+          _cardRevealController.forward();
+        });
+      } catch (e2) {
+        if (mounted) {
+          setState(() {
+            _loadError = 'Failed to parse templates';
+            _isLoading = false;
+          });
+        }
+      }
     });
+  }
+  
+  /// Parse config in isolate (static function for compute)
+  static Map<String, dynamic> _parseConfigInIsolate(String jsonStr) {
+    return jsonDecode(jsonStr) as Map<String, dynamic>;
   }
 
   Map<String, dynamic> _buildCapabilitiesMap(List<dynamic> capabilities) {
@@ -3652,9 +3727,9 @@ class _TemplateCardState extends State<_TemplateCard>
       }
     }
 
-    // Continue checking visibility
+    // Continue checking visibility (reduced frequency for better performance)
     if (mounted) {
-      Future.delayed(const Duration(milliseconds: 200), _checkVisibility);
+      Future.delayed(const Duration(milliseconds: 500), _checkVisibility);
     }
   }
 
@@ -5184,8 +5259,32 @@ class _CategoryDetailPageState extends State<_CategoryDetailPage> {
           ),
           const SizedBox(height: 12),
 
-          // Templates grid
-          _buildAllTemplatesGrid(cs, isDark, templateIds.cast<String>()),
+          // Horizontal scrollable templates list
+          SizedBox(
+            height: 240, // Fixed height for horizontal scroll
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              itemCount: templateIds.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 12),
+              itemBuilder: (context, index) {
+                final templateId = templateIds[index] as String;
+                final template = widget.templates[templateId] as Map<String, dynamic>?;
+
+                if (template == null) return const SizedBox.shrink();
+
+                return SizedBox(
+                  width: 160, // Fixed width for each card
+                  child: _TemplateCard(
+                    template: template,
+                    capabilities: widget.capabilities,
+                    isDark: isDark,
+                    onTap: () => _showTemplateConfigSheet(template),
+                  ),
+                );
+              },
+            ),
+          ),
         ],
       ),
     );
