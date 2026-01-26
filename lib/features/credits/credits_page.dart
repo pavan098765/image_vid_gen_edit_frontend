@@ -15,6 +15,7 @@ import 'package:kala_ai_create_images_videos_with_ai/core/services/user_service.
 import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_button.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/sign_in_prompt.dart';
+import 'package:kala_ai_create_images_videos_with_ai/features/credits/offerwall_screen.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 class CreditsPage extends StatefulWidget {
@@ -1522,70 +1523,141 @@ class _CreditsPageState extends State<CreditsPage> {
           ],
         ),
         const SizedBox(height: 10),
-        // Offerwall placeholder
-        _buildOfferwallPlaceholder(cs),
+        // Offerwall - AdGem integration
+        _buildOfferwallCard(cs),
       ],
     );
   }
   
-  /// Offerwall placeholder card
-  Widget _buildOfferwallPlaceholder(ColorScheme cs) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withOpacity(0.3),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: cs.outline.withOpacity(0.15)),
+  /// Open the AdGem Offerwall
+  void _openOfferwall() async {
+    if (!_authService.isSignedIn) {
+      final signedIn = await requireSignIn(context, feature: 'Offerwall');
+      if (!signedIn) return;
+    }
+    
+    if (!mounted) return;
+    
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => OfferwallScreen(
+          onReturn: () {
+            // Refresh credits when returning from offerwall
+            // Credits may take a few minutes to appear after completing offers
+            _refreshCredits();
+          },
+        ),
       ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: cs.primaryContainer.withOpacity(0.3),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(LucideIcons.gift, size: 20, color: cs.primary),
+    );
+    
+    // Also refresh when the navigation completes
+    if (mounted) {
+      _refreshCredits();
+    }
+  }
+  
+  /// Offerwall card - Opens AdGem offerwall for users to earn free gems
+  Widget _buildOfferwallCard(ColorScheme cs) {
+    return GestureDetector(
+      onTap: _openOfferwall,
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              Colors.green.shade600.withOpacity(0.12),
+              Colors.teal.shade600.withOpacity(0.08),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Offerwall',
-                  style: TextStyle(
-                    color: cs.onSurface,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.green.shade400.withOpacity(0.3)),
+        ),
+        child: Row(
+          children: [
+            // Icon with gradient background
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Colors.green.shade500, Colors.teal.shade600],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                 ),
-                Text(
-                  'Complete offers for gems',
-                  style: TextStyle(
-                    color: cs.onSurfaceVariant,
-                    fontSize: 11,
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.green.withOpacity(0.3),
+                    blurRadius: 6,
                   ),
-                ),
-              ],
+                ],
+              ),
+              child: const Icon(LucideIcons.gift, size: 20, color: Colors.white),
             ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: cs.primaryContainer.withOpacity(0.3),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              'Coming Soon',
-              style: TextStyle(
-                color: cs.primary,
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
+            const SizedBox(width: 12),
+            // Text content
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        'Offerwall',
+                        style: TextStyle(
+                          color: cs.onSurface,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [Colors.green.shade500, Colors.teal.shade600],
+                          ),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          'FREE',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 8,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Complete offers to earn gems',
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
               ),
             ),
-          ),
-        ],
+            // Arrow icon
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                LucideIcons.arrowRight,
+                size: 16,
+                color: Colors.green.shade600,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
