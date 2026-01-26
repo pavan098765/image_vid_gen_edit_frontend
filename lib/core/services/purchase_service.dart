@@ -112,7 +112,7 @@ class VipPackConfig {
 const List<VipPackConfig> kVipPacks = [
   VipPackConfig(productId: kVipWeeklyProductId, label: 'Weekly', days: 7),
   VipPackConfig(productId: kVipMonthlyProductId, label: 'Monthly', days: 30, isPopular: true),
-  VipPackConfig(productId: kVipYearlyProductId, label: 'Yearly', days: 365, savings: 'Save 50%'),
+  VipPackConfig(productId: kVipYearlyProductId, label: 'Yearly', days: 365, savings: 'Save 35%'),
 ];
 
 // ============================================================

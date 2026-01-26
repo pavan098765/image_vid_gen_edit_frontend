@@ -15,6 +15,7 @@ import 'package:kala_ai_create_images_videos_with_ai/core/services/user_service.
 import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_button.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/sign_in_prompt.dart';
+import 'package:kala_ai_create_images_videos_with_ai/features/credits/offerwall_screen.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 class CreditsPage extends StatefulWidget {
@@ -612,8 +613,8 @@ class _CreditsPageState extends State<CreditsPage> {
   void _showAdRewardDialog(int credits) {
     final cs = Theme.of(context).colorScheme;
     
-    // credits = 0 means this was an odd ad (1st, 3rd, 5th...) - no credit earned yet
-    // credits > 0 means this was an even ad (2nd, 4th, 6th...) - credit was earned
+    // credits = 0 means we haven't reached 4 ads yet - no credit earned yet
+    // credits > 0 means this was the 4th ad (4th, 8th, 12th...) - credit was earned
     final didEarnCredit = credits > 0;
     
     showDialog(
@@ -680,48 +681,65 @@ class _CreditsPageState extends State<CreditsPage> {
                 ),
               ),
             ] else ...[
-              // Progress message - watched 1 ad, need 1 more
-              Text(
-                'Ad watched!',
-                style: TextStyle(
-                  color: cs.onSurface,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 12),
-              // Visual progress: 1 filled, 1 empty
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    width: 24,
-                    height: 24,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: cs.primary,
-                    ),
-                    child: Icon(LucideIcons.check, size: 14, color: cs.onPrimary),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    width: 24,
-                    height: 24,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: cs.outline, width: 2),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text(
-                '1 more ad for 1 gem',
-                style: TextStyle(
-                  color: Colors.blue.shade600,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
+              // Progress message - need more ads to earn a gem
+              // Calculate current progress (after this ad was just watched)
+              Builder(
+                builder: (context) {
+                  final adsWatched = _adStatus?.adsWatchedToday ?? 0;
+                  final progress = adsWatched % 4;
+                  // If progress is 0 after watching, we just earned (shouldn't reach here)
+                  // Otherwise progress shows how many of 4 ads we've watched
+                  final displayProgress = progress == 0 ? 4 : progress;
+                  final remaining = 4 - displayProgress;
+                  
+                  return Column(
+                    children: [
+                      Text(
+                        'Ad watched!',
+                        style: TextStyle(
+                          color: cs.onSurface,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      // Visual progress: show 4 dots
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          for (int i = 0; i < 4; i++) ...[
+                            Container(
+                              width: 24,
+                              height: 24,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: i < displayProgress ? cs.primary : null,
+                                border: i < displayProgress 
+                                    ? null 
+                                    : Border.all(color: cs.outline, width: 2),
+                              ),
+                              child: i < displayProgress 
+                                  ? Icon(LucideIcons.check, size: 14, color: cs.onPrimary)
+                                  : null,
+                            ),
+                            if (i < 3) const SizedBox(width: 6),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        remaining == 1 
+                            ? '1 more ad for 1 gem'
+                            : '$remaining more ads for 1 gem',
+                        style: TextStyle(
+                          color: Colors.blue.shade600,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  );
+                },
               ),
             ],
           ],
@@ -1522,70 +1540,111 @@ class _CreditsPageState extends State<CreditsPage> {
           ],
         ),
         const SizedBox(height: 10),
-        // Offerwall placeholder
-        _buildOfferwallPlaceholder(cs),
+        // Offerwall - AdGem integration
+        _buildOfferwallCard(cs),
       ],
     );
   }
   
-  /// Offerwall placeholder card
-  Widget _buildOfferwallPlaceholder(ColorScheme cs) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withOpacity(0.3),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: cs.outline.withOpacity(0.15)),
+  /// Open the AdGem Offerwall
+  void _openOfferwall() async {
+    if (!_authService.isSignedIn) {
+      final signedIn = await requireSignIn(context, feature: 'Offerwall');
+      if (!signedIn) return;
+    }
+    
+    if (!mounted) return;
+    
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => OfferwallScreen(
+          onReturn: () {
+            // Refresh credits when returning from offerwall
+            // Credits may take a few minutes to appear after completing offers
+            _refreshCredits();
+          },
+        ),
       ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: cs.primaryContainer.withOpacity(0.3),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(LucideIcons.gift, size: 20, color: cs.primary),
+    );
+    
+    // Also refresh when the navigation completes
+    if (mounted) {
+      _refreshCredits();
+    }
+  }
+  
+  /// Offerwall card - Opens AdGem offerwall for users to earn free gems
+  /// Styled consistently with Daily Spin and Watch Ads cards
+  Widget _buildOfferwallCard(ColorScheme cs) {
+    // Green/teal theme for offerwall
+    final List<Color> offerwallColors = [Colors.green.shade500, Colors.teal.shade600];
+    
+    return GestureDetector(
+      onTap: _openOfferwall,
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: cs.primaryContainer.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: offerwallColors[0].withOpacity(0.4),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Offerwall',
-                  style: TextStyle(
-                    color: cs.onSurface,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                Text(
-                  'Complete offers for gems',
-                  style: TextStyle(
-                    color: cs.onSurfaceVariant,
-                    fontSize: 11,
-                  ),
-                ),
-              ],
+        ),
+        child: Row(
+          children: [
+            // Left section: Icon with gradient (like other cards when active)
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(colors: offerwallColors),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(LucideIcons.gift, size: 16, color: Colors.white),
             ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: cs.primaryContainer.withOpacity(0.3),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              'Coming Soon',
-              style: TextStyle(
-                color: cs.primary,
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
+            const SizedBox(width: 12),
+            // Middle section: Title and subtitle
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Offerwall',
+                    style: TextStyle(
+                      color: cs.onSurface,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Complete offers for gems',
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
               ),
             ),
-          ),
-        ],
+            // Right section: FREE badge (like other cards)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(colors: offerwallColors),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: const Text(
+                'FREE',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 8,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1679,7 +1738,7 @@ class _CreditsPageState extends State<CreditsPage> {
     );
   }
   
-  /// Watch Ads card with 2 ads = 1 gem progress display
+  /// Watch Ads card with 4 ads = 1 gem progress display
   Widget _buildWatchAdsCard(ColorScheme cs) {
     final bool hasReachedLimit = _adStatus?.hasReachedLimit ?? false;
     final bool isLoading = _isCheckingAdEligibility || _isShowingAd;
@@ -1689,8 +1748,8 @@ class _CreditsPageState extends State<CreditsPage> {
     final int adsWatchedToday = _adStatus?.adsWatchedToday ?? 0;
     final int earnedToday = _adStatus?.creditsEarnedToday ?? 0;
     
-    // Progress toward next gem (0 or 1 ad watched toward next gem)
-    final int progressToNextGem = adsWatchedToday % 2;
+    // Progress toward next gem (0, 1, 2, or 3 ads watched toward next gem)
+    final int progressToNextGem = adsWatchedToday % 4;
     
     return GestureDetector(
       onTap: isDisabled 
@@ -1777,7 +1836,7 @@ class _CreditsPageState extends State<CreditsPage> {
               ),
             ),
             const SizedBox(height: 4),
-            // Progress indicator: 2 ads = 1 gem
+            // Progress indicator: 4 ads = 1 gem
             if (hasReachedLimit) ...[
               Text(
                 'Limit reached',
@@ -1789,39 +1848,31 @@ class _CreditsPageState extends State<CreditsPage> {
                 style: TextStyle(color: cs.onSurfaceVariant, fontSize: 11),
               ),
             ] else ...[
-              // Visual progress: 2 dots showing progress to next gem
+              // Visual progress: 4 dots showing progress to next gem
               Row(
                 children: [
-                  // Progress dots
-                  Container(
-                    width: 12,
-                    height: 12,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: progressToNextGem >= 1 ? cs.primary : cs.surfaceContainerHighest,
-                      border: Border.all(
-                        color: cs.primary.withOpacity(0.5),
-                        width: 1.5,
+                  // Progress dots (4 total)
+                  for (int i = 0; i < 4; i++) ...[
+                    Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: progressToNextGem > i ? cs.primary : cs.surfaceContainerHighest,
+                        border: Border.all(
+                          color: progressToNextGem > i 
+                              ? cs.primary.withOpacity(0.5)
+                              : cs.outline.withOpacity(0.3),
+                          width: 1.5,
+                        ),
                       ),
+                      child: progressToNextGem > i 
+                          ? Icon(LucideIcons.check, size: 6, color: cs.onPrimary)
+                          : null,
                     ),
-                    child: progressToNextGem >= 1 
-                        ? Icon(LucideIcons.check, size: 8, color: cs.onPrimary)
-                        : null,
-                  ),
-                  const SizedBox(width: 3),
-                  Container(
-                    width: 12,
-                    height: 12,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: cs.surfaceContainerHighest,
-                      border: Border.all(
-                        color: cs.outline.withOpacity(0.3),
-                        width: 1.5,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
+                    if (i < 3) const SizedBox(width: 2),
+                  ],
+                  const SizedBox(width: 4),
                   Text(
                     '= 1💎',
                     style: TextStyle(
@@ -1861,88 +1912,160 @@ class _CreditsPageState extends State<CreditsPage> {
     );
   }
   
-  /// Compact Remove Ads card
+  /// Compact Remove Ads card - styled consistently with gem packs
   Widget _buildCompactRemoveAdsCard(ColorScheme cs) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    // Use brand gradient colors to match gem packs section
+    const List<Color> removeAdColors = KalaColors.brandGradient;
+    
     return ValueListenableBuilder<bool>(
       valueListenable: isAdFreeNotifier,
       builder: (context, isAdFree, _) {
         final removeAdsProduct = _purchaseService.removeAdsProduct;
         final price = removeAdsProduct?.price ?? '...';
         
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: BoxDecoration(
-            color: isAdFree 
-                ? Colors.green.withOpacity(0.08)
-                : cs.surface,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: isAdFree 
-                  ? Colors.green.withOpacity(0.3)
-                  : cs.outlineVariant.withOpacity(0.4),
-            ),
-          ),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
+        return GestureDetector(
+          onTap: isAdFree ? null : _purchaseRemoveAds,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: isAdFree 
+                    ? [Colors.green.shade600.withOpacity(0.15), Colors.green.shade700.withOpacity(0.08)]
+                    : isDark
+                        ? [removeAdColors[0].withOpacity(0.15), removeAdColors[1].withOpacity(0.08)]
+                        : [removeAdColors[0].withOpacity(0.1), removeAdColors[1].withOpacity(0.05)],
+              ),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: isAdFree 
+                    ? Colors.green.withOpacity(0.4)
+                    : removeAdColors[0].withOpacity(0.4),
+                width: 1.5,
+              ),
+              boxShadow: [
+                BoxShadow(
                   color: isAdFree 
-                      ? Colors.green.withOpacity(0.12)
-                      : cs.primaryContainer.withOpacity(0.5),
-                  borderRadius: BorderRadius.circular(8),
+                      ? Colors.green.withOpacity(0.15)
+                      : removeAdColors[0].withOpacity(0.15),
+                  blurRadius: 8,
+                  spreadRadius: 0,
+                  offset: const Offset(0, 2),
                 ),
-                child: Icon(
-                  isAdFree ? LucideIcons.checkCircle2 : LucideIcons.bellOff,
-                  size: 18,
-                  color: isAdFree ? Colors.green : cs.primary,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      isAdFree ? 'Ad-Free Active' : 'Remove Ads',
-                      style: TextStyle(
-                        color: cs.onSurface,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
+              ],
+            ),
+            child: Row(
+              children: [
+                // Icon with gradient background
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: isAdFree 
+                          ? [Colors.green.shade500, Colors.green.shade700]
+                          : removeAdColors,
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
-                    Text(
-                      isAdFree ? 'Enjoying ad-free!' : 'One-time purchase',
-                      style: TextStyle(
-                        color: isAdFree ? Colors.green.shade700 : cs.onSurfaceVariant,
-                        fontSize: 12,
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: [
+                      BoxShadow(
+                        color: isAdFree 
+                            ? Colors.green.withOpacity(0.3)
+                            : removeAdColors[0].withOpacity(0.4),
+                        blurRadius: 8,
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
+                  child: Icon(
+                    isAdFree ? LucideIcons.checkCircle2 : LucideIcons.bellOff,
+                    size: 18,
+                    color: Colors.white,
+                  ),
                 ),
-              ),
-              if (!isAdFree)
-                GestureDetector(
-                  onTap: _purchaseRemoveAds,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            isAdFree ? 'Ad-Free Active' : 'Remove Ads',
+                            style: TextStyle(
+                              color: cs.onSurface,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          if (!isAdFree) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(colors: KalaColors.brandGradient),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Text(
+                                'FOREVER',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 8,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        isAdFree ? 'Enjoying ad-free experience!' : 'One-time purchase, no subscription',
+                        style: TextStyle(
+                          color: isAdFree ? Colors.green.shade700 : cs.onSurfaceVariant,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (!isAdFree)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                     decoration: BoxDecoration(
-                      color: cs.primaryContainer,
-                      borderRadius: BorderRadius.circular(8),
+                      gradient: const LinearGradient(colors: KalaColors.brandGradient),
+                      borderRadius: BorderRadius.circular(10),
+                      boxShadow: [
+                        BoxShadow(
+                          color: KalaColors.brandGradient[0].withOpacity(0.4),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
                     ),
                     child: Text(
                       price,
-                      style: TextStyle(
-                        color: cs.primary,
+                      style: const TextStyle(
+                        color: Colors.white,
                         fontSize: 13,
-                        fontWeight: FontWeight.w600,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
+                  )
+                else
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withOpacity(0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(LucideIcons.check, color: Colors.green, size: 18),
                   ),
-                )
-              else
-                const Icon(LucideIcons.checkCircle, color: Colors.green, size: 20),
-            ],
+              ],
+            ),
           ),
         );
       },
@@ -3479,10 +3602,11 @@ class _CreditsPageState extends State<CreditsPage> {
                   spacing: 10,
                   runSpacing: 6,
                   children: [
-                    _buildVipBenefitTag(cs, LucideIcons.layers, 'Bulk Edit'),
-                    _buildVipBenefitTag(cs, LucideIcons.copy, '4 Variants'),
+                    _buildVipBenefitTag(cs, LucideIcons.layers, 'Bulk Edit up to 10 images'),
+                    _buildVipBenefitTag(cs, LucideIcons.copy, 'Up to 4 Variants'),
                     _buildVipBenefitTag(cs, LucideIcons.maximize2, 'Free Upscale'),
-                    _buildVipBenefitTag(cs, LucideIcons.zap, 'Unlimited'),
+                    _buildVipBenefitTag(cs, LucideIcons.zap, 'Upto 25 jobs at once'),
+                    _buildVipBenefitTag(cs, LucideIcons.eyeOff, 'Ad Free'),
                   ],
                 ),
               ),
@@ -3538,50 +3662,71 @@ class _CreditsPageState extends State<CreditsPage> {
     final price = hasProduct ? product!.price : '...';
     final bool isPopular = pack.productId == kVipMonthlyProductId;
     final bool hasBadge = isPopular || pack.savings != null;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    // VIP tier colors - amber/gold theme
+    final List<Color> vipColors = [Colors.amber.shade600, Colors.orange.shade700];
     
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: hasProduct ? () => _purchaseVipPack(pack.productId) : null,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            gradient: isPopular 
-                ? LinearGradient(
-                    colors: [
-                      Colors.amber.shade600.withOpacity(0.12),
-                      Colors.orange.shade700.withOpacity(0.08),
-                    ],
-                  )
-                : null,
-            color: isPopular ? null : cs.surface,
-            borderRadius: BorderRadius.circular(12),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: isPopular 
+                  ? [vipColors[0].withOpacity(0.15), vipColors[1].withOpacity(0.08)]
+                  : isDark
+                      ? [vipColors[0].withOpacity(0.08), vipColors[1].withOpacity(0.04)]
+                      : [vipColors[0].withOpacity(0.06), vipColors[1].withOpacity(0.03)],
+            ),
+            borderRadius: BorderRadius.circular(14),
             border: Border.all(
               color: isPopular 
-                  ? Colors.amber.shade600.withOpacity(0.5)
-                  : cs.outlineVariant.withOpacity(0.3),
+                  ? vipColors[0].withOpacity(0.5)
+                  : vipColors[0].withOpacity(0.25),
               width: isPopular ? 1.5 : 1,
             ),
+            boxShadow: isPopular ? [
+              BoxShadow(
+                color: vipColors[0].withOpacity(0.15),
+                blurRadius: 8,
+                spreadRadius: 0,
+                offset: const Offset(0, 2),
+              ),
+            ] : null,
           ),
           child: Row(
             children: [
-              // Duration icon
+              // Duration icon with gradient
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  gradient: isPopular 
-                      ? LinearGradient(colors: [Colors.amber.shade500, Colors.orange.shade700])
-                      : null,
-                  color: isPopular ? null : cs.surfaceContainerHighest,
+                  gradient: LinearGradient(
+                    colors: isPopular 
+                        ? vipColors
+                        : [vipColors[0].withOpacity(0.8), vipColors[1].withOpacity(0.8)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
                   borderRadius: BorderRadius.circular(8),
+                  boxShadow: [
+                    BoxShadow(
+                      color: vipColors[0].withOpacity(isPopular ? 0.4 : 0.2),
+                      blurRadius: 6,
+                    ),
+                  ],
                 ),
                 child: Icon(
                   pack.days <= 7 ? LucideIcons.calendar : 
                   pack.days <= 30 ? LucideIcons.calendarDays : 
                   LucideIcons.calendarRange,
                   size: 16,
-                  color: isPopular ? Colors.white : cs.primary,
+                  color: Colors.white,
                 ),
               ),
               const SizedBox(width: 10),
@@ -3619,7 +3764,7 @@ class _CreditsPageState extends State<CreditsPage> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                           decoration: BoxDecoration(
-                            gradient: LinearGradient(colors: [Colors.amber.shade600, Colors.orange.shade700]),
+                            gradient: LinearGradient(colors: vipColors),
                             borderRadius: BorderRadius.circular(3),
                           ),
                           child: const Text(
@@ -3644,22 +3789,19 @@ class _CreditsPageState extends State<CreditsPage> {
                 ),
               ),
               const SizedBox(width: 8),
-              // Price button - fixed width to prevent overlap
+              // Price button - styled consistently with gem packs
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: isPopular 
-                        ? [Colors.amber.shade600, Colors.orange.shade700]
-                        : [cs.primary, cs.primary],
-                  ),
-                  borderRadius: BorderRadius.circular(8),
-                  boxShadow: isPopular ? [
+                  gradient: LinearGradient(colors: vipColors),
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: [
                     BoxShadow(
-                      color: Colors.amber.withOpacity(0.3),
-                      blurRadius: 6,
+                      color: vipColors[0].withOpacity(0.4),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
                     ),
-                  ] : null,
+                  ],
                 ),
                 child: Text(
                   price,
@@ -3885,6 +4027,10 @@ class _CreditsPageState extends State<CreditsPage> {
         ? products.firstWhere((p) => p.id == pack.productId) 
         : null;
     final price = hasProduct ? product!.price : '...';
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    // VIP tier colors - amber/gold theme
+    final List<Color> vipColors = [Colors.amber.shade600, Colors.orange.shade700];
     
     return Material(
       color: Colors.transparent,
@@ -3894,32 +4040,44 @@ class _CreditsPageState extends State<CreditsPage> {
           Navigator.pop(sheetContext);
           _purchaseVipPack(pack.productId);
         } : null,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
-            color: cs.surface,
-            borderRadius: BorderRadius.circular(12),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: isDark
+                  ? [vipColors[0].withOpacity(0.1), vipColors[1].withOpacity(0.05)]
+                  : [vipColors[0].withOpacity(0.08), vipColors[1].withOpacity(0.04)],
+            ),
+            borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: cs.outlineVariant.withOpacity(0.4),
+              color: vipColors[0].withOpacity(0.3),
               width: 1,
             ),
           ),
           child: Row(
             children: [
-              // Duration icon
+              // Duration icon with gradient
               Container(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: cs.primaryContainer.withOpacity(0.5),
-                  borderRadius: BorderRadius.circular(8),
+                  gradient: LinearGradient(colors: vipColors),
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: [
+                    BoxShadow(
+                      color: vipColors[0].withOpacity(0.3),
+                      blurRadius: 6,
+                    ),
+                  ],
                 ),
                 child: Icon(
                   pack.days <= 7 ? LucideIcons.calendar : 
                   pack.days <= 30 ? LucideIcons.calendarDays : 
                   LucideIcons.calendarRange,
                   size: 18,
-                  color: cs.primary,
+                  color: Colors.white,
                 ),
               ),
               const SizedBox(width: 12),
@@ -3934,7 +4092,7 @@ class _CreditsPageState extends State<CreditsPage> {
                           style: TextStyle(
                             color: cs.onSurface,
                             fontSize: 15,
-                            fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                         if (pack.savings != null) ...[
@@ -3957,6 +4115,7 @@ class _CreditsPageState extends State<CreditsPage> {
                         ],
                       ],
                     ),
+                    const SizedBox(height: 2),
                     Text(
                       '${pack.days} days of VIP access',
                       style: TextStyle(
@@ -3967,16 +4126,19 @@ class _CreditsPageState extends State<CreditsPage> {
                   ],
                 ),
               ),
-              // Price
+              // Price button - styled consistently
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.amber.shade600, Colors.orange.shade700],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(8),
+                  gradient: LinearGradient(colors: vipColors),
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: [
+                    BoxShadow(
+                      color: vipColors[0].withOpacity(0.4),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
                 child: Text(
                   price,

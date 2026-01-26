@@ -510,35 +510,35 @@ Future<void> initializeApp() async {
       return;
     }
 
-    // 🐛 DEBUG: Show raw FCM data in snackbar (REMOVE AFTER DEBUGGING)
-    if (navigatorKey.currentContext != null) {
-      final debugInfo = '''
-🔔 FCM DEBUG
-job_id: $jobId
-raw_status: ${data['status']}
-normalized: $normalizedStatus
-title: $title
-model: $model
-notif_title: ${message.notification?.title}
-notif_body: ${message.notification?.body}
-download_url: ${downloadUrl.isNotEmpty ? '${downloadUrl.substring(0, 50.clamp(0, downloadUrl.length))}...' : 'empty'}
-all_data: ${data.keys.join(', ')}
-''';
-      ScaffoldMessenger.of(navigatorKey.currentContext!).showSnackBar(
-        SnackBar(
-          content: Text(debugInfo, style: const TextStyle(fontSize: 11)),
-          duration: const Duration(seconds: 10),
-          backgroundColor: Colors.black87,
-          behavior: SnackBarBehavior.floating,
-          action: SnackBarAction(
-            label: 'Dismiss',
-            textColor: Colors.cyan,
-            onPressed: () {},
-          ),
-        ),
-      );
-    }
-    // 🐛 END DEBUG
+//     // 🐛 DEBUG: Show raw FCM data in snackbar (REMOVE AFTER DEBUGGING)
+//     if (navigatorKey.currentContext != null) {
+//       final debugInfo = '''
+// 🔔 FCM DEBUG
+// job_id: $jobId
+// raw_status: ${data['status']}
+// normalized: $normalizedStatus
+// title: $title
+// model: $model
+// notif_title: ${message.notification?.title}
+// notif_body: ${message.notification?.body}
+// download_url: ${downloadUrl.isNotEmpty ? '${downloadUrl.substring(0, 50.clamp(0, downloadUrl.length))}...' : 'empty'}
+// all_data: ${data.keys.join(', ')}
+// ''';
+//       ScaffoldMessenger.of(navigatorKey.currentContext!).showSnackBar(
+//         SnackBar(
+//           content: Text(debugInfo, style: const TextStyle(fontSize: 11)),
+//           duration: const Duration(seconds: 10),
+//           backgroundColor: Colors.black87,
+//           behavior: SnackBarBehavior.floating,
+//           action: SnackBarAction(
+//             label: 'Dismiss',
+//             textColor: Colors.cyan,
+//             onPressed: () {},
+//           ),
+//         ),
+//       );
+//     }
+//     // 🐛 END DEBUG
 
     await _applyFcmUpdate({
       'job_id': jobId,

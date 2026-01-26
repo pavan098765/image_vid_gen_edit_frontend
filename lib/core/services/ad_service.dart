@@ -46,9 +46,9 @@ class RewardedAdStatus {
   final DateTime? cooldownEndsAt;  // When the ad cooldown expires
   final String? message;
   
-  // New fields for "1 credit per 2 ads" system
+  // New fields for "1 credit per 4 ads" system
   final int adsWatchedToday;  // Total ads watched today
-  final int adsRequiredForCredit;  // How many ads needed for 1 credit (default: 2)
+  final int adsRequiredForCredit;  // How many ads needed for 1 credit (default: 4)
 
   RewardedAdStatus({
     required this.canWatch,
@@ -59,7 +59,7 @@ class RewardedAdStatus {
     this.cooldownEndsAt,
     this.message,
     this.adsWatchedToday = 0,
-    this.adsRequiredForCredit = 2,  // Default: 2 ads = 1 credit
+    this.adsRequiredForCredit = 4,  // Default: 4 ads = 1 credit
   });
 
   factory RewardedAdStatus.fromJson(Map<String, dynamic> json) {
@@ -67,7 +67,7 @@ class RewardedAdStatus {
       canWatch: json['can_watch'] ?? false,
       creditsEarnedToday: json['credits_earned_today'] ?? 0,
       dailyLimit: json['daily_limit'] ?? 30,
-      creditsPerAd: json['credits_per_ad'] ?? 0,  // Now 0 since credits come every 2 ads
+      creditsPerAd: json['credits_per_ad'] ?? 0,  // Now 0 since credits come every 4 ads
       nextResetTime: json['next_reset_time'] != null
           ? DateTime.tryParse(json['next_reset_time'])
           : null,
@@ -76,7 +76,7 @@ class RewardedAdStatus {
           : null,
       message: json['message'],
       adsWatchedToday: json['ads_watched_today'] ?? 0,
-      adsRequiredForCredit: json['ads_required_for_credit'] ?? 2,
+      adsRequiredForCredit: json['ads_required_for_credit'] ?? 4,
     );
   }
 
@@ -86,9 +86,9 @@ class RewardedAdStatus {
       canWatch: true,
       creditsEarnedToday: 0,
       dailyLimit: 30,
-      creditsPerAd: 0,  // Credits come every 2 ads, not per ad
+      creditsPerAd: 0,  // Credits come every 4 ads, not per ad
       adsWatchedToday: 0,
-      adsRequiredForCredit: 2,
+      adsRequiredForCredit: 4,
     );
   }
 
@@ -293,16 +293,16 @@ class AdService {
     
     final adsWatched = prefs.getInt('ads_watched_today') ?? 0;
     const dailyLimit = 30;  // Max credits per day
-    const adsRequiredForCredit = 2;  // 2 ads = 1 credit
+    const adsRequiredForCredit = 4;  // 4 ads = 1 credit
     
-    // Calculate credits earned: 1 credit per 2 ads
+    // Calculate credits earned: 1 credit per 4 ads
     final creditsEarned = adsWatched ~/ adsRequiredForCredit;
     
     final status = RewardedAdStatus(
       canWatch: creditsEarned < dailyLimit,
       creditsEarnedToday: creditsEarned,
       dailyLimit: dailyLimit,
-      creditsPerAd: 0,  // Credits come every 2 ads, not per ad
+      creditsPerAd: 0,  // Credits come every 4 ads, not per ad
       nextResetTime: DateTime(
         DateTime.now().year,
         DateTime.now().month,
@@ -540,17 +540,17 @@ class AdService {
             await Future.delayed(const Duration(seconds: 1));
           }
           
-          // Calculate credits earned (server grants 1 credit per 2 ads)
+          // Calculate credits earned (server grants 1 credit per 4 ads)
           int creditsEarned = (creditsAfter - creditsBefore).clamp(0, 10);
-          // Note: creditsEarned may be 0 if this is the 1st ad (need 2 ads for 1 credit)
+          // Note: creditsEarned may be 0 if this is not the 4th ad (need 4 ads for 1 credit)
           
-          debugPrint("✅ SSV processed - earned $creditsEarned credits (may be 0 if this is 1st of 2 ads)");
+          debugPrint("✅ SSV processed - earned $creditsEarned credits (may be 0 if not yet 4 ads)");
           
           // Update local tracking and eligibility status
           await _incrementLocalAdCount();
           await checkEligibility();
           
-          // Return actual credits earned (0 or 1, depending on if this was the 2nd ad)
+          // Return actual credits earned (0 or 1, depending on if this was the 4th ad)
           completer.complete(creditsEarned);
         },
       );
