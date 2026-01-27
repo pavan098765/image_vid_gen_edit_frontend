@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'dart:io';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
@@ -322,18 +323,21 @@ class _EditorPageState extends State<EditorPage> {
   }
 
   Future<bool> _handleSystemBack() async {
-    if (_selectedImage != null) {
-      final ok = await _confirmExitEditing();
-      if (ok) {
-        setState(() {
-          _selectedImage = null;
-          _exportedImage = null;
-          _lastEditCompleteAt = null;
-        });
-      }
-      return false;
+    // Show confirmation dialog when pressing back
+    final ok = await _confirmExitApp();
+    if (ok) {
+      // User confirmed exit - actually exit the app
+      SystemNavigator.pop();
     }
-    return true;
+    return false; // Always prevent default back navigation
+  }
+  
+  Future<bool> _confirmExitApp() async {
+    return (await showDialog<bool>(
+          context: context,
+          builder: (_) => const _ConfirmExitAppDialog(),
+        )) ??
+        false;
   }
 
   Future<void> _onExportPressed() async {
@@ -752,7 +756,7 @@ class _EditorPageState extends State<EditorPage> {
   }
 }
 
-// Confirm Exit Dialog
+// Confirm Exit Dialog (for editing session)
 class _ConfirmExitDialog extends StatelessWidget {
   const _ConfirmExitDialog();
 
@@ -776,6 +780,90 @@ class _ConfirmExitDialog extends StatelessWidget {
           onPressed: () => Navigator.pop(context, true),
           variant: ButtonVariant.danger,
           size: ButtonSize.small,
+        ),
+      ],
+    );
+  }
+}
+
+// Confirm Exit App Dialog (for base pages)
+class _ConfirmExitAppDialog extends StatelessWidget {
+  const _ConfirmExitAppDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return AlertDialog(
+      backgroundColor: cs.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: cs.primaryContainer.withOpacity(0.3),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              LucideIcons.logOut,
+              size: 40,
+              color: cs.primary,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Exit App?',
+            style: TextStyle(
+              color: cs.onSurface,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Are you sure you want to exit?',
+            style: TextStyle(
+              color: cs.onSurfaceVariant,
+              fontSize: 14,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+      actions: [
+        Row(
+          children: [
+            Expanded(
+              child: TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+                child: Text(
+                  'Cancel',
+                  style: TextStyle(
+                    color: cs.primary,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: GradientButton(
+                label: 'Exit',
+                icon: LucideIcons.logOut,
+                onPressed: () => Navigator.pop(context, true),
+                variant: ButtonVariant.danger,
+                size: ButtonSize.medium,
+                expanded: true,
+              ),
+            ),
+          ],
         ),
       ],
     );

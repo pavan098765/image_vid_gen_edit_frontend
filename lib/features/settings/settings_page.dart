@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart' show User;
 import 'package:http/http.dart' as http;
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
@@ -831,18 +832,37 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  Future<bool> _handleSystemBack() async {
+    final ok = await _confirmExitApp();
+    if (ok) {
+      // User confirmed exit - actually exit the app
+      SystemNavigator.pop();
+    }
+    return false; // Always prevent default back navigation
+  }
+  
+  Future<bool> _confirmExitApp() async {
+    return (await showDialog<bool>(
+          context: context,
+          builder: (_) => const _ConfirmExitAppDialog(),
+        )) ??
+        false;
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return Scaffold(
-      backgroundColor: cs.surface,
-      appBar: AppBar(
-        title: const KalaLogoWithIcon(logoHeight: 30, fontSize: 22),
+    return WillPopScope(
+      onWillPop: _handleSystemBack,
+      child: Scaffold(
         backgroundColor: cs.surface,
-        elevation: 0,
-        surfaceTintColor: Colors.transparent,
-      ),
+        appBar: AppBar(
+          title: const KalaLogoWithIcon(logoHeight: 30, fontSize: 22),
+          backgroundColor: cs.surface,
+          elevation: 0,
+          surfaceTintColor: Colors.transparent,
+        ),
       body: StreamBuilder<User?>(
         stream: _authService.authStateChanges,
         builder: (context, snapshot) {
@@ -1080,6 +1100,7 @@ class _SettingsPageState extends State<SettingsPage> {
             ],
           );
         },
+      ),
       ),
     );
   }
@@ -1691,6 +1712,90 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
         ],
       ),
+    );
+  }
+}
+
+// Confirm Exit App Dialog (for base pages)
+class _ConfirmExitAppDialog extends StatelessWidget {
+  const _ConfirmExitAppDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return AlertDialog(
+      backgroundColor: cs.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: cs.primaryContainer.withOpacity(0.3),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              LucideIcons.logOut,
+              size: 40,
+              color: cs.primary,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Exit App?',
+            style: TextStyle(
+              color: cs.onSurface,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Are you sure you want to exit?',
+            style: TextStyle(
+              color: cs.onSurfaceVariant,
+              fontSize: 14,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+      actions: [
+        Row(
+          children: [
+            Expanded(
+              child: TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+                child: Text(
+                  'Cancel',
+                  style: TextStyle(
+                    color: cs.primary,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: GradientButton(
+                label: 'Exit',
+                icon: LucideIcons.logOut,
+                onPressed: () => Navigator.pop(context, true),
+                variant: ButtonVariant.danger,
+                size: ButtonSize.medium,
+                expanded: true,
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

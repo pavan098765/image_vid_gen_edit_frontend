@@ -1026,14 +1026,8 @@ class _JobCardState extends State<JobCard> {
                 contentPadding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
 
-                // ✅ Selection checkbox or thumbnail
-                leading: widget.isSelectionMode
-                    ? Checkbox(
-                        value: widget.isSelected,
-                        onChanged: (_) => widget.onTap?.call(),
-                        activeColor: cs.primary,
-                      )
-                    : _buildThumbnail(cs),
+                // ✅ Thumbnail (always visible, including in selection mode)
+                leading: _buildThumbnail(cs),
 
                 // ✅ Title
                 title: Text(
@@ -1044,44 +1038,48 @@ class _JobCardState extends State<JobCard> {
                 ),
               ),
 
-              // ✅ Status animated
-              subtitle: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 300),
-                child: _buildStatus(cs),
-              ),
+                // ✅ Status animated
+                subtitle: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  child: _buildStatus(cs),
+                ),
 
-              // ✅ Trailing buttons (hidden in selection mode)
-              trailing: widget.isSelectionMode
-                  ? null
-                  : Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (job.status == 'completed')
+                // ✅ Trailing: Checkbox in selection mode, or action buttons in normal mode
+                trailing: widget.isSelectionMode
+                    ? Checkbox(
+                        value: widget.isSelected,
+                        onChanged: (_) => widget.onTap?.call(),
+                        activeColor: cs.primary,
+                      )
+                    : Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (job.status == 'completed')
+                            IconButton(
+                              icon: _isDownloading
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                    )
+                                  : Icon(downloadIcon, color: downloadColor),
+                              tooltip: isExpired 
+                                  ? 'Cloud result expired' 
+                                  : isSaved 
+                                      ? 'Already saved' 
+                                      : 'Save to device',
+                              onPressed: _isDownloading || isExpired || isSaved 
+                                  ? (isExpired ? () => _showExpiredDialog(context, cs) : null) 
+                                  : () => _download(context),
+                            ),
                           IconButton(
-                            icon: _isDownloading
-                                ? const SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(strokeWidth: 2),
-                                  )
-                                : Icon(downloadIcon, color: downloadColor),
-                            tooltip: isExpired 
-                                ? 'Cloud result expired' 
-                                : isSaved 
-                                    ? 'Already saved' 
-                                    : 'Save to device',
-                            onPressed: _isDownloading || isExpired || isSaved 
-                                ? (isExpired ? () => _showExpiredDialog(context, cs) : null) 
-                                : () => _download(context),
+                            icon: Icon(Icons.delete_outline, color: cs.onSurfaceVariant),
+                            tooltip: 'Delete Job',
+                            onPressed: () => _confirmDelete(context, cs),
                           ),
-                        IconButton(
-                          icon: Icon(Icons.delete_outline, color: cs.onSurfaceVariant),
-                          tooltip: 'Delete Job',
-                          onPressed: () => _confirmDelete(context, cs),
-                        ),
-                      ],
-                    ),
-            ),
+                        ],
+                      ),
+              ),
 
             // ✅ Small linear progress bar
             if (_isDownloading)

@@ -1795,10 +1795,16 @@ class _GenericToolPageState extends State<GenericToolPage>
       
       switch (type) {
         case "prompt":
-          // Prompt is required - always use the controller as source of truth
-          final promptText = _promptController.text.trim();
-          if (promptText.isEmpty) {
-            return false;
+          // Check if prompt is optional
+          final promptInput = widget.config.inputs
+              .firstWhere((i) => i["id"] == inputRef, orElse: () => {});
+          final isOptional = promptInput["optional"] == true;
+          if (!isOptional) {
+            // Prompt is required - always use the controller as source of truth
+            final promptText = _promptController.text.trim();
+            if (promptText.isEmpty) {
+              return false;
+            }
           }
           break;
           
@@ -1912,10 +1918,16 @@ class _GenericToolPageState extends State<GenericToolPage>
       
       switch (type) {
         case "prompt":
-          // Always use the controller as source of truth
-          final promptText = _promptController.text.trim();
-          if (promptText.isEmpty) {
-            missing.add("Prompt");
+          // Check if prompt is optional
+          final promptInput = widget.config.inputs
+              .firstWhere((i) => i["id"] == inputRef, orElse: () => {});
+          final isOptional = promptInput["optional"] == true;
+          if (!isOptional) {
+            // Prompt is required - check if filled
+            final promptText = _promptController.text.trim();
+            if (promptText.isEmpty) {
+              missing.add("Prompt");
+            }
           }
           break;
           
@@ -2325,6 +2337,8 @@ class _GenericToolPageState extends State<GenericToolPage>
           setState(() {
             _inputs[id] = bytesList;
             _inputs["${id}_path"] = limited.first.path;
+            // Clear old mask when new image is selected
+            _inputs["mask_image"] = null;
           _isProcessingImage = false;
           });
       } else {
@@ -2352,6 +2366,8 @@ class _GenericToolPageState extends State<GenericToolPage>
           setState(() {
             _inputs[id] = [bytes];
             _inputs["${id}_path"] = file.path;
+            // Clear old mask when new image is selected
+            _inputs["mask_image"] = null;
           _isProcessingImage = false;
           });
 
@@ -2365,9 +2381,24 @@ class _GenericToolPageState extends State<GenericToolPage>
           );
           if (result != null && mounted) {
             setState(() {
+              // Store all outpaint config values
               _inputs["alignment"] = result["alignment"];
               _inputs["aspect_ratio"] = result["aspect_ratio"];
-              _inputs["outpaint_preview"] = bytes; // keep for visual cue
+              _inputs["is_custom"] = result["is_custom"];
+              _inputs["custom_scale"] = result["custom_scale"];
+              _inputs["norm_offset_x"] = result["norm_offset_x"];
+              _inputs["norm_offset_y"] = result["norm_offset_y"];
+              _inputs["offset_x"] = result["offset_x"];
+              _inputs["offset_y"] = result["offset_y"];
+              _inputs["canvas_width"] = result["canvas_width"];
+              _inputs["canvas_height"] = result["canvas_height"];
+              _inputs["fitted_width"] = result["fitted_width"];
+              _inputs["fitted_height"] = result["fitted_height"];
+              _inputs["image_width"] = result["image_width"];
+              _inputs["image_height"] = result["image_height"];
+              _inputs["image_left"] = result["image_left"];
+              _inputs["image_top"] = result["image_top"];
+              _inputs["outpaint_preview"] = bytes;
             });
           }
         }
@@ -2442,6 +2473,8 @@ class _GenericToolPageState extends State<GenericToolPage>
         setState(() {
           _inputs[id] = [bytes];
           _inputs["${id}_path"] = file.path;
+          // Clear old mask when new image is captured
+          _inputs["mask_image"] = null;
         _isProcessingImage = false;
         });
 
@@ -2455,9 +2488,24 @@ class _GenericToolPageState extends State<GenericToolPage>
         );
         if (result != null && mounted) {
           setState(() {
+            // Store all outpaint config values
             _inputs["alignment"] = result["alignment"];
             _inputs["aspect_ratio"] = result["aspect_ratio"];
-            _inputs["outpaint_preview"] = bytes; // keep for visual cue
+            _inputs["is_custom"] = result["is_custom"];
+            _inputs["custom_scale"] = result["custom_scale"];
+            _inputs["norm_offset_x"] = result["norm_offset_x"];
+            _inputs["norm_offset_y"] = result["norm_offset_y"];
+            _inputs["offset_x"] = result["offset_x"];
+            _inputs["offset_y"] = result["offset_y"];
+            _inputs["canvas_width"] = result["canvas_width"];
+            _inputs["canvas_height"] = result["canvas_height"];
+            _inputs["fitted_width"] = result["fitted_width"];
+            _inputs["fitted_height"] = result["fitted_height"];
+            _inputs["image_width"] = result["image_width"];
+            _inputs["image_height"] = result["image_height"];
+            _inputs["image_left"] = result["image_left"];
+            _inputs["image_top"] = result["image_top"];
+            _inputs["outpaint_preview"] = bytes;
           });
         }
       }
@@ -2690,9 +2738,15 @@ class _GenericToolPageState extends State<GenericToolPage>
     }
     
     try {
+      // Calculate how many more images can be added
+      final int currentCount = _bulkImages.length;
+      final int remainingSlots = _maxBulkImages - currentCount;
+      
+      if (remainingSlots <= 0) return;
+      
       final files = await picker.pickMultiImage(
         imageQuality: 85,
-        limit: _maxBulkImages,
+        limit: remainingSlots,
       );
       
       if (files.isEmpty) return;
@@ -2701,20 +2755,21 @@ class _GenericToolPageState extends State<GenericToolPage>
       
       final List<Uint8List> newImages = [];
       for (final file in files) {
-        if (newImages.length >= _maxBulkImages) break;
+        if (newImages.length >= remainingSlots) break;
         final bytes = await file.readAsBytes();
         newImages.add(bytes);
       }
       
       if (mounted) {
         setState(() {
-          _bulkImages = newImages;
+          // Append new images to existing ones instead of replacing
+          _bulkImages.addAll(newImages);
           _isProcessingImage = false;
         });
         
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('${newImages.length} images selected for bulk edit'),
+            content: Text('${newImages.length} image${newImages.length == 1 ? '' : 's'} added (${_bulkImages.length}/$_maxBulkImages total)'),
             backgroundColor: Theme.of(context).colorScheme.primary,
           ),
         );
@@ -2756,45 +2811,52 @@ class _GenericToolPageState extends State<GenericToolPage>
             padding: EdgeInsets.only(right: index < _bulkImages.length - 1 ? 8 : 0),
             child: Column(
               children: [
-                Stack(
-                  children: [
-                    Container(
-                      width: 100,
-                      height: 100,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: _requiresMask && !hasMask 
-                              ? cs.error.withOpacity(0.5)
-                              : cs.primary.withOpacity(0.3),
-                          width: 1.5,
+                GestureDetector(
+                  onLongPressStart: (_) {
+                    _showBulkImagePreview(index);
+                  },
+                  onLongPressEnd: (_) {
+                    Navigator.of(context, rootNavigator: true).pop();
+                  },
+                  child: Stack(
+                    children: [
+                      Container(
+                        width: 100,
+                        height: 100,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: _requiresMask && !hasMask 
+                                ? cs.error.withOpacity(0.5)
+                                : cs.primary.withOpacity(0.3),
+                            width: 1.5,
+                          ),
                         ),
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            Image.memory(
-                              _bulkImages[index],
-                              fit: BoxFit.cover,
-                            ),
-                            // Show mask overlay if exists
-                            if (hasMask)
-                              ColorFiltered(
-                                colorFilter: ColorFilter.mode(
-                                  Colors.red.withOpacity(0.3),
-                                  BlendMode.srcATop,
-                                ),
-                                child: Image.memory(
-                                  _bulkMasks[index]!,
-                                  fit: BoxFit.cover,
-                                ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              Image.memory(
+                                _bulkImages[index],
+                                fit: BoxFit.cover,
                               ),
-                          ],
+                              // Show mask overlay if exists
+                              if (hasMask)
+                                ColorFiltered(
+                                  colorFilter: ColorFilter.mode(
+                                    Colors.red.withOpacity(0.3),
+                                    BlendMode.srcATop,
+                                  ),
+                                  child: Image.memory(
+                                    _bulkMasks[index]!,
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
                     // Remove button
                     Positioned(
                       top: 4,
@@ -2857,7 +2919,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                           ),
                         ),
                       ),
-                  ],
+                    ],
+                  ),
                 ),
                 // Edit mask/outpaint button
                 if (_requiresMask || _isOutpaint) ...[
@@ -2916,6 +2979,33 @@ class _GenericToolPageState extends State<GenericToolPage>
         _bulkOutpaintConfigs.removeAt(index);
       }
     });
+  }
+  
+  /// Show full-screen preview for bulk image (called on long press)
+  void _showBulkImagePreview(int index) {
+    if (index >= _bulkImages.length) return;
+    
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.9),
+      barrierDismissible: false,
+      builder: (context) => GestureDetector(
+        onTap: () => Navigator.of(context).pop(),
+        child: Container(
+          color: Colors.transparent,
+          child: Center(
+            child: InteractiveViewer(
+              maxScale: 5.0,
+              minScale: 0.5,
+              child: Image.memory(
+                _bulkImages[index],
+                fit: BoxFit.contain,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
   
   /// Edit mask or outpaint config for a bulk image
@@ -4413,41 +4503,25 @@ class _GenericToolPageState extends State<GenericToolPage>
 
     final bool isOutpaint = widget.config.model == "diffusers_outpaint";
 
-    // read alignment & aspect ratio (from OutpaintCanvasPage)
+    // Read outpaint config (from OutpaintCanvasPage)
     final String alignment =
         isOutpaint ? (_inputs["alignment"] ?? "Middle") : "Middle";
     final String ratioStr =
         isOutpaint ? (_inputs["aspect_ratio"] ?? "1:1") : "1:1";
+    final bool isCustomMode = 
+        isOutpaint && (_inputs["is_custom"] == "true");
+    final double customScale = 
+        isCustomMode ? (double.tryParse(_inputs["custom_scale"] ?? "0.7") ?? 0.7) : 1.0;
+    final double normOffsetX = 
+        double.tryParse(_inputs["norm_offset_x"] ?? "0") ?? 0.0;
+    final double normOffsetY = 
+        double.tryParse(_inputs["norm_offset_y"] ?? "0") ?? 0.0;
 
     final ratioParts = ratioStr.split(":");
     final double aspectRatio = (ratioParts.length == 2)
         ? (double.tryParse(ratioParts[0]) ?? 1) /
             (double.tryParse(ratioParts[1]) ?? 1)
         : 1.0;
-
-    // Simple padding logic — show empty area on the expansion side
-    EdgeInsets imgPadding = EdgeInsets.zero;
-    if (isOutpaint) {
-      switch (alignment) {
-        case "Left":
-          imgPadding = const EdgeInsets.only(right: 60); // expand right
-          break;
-        case "Right":
-          imgPadding = const EdgeInsets.only(left: 60); // expand left
-          break;
-        case "Top":
-          imgPadding = const EdgeInsets.only(bottom: 60); // expand down
-          break;
-        case "All Sides":
-          imgPadding = const EdgeInsets.all(60);
-          break;
-        case "Bottom":
-          imgPadding = const EdgeInsets.only(top: 60); // expand up
-          break;
-        default:
-          imgPadding = EdgeInsets.zero;
-      }
-    }
 
     // Check if this is a multi-image input
     final input = _effectiveInputConfig(ref);
@@ -4569,11 +4643,17 @@ class _GenericToolPageState extends State<GenericToolPage>
     }
 
     // Single image preview (original behavior)
+    // Check if this tool requires a mask (inpaint/erase)
+    final bool requiresMaskForTool = _requiresMask;
+    final bool hasMask = mask != null;
+    
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: cs.primary.withOpacity(0.3),
+          color: hasMask 
+              ? Colors.green.withOpacity(0.5)
+              : cs.primary.withOpacity(0.3),
           width: 2,
         ),
         boxShadow: [
@@ -4588,89 +4668,294 @@ class _GenericToolPageState extends State<GenericToolPage>
         borderRadius: BorderRadius.circular(16),
         child: AspectRatio(
           aspectRatio: aspectRatio.clamp(0.5, 2.0),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              // Checker background only for outpaint
-              if (isOutpaint)
-                const CustomPaint(painter: _CheckerPainter())
-              else
-                Container(color: cs.surfaceContainerHigh),
-
-              // Base image
-              Padding(
-                padding: imgPadding,
-                child: Image.memory(
+          child: isOutpaint
+              ? _buildOutpaintPreview(
                   list.first,
-                  fit: BoxFit.contain,
-                  alignment: _convertAlignment(alignment),
-                  width: double.infinity,
-                  height: double.infinity,
-                ),
-              ),
-
-              // Mask overlay (other models)
-              if (mask != null)
-                Positioned.fill(
-                  child: Opacity(
-                    opacity: 0.6,
-                    child: Image.memory(mask as Uint8List, fit: BoxFit.contain),
-                  ),
-                ),
-              
-              // Image loaded indicator
-              Positioned(
-                right: 8,
-                top: 8,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.6),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        LucideIcons.check,
-                        size: 14,
-                        color: Colors.green.shade300,
-                      ),
-                      const SizedBox(width: 6),
-                      const Text(
-                        "Image ready",
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
+                  cs,
+                  isCustomMode: isCustomMode,
+                  customScale: customScale,
+                  normOffsetX: normOffsetX,
+                  normOffsetY: normOffsetY,
+                  alignment: alignment,
+                )
+              : Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Container(color: cs.surfaceContainerHigh),
+                    Image.memory(
+                      list.first,
+                      fit: BoxFit.contain,
+                      width: double.infinity,
+                      height: double.infinity,
+                    ),
+                    // Mask overlay with red tint
+                    if (hasMask)
+                      Positioned.fill(
+                        child: ColorFiltered(
+                          colorFilter: const ColorFilter.mode(
+                            Color(0x66FF0000),
+                            BlendMode.srcATop,
+                          ),
+                          child: Opacity(
+                            opacity: 0.6,
+                            child: Image.memory(mask as Uint8List, fit: BoxFit.contain),
+                          ),
                         ),
                       ),
-                    ],
+                    // Status badge (top right)
+                    Positioned(
+                      right: 8,
+                      top: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.6),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              hasMask ? LucideIcons.paintbrush : LucideIcons.check,
+                              size: 14,
+                              color: hasMask ? Colors.red.shade300 : Colors.green.shade300,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              hasMask ? "Mask applied" : "Image ready",
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                  ),
+                    // Edit/Draw Mask button (bottom right) - only for inpaint tools
+                    if (requiresMaskForTool)
+                      Positioned(
+                        right: 8,
+                        bottom: 8,
+                        child: GestureDetector(
+                          onTap: () async {
+                            final base = list.first;
+                            final newMask = await _openMaskEditor(base);
+                            if (newMask != null && mounted) {
+                              setState(() {
+                                _inputs["mask_image"] = newMask;
+                              });
+                            }
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: hasMask 
+                                  ? cs.surfaceContainerHigh 
+                                  : cs.primary,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: hasMask 
+                                    ? cs.outline.withOpacity(0.3)
+                                    : cs.primary,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.3),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  hasMask ? LucideIcons.edit3 : LucideIcons.paintbrush,
+                                  size: 16,
+                                  color: hasMask ? cs.onSurface : cs.onPrimary,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  hasMask ? "Edit Mask" : "Draw Mask",
+                                  style: TextStyle(
+                                    color: hasMask ? cs.onSurface : cs.onPrimary,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
-            ],
-          ),
         ),
       ),
     );
   }
-
-  Alignment _convertAlignment(String a) {
-    switch (a) {
+  
+  /// Build outpaint preview with accurate positioning
+  Widget _buildOutpaintPreview(
+    Uint8List imageBytes,
+    ColorScheme cs, {
+    required bool isCustomMode,
+    required double customScale,
+    required double normOffsetX,
+    required double normOffsetY,
+    required String alignment,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final boxSize = constraints.biggest;
+        
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            // Checker background
+            const CustomPaint(painter: _CheckerPainter()),
+            
+            // Image with accurate positioning
+            if (isCustomMode)
+              // Custom mode: use scale and offset
+              Center(
+                child: Transform.translate(
+                  offset: Offset(
+                    normOffsetX * (boxSize.width / 2),
+                    normOffsetY * (boxSize.height / 2),
+                  ),
+                  child: Transform.scale(
+                    scale: customScale,
+                    child: Image.memory(
+                      imageBytes,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
+              )
+            else
+              // Fixed aspect mode: use normalized offset for accurate position
+              Center(
+                child: Transform.translate(
+                  offset: Offset(
+                    normOffsetX * (boxSize.width * 0.15),
+                    normOffsetY * (boxSize.height * 0.15),
+                  ),
+                  child: Padding(
+                    padding: _getOutpaintPadding(alignment),
+                    child: Image.memory(
+                      imageBytes,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
+              ),
+            
+            // Expansion direction indicator
+            _buildExpansionIndicator(alignment, cs),
+            
+            // Image ready indicator
+            Positioned(
+              right: 8,
+              top: 8,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.6),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      LucideIcons.check,
+                      size: 14,
+                      color: Colors.green.shade300,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      isCustomMode ? "Custom" : alignment,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+  
+  EdgeInsets _getOutpaintPadding(String alignment) {
+    const double pad = 40;
+    switch (alignment) {
       case "Left":
-        return Alignment.centerLeft;
+        return const EdgeInsets.only(right: pad);
       case "Right":
-        return Alignment.centerRight;
+        return const EdgeInsets.only(left: pad);
       case "Top":
-        return Alignment.topCenter;
+        return const EdgeInsets.only(bottom: pad);
       case "Bottom":
-        return Alignment.bottomCenter;
+        return const EdgeInsets.only(top: pad);
       case "All Sides":
-        return Alignment.center;
+        return const EdgeInsets.all(pad * 0.5);
       default:
-        return Alignment.center;
+        return EdgeInsets.zero;
     }
+  }
+  
+  Widget _buildExpansionIndicator(String alignment, ColorScheme cs) {
+    if (alignment == "Middle") return const SizedBox();
+    
+    IconData icon;
+    Alignment position;
+    
+    switch (alignment) {
+      case "Left":
+        icon = LucideIcons.arrowRight;
+        position = Alignment.centerRight;
+        break;
+      case "Right":
+        icon = LucideIcons.arrowLeft;
+        position = Alignment.centerLeft;
+        break;
+      case "Top":
+        icon = LucideIcons.arrowDown;
+        position = Alignment.bottomCenter;
+        break;
+      case "Bottom":
+        icon = LucideIcons.arrowUp;
+        position = Alignment.topCenter;
+        break;
+      case "All Sides":
+        icon = LucideIcons.expand;
+        position = Alignment.center;
+        break;
+      default:
+        return const SizedBox();
+    }
+    
+    return Align(
+      alignment: position,
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: cs.primary.withOpacity(0.8),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, size: 16, color: cs.onPrimary),
+        ),
+      ),
+    );
   }
 
   // -------- Slider --------
@@ -4887,206 +5172,9 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   Widget _buildPainter(String ref) {
-    final cs = Theme.of(context).colorScheme;
-
-    // Find the image input for mask base
-    Map<String, dynamic>? baseImageInput;
-    for (final i in widget.config.inputs) {
-      if (i["type"] == "image" && i["id"] != ref) {
-        baseImageInput = i;
-        break;
-      }
-    }
-
-    final raw = baseImageInput != null ? _inputs[baseImageInput["id"]] : null;
-
-    Uint8List? baseBytes;
-    if (raw is List && raw.isNotEmpty) {
-      baseBytes = raw.first as Uint8List;
-    } else if (raw is Uint8List) {
-      baseBytes = raw;
-    }
-
-    final hasMask = _inputs["mask_image"] != null;
-
-    // Hide button entirely until image is selected
-    if (baseBytes == null && !hasMask) {
-      return const SizedBox.shrink();
-    }
-
-    return _buildCard(
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: hasMask
-                      ? Colors.green.withOpacity(0.12)
-                      : cs.tertiary.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(
-                  hasMask ? LucideIcons.checkCircle : LucideIcons.paintbrush,
-                size: 18,
-                  color: hasMask ? Colors.green : cs.tertiary,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-              Text(
-                      "Mask Region",
-                      style: TextStyle(
-                      color: cs.onSurface,
-                        fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                    ),
-              ),
-                    const SizedBox(height: 2),
-                    Text(
-                      hasMask
-                          ? "Mask created - tap to edit"
-                          : "Draw over areas to modify",
-                      style: TextStyle(
-                        color: cs.onSurfaceVariant.withOpacity(0.7),
-                        fontSize: 12,
-                    ),
-              ),
-            ],
-          ),
-              ),
-              Material(
-                color: hasMask
-                    ? cs.surfaceContainerHigh
-                    : cs.tertiary,
-                borderRadius: BorderRadius.circular(12),
-                child: InkWell(
-                  onTap: () async {
-              final base = baseBytes ?? (_inputs["init_image"]?[0] as Uint8List?);
-              if (base != null) {
-                final mask = await _openMaskEditor(base);
-                if (mask != null) {
-                  setState(() {
-                    _inputs["mask_image"] = mask;
-                  });
-                }
-              }
-            },
-                  borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 10,
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          hasMask ? LucideIcons.edit3 : LucideIcons.paintbrush,
-                          size: 18,
-                          color: hasMask ? cs.onSurfaceVariant : Colors.white,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          hasMask ? "Edit" : "Draw Mask",
-                          style: TextStyle(
-                            color: hasMask ? cs.onSurfaceVariant : Colors.white,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
-                          ),
-          ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          
-          // Show mask preview if available
-          if (hasMask) ...[
-            const SizedBox(height: 12),
-            Container(
-              height: 80,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: Colors.green.withOpacity(0.3),
-                ),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(11),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    if (baseBytes != null)
-                      Image.memory(
-                        baseBytes,
-                        fit: BoxFit.cover,
-                      ),
-                    Container(
-                      color: Colors.black.withOpacity(0.3),
-                    ),
-                    ColorFiltered(
-                      colorFilter: const ColorFilter.mode(
-                        Colors.red,
-                        BlendMode.srcATop,
-                      ),
-                      child: Opacity(
-                        opacity: 0.5,
-                        child: Image.memory(
-                          _inputs["mask_image"] as Uint8List,
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      right: 8,
-                      bottom: 8,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black54,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              LucideIcons.check,
-                              size: 12,
-                              color: Colors.white,
-                            ),
-                            SizedBox(width: 4),
-                            Text(
-                              "Mask applied",
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
+    // Mask region section is removed - mask editing is now integrated into image preview
+    // Return empty widget as mask functionality moved to _buildImagePreview
+    return const SizedBox.shrink();
   }
 
   Widget _buildDynamicInputScreen() {
@@ -7156,6 +7244,32 @@ class _GenericToolPageState extends State<GenericToolPage>
             resolvedParams["height"] = roundTo32(newHeight);
           }
         }
+        
+        // --- Add outpaint-specific params ---
+        if (_isOutpaint) {
+          // Basic outpaint params
+          resolvedParams["alignment"] = _inputs["alignment"] ?? "Middle";
+          resolvedParams["aspect_ratio"] = _inputs["aspect_ratio"] ?? "1:1";
+          
+          // Custom mode params
+          final bool isCustomMode = _inputs["is_custom"] == "true";
+          if (isCustomMode) {
+            resolvedParams["is_custom_mode"] = true;
+            resolvedParams["custom_scale"] = double.tryParse(_inputs["custom_scale"] ?? "0.7") ?? 0.7;
+            resolvedParams["norm_offset_x"] = double.tryParse(_inputs["norm_offset_x"] ?? "0") ?? 0.0;
+            resolvedParams["norm_offset_y"] = double.tryParse(_inputs["norm_offset_y"] ?? "0") ?? 0.0;
+            // Canvas and image dimensions for backend calculation
+            resolvedParams["canvas_width"] = double.tryParse(_inputs["canvas_width"] ?? "0");
+            resolvedParams["canvas_height"] = double.tryParse(_inputs["canvas_height"] ?? "0");
+            resolvedParams["image_width"] = double.tryParse(_inputs["image_width"] ?? "0");
+            resolvedParams["image_height"] = double.tryParse(_inputs["image_height"] ?? "0");
+            resolvedParams["image_left"] = double.tryParse(_inputs["image_left"] ?? "0");
+            resolvedParams["image_top"] = double.tryParse(_inputs["image_top"] ?? "0");
+          }
+          
+          debugPrint("🖼️ Outpaint params: alignment=${resolvedParams["alignment"]}, "
+              "aspect=${resolvedParams["aspect_ratio"]}, custom=$isCustomMode");
+        }
 
         // --- Build payload ---
         // Send ONE request with variations: N, server creates N jobs internally
@@ -7534,8 +7648,15 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
   _Stroke? _currentStroke;
 
   double _brushSize = 50.0;
-  int? _lastImageHash;
   bool _eraser = false;
+  
+  // Zoom and pan state
+  double _scale = 1.0;
+  Offset _offset = Offset.zero;
+  double _baseScale = 1.0;
+  Offset _baseOffset = Offset.zero;
+  bool _isZooming = false;
+  int _pointerCount = 0;
 
   @override
   void initState() {
@@ -7543,42 +7664,18 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
     _loadImage();
   }
 
-  int _hashBytes(Uint8List bytes) {
-    int hash = 0;
-    for (final b in bytes) {
-      hash = (hash * 31 + b) & 0xFFFFFFFF;
-    }
-    return hash;
-  }
-
   Future<void> _loadImage() async {
     try {
-      final currentHash = _hashBytes(widget.baseImageBytes);
-      final isNewImage =
-          _lastImageHash == null || currentHash != _lastImageHash;
-      _lastImageHash = currentHash;
-
       // Dispose old images to avoid GPU cache artifacts
       _image?.dispose();
       _maskOverlay?.dispose();
 
-      // Always clear strokes for (re)open
-      _strokes.clear();
-      _currentStroke = null;
-      _eraser = false;
-
-      // If it's a NEW image, force-start fresh (ignore any existingMask)
-      if (isNewImage) {
-        _maskOverlay = null;
-      } else {
-        // Same image: load existingMask if provided
-        _maskOverlay = null;
-        if (widget.existingMask != null) {
-          final maskCodec =
-              await ui.instantiateImageCodec(widget.existingMask!);
-          final maskFrame = await maskCodec.getNextFrame();
-          _maskOverlay = maskFrame.image;
-        }
+      // Load existing mask if provided (preserve previous mask)
+      _maskOverlay = null;
+      if (widget.existingMask != null) {
+        final maskCodec = await ui.instantiateImageCodec(widget.existingMask!);
+        final maskFrame = await maskCodec.getNextFrame();
+        _maskOverlay = maskFrame.image;
       }
 
       // Decode the base image
@@ -7593,14 +7690,33 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
     }
   }
 
-  // Convert local widget pos to image pixel coords
+  // Convert local widget pos to image pixel coords (accounting for zoom/pan)
   Offset _toImageCoords(Offset localPos, Size displaySize) {
-    final xInImageSpace = (localPos.dx / displaySize.width) * _image!.width;
-    final yInImageSpace = (localPos.dy / displaySize.height) * _image!.height;
+    // First, reverse the pan and scale transformations
+    // The canvas center is at displaySize / 2
+    final centerX = displaySize.width / 2;
+    final centerY = displaySize.height / 2;
+    
+    // Transform local position back to unscaled/unpanned coordinates
+    // localPos is relative to the top-left of the display area
+    // The transform is: scaled around center, then translated by offset
+    final unscaledX = (localPos.dx - centerX - _offset.dx) / _scale + centerX;
+    final unscaledY = (localPos.dy - centerY - _offset.dy) / _scale + centerY;
+    
+    // Now convert to image coordinates
+    final xInImageSpace = (unscaledX / displaySize.width) * _image!.width;
+    final yInImageSpace = (unscaledY / displaySize.height) * _image!.height;
     return Offset(
       xInImageSpace.clamp(0.0, _image!.width.toDouble()),
       yInImageSpace.clamp(0.0, _image!.height.toDouble()),
     );
+  }
+  
+  void _resetZoom() {
+    setState(() {
+      _scale = 1.0;
+      _offset = Offset.zero;
+    });
   }
 
   Future<Uint8List> _exportMask() async {
@@ -7648,27 +7764,27 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
     return byteData!.buffer.asUint8List();
   }
 
-  bool _showSlider = true;
-  Timer? _hideTimer;
-
-  void _scheduleHideSlider() {
-    _hideTimer?.cancel();
-    _hideTimer = Timer(const Duration(seconds: 3), () {
-      if (mounted) setState(() => _showSlider = false);
+  void _clearAll() {
+    setState(() {
+      _strokes.clear();
+      _maskOverlay?.dispose();
+      _maskOverlay = null;
     });
   }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     if (_loading) {
       return Scaffold(
-        backgroundColor: cs.surface,
+        backgroundColor: isDark ? const Color(0xFF0D0D0D) : cs.surface,
         appBar: AppBar(
-          title: Text("Draw Mask", style: TextStyle(color: cs.onSurface)),
-          backgroundColor: cs.surface,
-          iconTheme: IconThemeData(color: cs.onSurface),
+          title: const Text("Draw Mask"),
+          backgroundColor: Colors.transparent,
+          foregroundColor: cs.onSurface,
+          elevation: 0,
         ),
         body: const Center(child: CircularProgressIndicator()),
       );
@@ -7676,11 +7792,12 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
 
     if (_image == null) {
       return Scaffold(
-        backgroundColor: cs.surface,
+        backgroundColor: isDark ? const Color(0xFF0D0D0D) : cs.surface,
         appBar: AppBar(
-          title: Text("Draw Mask", style: TextStyle(color: cs.onSurface)),
-          backgroundColor: cs.surface,
-          iconTheme: IconThemeData(color: cs.onSurface),
+          title: const Text("Draw Mask"),
+          backgroundColor: Colors.transparent,
+          foregroundColor: cs.onSurface,
+          elevation: 0,
         ),
         body: Center(
           child: Text("Failed to load image",
@@ -7689,190 +7806,394 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
       );
     }
 
+    final hasMask = _strokes.isNotEmpty || _maskOverlay != null;
+
     return Scaffold(
-      backgroundColor: cs.surface,
+      backgroundColor: isDark ? const Color(0xFF0D0D0D) : cs.surface,
       appBar: AppBar(
-        title: Text("Draw Mask", style: TextStyle(color: cs.onSurface)),
-        backgroundColor: cs.surface,
-        iconTheme: IconThemeData(color: cs.onSurface),
+        title: const Text("Draw Mask"),
+        backgroundColor: Colors.transparent,
+        foregroundColor: cs.onSurface,
+        elevation: 0,
+        leading: IconButton(
+          icon: Icon(LucideIcons.x, color: cs.onSurface),
+          onPressed: () => Navigator.pop(context),
+        ),
         actions: [
-          IconButton(
-            tooltip: "Undo",
-            icon: Icon(Icons.undo, color: cs.onSurface),
-            onPressed: () {
-              if (_strokes.isNotEmpty) setState(() => _strokes.removeLast());
-            },
-          ),
-          IconButton(
-            tooltip: "Clear",
-            icon: Icon(Icons.layers_clear, color: cs.onSurface),
-            onPressed: () => setState(() => _strokes.clear()),
-          ),
-          IconButton(
-            tooltip: "Toggle Eraser",
-            icon: Icon(_eraser ? Icons.brush : Icons.auto_fix_high,
-                color: cs.onSurface),
-            onPressed: () => setState(() => _eraser = !_eraser),
-          ),
-          IconButton(
-            tooltip: "Save Mask",
-            icon: Icon(Icons.check, color: cs.primary),
-            onPressed: () async {
-              try {
-                final maskBytes = await _exportMask();
-                Navigator.pop(context, maskBytes);
-              } catch (e) {
-                debugPrint("Error exporting mask: $e");
-                ScaffoldMessenger.of(context)
-                    .showSnackBar(SnackBar(content: Text("Export failed: $e")));
-              }
-            },
+          TextButton.icon(
+            onPressed: hasMask
+                ? () async {
+                    try {
+                      final maskBytes = await _exportMask();
+                      Navigator.pop(context, maskBytes);
+                    } catch (e) {
+                      debugPrint("Error exporting mask: $e");
+                      ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text("Export failed: $e")));
+                    }
+                  }
+                : null,
+            icon: Icon(LucideIcons.check,
+                size: 18, color: hasMask ? cs.primary : cs.onSurfaceVariant),
+            label: Text(
+              "Done",
+              style: TextStyle(
+                color: hasMask ? cs.primary : cs.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
         ],
       ),
-      body: LayoutBuilder(builder: (context, constraints) {
-        final widgetSize = Size(constraints.maxWidth,
-            constraints.maxHeight - 60); // leave space for ad
-        final imgW = _image!.width.toDouble();
-        final imgH = _image!.height.toDouble();
-        final imgAspect = imgW / imgH;
-        final widgetAspect = widgetSize.width / widgetSize.height;
-
-        double displayW, displayH;
-        if (imgAspect > widgetAspect) {
-          displayW = widgetSize.width;
-          displayH = displayW / imgAspect;
-        } else {
-          displayH = widgetSize.height;
-          displayW = displayH * imgAspect;
-        }
-
-        final displaySize = Size(displayW, displayH);
-
-        return GestureDetector(
-          onTap: () {
-            // toggle slider visibility manually on single tap
-            setState(() => _showSlider = !_showSlider);
-            if (_showSlider) _scheduleHideSlider();
-          },
-          child: Stack(
-            children: [
-              // --- MAIN IMAGE + MASK ---
-              Positioned.fill(
-                top: 0,
-                bottom: 60, // reserved for ad
-                child: Center(
-                  child: FittedBox(
-                    fit: BoxFit.contain,
-                    child: SizedBox(
-                      width: displaySize.width,
-                      height: displaySize.height,
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.translucent,
-                        onPanStart: (details) {
-                          // hide slider immediately when drawing starts
-                          setState(() => _showSlider = false);
-
-                          final local = details.localPosition;
-
-                          final imgPos = _toImageCoords(local, displaySize);
-                          _currentStroke = _Stroke(
-                            points: [imgPos],
-                            size: _brushSize,
-                            eraser: _eraser,
-                          );
-                          setState(() => _strokes.add(_currentStroke!));
-                        },
-                        onPanUpdate: (details) {
-                          final local = details.localPosition;
-
-                          final imgPos = _toImageCoords(local, displaySize);
-                          if (_currentStroke != null) {
-                            setState(() => _currentStroke!.points.add(imgPos));
-                          }
-                        },
-                        onPanEnd: (_) {
-                          _currentStroke = null;
-                          _scheduleHideSlider(); // hide again after inactivity
-                        },
-                        child: ClipRect(
-                          child: CustomPaint(
-                            painter: _MaskEditorPainter(
-                              baseImage: _image!,
-                              strokes: _strokes,
-                              displaySize: displaySize,
-                              maskOverlay: _maskOverlay,
-                            ),
-                            size: displaySize,
-                          ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Instructions
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: cs.primaryContainer.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: cs.primary.withOpacity(0.2)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(LucideIcons.info, size: 18, color: cs.primary),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        _eraser
+                            ? "Erase mode • Pinch to zoom"
+                            : "Draw to mask • Pinch to zoom",
+                        style: TextStyle(
+                          color: cs.onSurface.withOpacity(0.8),
+                          fontSize: 13,
                         ),
                       ),
                     ),
-                  ),
+                    // Zoom indicator
+                    if (_scale != 1.0)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: cs.primary.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          "${(_scale * 100).toInt()}%",
+                          style: TextStyle(
+                            color: cs.primary,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
+            ),
 
-              // --- SLIDER (auto-hide with smooth fade) ---
-              AnimatedPositioned(
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeInOut,
-                left: 12,
-                right: 12,
-                bottom: _showSlider ? 75 : -100, // slide out smoothly
-                child: AnimatedOpacity(
-                  opacity: _showSlider ? 1 : 0,
-                  duration: const Duration(milliseconds: 250),
-                  child: IgnorePointer(
-                    ignoring: !_showSlider,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
+            // Canvas area
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Center(
+                  child: LayoutBuilder(builder: (context, constraints) {
+                    final widgetSize = constraints.biggest;
+                    final imgW = _image!.width.toDouble();
+                    final imgH = _image!.height.toDouble();
+                    final imgAspect = imgW / imgH;
+                    final widgetAspect = widgetSize.width / widgetSize.height;
+
+                    double displayW, displayH;
+                    if (imgAspect > widgetAspect) {
+                      displayW = widgetSize.width;
+                      displayH = displayW / imgAspect;
+                    } else {
+                      displayH = widgetSize.height;
+                      displayW = displayH * imgAspect;
+                    }
+
+                    final displaySize = Size(displayW, displayH);
+
+                    return Container(
                       decoration: BoxDecoration(
-                        color: cs.surfaceContainerHigh,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: cs.outlineVariant),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.brush, color: cs.onSurfaceVariant),
-                          Expanded(
-                            child: Slider(
-                              value: _brushSize,
-                              min: 4,
-                              max: 120,
-                              onChanged: (v) => setState(() => _brushSize = v),
-                              activeColor: cs.primary,
-                              inactiveColor:
-                                  cs.onSurfaceVariant.withOpacity(0.3),
-                            ),
+                        border: Border.all(
+                          color: cs.outline.withOpacity(0.3),
+                          width: 2,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.2),
+                            blurRadius: 20,
+                            offset: const Offset(0, 8),
                           ),
-                          const SizedBox(width: 8),
-                          Text("${_brushSize.toInt()}",
-                              style: TextStyle(color: cs.onSurfaceVariant)),
                         ],
                       ),
+                      child: ClipRect(
+                        child: SizedBox(
+                          width: displayW,
+                          height: displayH,
+                          child: Listener(
+                            onPointerDown: (_) {
+                              _pointerCount++;
+                              if (_pointerCount >= 2) {
+                                // Cancel current stroke if user starts zooming
+                                _currentStroke = null;
+                                _isZooming = true;
+                              }
+                            },
+                            onPointerUp: (_) {
+                              _pointerCount = (_pointerCount - 1).clamp(0, 10);
+                              if (_pointerCount < 2) {
+                                _isZooming = false;
+                              }
+                            },
+                            onPointerCancel: (_) {
+                              _pointerCount = (_pointerCount - 1).clamp(0, 10);
+                              if (_pointerCount < 2) {
+                                _isZooming = false;
+                              }
+                            },
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onScaleStart: (details) {
+                                _baseScale = _scale;
+                                _baseOffset = _offset;
+                                if (_pointerCount < 2) {
+                                  // Single finger: start drawing
+                                  final local = details.localFocalPoint;
+                                  final imgPos = _toImageCoords(local, displaySize);
+                                  _currentStroke = _Stroke(
+                                    points: [imgPos],
+                                    size: _brushSize,
+                                    eraser: _eraser,
+                                  );
+                                  setState(() => _strokes.add(_currentStroke!));
+                                }
+                              },
+                              onScaleUpdate: (details) {
+                                if (_pointerCount >= 2 || details.scale != 1.0) {
+                                  // Multi-finger: zoom and pan
+                                  setState(() {
+                                    _scale = (_baseScale * details.scale).clamp(1.0, 5.0);
+                                    
+                                    // Calculate pan with bounds
+                                    final maxOffsetX = (displayW * _scale - displayW) / 2;
+                                    final maxOffsetY = (displayH * _scale - displayH) / 2;
+                                    
+                                    final newOffset = _baseOffset + (details.focalPoint - details.localFocalPoint);
+                                    _offset = Offset(
+                                      newOffset.dx.clamp(-maxOffsetX, maxOffsetX),
+                                      newOffset.dy.clamp(-maxOffsetY, maxOffsetY),
+                                    );
+                                  });
+                                  _currentStroke = null; // Cancel any stroke
+                                } else if (_currentStroke != null && !_isZooming) {
+                                  // Single finger: continue drawing
+                                  final local = details.localFocalPoint;
+                                  final imgPos = _toImageCoords(local, displaySize);
+                                  setState(() => _currentStroke!.points.add(imgPos));
+                                }
+                              },
+                              onScaleEnd: (_) {
+                                _currentStroke = null;
+                                _isZooming = false;
+                              },
+                              child: Transform.translate(
+                                offset: _offset,
+                                child: Transform.scale(
+                                  scale: _scale,
+                                  child: CustomPaint(
+                                    painter: _MaskEditorPainter(
+                                      baseImage: _image!,
+                                      strokes: _strokes,
+                                      displaySize: displaySize,
+                                      maskOverlay: _maskOverlay,
+                                    ),
+                                    size: displaySize,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+              ),
+            ),
+
+            // Tool bar
+            _buildToolBar(cs),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildToolBar(ColorScheme cs) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Column(
+        children: [
+          // Brush size slider
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: cs.outline.withOpacity(0.2)),
+            ),
+            child: Row(
+              children: [
+                Icon(LucideIcons.circle,
+                    size: 14, color: cs.onSurfaceVariant),
+                const SizedBox(width: 8),
+                Text("Size",
+                    style: TextStyle(
+                        color: cs.onSurfaceVariant,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500)),
+                Expanded(
+                  child: Slider(
+                    value: _brushSize,
+                    min: 10,
+                    max: 150,
+                    onChanged: (v) => setState(() => _brushSize = v),
+                    activeColor: cs.primary,
+                    inactiveColor: cs.onSurfaceVariant.withOpacity(0.2),
+                  ),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: cs.primary.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    "${_brushSize.toInt()}",
+                    style: TextStyle(
+                      color: cs.primary,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
                     ),
                   ),
                 ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          // Action buttons
+          Row(
+            children: [
+              // Undo button
+              Expanded(
+                child: _buildToolButton(
+                  icon: LucideIcons.undo2,
+                  label: "Undo",
+                  onTap: _strokes.isNotEmpty
+                      ? () => setState(() => _strokes.removeLast())
+                      : null,
+                  cs: cs,
+                ),
               ),
-
-              // --- OPTIONAL AD BANNER ---
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                height: 60,
-                child: Container(
-                  color: Colors.black12,
-                  alignment: Alignment.center,
-                  child: const Text("Ad Banner",
-                      style: TextStyle(color: Colors.black54)),
+              const SizedBox(width: 8),
+              // Reset Zoom button
+              Expanded(
+                child: _buildToolButton(
+                  icon: LucideIcons.minimize2,
+                  label: "Fit",
+                  onTap: _scale != 1.0 ? _resetZoom : null,
+                  cs: cs,
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Draw/Erase toggle
+              Expanded(
+                child: _buildToolButton(
+                  icon: _eraser ? LucideIcons.paintbrush : LucideIcons.eraser,
+                  label: _eraser ? "Draw" : "Erase",
+                  onTap: () => setState(() => _eraser = !_eraser),
+                  cs: cs,
+                  isActive: _eraser,
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Clear button
+              Expanded(
+                child: _buildToolButton(
+                  icon: LucideIcons.trash2,
+                  label: "Clear",
+                  onTap: (_strokes.isNotEmpty || _maskOverlay != null)
+                      ? _clearAll
+                      : null,
+                  cs: cs,
+                  isDanger: true,
                 ),
               ),
             ],
           ),
-        );
-      }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildToolButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback? onTap,
+    required ColorScheme cs,
+    bool isActive = false,
+    bool isDanger = false,
+  }) {
+    final isEnabled = onTap != null;
+    final Color bgColor = isActive
+        ? cs.primary
+        : isDanger
+            ? (isEnabled ? cs.errorContainer : cs.surfaceContainerHighest)
+            : cs.surfaceContainerHighest;
+    final Color fgColor = isActive
+        ? cs.onPrimary
+        : isDanger
+            ? (isEnabled ? cs.onErrorContainer : cs.onSurfaceVariant.withOpacity(0.5))
+            : (isEnabled ? cs.onSurfaceVariant : cs.onSurfaceVariant.withOpacity(0.5));
+
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isActive
+                ? cs.primary
+                : cs.outline.withOpacity(0.2),
+            width: 1.5,
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 20, color: fgColor),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                color: fgColor,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

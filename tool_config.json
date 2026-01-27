@@ -679,7 +679,8 @@
         {
           "id": "prompt",
           "type": "text",
-          "label": "Describe what to fill (optional)"
+          "label": "Describe what to fill (optional)",
+          "optional": true
         },
         {
           "id": "scale_factor",
@@ -912,7 +913,8 @@
         {
           "id": "prompt",
           "type": "text",
-          "label": "Describe Expansion"
+          "label": "Describe Expansion (optional)",
+          "optional": true
         },
         {
           "id": "alignment",
