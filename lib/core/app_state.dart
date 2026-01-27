@@ -2,6 +2,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // Import user service for credit notifier, ad-free state, and VIP state
@@ -466,11 +467,172 @@ Future<void> updateJobFields({
   await saveJobsToPrefs();
 }
 
-/// 🔄 Load jobs from SharedPreferences when app starts
-Future<void> loadJobsFromPrefs() async {
+// ----------------------
+// 🔄 FILE-BASED FCM UPDATES (more reliable than SharedPreferences for cross-isolate)
+// ----------------------
+
+/// File name for pending FCM updates (used for cross-isolate sync)
+const String _fcmUpdatesFileName = 'fcm_pending_updates.json';
+
+/// Get the FCM updates file path
+Future<File> getFcmUpdatesFile() async {
+  final dir = await getApplicationDocumentsDirectory();
+  return File('${dir.path}/$_fcmUpdatesFileName');
+}
+
+/// Write FCM update to file (called from background isolate)
+/// This is more reliable than SharedPreferences for cross-isolate communication
+Future<void> writeFcmUpdateToFile(Map<String, dynamic> jobUpdate) async {
   try {
+    final file = await getFcmUpdatesFile();
+    
+    // Read existing updates
+    List<Map<String, dynamic>> updates = [];
+    if (await file.exists()) {
+      final content = await file.readAsString();
+      if (content.isNotEmpty) {
+        final decoded = jsonDecode(content);
+        if (decoded is List) {
+          updates = decoded.map((e) => Map<String, dynamic>.from(e)).toList();
+        }
+      }
+    }
+    
+    // Add or update this job
+    final jobId = jobUpdate['jobId'];
+    final existingIdx = updates.indexWhere((u) => u['jobId'] == jobId);
+    if (existingIdx >= 0) {
+      updates[existingIdx] = jobUpdate;
+    } else {
+      updates.add(jobUpdate);
+    }
+    
+    // Write back to file
+    await file.writeAsString(jsonEncode(updates));
+    debugPrint("📁 [FCM File] Wrote update for job $jobId to file");
+  } catch (e) {
+    debugPrint("⚠️ [FCM File] Failed to write: $e");
+  }
+}
+
+/// Read and apply all pending FCM updates from file (called on app startup)
+/// Returns true if any updates were applied
+Future<bool> applyPendingFcmUpdatesFromFile() async {
+  try {
+    final file = await getFcmUpdatesFile();
+    
+    if (!await file.exists()) {
+      debugPrint("📁 [FCM File] No pending updates file");
+      return false;
+    }
+    
+    final content = await file.readAsString();
+    if (content.isEmpty) {
+      debugPrint("📁 [FCM File] Updates file is empty");
+      return false;
+    }
+    
+    final decoded = jsonDecode(content);
+    if (decoded is! List || decoded.isEmpty) {
+      debugPrint("📁 [FCM File] No pending updates in file");
+      return false;
+    }
+    
+    debugPrint("📁 [FCM File] Found ${decoded.length} pending updates - applying...");
+    
+    // Apply each update to the job list
     final prefs = await SharedPreferences.getInstance();
     await prefs.reload();
+    
+    final jsonStr = prefs.getString('jobs');
+    final jobs = jsonStr == null
+        ? <Map<String, dynamic>>[]
+        : (jsonDecode(jsonStr) as List)
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+    
+    bool anyUpdated = false;
+    
+    for (final update in decoded) {
+      final jobId = update['jobId']?.toString();
+      if (jobId == null || jobId.isEmpty) continue;
+      
+      final idx = jobs.indexWhere((j) => j['jobId'] == jobId);
+      if (idx >= 0) {
+        // Update existing job
+        final old = jobs[idx];
+        final newStatus = update['status']?.toString() ?? old['status'];
+        final newUrl = update['downloadUrl']?.toString();
+        
+        // Only update if FCM has newer/better data
+        if (newStatus == 'completed' || newStatus == 'failed' || old['status'] == 'processing') {
+          jobs[idx] = {
+            ...old,
+            'status': newStatus,
+            if (newUrl != null && newUrl.isNotEmpty) 'downloadUrl': newUrl,
+          };
+          debugPrint("📁 [FCM File] Updated job $jobId → $newStatus");
+          anyUpdated = true;
+        }
+      }
+    }
+    
+    if (anyUpdated) {
+      // Save to SharedPreferences
+      await prefs.setString('jobs', jsonEncode(jobs));
+      
+      // Update notifier
+      jobListNotifier.value = jobs
+          .map((e) => JobModel.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+      
+      debugPrint("✅ [FCM File] Applied ${decoded.length} pending updates");
+    }
+    
+    // Clear the file after applying
+    await file.writeAsString('[]');
+    debugPrint("📁 [FCM File] Cleared pending updates file");
+    
+    return anyUpdated;
+  } catch (e, st) {
+    debugPrint("⚠️ [FCM File] Failed to apply pending updates: $e\n$st");
+    return false;
+  }
+}
+
+/// 🔄 Load jobs from SharedPreferences when app starts
+/// 🚀 First applies file-based FCM updates, then loads from SharedPreferences
+Future<void> loadJobsFromPrefs() async {
+  try {
+    // 📁 FIRST: Apply any pending FCM updates from file
+    // This is the most reliable cross-isolate sync mechanism
+    final appliedFromFile = await applyPendingFcmUpdatesFromFile();
+    if (appliedFromFile) {
+      debugPrint("✅ Applied FCM updates from file on startup");
+      // Job list was already updated by applyPendingFcmUpdatesFromFile
+      final jobs = jobListNotifier.value;
+      final completed = jobs.where((j) => j.status == 'completed').length;
+      final processing = jobs.where((j) => j.status == 'processing').length;
+      debugPrint("📊 Status after FCM file: $completed completed, $processing processing");
+      return;
+    }
+    
+    // 📦 FALLBACK: Load from SharedPreferences
+    final prefs = await SharedPreferences.getInstance();
+    
+    // 🔄 Multiple reload attempts to ensure cross-isolate sync
+    await prefs.reload();
+    await Future.delayed(const Duration(milliseconds: 50));
+    await prefs.reload();
+    
+    // Check for pending FCM updates flag
+    final hasUpdate = prefs.getBool('has_fcm_update') ?? false;
+    if (hasUpdate) {
+      debugPrint("📦 Found pending FCM update flag on app start");
+      await prefs.remove('has_fcm_update');
+      await prefs.reload();
+    }
+    
     final jsonStr = prefs.getString('jobs');
     if (jsonStr == null) {
       jobListNotifier.value = [];
@@ -491,7 +653,11 @@ Future<void> loadJobsFromPrefs() async {
     // 🧠 Always assign a new list object to trigger UI rebuild
     jobListNotifier.value = List<JobModel>.from(list);
 
-    debugPrint("📂 Reloaded ${list.length} jobs from prefs");
+    // Log status summary
+    final completed = list.where((j) => j.status == 'completed').length;
+    final processing = list.where((j) => j.status == 'processing').length;
+    final failed = list.where((j) => j.status == 'failed').length;
+    debugPrint("📂 Loaded ${list.length} jobs: $completed completed, $processing processing, $failed failed");
   } catch (e, st) {
     debugPrint("⚠️ Failed to load jobs from prefs: $e\n$st");
   }

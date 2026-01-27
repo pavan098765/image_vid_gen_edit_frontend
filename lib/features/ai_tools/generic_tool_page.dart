@@ -2767,12 +2767,12 @@ class _GenericToolPageState extends State<GenericToolPage>
           _isProcessingImage = false;
         });
         
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${newImages.length} image${newImages.length == 1 ? '' : 's'} added (${_bulkImages.length}/$_maxBulkImages total)'),
-            backgroundColor: Theme.of(context).colorScheme.primary,
-          ),
-        );
+        // ScaffoldMessenger.of(context).showSnackBar(
+        //   SnackBar(
+        //     content: Text('${newImages.length} image${newImages.length == 1 ? '' : 's'} added (${_bulkImages.length}/$_maxBulkImages total)'),
+        //     backgroundColor: Theme.of(context).colorScheme.primary,
+        //   ),
+        // );
       }
     } catch (e) {
       debugPrint('❌ Error picking bulk images: $e');

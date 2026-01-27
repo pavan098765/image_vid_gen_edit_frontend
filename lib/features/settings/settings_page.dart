@@ -856,13 +856,13 @@ class _SettingsPageState extends State<SettingsPage> {
     return WillPopScope(
       onWillPop: _handleSystemBack,
       child: Scaffold(
+      backgroundColor: cs.surface,
+      appBar: AppBar(
+        title: const KalaLogoWithIcon(logoHeight: 30, fontSize: 22),
         backgroundColor: cs.surface,
-        appBar: AppBar(
-          title: const KalaLogoWithIcon(logoHeight: 30, fontSize: 22),
-          backgroundColor: cs.surface,
-          elevation: 0,
-          surfaceTintColor: Colors.transparent,
-        ),
+        elevation: 0,
+        surfaceTintColor: Colors.transparent,
+      ),
       body: StreamBuilder<User?>(
         stream: _authService.authStateChanges,
         builder: (context, snapshot) {

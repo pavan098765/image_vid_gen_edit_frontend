@@ -325,12 +325,12 @@ class _EditorPageState extends State<EditorPage> {
   Future<bool> _handleSystemBack() async {
     // Show confirmation dialog when pressing back
     final ok = await _confirmExitApp();
-    if (ok) {
+      if (ok) {
       // User confirmed exit - actually exit the app
       SystemNavigator.pop();
-    }
+      }
     return false; // Always prevent default back navigation
-  }
+    }
   
   Future<bool> _confirmExitApp() async {
     return (await showDialog<bool>(

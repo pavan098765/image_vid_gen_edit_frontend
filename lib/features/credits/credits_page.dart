@@ -694,48 +694,48 @@ class _CreditsPageState extends State<CreditsPage> {
                   
                   return Column(
                     children: [
-                      Text(
-                        'Ad watched!',
-                        style: TextStyle(
-                          color: cs.onSurface,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
+              Text(
+                'Ad watched!',
+                style: TextStyle(
+                  color: cs.onSurface,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 12),
                       // Visual progress: show 4 dots
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
                           for (int i = 0; i < 4; i++) ...[
-                            Container(
-                              width: 24,
-                              height: 24,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
+                  Container(
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
                                 color: i < displayProgress ? cs.primary : null,
                                 border: i < displayProgress 
                                     ? null 
                                     : Border.all(color: cs.outline, width: 2),
-                              ),
+                    ),
                               child: i < displayProgress 
                                   ? Icon(LucideIcons.check, size: 14, color: cs.onPrimary)
                                   : null,
                             ),
                             if (i < 3) const SizedBox(width: 6),
                           ],
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
                         remaining == 1 
                             ? '1 more ad for 1 gem'
                             : '$remaining more ads for 1 gem',
-                        style: TextStyle(
-                          color: Colors.blue.shade600,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
+                style: TextStyle(
+                  color: Colors.blue.shade600,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
                       ),
                     ],
                   );
@@ -1106,31 +1106,31 @@ class _CreditsPageState extends State<CreditsPage> {
     return WillPopScope(
       onWillPop: _handleSystemBack,
       child: Scaffold(
-        appBar: AppBar(
-          title: const KalaLogoWithIcon(logoHeight: 30, fontSize: 22),
-          backgroundColor: cs.surface,
-          elevation: 0,
-          actions: [
-            if (isSignedIn)
-              IconButton(
-                icon: _isRefreshing
-                    ? SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: cs.primary,
-                        ),
-                      )
-                    : const Icon(LucideIcons.refreshCw),
-                onPressed: _isRefreshing ? null : _refreshCredits,
-                tooltip: 'Refresh gems',
-              ),
-          ],
-        ),
-        body: isSignedIn 
-            ? _buildCreditsContent(cs)
-            : _buildSignInPrompt(cs),
+      appBar: AppBar(
+        title: const KalaLogoWithIcon(logoHeight: 30, fontSize: 22),
+        backgroundColor: cs.surface,
+        elevation: 0,
+        actions: [
+          if (isSignedIn)
+            IconButton(
+              icon: _isRefreshing
+                  ? SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: cs.primary,
+                      ),
+                    )
+                  : const Icon(LucideIcons.refreshCw),
+              onPressed: _isRefreshing ? null : _refreshCredits,
+              tooltip: 'Refresh gems',
+            ),
+        ],
+      ),
+      body: isSignedIn 
+          ? _buildCreditsContent(cs)
+          : _buildSignInPrompt(cs),
       ),
     );
   }
@@ -1603,67 +1603,67 @@ class _CreditsPageState extends State<CreditsPage> {
     return GestureDetector(
       onTap: _openOfferwall,
       child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
           color: cs.primaryContainer.withOpacity(0.12),
-          borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: offerwallColors[0].withOpacity(0.4),
           ),
-        ),
-        child: Row(
-          children: [
+      ),
+      child: Row(
+        children: [
             // Left section: Icon with gradient (like other cards when active)
-            Container(
+          Container(
               padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
+            decoration: BoxDecoration(
                 gradient: LinearGradient(colors: offerwallColors),
                 borderRadius: BorderRadius.circular(8),
-              ),
+            ),
               child: const Icon(LucideIcons.gift, size: 16, color: Colors.white),
-            ),
-            const SizedBox(width: 12),
+          ),
+          const SizedBox(width: 12),
             // Middle section: Title and subtitle
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Offerwall',
-                    style: TextStyle(
-                      color: cs.onSurface,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Offerwall',
+                  style: TextStyle(
+                    color: cs.onSurface,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
                   ),
+                ),
                   const SizedBox(height: 2),
-                  Text(
-                    'Complete offers for gems',
-                    style: TextStyle(
-                      color: cs.onSurfaceVariant,
-                      fontSize: 11,
-                    ),
+                Text(
+                  'Complete offers for gems',
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
+                    fontSize: 11,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
+          ),
             // Right section: FREE badge (like other cards)
-            Container(
+          Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
+            decoration: BoxDecoration(
                 gradient: LinearGradient(colors: offerwallColors),
                 borderRadius: BorderRadius.circular(6),
-              ),
+            ),
               child: const Text(
                 'FREE',
-                style: TextStyle(
+              style: TextStyle(
                   color: Colors.white,
                   fontSize: 8,
                   fontWeight: FontWeight.bold,
-                ),
               ),
             ),
-          ],
+          ),
+        ],
         ),
       ),
     );
@@ -1873,23 +1873,23 @@ class _CreditsPageState extends State<CreditsPage> {
                 children: [
                   // Progress dots (4 total)
                   for (int i = 0; i < 4; i++) ...[
-                    Container(
+                  Container(
                       width: 10,
                       height: 10,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
                         color: progressToNextGem > i ? cs.primary : cs.surfaceContainerHighest,
-                        border: Border.all(
+                      border: Border.all(
                           color: progressToNextGem > i 
                               ? cs.primary.withOpacity(0.5)
                               : cs.outline.withOpacity(0.3),
-                          width: 1.5,
-                        ),
+                        width: 1.5,
                       ),
+                    ),
                       child: progressToNextGem > i 
                           ? Icon(LucideIcons.check, size: 6, color: cs.onPrimary)
-                          : null,
-                    ),
+                        : null,
+                  ),
                     if (i < 3) const SizedBox(width: 2),
                   ],
                   const SizedBox(width: 4),
@@ -1948,8 +1948,8 @@ class _CreditsPageState extends State<CreditsPage> {
         return GestureDetector(
           onTap: isAdFree ? null : _purchaseRemoveAds,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: BoxDecoration(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
@@ -1960,8 +1960,8 @@ class _CreditsPageState extends State<CreditsPage> {
                         : [removeAdColors[0].withOpacity(0.1), removeAdColors[1].withOpacity(0.05)],
               ),
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: isAdFree 
+            border: Border.all(
+              color: isAdFree 
                     ? Colors.green.withOpacity(0.4)
                     : removeAdColors[0].withOpacity(0.4),
                 width: 1.5,
@@ -1974,15 +1974,15 @@ class _CreditsPageState extends State<CreditsPage> {
                   blurRadius: 8,
                   spreadRadius: 0,
                   offset: const Offset(0, 2),
-                ),
-              ],
             ),
-            child: Row(
-              children: [
+              ],
+          ),
+          child: Row(
+            children: [
                 // Icon with gradient background
-                Container(
+              Container(
                   padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
+                decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: isAdFree 
                           ? [Colors.green.shade500, Colors.green.shade700]
@@ -1993,34 +1993,34 @@ class _CreditsPageState extends State<CreditsPage> {
                     borderRadius: BorderRadius.circular(10),
                     boxShadow: [
                       BoxShadow(
-                        color: isAdFree 
+                  color: isAdFree 
                             ? Colors.green.withOpacity(0.3)
                             : removeAdColors[0].withOpacity(0.4),
                         blurRadius: 8,
                       ),
                     ],
-                  ),
-                  child: Icon(
-                    isAdFree ? LucideIcons.checkCircle2 : LucideIcons.bellOff,
-                    size: 18,
-                    color: Colors.white,
-                  ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                child: Icon(
+                  isAdFree ? LucideIcons.checkCircle2 : LucideIcons.bellOff,
+                  size: 18,
+                    color: Colors.white,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
-                        children: [
-                          Text(
-                            isAdFree ? 'Ad-Free Active' : 'Remove Ads',
-                            style: TextStyle(
-                              color: cs.onSurface,
-                              fontSize: 14,
+                  children: [
+                    Text(
+                      isAdFree ? 'Ad-Free Active' : 'Remove Ads',
+                      style: TextStyle(
+                        color: cs.onSurface,
+                        fontSize: 14,
                               fontWeight: FontWeight.w700,
-                            ),
-                          ),
+                      ),
+                    ),
                           if (!isAdFree) ...[
                             const SizedBox(width: 6),
                             Container(
@@ -2042,17 +2042,17 @@ class _CreditsPageState extends State<CreditsPage> {
                         ],
                       ),
                       const SizedBox(height: 2),
-                      Text(
+                    Text(
                         isAdFree ? 'Enjoying ad-free experience!' : 'One-time purchase, no subscription',
-                        style: TextStyle(
-                          color: isAdFree ? Colors.green.shade700 : cs.onSurfaceVariant,
+                      style: TextStyle(
+                        color: isAdFree ? Colors.green.shade700 : cs.onSurfaceVariant,
                           fontSize: 11,
-                        ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-                if (!isAdFree)
+              ),
+              if (!isAdFree)
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                     decoration: BoxDecoration(
@@ -2072,10 +2072,10 @@ class _CreditsPageState extends State<CreditsPage> {
                         color: Colors.white,
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
-                      ),
                     ),
-                  )
-                else
+                  ),
+                )
+              else
                   Container(
                     padding: const EdgeInsets.all(6),
                     decoration: BoxDecoration(
@@ -2084,7 +2084,7 @@ class _CreditsPageState extends State<CreditsPage> {
                     ),
                     child: const Icon(LucideIcons.check, color: Colors.green, size: 18),
                   ),
-              ],
+            ],
             ),
           ),
         );

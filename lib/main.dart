@@ -113,20 +113,57 @@ Future<void> _mergeAndPersistJobMap(Map<String, dynamic> jobMap) async {
 
 /// 🧠 Always reload jobs directly from the actual prefs file on disk.
 /// Works even if background isolate updated SharedPreferences.
-Future<void> _reloadJobsToNotifier() async {
+/// 🚀 This is the PRIMARY way to get job updates - FCM data is trusted!
+Future<void> _reloadJobsToNotifier({bool retryOnEmpty = true}) async {
   try {
+    // 📁 FIRST: Apply any pending FCM updates from file
+    // This is the most reliable cross-isolate sync mechanism
+    final appliedFromFile = await applyPendingFcmUpdatesFromFile();
+    if (appliedFromFile) {
+      debugPrint("✅ Applied FCM updates from file - job list updated");
+      // Job list was already updated by _applyPendingFcmUpdatesFromFile
+      final jobs = jobListNotifier.value;
+      final completed = jobs.where((j) => j.status == 'completed').length;
+      final processing = jobs.where((j) => j.status == 'processing').length;
+      debugPrint("📊 Status: $completed completed, $processing processing");
+      return;
+    }
+    
+    // 📦 FALLBACK: Try SharedPreferences (might work on some platforms)
     final prefs = await SharedPreferences.getInstance();
-    await prefs.reload(); // ✅ Always refresh cache
+    
+    // 🔄 Multiple reload attempts to ensure cross-isolate sync
+    await prefs.reload();
+    await Future.delayed(const Duration(milliseconds: 50));
+    await prefs.reload();
 
     // 🧩 Detect if background FCM updated while app minimized
     final hasUpdate = prefs.getBool('has_fcm_update') ?? false;
     if (hasUpdate) {
-      debugPrint("📦 Detected FCM background update — applying reload");
+      debugPrint("📦 Detected FCM background update flag — applying reload");
       await prefs.remove('has_fcm_update');
+      await prefs.reload();
     }
 
     final jsonStr = prefs.getString('jobs');
     if (jsonStr == null) {
+      if (retryOnEmpty) {
+        debugPrint("📂 No jobs found — retrying after delay...");
+        await Future.delayed(const Duration(milliseconds: 200));
+        await prefs.reload();
+        final retryJson = prefs.getString('jobs');
+        if (retryJson != null) {
+          final decoded = jsonDecode(retryJson);
+          if (decoded is List) {
+            final list = decoded
+                .map((e) => JobModel.fromJson(Map<String, dynamic>.from(e)))
+                .toList();
+            jobListNotifier.value = List<JobModel>.from(list);
+            debugPrint("✅ Reloaded ${list.length} jobs on retry");
+            return;
+          }
+        }
+      }
       jobListNotifier.value = [];
       debugPrint("📂 No jobs found — cleared");
       return;
@@ -143,11 +180,13 @@ Future<void> _reloadJobsToNotifier() async {
         .toList();
 
     jobListNotifier.value = List<JobModel>.from(list);
-    debugPrint("✅ Reloaded ${list.length} jobs (after FCM check)");
-    for (final j in list) {
-      debugPrint(
-          "✅ Loaded ${j.jobId} input=${j.inputImagePath} local=${j.localFilePath}");
-    }
+    debugPrint("✅ Reloaded ${list.length} jobs from SharedPreferences");
+    
+    // Log status summary
+    final completed = list.where((j) => j.status == 'completed').length;
+    final processing = list.where((j) => j.status == 'processing').length;
+    final failed = list.where((j) => j.status == 'failed').length;
+    debugPrint("📊 Status: $completed completed, $processing processing, $failed failed");
   } catch (e, st) {
     debugPrint("⚠️ _reloadJobsToNotifier failed: $e\n$st");
   }
@@ -269,6 +308,18 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
     await prefs.setString('jobs', jsonEncode(existing));
     await prefs.setBool('has_fcm_update', true);
+    
+    // 📁 ALSO write to file for reliable cross-isolate sync
+    // SharedPreferences can be unreliable across isolates on some platforms
+    await writeFcmUpdateToFile({
+      'jobId': jobId,
+      'status': normalizedStatus,
+      'downloadUrl': downloadUrl,
+      'title': title,
+      'model': model,
+      'outputType': outputType,
+      'timestamp': DateTime.now().toIso8601String(),
+    });
 
     // 🔔 Local notification for visibility
     String notifTitle;
@@ -1026,16 +1077,40 @@ class _AppLifecycleHandlerState extends State<AppLifecycleHandler>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) async {
     if (state == AppLifecycleState.resumed) {
-      debugPrint("🔁 App resumed — checking for FCM background updates");
-      // await Future.delayed(const Duration(milliseconds: 500));
-      // Always refresh jobs, but _reloadJobsToNotifier() now respects has_fcm_update
+      debugPrint("🔁 App resumed — loading FCM data from SharedPreferences");
+      
+      // ✅ PRIMARY: Load jobs from SharedPreferences (contains FCM updates)
+      // This is immediate and doesn't require server calls
       await _reloadJobsToNotifier();
+      debugPrint("✅ Jobs loaded from local/FCM data");
 
-      // 🧠 Use PollingService to catch missed FCM updates (only for 'processing' jobs)
-      await PollingService.instance.refreshProcessingJobs();
-
-      debugPrint("✅ Jobs refreshed after resume");
+      // 🔄 BACKUP: Server polling only as fallback for stale "processing" jobs
+      // Delayed to not block UI, and only for jobs processing > 2 minutes
+      // (gives FCM time to deliver, server call is just a safety net)
+      _scheduleBackupServerCheck();
     }
+  }
+
+  /// 🔄 Schedule a delayed backup server check for any stuck "processing" jobs
+  /// This is a safety net in case FCM failed to deliver
+  void _scheduleBackupServerCheck() {
+    Future.delayed(const Duration(seconds: 5), () async {
+      // Only check if there are "processing" jobs older than 2 minutes
+      final processingJobs = jobListNotifier.value
+          .where((j) => j.status == 'processing')
+          .where((j) {
+            final age = DateTime.now().difference(j.createdAt).inMinutes;
+            return age >= 2; // Only check jobs processing for > 2 minutes
+          })
+          .toList();
+
+      if (processingJobs.isNotEmpty) {
+        debugPrint("🔄 Backup check: ${processingJobs.length} stuck processing jobs (>2min old)");
+        await PollingService.instance.refreshProcessingJobs(forceRefresh: true);
+      } else {
+        debugPrint("✅ No stuck processing jobs — skipping backup server check");
+      }
+    });
   }
 
   @override

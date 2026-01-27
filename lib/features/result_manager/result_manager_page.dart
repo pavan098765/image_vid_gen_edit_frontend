@@ -190,9 +190,14 @@ class _ResultManagerPageState extends State<ResultManagerPage>
   Future<void> _refreshJobs() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      
+      // 🔄 Multiple reload attempts to ensure cross-isolate sync with FCM background handler
+      await prefs.reload();
+      await Future.delayed(const Duration(milliseconds: 50));
       await prefs.reload();
 
-      // Load existing jobs
+      // ✅ PRIMARY: Load jobs from SharedPreferences (contains FCM updates)
+      // FCM notifications already have status and download_url - trust this data!
       final localJson = prefs.getString('jobs');
       if (localJson != null) {
         final decoded = jsonDecode(localJson);
@@ -200,24 +205,44 @@ class _ResultManagerPageState extends State<ResultManagerPage>
           jobListNotifier.value = decoded
               .map((e) => JobModel.fromJson(Map<String, dynamic>.from(e)))
               .toList();
+          
+          // Log status summary
+          final jobs = jobListNotifier.value;
+          final completed = jobs.where((j) => j.status == 'completed').length;
+          final processing = jobs.where((j) => j.status == 'processing').length;
+          debugPrint("📊 Loaded ${jobs.length} jobs: $completed completed, $processing processing");
         }
       }
 
-      // Query server with force refresh (bypasses age limit and throttling)
-      await PollingService.instance.refreshProcessingJobs(forceRefresh: true);
+      // 🔄 BACKUP: Only poll server for "stuck" processing jobs (>2 min old)
+      // This is a safety net in case FCM failed to deliver
+      final stuckJobs = jobListNotifier.value
+          .where((j) => j.status == 'processing')
+          .where((j) {
+            final age = DateTime.now().difference(j.createdAt).inMinutes;
+            return age >= 10;
+          })
+          .toList();
 
-      // Reload after server update
-      await prefs.reload();
-      final updatedJson = prefs.getString('jobs');
-      if (updatedJson != null) {
-        final decoded = jsonDecode(updatedJson);
-        if (decoded is List) {
-          jobListNotifier.value = decoded
-              .map((e) => JobModel.fromJson(Map<String, dynamic>.from(e)))
-              .toList();
+      if (stuckJobs.isNotEmpty) {
+        debugPrint("🔄 Backup: Checking ${stuckJobs.length} stuck processing jobs from server...");
+        await PollingService.instance.refreshProcessingJobs(forceRefresh: true);
+        
+        // Reload after server update
+        await prefs.reload();
+        final updatedJson = prefs.getString('jobs');
+        if (updatedJson != null) {
+          final decoded = jsonDecode(updatedJson);
+          if (decoded is List) {
+            jobListNotifier.value = decoded
+                .map((e) => JobModel.fromJson(Map<String, dynamic>.from(e)))
+                .toList();
+          }
         }
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint("⚠️ _refreshJobs failed: $e");
+    }
   }
 
   void _toggleSelectionMode() {

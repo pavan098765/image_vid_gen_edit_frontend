@@ -591,23 +591,23 @@ class _ExploreAIPageState extends State<ExploreAIPage>
     // Parse JSON in isolate for better performance (non-blocking UI)
     compute(_parseConfigInIsolate, jsonStr).then((parsed) {
       if (!mounted) return;
-      
+
       _exploreConfig = parsed['explore'] as Map<String, dynamic>?;
-      _categories = _exploreConfig?['categories'] ?? [];
-      _templates = _exploreConfig?['templates'] ?? {};
+    _categories = _exploreConfig?['categories'] ?? [];
+    _templates = _exploreConfig?['templates'] ?? {};
       _capabilitiesList = parsed['capabilities'] ?? []; // Store raw list for AI tools preview
-      _capabilities = _buildCapabilitiesMap(_capabilitiesList);
-      
-      // Initialize hero slideshow with random templates
-      _initHeroSlideUrls();
+    _capabilities = _buildCapabilitiesMap(_capabilitiesList);
+    
+    // Initialize hero slideshow with random templates
+    _initHeroSlideUrls();
 
-      setState(() => _isLoading = false);
+    setState(() => _isLoading = false);
 
-      // Start animations
-      _headerAnimController.forward();
-      Future.delayed(const Duration(milliseconds: 200), () {
-        _cardRevealController.forward();
-      });
+    // Start animations
+    _headerAnimController.forward();
+    Future.delayed(const Duration(milliseconds: 200), () {
+      _cardRevealController.forward();
+    });
     }).catchError((e) {
       debugPrint('❌ Failed to parse config: $e');
       // Fallback: parse synchronously if compute fails
@@ -681,13 +681,13 @@ class _ExploreAIPageState extends State<ExploreAIPage>
     return WillPopScope(
       onWillPop: _handleSystemBack,
       child: Scaffold(
-        backgroundColor: cs.surface,
-        body: SafeArea(
-          child: _isLoading
-              ? _buildLoadingState(cs, isDark)
-              : _loadError != null
-                  ? _buildErrorState(cs)
-                  : _buildContent(cs, isDark),
+      backgroundColor: cs.surface,
+      body: SafeArea(
+        child: _isLoading
+            ? _buildLoadingState(cs, isDark)
+            : _loadError != null
+                ? _buildErrorState(cs)
+                : _buildContent(cs, isDark),
         ),
       ),
     );

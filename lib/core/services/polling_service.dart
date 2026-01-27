@@ -1,4 +1,17 @@
 // lib/core/services/polling_service.dart
+//
+// 🔄 BACKUP MECHANISM for job status updates
+// 
+// PRIMARY: FCM notifications deliver status and download_url in real-time.
+// The app trusts FCM data stored in SharedPreferences.
+//
+// BACKUP: This PollingService is only used when:
+// 1. FCM failed to deliver (rare)
+// 2. Jobs are stuck in "processing" for > 2 minutes
+// 3. Manual refresh requested by user
+//
+// The goal is to minimize server API calls - FCM should handle 99% of updates.
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -11,6 +24,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'notification_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/main.dart' show navigatorKey;
 
+/// 🔄 Backup service for job status polling (FCM is primary)
 class PollingService {
   PollingService._();
   static final PollingService instance = PollingService._();
@@ -369,11 +383,13 @@ class PollingService {
   }
 
   /// ✅ Force-refresh all jobs currently in jobListNotifier
+  /// 🚀 Uses PARALLEL API calls for faster updates
   Future<void> refreshNow() async {
     debugPrint("🟢 PollingService.refreshNow(): Refreshing all known jobs");
 
     try {
       final prefs = await SharedPreferences.getInstance();
+      await prefs.reload(); // Ensure we have latest data from disk
 
       // get the entire job list from prefs
       final jsonStr = prefs.getString('jobs');
@@ -393,33 +409,56 @@ class PollingService {
         return;
       }
       
-      // refresh each job from backend
-      for (final job in list) {
-        final jobId = job["jobId"];
-        if (jobId == null) continue;
+      final headers = {"Authorization": "Bearer $token"};
+      final jobIds = list
+          .map((job) => job["jobId"] as String?)
+          .where((id) => id != null)
+          .cast<String>()
+          .toList();
 
-        final headers = {
-          "Authorization": "Bearer $token",
-        };
+      if (jobIds.isEmpty) {
+        debugPrint("ℹ️ No jobs to refresh");
+        return;
+      }
 
-        final url = "$baseUrl/job_status?job_id=$jobId";
-        final resp = await http
-            .get(Uri.parse(url), headers: headers)
-            .timeout(const Duration(seconds: 15));
+      debugPrint("🌐 Fetching ${jobIds.length} jobs IN PARALLEL...");
 
-        if (resp.statusCode != 200) continue;
+      // 🚀 PARALLEL API CALLS - fetch all job statuses concurrently
+      final statusFutures = jobIds.map((jobId) async {
+        try {
+          final url = "$baseUrl/job_status?job_id=$jobId";
+          final resp = await http
+              .get(Uri.parse(url), headers: headers)
+              .timeout(const Duration(seconds: 15));
+          
+          if (resp.statusCode == 200) {
+            return (jobId, jsonDecode(resp.body) as Map<String, dynamic>, true);
+          }
+          return (jobId, <String, dynamic>{}, false);
+        } catch (e) {
+          debugPrint("⚠️ Failed to fetch status for $jobId: $e");
+          return (jobId, <String, dynamic>{}, false);
+        }
+      }).toList();
 
-        final data = jsonDecode(resp.body) as Map<String, dynamic>;
+      final statusResults = await Future.wait(statusFutures);
+      debugPrint("📦 Received ${statusResults.length} job status responses");
+
+      // Process results and track completed jobs
+      var jobs = List<JobModel>.from(jobListNotifier.value);
+      final completedJobIds = <String>[];
+
+      for (final (jobId, data, success) in statusResults) {
+        if (!success) continue;
+
         String status = (data["status"] ?? "").toString().toLowerCase();
-        const allowed = ["processing", "completed", "failed"];
-        if (!allowed.contains(status)) {
+        const allowedStatuses = ["processing", "completed", "failed"];
+        if (!allowedStatuses.contains(status)) {
           status = "processing";
         }
         
-        // 🔐 For completed jobs, get valid signed URL (uses cache if valid)
-        String? downloadUrl;
         if (status == "completed") {
-          downloadUrl = await getValidDownloadUrl(jobId);
+          completedJobIds.add(jobId);
         }
 
         // 📦 Parse variation results if present
@@ -431,27 +470,18 @@ class PollingService {
               .toList();
         }
         
-        // ✨ Parse enhanced prompt fields
-        // Note: Don't overwrite variations - each job in a batch is a single variation
         final bool allCompleted = data['all_completed'] ?? (status == 'completed' || status == 'failed');
         final String? enhancedPrompt = data['enhanced_prompt'];
         final bool promptEnhanced = data['prompt_enhanced'] ?? false;
 
-        // ✅ Update jobListNotifier safely
-        final jobs = List<JobModel>.from(jobListNotifier.value);
         final idx = jobs.indexWhere((j) => j.jobId == jobId);
         if (idx != -1) {
           final old = jobs[idx];
-
-          // ✅ Preserve old downloadUrl if new one is empty
-          final finalUrl = (downloadUrl != null && downloadUrl.isNotEmpty)
-              ? downloadUrl
-              : old.downloadUrl;
           
-          // 🛡️ NEVER downgrade terminal status (completed/failed → processing)
+          // 🛡️ NEVER downgrade terminal status
           String finalStatus = status;
           if ((old.status == 'completed' || old.status == 'failed') && status == 'processing') {
-            debugPrint("🛡️ refreshNow: Blocking status downgrade for job $jobId: ${old.status} → $status");
+            debugPrint("🛡️ refreshNow: Blocking status downgrade for $jobId: ${old.status} → $status");
             finalStatus = old.status;
           }
 
@@ -460,12 +490,11 @@ class PollingService {
             title: old.title,
             model: old.model,
             outputType: old.outputType,
-            downloadUrl: finalUrl,
+            downloadUrl: old.downloadUrl, // Will update below for completed jobs
             status: finalStatus.isNotEmpty ? finalStatus : old.status,
             createdAt: old.createdAt,
             inputImagePath: old.inputImagePath,
             localFilePath: old.localFilePath,
-            // Keep original variations (each job is a single variation in the batch)
             variations: old.variations,
             variationResults: variationResults ?? old.variationResults,
             allCompleted: allCompleted,
@@ -474,12 +503,62 @@ class PollingService {
             originalPrompt: old.originalPrompt,
           );
 
-          debugPrint(
-              "✅ Refreshed job=$jobId → $finalStatus (url: ${finalUrl != null ? 'present' : 'none'})");
+          debugPrint("✅ Job $jobId → $finalStatus");
         }
-        jobListNotifier.value = jobs;
       }
+
+      // Update UI with status changes
+      jobListNotifier.value = List<JobModel>.from(jobs);
+
+      // 🚀 Fetch download URLs for completed jobs IN PARALLEL
+      if (completedJobIds.isNotEmpty) {
+        debugPrint("🔐 Fetching URLs for ${completedJobIds.length} completed jobs IN PARALLEL...");
+        
+        final urlFutures = completedJobIds.map((jobId) async {
+          try {
+            final url = await getValidDownloadUrl(jobId);
+            return (jobId, url);
+          } catch (e) {
+            debugPrint("⚠️ Failed to get URL for $jobId: $e");
+            return (jobId, null);
+          }
+        }).toList();
+
+        final urlResults = await Future.wait(urlFutures);
+
+        jobs = List<JobModel>.from(jobListNotifier.value);
+        for (final (jobId, downloadUrl) in urlResults) {
+          if (downloadUrl != null && downloadUrl.isNotEmpty) {
+            final idx = jobs.indexWhere((j) => j.jobId == jobId);
+            if (idx != -1) {
+              final old = jobs[idx];
+              jobs[idx] = JobModel(
+                jobId: old.jobId,
+                title: old.title,
+                model: old.model,
+                outputType: old.outputType,
+                downloadUrl: downloadUrl,
+                status: old.status,
+                createdAt: old.createdAt,
+                inputImagePath: old.inputImagePath,
+                localFilePath: old.localFilePath,
+                variations: old.variations,
+                variationResults: old.variationResults,
+                allCompleted: old.allCompleted,
+                enhancedPrompt: old.enhancedPrompt,
+                promptEnhanced: old.promptEnhanced,
+                originalPrompt: old.originalPrompt,
+              );
+              debugPrint("✅ Got download URL for $jobId");
+            }
+          }
+        }
+        
+        jobListNotifier.value = List<JobModel>.from(jobs);
+      }
+
       await saveJobsToPrefs();
+      debugPrint("✅ refreshNow() completed (parallel fetch)");
     } catch (e, st) {
       debugPrint("⚠️ PollingService.refreshNow() failed: $e\n$st");
     }
@@ -487,11 +566,13 @@ class PollingService {
 
   /// ✅ Refresh only jobs still marked as "processing"
   /// [forceRefresh] - if true, bypasses age limit and throttling (for manual refresh)
+  /// 🚀 Uses PARALLEL API calls for faster updates
   Future<void> refreshProcessingJobs({bool forceRefresh = false}) async {
     debugPrint(
         "🟢 PollingService.refreshProcessingJobs(force=$forceRefresh): Refreshing active jobs");
     try {
       final prefs = await SharedPreferences.getInstance();
+      await prefs.reload(); // Ensure we have latest data from disk (FCM updates)
       final now = DateTime.now();
       final nowMs = now.millisecondsSinceEpoch;
 
@@ -528,9 +609,6 @@ class PollingService {
         return;
       }
 
-      debugPrint(
-          "🌐 Checking ${processingJobs.length} processing jobs...");
-
       // Get Firebase token once for all jobs
       final token = await _authService.getIdToken();
       if (token == null) {
@@ -538,8 +616,12 @@ class PollingService {
         return;
       }
 
+      final headers = {"Authorization": "Bearer $token"};
+
+      // 🚀 Collect job IDs to fetch (apply throttling filter)
+      final jobsToFetch = <String>[];
       for (final job in processingJobs) {
-        final jobId = job["jobId"];
+        final jobId = job["jobId"] as String?;
         if (jobId == null) continue;
 
         // 🧠 Per-job throttle (skip for force refresh)
@@ -552,44 +634,61 @@ class PollingService {
           }
           await prefs.setInt(lastPollKey, nowMs);
         }
+        jobsToFetch.add(jobId);
+      }
 
-        final headers = {
-          "Authorization": "Bearer $token",
-        };
+      if (jobsToFetch.isEmpty) {
+        debugPrint("✅ All jobs were recently polled — skipping");
+        return;
+      }
 
-        final url = "$baseUrl/job_status?job_id=$jobId";
-        final resp = await http
-            .get(Uri.parse(url), headers: headers)
-            .timeout(const Duration(seconds: 15));
+      debugPrint("🌐 Fetching ${jobsToFetch.length} jobs IN PARALLEL...");
 
-        if (resp.statusCode != 200) continue;
+      // 🚀 PARALLEL API CALLS - fetch all job statuses concurrently
+      final statusFutures = jobsToFetch.map((jobId) async {
+        try {
+          final url = "$baseUrl/job_status?job_id=$jobId";
+          final resp = await http
+              .get(Uri.parse(url), headers: headers)
+              .timeout(const Duration(seconds: 15));
+          
+          if (resp.statusCode == 200) {
+            return (jobId, jsonDecode(resp.body) as Map<String, dynamic>, true);
+          }
+          return (jobId, <String, dynamic>{}, false);
+        } catch (e) {
+          debugPrint("⚠️ Failed to fetch status for $jobId: $e");
+          return (jobId, <String, dynamic>{}, false);
+        }
+      }).toList();
 
-        final data = jsonDecode(resp.body) as Map<String, dynamic>;
+      final statusResults = await Future.wait(statusFutures);
+      debugPrint("📦 Received ${statusResults.length} job status responses");
+
+      // Process results and track completed jobs for URL fetching
+      var jobs = List<JobModel>.from(jobListNotifier.value);
+      final completedJobIds = <String>[];
+
+      for (final (jobId, data, success) in statusResults) {
+        if (!success) continue;
+        
         String status = (data["status"] ?? "").toString().toLowerCase();
-        const allowed = ["processing", "completed", "failed"];
-        if (!allowed.contains(status)) {
+        const allowedStatuses = ["processing", "completed", "failed"];
+        if (!allowedStatuses.contains(status)) {
           status = "processing";
         }
         
-        // 🔐 For completed jobs, get valid signed URL (uses cache if valid)
-        String? downloadUrl;
         if (status == "completed") {
-          downloadUrl = await getValidDownloadUrl(jobId);
+          completedJobIds.add(jobId);
         }
 
-        // Update the local notifier list
-        final jobs = List<JobModel>.from(jobListNotifier.value);
         final idx = jobs.indexWhere((j) => j.jobId == jobId);
         if (idx != -1) {
           final old = jobs[idx];
-          final finalUrl = (downloadUrl != null && downloadUrl.isNotEmpty)
-              ? downloadUrl
-              : old.downloadUrl;
 
           // 🟣 Preserve blurred input image if available
           String? preservedInputPath = old.inputImagePath;
           if (preservedInputPath == null || preservedInputPath.isEmpty) {
-            // try reload from prefs (in case it was saved there earlier)
             final jobListJson = prefs.getString('jobs');
             if (jobListJson != null) {
               final decoded = jsonDecode(jobListJson) as List;
@@ -612,17 +711,14 @@ class PollingService {
                 .toList();
           }
           
-          // ✨ Parse enhanced prompt fields
-          // Note: Don't overwrite variations - each job in a batch is a single variation (variations=1)
-          // The server's 'variations' field represents batch size, not individual job variations
           final bool allCompleted = data['all_completed'] ?? (status == 'completed' || status == 'failed');
           final String? enhancedPrompt = data['enhanced_prompt'];
           final bool promptEnhanced = data['prompt_enhanced'] ?? false;
           
-          // 🛡️ NEVER downgrade terminal status (completed/failed → processing)
+          // 🛡️ NEVER downgrade terminal status
           String finalStatus = status;
           if ((old.status == 'completed' || old.status == 'failed') && status == 'processing') {
-            debugPrint("🛡️ refreshProcessingJobs: Blocking status downgrade for job $jobId: ${old.status} → $status");
+            debugPrint("🛡️ Blocking status downgrade for job $jobId: ${old.status} → $status");
             finalStatus = old.status;
           }
 
@@ -631,12 +727,11 @@ class PollingService {
             title: old.title,
             model: old.model,
             outputType: old.outputType,
-            downloadUrl: finalUrl,
+            downloadUrl: old.downloadUrl, // Will update below for completed jobs
             status: finalStatus.isNotEmpty ? finalStatus : old.status,
             createdAt: old.createdAt,
-            inputImagePath: preservedInputPath, // ✅ guaranteed now
+            inputImagePath: preservedInputPath,
             localFilePath: old.localFilePath,
-            // Keep original variations (each job is a single variation in the batch)
             variations: old.variations,
             variationResults: variationResults ?? old.variationResults,
             allCompleted: allCompleted,
@@ -645,14 +740,63 @@ class PollingService {
             originalPrompt: old.originalPrompt,
           );
 
-          debugPrint(
-              "✅ Processing job=$jobId → $status (url: ${finalUrl != null ? 'present' : 'none'})");
-          jobListNotifier.value = jobs;
+          debugPrint("✅ Job $jobId → $finalStatus");
         }
       }
 
+      // Update UI immediately with status changes
+      jobListNotifier.value = List<JobModel>.from(jobs);
+
+      // 🚀 Fetch download URLs for completed jobs IN PARALLEL
+      if (completedJobIds.isNotEmpty) {
+        debugPrint("🔐 Fetching download URLs for ${completedJobIds.length} completed jobs IN PARALLEL...");
+        
+        final urlFutures = completedJobIds.map((jobId) async {
+          try {
+            final url = await getValidDownloadUrl(jobId);
+            return (jobId, url);
+          } catch (e) {
+            debugPrint("⚠️ Failed to get URL for $jobId: $e");
+            return (jobId, null);
+          }
+        }).toList();
+
+        final urlResults = await Future.wait(urlFutures);
+
+        // Update jobs with download URLs
+        jobs = List<JobModel>.from(jobListNotifier.value);
+        for (final (jobId, downloadUrl) in urlResults) {
+          if (downloadUrl != null && downloadUrl.isNotEmpty) {
+            final idx = jobs.indexWhere((j) => j.jobId == jobId);
+            if (idx != -1) {
+              final old = jobs[idx];
+              jobs[idx] = JobModel(
+                jobId: old.jobId,
+                title: old.title,
+                model: old.model,
+                outputType: old.outputType,
+                downloadUrl: downloadUrl,
+                status: old.status,
+                createdAt: old.createdAt,
+                inputImagePath: old.inputImagePath,
+                localFilePath: old.localFilePath,
+                variations: old.variations,
+                variationResults: old.variationResults,
+                allCompleted: old.allCompleted,
+                enhancedPrompt: old.enhancedPrompt,
+                promptEnhanced: old.promptEnhanced,
+                originalPrompt: old.originalPrompt,
+              );
+              debugPrint("✅ Got download URL for $jobId");
+            }
+          }
+        }
+        
+        jobListNotifier.value = List<JobModel>.from(jobs);
+      }
+
       await saveJobsToPrefs();
-      debugPrint("✅ refreshProcessingJobs() completed successfully");
+      debugPrint("✅ refreshProcessingJobs() completed (parallel fetch)");
     } catch (e, st) {
       debugPrint("⚠️ PollingService.refreshProcessingJobs() failed: $e\n$st");
     }
