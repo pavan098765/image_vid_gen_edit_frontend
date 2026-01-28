@@ -459,6 +459,24 @@
           }
         },
         {
+          "id": "z_image_turbo",
+          "name": "Klyra",
+          "description": "Ultra-fast generation, Realistic images",
+          "cost": 10,
+          "costUpscale": 5,
+          "offer": 0,
+          "params": {
+            "cfg_scale": 1.0,
+            "num_inference_steps": 8,
+            "scale_image": true,
+            "scale_factor": "{{scale_factor}}",
+            "negative_prompt": " "
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        },
+        {
           "id": "sdxl",
           "name": "IMAGIA",
           "description": "Versatile, classic quality",
