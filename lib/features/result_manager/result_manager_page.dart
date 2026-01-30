@@ -2,6 +2,7 @@
 
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
@@ -16,6 +17,48 @@ import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_butto
 import 'package:shared_preferences/shared_preferences.dart';
 
 bool isResultManagerOpen = false;
+
+/// =============================================================================
+/// SHARED ANIMATION CONTROLLER FOR PROCESSING JOBS
+/// =============================================================================
+/// Single controller shared across all processing job previews to minimize
+/// performance overhead when many jobs are processing simultaneously
+class _ProcessingAnimationController {
+  static final _ProcessingAnimationController _instance = _ProcessingAnimationController._();
+  static _ProcessingAnimationController get instance => _instance;
+  _ProcessingAnimationController._();
+  
+  AnimationController? _controller;
+  int _activeListeners = 0;
+  
+  AnimationController? get controller => _controller;
+  
+  void initialize(TickerProvider vsync) {
+    if (_controller != null) return;
+    _controller = AnimationController(
+      vsync: vsync,
+      duration: const Duration(seconds: 2),
+    )..repeat();
+  }
+  
+  void addListener() {
+    _activeListeners++;
+  }
+  
+  void removeListener() {
+    _activeListeners--;
+    if (_activeListeners <= 0 && _controller != null) {
+      _controller!.dispose();
+      _controller = null;
+    }
+  }
+  
+  void dispose() {
+    _controller?.dispose();
+    _controller = null;
+    _activeListeners = 0;
+  }
+}
 
 /// Tracks downloads for rewarded ad rate limiting (every 5th download)
 /// Returns true if ad should be shown, false otherwise
@@ -1311,62 +1354,84 @@ class _JobCardState extends State<JobCard> {
   Widget _buildThumbnail(ColorScheme cs) {
     final fileExists = widget.job.localFilePath != null &&
         File(widget.job.localFilePath!).existsSync();
+    final isProcessing = widget.job.status == 'processing';
 
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 350),
-      child: Container(
-        width: 58,
-        height: 58,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: cs.outline.withOpacity(0.15),
-            width: 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.08),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
+      child: _AnimatedProcessingBorder(
+        isProcessing: isProcessing,
+        jobCategory: _getJobCategory(widget.job),
+        child: Container(
+          width: 58,
+          height: 58,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: isProcessing ? null : Border.all(
+              color: cs.outline.withOpacity(0.15),
+              width: 1,
             ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(11),
-          child: fileExists
-              ? Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    CachedThumbnail(
-                      key: ValueKey(widget.job.localFilePath),
-                      filePath: widget.job.localFilePath,
-                      width: 58,
-                      height: 58,
-                      fit: BoxFit.cover,
-                      thumbnailSize: 150, // Generate 150px thumbnails for crisp display
-                      placeholder: _buildLoadingPlaceholder(cs),
-                    ),
-                    // Subtle gradient overlay for depth
-                    Positioned.fill(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.transparent,
-                              Colors.black.withOpacity(0.05),
-                            ],
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.08),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(11),
+            child: fileExists
+                ? Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      CachedThumbnail(
+                        key: ValueKey(widget.job.localFilePath),
+                        filePath: widget.job.localFilePath,
+                        width: 58,
+                        height: 58,
+                        fit: BoxFit.cover,
+                        thumbnailSize: 150, // Generate 150px thumbnails for crisp display
+                        placeholder: _buildLoadingPlaceholder(cs),
+                      ),
+                      // Subtle gradient overlay for depth
+                      Positioned.fill(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.transparent,
+                                Colors.black.withOpacity(0.05),
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
-                )
-              : _buildBlurOrPlaceholder(cs),
+                    ],
+                  )
+                : _buildBlurOrPlaceholder(cs),
+          ),
         ),
       ),
     );
+  }
+  
+  /// Get job category for visual styling
+  String _getJobCategory(JobModel job) {
+    final output = job.outputType.toLowerCase();
+    final model = job.model.toLowerCase();
+    
+    if (output == 'video' || model.contains('video') || model.contains('animate')) {
+      return 'video';
+    } else if (output == 'audio' || model.contains('audio') || model.contains('tts')) {
+      return 'audio';
+    } else if (model.contains('upscale') || model.contains('enhance')) {
+      return 'enhance';
+    } else if (model.contains('remove') || model.contains('erase') || model.contains('inpaint')) {
+      return 'edit';
+    }
+    return 'image';
   }
   
   Widget _buildLoadingPlaceholder(ColorScheme cs) {
@@ -1400,9 +1465,13 @@ class _JobCardState extends State<JobCard> {
     final job = widget.job;
     final inputExists =
         job.inputImagePath != null && File(job.inputImagePath!).existsSync();
+    final isProcessing = job.status == 'processing';
+    
+    // Determine job category for appropriate visual treatment
+    final jobCategory = _getJobCategory(job);
 
-    if ((job.status == 'processing' || job.status == 'completed') &&
-        inputExists) {
+    // For jobs WITH input image (image-to-image, image-to-video, etc.)
+    if (inputExists) {
       return Stack(
         key: const ValueKey('blurred'),
         fit: StackFit.expand,
@@ -1414,16 +1483,12 @@ class _JobCardState extends State<JobCard> {
               width: 58,
               height: 58,
               fit: BoxFit.cover,
-              // Use cacheWidth/cacheHeight to prevent loading full res for blur
-              cacheWidth: 116, // 2x display size for retina
+              cacheWidth: 116,
               cacheHeight: 116,
             ),
           ),
-          // Subtle dark overlay for better visual
-          Container(
-            color: Colors.black.withOpacity(0.1),
-          ),
-          if (job.status == 'processing')
+          Container(color: Colors.black.withOpacity(0.1)),
+          if (isProcessing)
             Positioned.fill(
               child: Shimmer.fromColors(
                 baseColor: cs.primary.withOpacity(0.15),
@@ -1431,62 +1496,89 @@ class _JobCardState extends State<JobCard> {
                 child: Container(color: cs.primary.withOpacity(0.10)),
               ),
             ),
-          // Processing indicator in center
-          if (job.status == 'processing')
-            Center(
-              child: Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: cs.surface.withOpacity(0.85),
-                  shape: BoxShape.circle,
-                ),
-                child: SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: cs.primary,
-                  ),
-                ),
-              ),
-            ),
         ],
       );
     }
 
-    // Default placeholder with icon
-    return Container(
-      key: const ValueKey('placeholder'),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            cs.surfaceContainerHigh,
-            cs.surfaceContainerHighest,
-          ],
+    // For jobs WITHOUT input image (text-to-image, text-to-video, text-to-audio, etc.)
+    // Show enhanced animated placeholder with vibrant blurred background
+    return Stack(
+      key: ValueKey('placeholder_$jobCategory'),
+      fit: StackFit.expand,
+      children: [
+        // Enhanced animated gradient background
+        _AnimatedGradientBackground(
+          category: jobCategory,
+          isProcessing: isProcessing,
         ),
-      ),
-      child: Center(
-        child: Icon(
-          _getPlaceholderIcon(job.model),
-          color: cs.onSurfaceVariant.withOpacity(0.4),
-          size: 24,
+        // Blur filter overlay for frosted glass effect
+        if (isProcessing)
+          ClipRRect(
+            borderRadius: BorderRadius.circular(11),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+              child: Container(
+                color: Colors.black.withOpacity(0.15),
+              ),
+            ),
+          ),
+        // Shimmer overlay for processing state
+        if (isProcessing)
+          Positioned.fill(
+            child: Shimmer.fromColors(
+              baseColor: Colors.white.withOpacity(0.08),
+              highlightColor: Colors.white.withOpacity(0.25),
+              child: Container(color: Colors.transparent),
+            ),
+          ),
+        // Centered icon with subtle shadow
+        Center(
+          child: Icon(
+            _getPlaceholderIcon(job.outputType, job.model),
+            color: isProcessing 
+                ? Colors.white.withOpacity(0.95)
+                : Colors.white.withOpacity(0.7),
+            size: 24,
+            shadows: isProcessing ? [
+              Shadow(
+                color: Colors.black.withOpacity(0.3),
+                blurRadius: 8,
+              ),
+            ] : null,
+          ),
         ),
-      ),
+      ],
     );
   }
   
-  // Get appropriate icon based on job type
-  IconData _getPlaceholderIcon(String model) {
+  
+  /// Get appropriate icon based on output type and model
+  IconData _getPlaceholderIcon(String outputType, String model) {
+    final output = outputType.toLowerCase();
     final modelLower = model.toLowerCase();
+    
+    // Check output type first
+    if (output == 'video') {
+      return Icons.videocam_rounded;
+    } else if (output == 'audio') {
+      return Icons.audiotrack_rounded;
+    }
+    
+    // Then check model name for more specific icons
     if (modelLower.contains('video') || modelLower.contains('animate')) {
       return Icons.videocam_rounded;
+    } else if (modelLower.contains('audio') || modelLower.contains('tts')) {
+      return Icons.audiotrack_rounded;
     } else if (modelLower.contains('upscale') || modelLower.contains('enhance')) {
       return Icons.auto_awesome;
     } else if (modelLower.contains('remove') || modelLower.contains('erase')) {
       return Icons.auto_fix_high;
+    } else if (modelLower.contains('inpaint') || modelLower.contains('outpaint')) {
+      return Icons.brush_rounded;
+    } else if (modelLower.contains('bg') || modelLower.contains('background')) {
+      return Icons.content_cut_rounded;
     }
+    
     return Icons.image_rounded;
   }
 
@@ -1813,5 +1905,364 @@ class _JobCardState extends State<JobCard> {
         ],
       ),
     );
+  }
+}
+
+/// =============================================================================
+/// ANIMATED PROCESSING BORDER
+/// =============================================================================
+/// Rotating gradient border that replaces the spinner for processing jobs.
+/// Uses a shared animation controller to minimize overhead.
+class _AnimatedProcessingBorder extends StatefulWidget {
+  final bool isProcessing;
+  final String jobCategory;
+  final Widget child;
+  
+  const _AnimatedProcessingBorder({
+    required this.isProcessing,
+    required this.jobCategory,
+    required this.child,
+  });
+  
+  @override
+  State<_AnimatedProcessingBorder> createState() => _AnimatedProcessingBorderState();
+}
+
+class _AnimatedProcessingBorderState extends State<_AnimatedProcessingBorder>
+    with SingleTickerProviderStateMixin {
+  @override
+  void initState() {
+    super.initState();
+    if (widget.isProcessing) {
+      _ProcessingAnimationController.instance.initialize(this);
+      _ProcessingAnimationController.instance.addListener();
+    }
+  }
+  
+  @override
+  void didUpdateWidget(_AnimatedProcessingBorder oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isProcessing && !oldWidget.isProcessing) {
+      _ProcessingAnimationController.instance.initialize(this);
+      _ProcessingAnimationController.instance.addListener();
+    } else if (!widget.isProcessing && oldWidget.isProcessing) {
+      _ProcessingAnimationController.instance.removeListener();
+    }
+  }
+  
+  @override
+  void dispose() {
+    if (widget.isProcessing) {
+      _ProcessingAnimationController.instance.removeListener();
+    }
+    super.dispose();
+  }
+  
+  List<Color> _getBorderColors() {
+    // Professional, muted colors that work in light/dark modes
+    switch (widget.jobCategory) {
+      case 'video':
+        return [
+          const Color(0xFFE07B54), // Muted coral
+          const Color(0xFFD4915C), // Muted amber
+          const Color(0xFFBF7B6A), // Muted terracotta
+          const Color(0xFFE07B54), // Muted coral
+        ];
+      case 'audio':
+        return [
+          const Color(0xFF5BA88F), // Muted teal
+          const Color(0xFF6BA3A8), // Muted cyan
+          const Color(0xFF7B9EB0), // Muted sky
+          const Color(0xFF5BA88F), // Muted teal
+        ];
+      case 'enhance':
+        return [
+          const Color(0xFF9B7BB8), // Muted lavender
+          const Color(0xFFB87BA0), // Muted rose
+          const Color(0xFFA8859B), // Muted mauve
+          const Color(0xFF9B7BB8), // Muted lavender
+        ];
+      case 'edit':
+        return [
+          const Color(0xFF6B8FC7), // Muted blue
+          const Color(0xFF8B7BC7), // Muted periwinkle
+          const Color(0xFF9B8BB0), // Muted violet
+          const Color(0xFF6B8FC7), // Muted blue
+        ];
+      default: // image
+        return [
+          const Color(0xFF7B8BC7), // Muted indigo
+          const Color(0xFF9B7BB8), // Muted purple
+          const Color(0xFFB8859B), // Muted pink
+          const Color(0xFF7B8BC7), // Muted indigo
+        ];
+    }
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.isProcessing) {
+      return widget.child;
+    }
+    
+    final controller = _ProcessingAnimationController.instance.controller;
+    if (controller == null) {
+      return widget.child;
+    }
+    
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: controller,
+        builder: (context, child) {
+          return CustomPaint(
+            painter: _RotatingBorderPainter(
+              progress: controller.value,
+              colors: _getBorderColors(),
+            ),
+            child: widget.child,
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// Custom painter for rotating gradient border with pulsing glow
+class _RotatingBorderPainter extends CustomPainter {
+  final double progress;
+  final List<Color> colors;
+  
+  _RotatingBorderPainter({
+    required this.progress,
+    required this.colors,
+  });
+  
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Rect.fromLTWH(0, 0, size.width, size.height);
+    const radius = 12.0;
+    
+    // Create rotating gradient with smooth rotation
+    final angle = progress * 2 * math.pi;
+    
+    // Pulsing effect: oscillates between 0.6 and 1.0
+    final pulseValue = 0.8 + 0.2 * math.sin(progress * 4 * math.pi);
+    
+    // Subtle brightness modulation for professional look
+    final enhancedColors = colors.map((c) {
+      final hsl = HSLColor.fromColor(c);
+      // Keep saturation moderate and lightness balanced for light/dark modes
+      return hsl.withLightness((hsl.lightness * (0.9 + 0.1 * pulseValue)).clamp(0.35, 0.65))
+                .toColor();
+    }).toList();
+    
+    final gradient = SweepGradient(
+      center: Alignment.center,
+      startAngle: angle,
+      endAngle: angle + 2 * math.pi,
+      colors: enhancedColors,
+      stops: const [0.0, 0.33, 0.66, 1.0],
+    );
+    
+    // Draw rounded rectangle path
+    final path = Path()
+      ..addRRect(RRect.fromRectAndRadius(rect, const Radius.circular(radius)));
+    
+    // Layer 1: Outer glow (soft, wide)
+    final outerGlowPaint = Paint()
+      ..shader = gradient.createShader(rect)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 6.0 * pulseValue
+      ..maskFilter = MaskFilter.blur(BlurStyle.normal, 6 * pulseValue);
+    canvas.drawPath(path, outerGlowPaint);
+    
+    // Layer 2: Mid glow (medium intensity)
+    final midGlowPaint = Paint()
+      ..shader = gradient.createShader(rect)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 4.0 * pulseValue
+      ..maskFilter = MaskFilter.blur(BlurStyle.normal, 3 * pulseValue);
+    canvas.drawPath(path, midGlowPaint);
+    
+    // Layer 3: Core border (sharp, bright)
+    final borderPaint = Paint()
+      ..shader = gradient.createShader(rect)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0
+      ..strokeCap = StrokeCap.round;
+    canvas.drawPath(path, borderPaint);
+    
+    // Layer 4: Inner highlight (bright center line)
+    final highlightPaint = Paint()
+      ..shader = gradient.createShader(rect)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0
+      ..color = Colors.white.withOpacity(0.5 * pulseValue);
+    canvas.drawPath(path, highlightPaint);
+  }
+  
+  @override
+  bool shouldRepaint(_RotatingBorderPainter oldDelegate) {
+    return oldDelegate.progress != progress;
+  }
+}
+
+/// =============================================================================
+/// ANIMATED GRADIENT BACKGROUND
+/// =============================================================================
+/// Vibrant animated gradient background for text-to-image/video/audio jobs
+class _AnimatedGradientBackground extends StatefulWidget {
+  final String category;
+  final bool isProcessing;
+  
+  const _AnimatedGradientBackground({
+    required this.category,
+    required this.isProcessing,
+  });
+  
+  @override
+  State<_AnimatedGradientBackground> createState() => _AnimatedGradientBackgroundState();
+}
+
+class _AnimatedGradientBackgroundState extends State<_AnimatedGradientBackground>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 4),
+    );
+    if (widget.isProcessing) {
+      _controller.repeat();
+    }
+  }
+  
+  @override
+  void didUpdateWidget(_AnimatedGradientBackground oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isProcessing && !oldWidget.isProcessing) {
+      _controller.repeat();
+    } else if (!widget.isProcessing && oldWidget.isProcessing) {
+      _controller.stop();
+      _controller.reset();
+    }
+  }
+  
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+  
+  List<Color> _getColors() {
+    // Professional, muted colors that work in light/dark modes
+    switch (widget.category) {
+      case 'video':
+        return [
+          const Color(0xFFD4825C), // Muted coral
+          const Color(0xFFCB9465), // Muted sand
+          const Color(0xFFBF8A70), // Muted peach
+          const Color(0xFFD4825C), // Muted coral
+        ];
+      case 'audio':
+        return [
+          const Color(0xFF5AA08A), // Muted seafoam
+          const Color(0xFF6899A0), // Muted teal
+          const Color(0xFF7094A8), // Muted steel blue
+          const Color(0xFF5AA08A), // Muted seafoam
+        ];
+      case 'enhance':
+        return [
+          const Color(0xFF9575A8), // Muted orchid
+          const Color(0xFFA87595), // Muted dusty rose
+          const Color(0xFF957590), // Muted plum
+          const Color(0xFF9575A8), // Muted orchid
+        ];
+      case 'edit':
+        return [
+          const Color(0xFF6588B8), // Muted azure
+          const Color(0xFF7580B0), // Muted slate blue
+          const Color(0xFF8580A8), // Muted lavender blue
+          const Color(0xFF6588B8), // Muted azure
+        ];
+      default: // image
+        return [
+          const Color(0xFF7580B8), // Muted periwinkle
+          const Color(0xFF8878A8), // Muted iris
+          const Color(0xFFA07898), // Muted mauve
+          const Color(0xFF7580B8), // Muted periwinkle
+        ];
+    }
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    final colors = _getColors();
+    
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          // Smooth rotating gradient with easing
+          final progress = _controller.value;
+          final angle = progress * 2 * math.pi;
+          
+          // Subtle pulsing brightness for professional look
+          final pulse = 0.92 + 0.08 * math.sin(progress * 3 * math.pi);
+          
+          // Balanced colors that work in light/dark modes
+          final pulsedColors = colors.map((c) {
+            final hsl = HSLColor.fromColor(c);
+            return hsl.withLightness((hsl.lightness * pulse).clamp(0.4, 0.6)).toColor();
+          }).toList();
+          
+          return CustomPaint(
+            painter: _GradientBackgroundPainter(
+              angle: angle,
+              colors: pulsedColors,
+            ),
+            size: Size.infinite,
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// Custom painter for animated gradient background
+class _GradientBackgroundPainter extends CustomPainter {
+  final double angle;
+  final List<Color> colors;
+  
+  _GradientBackgroundPainter({
+    required this.angle,
+    required this.colors,
+  });
+  
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Rect.fromLTWH(0, 0, size.width, size.height);
+    
+    // Create sweep gradient for smooth rotation
+    final gradient = SweepGradient(
+      center: Alignment.center,
+      startAngle: angle,
+      endAngle: angle + 2 * math.pi,
+      colors: colors,
+      stops: const [0.0, 0.33, 0.66, 1.0],
+    );
+    
+    final paint = Paint()
+      ..shader = gradient.createShader(rect);
+    
+    canvas.drawRect(rect, paint);
+  }
+  
+  @override
+  bool shouldRepaint(_GradientBackgroundPainter oldDelegate) {
+    return oldDelegate.angle != angle;
   }
 }

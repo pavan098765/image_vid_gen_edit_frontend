@@ -25,8 +25,11 @@ import 'package:kala_ai_create_images_videos_with_ai/core/widgets/themed_native_
 import 'package:kala_ai_create_images_videos_with_ai/features/ai_tools/outpaint_canvas_page.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/credits/credits_page.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/result_manager/result_manager_page.dart';
+import 'package:crypto/crypto.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:video_player/video_player.dart';
 
 /// --------------------------------------
 ///  GENERIC TOOL PAGE (Dynamic Version)
@@ -91,38 +94,55 @@ class GenericToolConfig {
 
 /// --------------------------------------
 ///  PROMPT HELPER CHIPS (Quick-add tags)
+///  Now loaded from tool_config.json for OTA updates
 /// --------------------------------------
 
 class PromptChip {
+  final String id;
   final String label;
   final String snippet;
   final String icon;
+  final String? previewUrl;
   
   const PromptChip({
+    this.id = '',
     required this.label,
     required this.snippet,
     required this.icon,
+    this.previewUrl,
   });
+  
+  factory PromptChip.fromJson(Map<String, dynamic> json) {
+    return PromptChip(
+      id: json['id'] ?? '',
+      label: json['label'] ?? '',
+      snippet: json['snippet'] ?? '',
+      icon: json['icon'] ?? '🏷️',
+      previewUrl: json['preview_url'],
+    );
+  }
 }
 
+/// Fallback chips used if config loading fails
 const List<PromptChip> promptHelperChips = [
-  PromptChip(label: 'Cinematic', snippet: 'cinematic lighting, film grain', icon: '🎬'),
-  PromptChip(label: 'Anime', snippet: 'anime style, vibrant colors', icon: '🎌'),
-  PromptChip(label: 'Portrait', snippet: 'portrait photography, sharp focus', icon: '👤'),
-  PromptChip(label: 'Soft Light', snippet: 'soft diffused lighting, gentle shadows', icon: '💡'),
-  PromptChip(label: 'High Detail', snippet: '8K, ultra detailed, intricate details', icon: '🔍'),
-  PromptChip(label: 'Studio', snippet: 'professional studio lighting, clean background', icon: '📸'),
-  PromptChip(label: 'Dramatic', snippet: 'dramatic lighting, high contrast', icon: '🌟'),
-  PromptChip(label: 'Dreamy', snippet: 'dreamy atmosphere, ethereal glow', icon: '✨'),
-  PromptChip(label: 'Vintage', snippet: 'vintage aesthetic, retro film look', icon: '📼'),
-  PromptChip(label: 'Neon', snippet: 'neon lights, cyberpunk vibes', icon: '🌃'),
-  PromptChip(label: 'Nature', snippet: 'natural lighting, outdoor setting', icon: '🌿'),
-  PromptChip(label: 'Minimal', snippet: 'minimalist, clean composition', icon: '⬜'),
+  PromptChip(id: 'cinematic', label: 'Cinematic', snippet: 'cinematic lighting, film grain', icon: '🎬'),
+  PromptChip(id: 'anime', label: 'Anime', snippet: 'anime style, vibrant colors', icon: '🎌'),
+  PromptChip(id: 'portrait', label: 'Portrait', snippet: 'portrait photography, sharp focus', icon: '👤'),
+  PromptChip(id: 'soft_light', label: 'Soft Light', snippet: 'soft diffused lighting, gentle shadows', icon: '💡'),
+  PromptChip(id: 'high_detail', label: 'High Detail', snippet: '8K, ultra detailed, intricate details', icon: '🔍'),
+  PromptChip(id: 'studio', label: 'Studio', snippet: 'professional studio lighting, clean background', icon: '📸'),
+  PromptChip(id: 'dramatic', label: 'Dramatic', snippet: 'dramatic lighting, high contrast', icon: '🌟'),
+  PromptChip(id: 'dreamy', label: 'Dreamy', snippet: 'dreamy atmosphere, ethereal glow', icon: '✨'),
+  PromptChip(id: 'vintage', label: 'Vintage', snippet: 'vintage aesthetic, retro film look', icon: '📼'),
+  PromptChip(id: 'neon', label: 'Neon', snippet: 'neon lights, cyberpunk vibes', icon: '🌃'),
+  PromptChip(id: 'nature', label: 'Nature', snippet: 'natural lighting, outdoor setting', icon: '🌿'),
+  PromptChip(id: 'minimal', label: 'Minimal', snippet: 'minimalist, clean composition', icon: '⬜'),
 ];
 
 /// --------------------------------------
 ///  STYLE PRESETS (Visual Styles)
-///  - Pre-configured style snippets with previews
+///  Now loaded from tool_config.json for OTA updates
+///  Supports image/video previews with caching
 /// --------------------------------------
 
 class StylePreset {
@@ -131,7 +151,8 @@ class StylePreset {
   final String category;
   final String promptSnippet;
   final String icon; // emoji fallback
-  final String? previewUrl; // preview image URL
+  final String? previewUrl; // preview image/video URL
+  final String? previewType; // 'image' or 'video' (auto-detected from URL)
   final bool isFeatured;
   
   const StylePreset({
@@ -141,11 +162,31 @@ class StylePreset {
     required this.promptSnippet,
     required this.icon,
     this.previewUrl,
+    this.previewType,
     this.isFeatured = false,
   });
+  
+  factory StylePreset.fromJson(Map<String, dynamic> json) {
+    final url = json['preview_url'] as String?;
+    String? pType;
+    if (url != null) {
+      pType = url.endsWith('.mp4') || url.endsWith('.webm') ? 'video' : 'image';
+    }
+    return StylePreset(
+      id: json['id'] ?? '',
+      name: json['name'] ?? '',
+      category: json['category'] ?? 'Artistic',
+      promptSnippet: json['promptSnippet'] ?? '',
+      icon: json['icon'] ?? '🎨',
+      previewUrl: url,
+      previewType: pType,
+      isFeatured: json['featured'] ?? false,
+    );
+  }
 }
 
-const List<String> styleCategories = ['All', 'Favorite', 'Fun', 'Realistic', 'Painting', 'Anime', 'Cinematic'];
+/// Fallback categories used if config loading fails
+const List<String> styleCategories = ['All', 'Favorites', 'Fun', 'Realistic', 'Artistic', 'Anime', 'Cinematic'];
 
 const List<StylePreset> allStylePresets = [
   // Fun
@@ -259,6 +300,197 @@ const List<StylePreset> allStylePresets = [
   ),
 ];
 
+/// =============================================================================
+/// STYLE PREVIEW MANAGER - Caches style/tag preview assets to disk
+/// Similar to VideoPreviewManager in explore_ai_page.dart
+/// =============================================================================
+
+class StylePreviewManager {
+  static final StylePreviewManager _instance = StylePreviewManager._();
+  static StylePreviewManager get instance => _instance;
+  StylePreviewManager._();
+
+  Directory? _cacheDir;
+  
+  // In-memory cache for quick access
+  final Map<String, Uint8List> _imageCache = {};
+  final Map<String, VideoPlayerController> _videoControllers = {};
+  final Map<String, Future<Uint8List?>> _pendingDownloads = {};
+  
+  static const int maxVideoControllers = 2;
+  final List<String> _videoPlayOrder = [];
+
+  /// Get or create cache directory
+  Future<Directory> _getCacheDir() async {
+    if (_cacheDir != null) return _cacheDir!;
+    final appDir = await getApplicationCacheDirectory();
+    _cacheDir = Directory('${appDir.path}/style_previews');
+    if (!await _cacheDir!.exists()) {
+      await _cacheDir!.create(recursive: true);
+    }
+    return _cacheDir!;
+  }
+
+  /// Get hash for URL (used for file names)
+  String _getUrlHash(String url) {
+    return md5.convert(utf8.encode(url)).toString();
+  }
+
+  /// Get cached image bytes for a URL (downloads if not cached)
+  Future<Uint8List?> getImagePreview(String imageUrl) async {
+    final hash = _getUrlHash(imageUrl);
+    
+    // Check in-memory cache
+    if (_imageCache.containsKey(hash)) {
+      return _imageCache[hash];
+    }
+    
+    // Check for pending download
+    if (_pendingDownloads.containsKey(hash)) {
+      return _pendingDownloads[hash];
+    }
+    
+    // Check disk cache
+    try {
+      final cacheDir = await _getCacheDir();
+      final ext = imageUrl.endsWith('.png') ? 'png' : 'jpg';
+      final cachedFile = File('${cacheDir.path}/$hash.$ext');
+      
+      if (await cachedFile.exists()) {
+        final bytes = await cachedFile.readAsBytes();
+        _imageCache[hash] = bytes;
+        debugPrint('📦 Using cached style preview: $hash.$ext');
+        return bytes;
+      }
+    } catch (e) {
+      debugPrint('⚠️ Error reading cached preview: $e');
+    }
+    
+    // Download and cache
+    final future = _downloadImage(imageUrl);
+    _pendingDownloads[hash] = future;
+    
+    final result = await future;
+    _pendingDownloads.remove(hash);
+    return result;
+  }
+
+  /// Download image and cache to disk
+  Future<Uint8List?> _downloadImage(String imageUrl) async {
+    final hash = _getUrlHash(imageUrl);
+    
+    try {
+      debugPrint('⬇️ Downloading style preview: $imageUrl');
+      final response = await http.get(Uri.parse(imageUrl));
+      
+      if (response.statusCode == 200) {
+        final bytes = response.bodyBytes;
+        
+        // Cache to memory
+        _imageCache[hash] = bytes;
+        
+        // Cache to disk
+        try {
+          final cacheDir = await _getCacheDir();
+          final ext = imageUrl.endsWith('.png') ? 'png' : 'jpg';
+          final cachedFile = File('${cacheDir.path}/$hash.$ext');
+          await cachedFile.writeAsBytes(bytes);
+          debugPrint('✅ Style preview cached: $hash.$ext');
+        } catch (e) {
+          debugPrint('⚠️ Failed to cache preview to disk: $e');
+        }
+        
+        return bytes;
+      }
+    } catch (e) {
+      debugPrint('⚠️ Failed to download style preview: $e');
+    }
+    return null;
+  }
+
+  /// Get or create video controller for a style preview
+  Future<VideoPlayerController?> getVideoController(String styleId, String videoUrl) async {
+    // Return existing controller
+    if (_videoControllers.containsKey(styleId)) {
+      _videoPlayOrder.remove(styleId);
+      _videoPlayOrder.add(styleId);
+      return _videoControllers[styleId];
+    }
+
+    // Evict oldest if at max
+    while (_videoControllers.length >= maxVideoControllers && _videoPlayOrder.isNotEmpty) {
+      final oldestId = _videoPlayOrder.removeAt(0);
+      final oldController = _videoControllers.remove(oldestId);
+      await oldController?.pause();
+      await oldController?.dispose();
+    }
+
+    try {
+      // Try to use cached video first
+      final hash = _getUrlHash(videoUrl);
+      final cacheDir = await _getCacheDir();
+      final cachedFile = File('${cacheDir.path}/$hash.mp4');
+      
+      VideoPlayerController controller;
+      
+      if (await cachedFile.exists()) {
+        controller = VideoPlayerController.file(cachedFile);
+        debugPrint('📦 Using cached style video: $hash.mp4');
+      } else {
+        // Download and cache video
+        try {
+          debugPrint('⬇️ Downloading style video: $videoUrl');
+          final response = await http.get(Uri.parse(videoUrl));
+          if (response.statusCode == 200) {
+            await cachedFile.writeAsBytes(response.bodyBytes);
+            controller = VideoPlayerController.file(cachedFile);
+            debugPrint('✅ Style video cached: $hash.mp4');
+          } else {
+            controller = VideoPlayerController.networkUrl(Uri.parse(videoUrl));
+          }
+        } catch (e) {
+          controller = VideoPlayerController.networkUrl(Uri.parse(videoUrl));
+        }
+      }
+      
+      await controller.initialize();
+      controller.setLooping(true);
+      controller.setVolume(0);
+      
+      _videoControllers[styleId] = controller;
+      _videoPlayOrder.add(styleId);
+      
+      return controller;
+    } catch (e) {
+      debugPrint('⚠️ Failed to create video controller for $styleId: $e');
+      return null;
+    }
+  }
+
+  void pauseVideo(String styleId) {
+    _videoControllers[styleId]?.pause();
+  }
+
+  void playVideo(String styleId) {
+    _videoControllers[styleId]?.play();
+  }
+
+  Future<void> disposeVideo(String styleId) async {
+    final controller = _videoControllers.remove(styleId);
+    _videoPlayOrder.remove(styleId);
+    await controller?.dispose();
+  }
+
+  Future<void> disposeAll() async {
+    for (final controller in _videoControllers.values) {
+      await controller.dispose();
+    }
+    _videoControllers.clear();
+    _videoPlayOrder.clear();
+    _imageCache.clear();
+  }
+}
+
 /// --------------------------------------
 ///  ADVANCED SETTINGS MODEL
 /// --------------------------------------
@@ -347,10 +579,15 @@ class _GenericToolPageState extends State<GenericToolPage>
   // Controllers
   final TextEditingController _promptController = TextEditingController();
 
-  // -------- Style Library --------
+  // -------- Style Library (can load from config for OTA updates) --------
   String _selectedStyleCategory = 'All';
   StylePreset? _selectedStyle;
   final Set<String> _favoriteStyles = {};
+  
+  // Config-loaded styles and tags (null = use hardcoded fallbacks)
+  List<StylePreset>? _configStyles;
+  List<String>? _configStyleCategories;
+  List<PromptChip>? _configQuickTags;
   
   // -------- Prompt Enhancer Section --------
   bool _isEnhancerExpanded = true;
@@ -538,6 +775,9 @@ class _GenericToolPageState extends State<GenericToolPage>
     
     // Listen for job list changes to update rate limit status in real-time
     jobListNotifier.addListener(_onJobListChanged);
+    
+    // Load styles and quick tags from config for OTA updates
+    _loadStylesFromConfig();
 
     debugPrint("🔧 Config for ${widget.config.model}");
     debugPrint("  title=${widget.config.title}");
@@ -556,6 +796,56 @@ class _GenericToolPageState extends State<GenericToolPage>
     // This makes the "X slots free" hint update in real-time
     if (mounted) setState(() {});
   }
+  
+  /// Load styles and quick tags from tool_config.json for OTA updates
+  Future<void> _loadStylesFromConfig() async {
+    try {
+      final configStr = await rootBundle.loadString('tool_config.json');
+      final config = jsonDecode(configStr) as Map<String, dynamic>;
+      
+      // Load style presets
+      final stylePresetsConfig = config['stylePresets'] as Map<String, dynamic>?;
+      if (stylePresetsConfig != null) {
+        final categories = (stylePresetsConfig['categories'] as List<dynamic>?)
+            ?.map((e) => e.toString())
+            .toList();
+        final presets = (stylePresetsConfig['presets'] as List<dynamic>?)
+            ?.map((e) => StylePreset.fromJson(e as Map<String, dynamic>))
+            .toList();
+        
+        if (categories != null && categories.isNotEmpty) {
+          _configStyleCategories = categories;
+        }
+        if (presets != null && presets.isNotEmpty) {
+          _configStyles = presets;
+        }
+      }
+      
+      // Load quick tags
+      final quickTagsConfig = config['quickTags'] as List<dynamic>?;
+      if (quickTagsConfig != null && quickTagsConfig.isNotEmpty) {
+        _configQuickTags = quickTagsConfig
+            .map((e) => PromptChip.fromJson(e as Map<String, dynamic>))
+            .toList();
+      }
+      
+      if (mounted) setState(() {});
+      
+      debugPrint('✅ Loaded ${_configStyles?.length ?? 0} styles, ${_configQuickTags?.length ?? 0} quick tags from config');
+    } catch (e) {
+      debugPrint('⚠️ Failed to load styles from config, using fallbacks: $e');
+      // Fallbacks are already set as the hardcoded constants
+    }
+  }
+  
+  /// Get the current styles list (config-loaded or fallback)
+  List<StylePreset> get _currentStyles => _configStyles ?? allStylePresets;
+  
+  /// Get the current style categories (config-loaded or fallback)
+  List<String> get _currentStyleCategories => _configStyleCategories ?? styleCategories;
+  
+  /// Get the current quick tags (config-loaded or fallback)
+  List<PromptChip> get _currentQuickTags => _configQuickTags ?? promptHelperChips;
 
   /// Initialize the selected model from config
   void _initializeSelectedModel() {
@@ -614,13 +904,14 @@ class _GenericToolPageState extends State<GenericToolPage>
   
   /// Get styles filtered by category
   List<StylePreset> _getStylesByCategory(String category) {
+    final styles = _currentStyles;
     if (category == 'All') {
-      return allStylePresets;
+      return styles;
     }
-    if (category == 'Favorite') {
-      return allStylePresets.where((s) => _favoriteStyles.contains(s.id)).toList();
+    if (category == 'Favorites') {
+      return styles.where((s) => _favoriteStyles.contains(s.id)).toList();
     }
-    return allStylePresets.where((s) => s.category == category).toList();
+    return styles.where((s) => s.category == category).toList();
   }
 
   /// Select a style and apply its snippet
@@ -694,8 +985,9 @@ class _GenericToolPageState extends State<GenericToolPage>
 
   /// Apply random style
   void _applyRandomStyle() {
+    final styles = _currentStyles;
     final random = Random();
-    final randomStyle = allStylePresets[random.nextInt(allStylePresets.length)];
+    final randomStyle = styles[random.nextInt(styles.length)];
     _selectStyle(randomStyle);
     
     ScaffoldMessenger.of(context).clearSnackBars();
@@ -3531,7 +3823,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                           children: [
                             _buildEnhancerTab(cs, 0, 'Styles', LucideIcons.palette, styles.length),
                             const SizedBox(width: 8),
-                            _buildEnhancerTab(cs, 1, 'Quick Tags', LucideIcons.tag, promptHelperChips.length),
+                            _buildEnhancerTab(cs, 1, 'Quick Tags', LucideIcons.tag, _currentQuickTags.length),
                           ],
                         ),
                       ),
@@ -3643,9 +3935,9 @@ class _GenericToolPageState extends State<GenericToolPage>
             height: 32,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
-              itemCount: styleCategories.length,
+              itemCount: _currentStyleCategories.length,
               itemBuilder: (context, index) {
-                final category = styleCategories[index];
+                final category = _currentStyleCategories[index];
                 final isSelected = _selectedStyleCategory == category;
                 final isFavorites = category == 'Favorites';
                 final favCount = _favoriteStyles.length;
@@ -3763,6 +4055,7 @@ class _GenericToolPageState extends State<GenericToolPage>
       'Cinematic': const Color(0xFFF59E0B),
     };
     final accentColor = categoryColors[style.category] ?? cs.secondary;
+    final hasPreview = style.previewUrl != null && style.previewUrl!.isNotEmpty;
     
     return Padding(
       padding: const EdgeInsets.only(right: 10),
@@ -3798,9 +4091,9 @@ class _GenericToolPageState extends State<GenericToolPage>
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
           width: 100,
-          padding: const EdgeInsets.all(10),
+          height: 90,
           decoration: BoxDecoration(
-            gradient: isSelected
+            gradient: isSelected && !hasPreview
                 ? LinearGradient(
                     colors: [
                       accentColor.withOpacity(0.2),
@@ -3810,94 +4103,160 @@ class _GenericToolPageState extends State<GenericToolPage>
                     end: Alignment.bottomRight,
                   )
                 : null,
-            color: isSelected ? null : cs.surfaceContainerHigh,
+            color: (isSelected || hasPreview) ? null : cs.surfaceContainerHigh,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
               color: isSelected 
-                  ? accentColor.withOpacity(0.5)
+                  ? accentColor.withOpacity(0.6)
                   : cs.outlineVariant.withOpacity(0.2),
               width: isSelected ? 2 : 1,
             ),
             boxShadow: isSelected
                 ? [
                     BoxShadow(
-                      color: accentColor.withOpacity(0.15),
+                      color: accentColor.withOpacity(0.2),
                       blurRadius: 8,
                       offset: const Offset(0, 2),
                     ),
                   ]
                 : null,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Top row: Icon + Favorite/Check
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(13),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // Background: Preview image/video or gradient
+                if (hasPreview)
+                  _StylePreviewImage(
+                    style: style,
+                    accentColor: accentColor,
+                  )
+                else
                   Container(
-                    padding: const EdgeInsets.all(6),
                     decoration: BoxDecoration(
-                      color: accentColor.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(style.icon, style: const TextStyle(fontSize: 14)),
-                  ),
-                  if (isSelected)
-                    Container(
-                      padding: const EdgeInsets.all(3),
-                      decoration: BoxDecoration(
-                        color: accentColor,
-                        shape: BoxShape.circle,
+                      gradient: LinearGradient(
+                        colors: [
+                          accentColor.withOpacity(0.15),
+                          accentColor.withOpacity(0.05),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
                       ),
-                      child: const Icon(LucideIcons.check, size: 10, color: Colors.white),
-                    )
-                  else if (isFavorite)
-                    const Icon(Icons.favorite, size: 14, color: Colors.red),
-                ],
-              ),
-              const Spacer(),
-              // Name
-              Text(
-                style.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: isSelected ? accentColor : cs.onSurface,
-                  fontSize: 11,
-                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
-                ),
-              ),
-              // Category badge
-              const SizedBox(height: 2),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                decoration: BoxDecoration(
-                  color: accentColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  style.category,
-                  style: TextStyle(
-                    color: accentColor.withOpacity(0.8),
-                    fontSize: 8,
-                    fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                // Overlay gradient for text readability
+                if (hasPreview)
+                  Positioned.fill(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.transparent,
+                            Colors.black.withOpacity(0.65),
+                          ],
+                          stops: const [0.3, 1.0],
+                        ),
+                      ),
+                    ),
+                  ),
+                // Content overlay
+                Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Top row: Icon + Favorite/Check
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          if (!hasPreview)
+                            Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: accentColor.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(style.icon, style: const TextStyle(fontSize: 12)),
+                            )
+                          else
+                            const SizedBox(width: 20),
+                          if (isSelected)
+                            Container(
+                              padding: const EdgeInsets.all(3),
+                              decoration: BoxDecoration(
+                                color: accentColor,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(LucideIcons.check, size: 10, color: Colors.white),
+                            )
+                          else if (isFavorite)
+                            Container(
+                              padding: const EdgeInsets.all(2),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.3),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.favorite, size: 12, color: Colors.red),
+                            ),
+                        ],
+                      ),
+                      const Spacer(),
+                      // Name
+                      Text(
+                        style.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: hasPreview ? Colors.white : (isSelected ? accentColor : cs.onSurface),
+                          fontSize: 11,
+                          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                          shadows: hasPreview ? [
+                            Shadow(color: Colors.black.withOpacity(0.5), blurRadius: 2),
+                          ] : null,
+                        ),
+                      ),
+                      // Category badge
+                      const SizedBox(height: 2),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: hasPreview 
+                              ? Colors.black.withOpacity(0.4)
+                              : accentColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          style.category,
+                          style: TextStyle(
+                            color: hasPreview 
+                                ? Colors.white.withOpacity(0.9)
+                                : accentColor.withOpacity(0.8),
+                            fontSize: 8,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  /// Build quick tags content
+  /// Build quick tags content (config-driven for OTA updates)
   Widget _buildQuickTagsContent(ColorScheme cs) {
+    final tags = _currentQuickTags;
     // Split chips into 2 rows
-    final midPoint = (promptHelperChips.length / 2).ceil();
-    final firstRow = promptHelperChips.sublist(0, midPoint);
-    final secondRow = promptHelperChips.sublist(midPoint);
+    final midPoint = (tags.length / 2).ceil();
+    final firstRow = tags.sublist(0, midPoint);
+    final secondRow = tags.sublist(midPoint);
     
     return Padding(
       key: const ValueKey('tags'),
@@ -7621,6 +7980,145 @@ class _CheckerPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+// ------------------ STYLE PREVIEW IMAGE WIDGET ------------------
+/// Widget for loading and displaying cached style preview images/videos
+class _StylePreviewImage extends StatefulWidget {
+  final StylePreset style;
+  final Color accentColor;
+  
+  const _StylePreviewImage({
+    required this.style,
+    required this.accentColor,
+  });
+  
+  @override
+  State<_StylePreviewImage> createState() => _StylePreviewImageState();
+}
+
+class _StylePreviewImageState extends State<_StylePreviewImage> {
+  Uint8List? _imageBytes;
+  VideoPlayerController? _videoController;
+  bool _loading = true;
+  bool _isVideo = false;
+  
+  @override
+  void initState() {
+    super.initState();
+    _loadPreview();
+  }
+  
+  @override
+  void dispose() {
+    _videoController?.pause();
+    super.dispose();
+  }
+  
+  Future<void> _loadPreview() async {
+    final url = widget.style.previewUrl;
+    if (url == null || url.isEmpty) {
+      if (mounted) setState(() => _loading = false);
+      return;
+    }
+    
+    _isVideo = url.endsWith('.mp4') || url.endsWith('.webm');
+    
+    if (_isVideo) {
+      // Load video with caching
+      final controller = await StylePreviewManager.instance.getVideoController(
+        widget.style.id,
+        url,
+      );
+      if (mounted && controller != null) {
+        setState(() {
+          _videoController = controller;
+          _loading = false;
+        });
+        controller.play();
+      } else if (mounted) {
+        setState(() => _loading = false);
+      }
+    } else {
+      // Load image with caching
+      final bytes = await StylePreviewManager.instance.getImagePreview(url);
+      if (mounted && bytes != null) {
+        setState(() {
+          _imageBytes = bytes;
+          _loading = false;
+        });
+      } else if (mounted) {
+        setState(() => _loading = false);
+      }
+    }
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              widget.accentColor.withOpacity(0.15),
+              widget.accentColor.withOpacity(0.05),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: Center(
+          child: SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(
+              strokeWidth: 1.5,
+              color: widget.accentColor.withOpacity(0.5),
+            ),
+          ),
+        ),
+      );
+    }
+    
+    if (_isVideo && _videoController != null && _videoController!.value.isInitialized) {
+      return FittedBox(
+        fit: BoxFit.cover,
+        child: SizedBox(
+          width: _videoController!.value.size.width,
+          height: _videoController!.value.size.height,
+          child: VideoPlayer(_videoController!),
+        ),
+      );
+    }
+    
+    if (_imageBytes != null) {
+      return Image.memory(
+        _imageBytes!,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _buildFallback(),
+      );
+    }
+    
+    return _buildFallback();
+  }
+  
+  Widget _buildFallback() {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            widget.accentColor.withOpacity(0.15),
+            widget.accentColor.withOpacity(0.05),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Center(
+        child: Text(widget.style.icon, style: const TextStyle(fontSize: 20)),
+      ),
+    );
+  }
 }
 
 // ------------------ MASK EDITOR ------------------

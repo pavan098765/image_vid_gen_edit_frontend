@@ -1105,6 +1105,7 @@
         "category": "Fun",
         "promptSnippet": "Pixar 3D animation style, colorful, rounded shapes, playful lighting",
         "icon": "🎪",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/cartoon_3d.jpg",
         "featured": true
       },
       {
@@ -1112,21 +1113,24 @@
         "name": "Comic Book",
         "category": "Fun",
         "promptSnippet": "comic book style, bold outlines, halftone dots, speech bubbles aesthetic",
-        "icon": "💥"
+        "icon": "💥",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/comic_book.jpg"
       },
       {
         "id": "clay_render",
         "name": "Clay Render",
         "category": "Fun",
         "promptSnippet": "claymation style, soft clay texture, stop motion aesthetic, handcrafted look",
-        "icon": "🎨"
+        "icon": "🎨",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/clay_render.jpg"
       },
       {
         "id": "sticker",
         "name": "Sticker Style",
         "category": "Fun",
         "promptSnippet": "cute sticker design, white outline, kawaii aesthetic, glossy finish",
-        "icon": "🏷️"
+        "icon": "🏷️",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/sticker.jpg"
       },
       {
         "id": "photo_real",
@@ -1134,6 +1138,7 @@
         "category": "Realistic",
         "promptSnippet": "photorealistic, DSLR quality, natural lighting, 8K resolution, sharp details",
         "icon": "📷",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/photo_real.jpg",
         "featured": true
       },
       {
@@ -1141,21 +1146,24 @@
         "name": "Product Shot",
         "category": "Realistic",
         "promptSnippet": "professional product photography, studio lighting, clean white background",
-        "icon": "🛍️"
+        "icon": "🛍️",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/product_shot.jpg"
       },
       {
         "id": "fashion",
         "name": "Fashion Editorial",
         "category": "Realistic",
         "promptSnippet": "high fashion editorial, Vogue magazine quality, dramatic pose, designer aesthetic",
-        "icon": "👗"
+        "icon": "👗",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/fashion.jpg"
       },
       {
         "id": "documentary",
         "name": "Documentary",
         "category": "Realistic",
         "promptSnippet": "documentary photography style, candid moment, natural light, authentic",
-        "icon": "🎞️"
+        "icon": "🎞️",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/documentary.jpg"
       },
       {
         "id": "oil_classic",
@@ -1163,6 +1171,7 @@
         "category": "Artistic",
         "promptSnippet": "classical oil painting, rich brush strokes, Renaissance masters style, museum quality",
         "icon": "🖼️",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/oil_classic.jpg",
         "featured": true
       },
       {
@@ -1170,21 +1179,24 @@
         "name": "Watercolor",
         "category": "Artistic",
         "promptSnippet": "watercolor painting, soft color blends, paper texture, artistic drips",
-        "icon": "💧"
+        "icon": "💧",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/watercolor.jpg"
       },
       {
         "id": "impressionist",
         "name": "Impressionist",
         "category": "Artistic",
         "promptSnippet": "impressionist painting, visible brush strokes, light and color emphasis, Monet style",
-        "icon": "🌸"
+        "icon": "🌸",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/impressionist.jpg"
       },
       {
         "id": "digital_art",
         "name": "Digital Art",
         "category": "Artistic",
         "promptSnippet": "professional digital art, trending on ArtStation, concept art quality",
-        "icon": "💻"
+        "icon": "💻",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/digital_art.jpg"
       },
       {
         "id": "anime_modern",
@@ -1192,6 +1204,7 @@
         "category": "Anime",
         "promptSnippet": "modern anime style, detailed shading, vibrant colors, high quality animation",
         "icon": "🎌",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/anime_modern.jpg",
         "featured": true
       },
       {
@@ -1199,21 +1212,24 @@
         "name": "Studio Ghibli",
         "category": "Anime",
         "promptSnippet": "Studio Ghibli style, Hayao Miyazaki aesthetic, magical realism, detailed backgrounds",
-        "icon": "🏯"
+        "icon": "🏯",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/ghibli.jpg"
       },
       {
         "id": "manga",
         "name": "Manga Panel",
         "category": "Anime",
         "promptSnippet": "manga illustration style, black and white, screentones, dynamic composition",
-        "icon": "📖"
+        "icon": "📖",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/manga.jpg"
       },
       {
         "id": "chibi",
         "name": "Chibi",
         "category": "Anime",
         "promptSnippet": "chibi style, cute proportions, big head small body, kawaii expressions",
-        "icon": "🥰"
+        "icon": "🥰",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/chibi.jpg"
       },
       {
         "id": "film_noir",
@@ -1221,6 +1237,7 @@
         "category": "Cinematic",
         "promptSnippet": "film noir style, black and white, dramatic shadows, 1940s detective aesthetic",
         "icon": "🎬",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/film_noir.jpg",
         "featured": true
       },
       {
@@ -1228,22 +1245,111 @@
         "name": "Blockbuster",
         "category": "Cinematic",
         "promptSnippet": "Hollywood blockbuster look, epic scale, cinematic color grading, anamorphic lens",
-        "icon": "🎥"
+        "icon": "🎥",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/blockbuster.jpg"
       },
       {
         "id": "scifi",
         "name": "Sci-Fi Epic",
         "category": "Cinematic",
         "promptSnippet": "science fiction aesthetic, futuristic technology, epic space opera, blade runner vibes",
-        "icon": "🚀"
+        "icon": "🚀",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/scifi.jpg"
       },
       {
         "id": "horror",
         "name": "Horror",
         "category": "Cinematic",
         "promptSnippet": "horror movie aesthetic, unsettling atmosphere, dark shadows, eerie lighting",
-        "icon": "👻"
+        "icon": "👻",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/horror.jpg"
       }
     ]
-  }
+  },
+  "quickTags": [
+    {
+      "id": "cinematic",
+      "label": "Cinematic",
+      "snippet": "cinematic lighting, film grain",
+      "icon": "🎬",
+      "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/tags/cinematic.jpg"
+    },
+    {
+      "id": "anime",
+      "label": "Anime",
+      "snippet": "anime style, vibrant colors",
+      "icon": "🎌",
+      "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/tags/anime.jpg"
+    },
+    {
+      "id": "portrait",
+      "label": "Portrait",
+      "snippet": "portrait photography, sharp focus",
+      "icon": "👤",
+      "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/tags/portrait.jpg"
+    },
+    {
+      "id": "soft_light",
+      "label": "Soft Light",
+      "snippet": "soft diffused lighting, gentle shadows",
+      "icon": "💡",
+      "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/tags/soft_light.jpg"
+    },
+    {
+      "id": "high_detail",
+      "label": "High Detail",
+      "snippet": "8K, ultra detailed, intricate details",
+      "icon": "🔍",
+      "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/tags/high_detail.jpg"
+    },
+    {
+      "id": "studio",
+      "label": "Studio",
+      "snippet": "professional studio lighting, clean background",
+      "icon": "📸",
+      "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/tags/studio.jpg"
+    },
+    {
+      "id": "dramatic",
+      "label": "Dramatic",
+      "snippet": "dramatic lighting, high contrast",
+      "icon": "🌟",
+      "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/tags/dramatic.jpg"
+    },
+    {
+      "id": "dreamy",
+      "label": "Dreamy",
+      "snippet": "dreamy atmosphere, ethereal glow",
+      "icon": "✨",
+      "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/tags/dreamy.jpg"
+    },
+    {
+      "id": "vintage",
+      "label": "Vintage",
+      "snippet": "vintage aesthetic, retro film look",
+      "icon": "📼",
+      "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/tags/vintage.jpg"
+    },
+    {
+      "id": "neon",
+      "label": "Neon",
+      "snippet": "neon lights, cyberpunk vibes",
+      "icon": "🌃",
+      "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/tags/neon.jpg"
+    },
+    {
+      "id": "nature",
+      "label": "Nature",
+      "snippet": "natural lighting, outdoor setting",
+      "icon": "🌿",
+      "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/tags/nature.jpg"
+    },
+    {
+      "id": "minimal",
+      "label": "Minimal",
+      "snippet": "minimalist, clean composition",
+      "icon": "⬜",
+      "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/tags/minimal.jpg"
+    }
+  ]
 }

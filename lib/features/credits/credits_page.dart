@@ -32,6 +32,9 @@ class _CreditsPageState extends State<CreditsPage> {
   final PurchaseService _purchaseService = PurchaseService.instance;
   bool _isRefreshing = false;
   
+  // Offerwall visibility - set to true when AdGem is approved
+  static const bool _showOfferwall = false;
+  
   // Purchase state
   String? _selectedGemPackId;
   bool _isPurchasing = false;
@@ -1559,9 +1562,11 @@ class _CreditsPageState extends State<CreditsPage> {
             Expanded(child: _buildWatchAdsCard(cs)),
           ],
         ),
-        const SizedBox(height: 10),
-        // Offerwall - AdGem integration
-        _buildOfferwallCard(cs),
+        // Offerwall - AdGem integration (hidden until approved)
+        if (_showOfferwall) ...[
+          const SizedBox(height: 10),
+          _buildOfferwallCard(cs),
+        ],
       ],
     );
   }
