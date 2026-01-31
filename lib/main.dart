@@ -121,15 +121,16 @@ Future<void> _reloadJobsToNotifier({bool retryOnEmpty = true}) async {
     final appliedFromFile = await applyPendingFcmUpdatesFromFile();
     if (appliedFromFile) {
       debugPrint("✅ Applied FCM updates from file - job list updated");
-      // Job list was already updated by _applyPendingFcmUpdatesFromFile
       final jobs = jobListNotifier.value;
       final completed = jobs.where((j) => j.status == 'completed').length;
       final processing = jobs.where((j) => j.status == 'processing').length;
-      debugPrint("📊 Status: $completed completed, $processing processing");
-      return;
+      debugPrint("📊 Status after file sync: $completed completed, $processing processing");
+      // NOTE: Don't return early! Continue to check SharedPreferences
+      // because it might have more complete job data (localFilePath, inputImagePath)
+      // that file-based updates don't preserve.
     }
     
-    // 📦 FALLBACK: Try SharedPreferences (might work on some platforms)
+    // 📦 ALSO check SharedPreferences (might have more complete data)
     final prefs = await SharedPreferences.getInstance();
     
     // 🔄 Multiple reload attempts to ensure cross-isolate sync
@@ -147,7 +148,7 @@ Future<void> _reloadJobsToNotifier({bool retryOnEmpty = true}) async {
 
     final jsonStr = prefs.getString('jobs');
     if (jsonStr == null) {
-      if (retryOnEmpty) {
+      if (retryOnEmpty && !appliedFromFile) {
         debugPrint("📂 No jobs found — retrying after delay...");
         await Future.delayed(const Duration(milliseconds: 200));
         await prefs.reload();
@@ -164,8 +165,11 @@ Future<void> _reloadJobsToNotifier({bool retryOnEmpty = true}) async {
           }
         }
       }
-      jobListNotifier.value = [];
-      debugPrint("📂 No jobs found — cleared");
+      // Only clear if we didn't apply file updates
+      if (!appliedFromFile) {
+        jobListNotifier.value = [];
+        debugPrint("📂 No jobs found — cleared");
+      }
       return;
     }
 
@@ -300,26 +304,36 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       });
     }
 
+    // 📁 WRITE TO FILE FIRST for reliable cross-isolate sync
+    // This is the PRIMARY sync mechanism - SharedPreferences can be unreliable
+    // across isolates on some platforms (especially Android)!
+    // File-based approach ensures main app can always read the updates.
+    final jobCreatedAt = idx >= 0 
+        ? (existing[idx]['createdAt'] ?? DateTime.now().toIso8601String())
+        : DateTime.now().toIso8601String();
+    
+    await writeFcmUpdateToFile({
+      'jobId': jobId,
+      'status': normalizedStatus,
+      'downloadUrl': downloadUrl,
+      'title': title.isNotEmpty ? title : (idx >= 0 ? existing[idx]['title'] : jobId),
+      'model': model.isNotEmpty ? model : (idx >= 0 ? existing[idx]['model'] : 'unknown'),
+      'outputType': outputType.isNotEmpty ? outputType : (idx >= 0 ? existing[idx]['outputType'] : 'image'),
+      'timestamp': jobCreatedAt,
+    });
+    debugPrint('📁 [FCM Background] Wrote to file FIRST for job $jobId → $normalizedStatus');
+    
     // persist per-job download url key too (prevents global clobber)
     if (downloadUrl.isNotEmpty) {
       await prefs.setString('pending_download_url_$jobId', downloadUrl);
       debugPrint('📥 [FCM Background] Cached signed URL for $jobId (valid for ~1hr)');
     }
 
+    // 📦 ALSO write to SharedPreferences (backup, might work on some platforms)
     await prefs.setString('jobs', jsonEncode(existing));
     await prefs.setBool('has_fcm_update', true);
-    
-    // 📁 ALSO write to file for reliable cross-isolate sync
-    // SharedPreferences can be unreliable across isolates on some platforms
-    await writeFcmUpdateToFile({
-      'jobId': jobId,
-      'status': normalizedStatus,
-      'downloadUrl': downloadUrl,
-      'title': title,
-      'model': model,
-      'outputType': outputType,
-      'timestamp': DateTime.now().toIso8601String(),
-    });
+    await prefs.reload(); // Force flush to disk
+    debugPrint('📦 [FCM Background] Wrote to SharedPreferences for job $jobId');
 
     // 🔔 Local notification for visibility
     String notifTitle;

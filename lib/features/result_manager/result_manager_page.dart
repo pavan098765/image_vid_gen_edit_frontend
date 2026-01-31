@@ -232,12 +232,34 @@ class _ResultManagerPageState extends State<ResultManagerPage>
 
   Future<void> _refreshJobs() async {
     try {
+      // 📁 FIRST: Apply any pending FCM updates from file
+      // This is the most reliable cross-isolate sync mechanism
+      // CRITICAL: Background FCM handler writes to this file, and SharedPreferences
+      // might not sync across isolates on some platforms!
+      final appliedFromFile = await applyPendingFcmUpdatesFromFile();
+      if (appliedFromFile) {
+        debugPrint("✅ [ResultManager] Applied FCM updates from file");
+        // Job list was already updated by applyPendingFcmUpdatesFromFile
+        final jobs = jobListNotifier.value;
+        final completed = jobs.where((j) => j.status == 'completed').length;
+        final processing = jobs.where((j) => j.status == 'processing').length;
+        debugPrint("📊 Status after FCM file: $completed completed, $processing processing");
+      }
+      
       final prefs = await SharedPreferences.getInstance();
       
       // 🔄 Multiple reload attempts to ensure cross-isolate sync with FCM background handler
       await prefs.reload();
       await Future.delayed(const Duration(milliseconds: 50));
       await prefs.reload();
+      
+      // Check for pending FCM updates flag (backup mechanism)
+      final hasUpdate = prefs.getBool('has_fcm_update') ?? false;
+      if (hasUpdate) {
+        debugPrint("📦 [ResultManager] Found FCM update flag — forcing reload");
+        await prefs.remove('has_fcm_update');
+        await prefs.reload();
+      }
 
       // ✅ PRIMARY: Load jobs from SharedPreferences (contains FCM updates)
       // FCM notifications already have status and download_url - trust this data!
@@ -257,13 +279,14 @@ class _ResultManagerPageState extends State<ResultManagerPage>
         }
       }
 
-      // 🔄 BACKUP: Only poll server for "stuck" processing jobs (>2 min old)
+      // 🔄 BACKUP: Only poll server for "stuck" processing jobs (>5 min old)
+      // Reduced from 10 min - if FCM didn't deliver in 5 min, it's unlikely to
       // This is a safety net in case FCM failed to deliver
       final stuckJobs = jobListNotifier.value
           .where((j) => j.status == 'processing')
           .where((j) {
             final age = DateTime.now().difference(j.createdAt).inMinutes;
-            return age >= 10;
+            return age >= 5; // Changed from 10 to 5 minutes
           })
           .toList();
 

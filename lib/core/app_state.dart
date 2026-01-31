@@ -482,41 +482,70 @@ Future<File> getFcmUpdatesFile() async {
 
 /// Write FCM update to file (called from background isolate)
 /// This is more reliable than SharedPreferences for cross-isolate communication
+/// Uses retry logic to handle potential concurrent access issues.
 Future<void> writeFcmUpdateToFile(Map<String, dynamic> jobUpdate) async {
-  try {
-    final file = await getFcmUpdatesFile();
-    
-    // Read existing updates
-    List<Map<String, dynamic>> updates = [];
-    if (await file.exists()) {
-      final content = await file.readAsString();
-      if (content.isNotEmpty) {
-        final decoded = jsonDecode(content);
-        if (decoded is List) {
-          updates = decoded.map((e) => Map<String, dynamic>.from(e)).toList();
+  const maxRetries = 3;
+  
+  for (int attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      final file = await getFcmUpdatesFile();
+      
+      // Read existing updates
+      List<Map<String, dynamic>> updates = [];
+      if (await file.exists()) {
+        final content = await file.readAsString();
+        if (content.isNotEmpty && content != '[]') {
+          try {
+            final decoded = jsonDecode(content);
+            if (decoded is List) {
+              updates = decoded.map((e) => Map<String, dynamic>.from(e)).toList();
+            }
+          } catch (parseError) {
+            // File might be corrupted or mid-write, start fresh
+            debugPrint("⚠️ [FCM File] Parse error on read, starting fresh: $parseError");
+            updates = [];
+          }
         }
       }
+      
+      // Add or update this job
+      final jobId = jobUpdate['jobId'];
+      final existingIdx = updates.indexWhere((u) => u['jobId'] == jobId);
+      if (existingIdx >= 0) {
+        // Merge with existing update (preserve fields that might be missing)
+        final existing = updates[existingIdx];
+        updates[existingIdx] = {
+          ...existing,
+          ...jobUpdate,
+        };
+      } else {
+        updates.add(jobUpdate);
+      }
+      
+      // Write back to file
+      final jsonContent = jsonEncode(updates);
+      await file.writeAsString(jsonContent, flush: true);
+      debugPrint("📁 [FCM File] Wrote update for job $jobId to file (attempt $attempt)");
+      return; // Success, exit
+    } catch (e) {
+      debugPrint("⚠️ [FCM File] Write attempt $attempt failed: $e");
+      if (attempt < maxRetries) {
+        // Wait before retry with exponential backoff
+        await Future.delayed(Duration(milliseconds: 100 * attempt));
+      }
     }
-    
-    // Add or update this job
-    final jobId = jobUpdate['jobId'];
-    final existingIdx = updates.indexWhere((u) => u['jobId'] == jobId);
-    if (existingIdx >= 0) {
-      updates[existingIdx] = jobUpdate;
-    } else {
-      updates.add(jobUpdate);
-    }
-    
-    // Write back to file
-    await file.writeAsString(jsonEncode(updates));
-    debugPrint("📁 [FCM File] Wrote update for job $jobId to file");
-  } catch (e) {
-    debugPrint("⚠️ [FCM File] Failed to write: $e");
   }
+  
+  // All retries failed
+  debugPrint("❌ [FCM File] Failed to write after $maxRetries attempts");
 }
 
 /// Read and apply all pending FCM updates from file (called on app startup)
 /// Returns true if any updates were applied
+/// 
+/// CRITICAL FIX: This function now CREATES new jobs if they don't exist in SharedPreferences.
+/// Background isolate writes to SharedPreferences might not sync to main app, so we rely
+/// on file-based updates to ensure jobs are properly created/updated.
 Future<bool> applyPendingFcmUpdatesFromFile() async {
   try {
     final file = await getFcmUpdatesFile();
@@ -526,14 +555,36 @@ Future<bool> applyPendingFcmUpdatesFromFile() async {
       return false;
     }
     
+    // Small delay to ensure any in-flight background writes complete
+    await Future.delayed(const Duration(milliseconds: 100));
+    
     final content = await file.readAsString();
-    if (content.isEmpty) {
+    if (content.isEmpty || content == '[]') {
       debugPrint("📁 [FCM File] Updates file is empty");
       return false;
     }
     
-    final decoded = jsonDecode(content);
-    if (decoded is! List || decoded.isEmpty) {
+    List<dynamic> decoded;
+    try {
+      decoded = jsonDecode(content);
+    } catch (e) {
+      // File might be mid-write, wait and retry once
+      debugPrint("⚠️ [FCM File] JSON parse failed, retrying in 200ms: $e");
+      await Future.delayed(const Duration(milliseconds: 200));
+      try {
+        final retryContent = await file.readAsString();
+        if (retryContent.isEmpty || retryContent == '[]') {
+          return false;
+        }
+        decoded = jsonDecode(retryContent);
+      } catch (retryError) {
+        debugPrint("⚠️ [FCM File] Retry failed, clearing corrupt file: $retryError");
+        await file.writeAsString('[]');
+        return false;
+      }
+    }
+    
+    if (decoded.isEmpty) {
       debugPrint("📁 [FCM File] No pending updates in file");
       return false;
     }
@@ -542,6 +593,10 @@ Future<bool> applyPendingFcmUpdatesFromFile() async {
     
     // Apply each update to the job list
     final prefs = await SharedPreferences.getInstance();
+    
+    // Multiple reload attempts to ensure we have fresh data
+    await prefs.reload();
+    await Future.delayed(const Duration(milliseconds: 50));
     await prefs.reload();
     
     final jsonStr = prefs.getString('jobs');
@@ -551,28 +606,76 @@ Future<bool> applyPendingFcmUpdatesFromFile() async {
             .map((e) => Map<String, dynamic>.from(e))
             .toList();
     
+    // Get deleted job IDs to prevent recreating deleted jobs
+    final deletedJobIds = getDeletedJobIdsSync(prefs);
+    
     bool anyUpdated = false;
+    int updatedCount = 0;
+    int createdCount = 0;
+    int skippedCount = 0;
     
     for (final update in decoded) {
       final jobId = update['jobId']?.toString();
       if (jobId == null || jobId.isEmpty) continue;
       
+      // 🛡️ Check if this job was previously deleted - don't recreate it
+      if (deletedJobIds.contains(jobId)) {
+        debugPrint("📁 [FCM File] Skipping deleted job $jobId");
+        skippedCount++;
+        continue;
+      }
+      
+      final newStatus = update['status']?.toString() ?? 'processing';
+      final newUrl = update['downloadUrl']?.toString();
+      final newTitle = update['title']?.toString();
+      final newModel = update['model']?.toString();
+      final newOutputType = update['outputType']?.toString();
+      final timestamp = update['timestamp']?.toString();
+      
       final idx = jobs.indexWhere((j) => j['jobId'] == jobId);
+      
       if (idx >= 0) {
-        // Update existing job
+        // ✅ UPDATE existing job
         final old = jobs[idx];
-        final newStatus = update['status']?.toString() ?? old['status'];
-        final newUrl = update['downloadUrl']?.toString();
+        final oldStatus = old['status']?.toString() ?? 'processing';
         
-        // Only update if FCM has newer/better data
-        if (newStatus == 'completed' || newStatus == 'failed' || old['status'] == 'processing') {
+        // Only update if FCM has newer/better data (completed/failed > processing)
+        final shouldUpdate = newStatus == 'completed' || 
+                            newStatus == 'failed' || 
+                            oldStatus == 'processing';
+        
+        if (shouldUpdate) {
           jobs[idx] = {
             ...old,
             'status': newStatus,
             if (newUrl != null && newUrl.isNotEmpty) 'downloadUrl': newUrl,
           };
-          debugPrint("📁 [FCM File] Updated job $jobId → $newStatus");
+          debugPrint("📁 [FCM File] Updated job $jobId: $oldStatus → $newStatus");
           anyUpdated = true;
+          updatedCount++;
+        }
+      } else {
+        // ✅ CREATE new job (this was the missing piece!)
+        // Background isolate wrote to SharedPreferences but main app didn't see it
+        final newJob = {
+          'jobId': jobId,
+          'title': (newTitle != null && newTitle.isNotEmpty) ? newTitle : jobId,
+          'model': (newModel != null && newModel.isNotEmpty) ? newModel : 'unknown',
+          'outputType': (newOutputType != null && newOutputType.isNotEmpty) ? newOutputType : 'image',
+          'downloadUrl': (newUrl != null && newUrl.isNotEmpty) ? newUrl : null,
+          'status': newStatus,
+          'createdAt': timestamp ?? DateTime.now().toIso8601String(),
+          'localFilePath': null,
+          'inputImagePath': null,
+        };
+        jobs.insert(0, newJob);
+        debugPrint("📁 [FCM File] Created NEW job $jobId (status: $newStatus) - was missing from SharedPreferences!");
+        anyUpdated = true;
+        createdCount++;
+        
+        // Also cache the download URL separately
+        if (newUrl != null && newUrl.isNotEmpty) {
+          await prefs.setString('pending_download_url_$jobId', newUrl);
         }
       }
     }
@@ -580,13 +683,16 @@ Future<bool> applyPendingFcmUpdatesFromFile() async {
     if (anyUpdated) {
       // Save to SharedPreferences
       await prefs.setString('jobs', jsonEncode(jobs));
+      await prefs.reload(); // Ensure disk write
       
       // Update notifier
       jobListNotifier.value = jobs
           .map((e) => JobModel.fromJson(Map<String, dynamic>.from(e)))
           .toList();
       
-      debugPrint("✅ [FCM File] Applied ${decoded.length} pending updates");
+      debugPrint("✅ [FCM File] Applied updates: $updatedCount updated, $createdCount created, $skippedCount skipped");
+    } else {
+      debugPrint("📁 [FCM File] No applicable updates (all jobs already up to date)");
     }
     
     // Clear the file after applying

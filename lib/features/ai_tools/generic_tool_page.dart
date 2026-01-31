@@ -643,10 +643,11 @@ class _GenericToolPageState extends State<GenericToolPage>
     final title = widget.config.title.toLowerCase();
     final model = widget.config.model.toLowerCase();
     // Check by title or model name
+    // RealESRGAN variants: realesrgan, realesrgan_anime, realesrgan_face, realesrgan_denoise
     return title.contains('upscale') || 
            model == 'aurasrv2' || 
            model == 'swin2sr' || 
-           model == 'realesrgan';
+           model.startsWith('realesrgan');
   }
   
   /// Check if bulk mode should be available for this tool
@@ -3424,6 +3425,8 @@ class _GenericToolPageState extends State<GenericToolPage>
         return _buildSlider(ref);
       case "dropdown":
         return _buildDropdown(ref);
+      case "toggle":
+        return _buildToggle(ref);
       case "painter":
         return _buildPainter(ref);
       case "generate_button":
@@ -5415,6 +5418,79 @@ class _GenericToolPageState extends State<GenericToolPage>
               ),
             ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // -------- Toggle (Switch) --------
+  Widget _buildToggle(String ref) {
+    final cs = Theme.of(context).colorScheme;
+    final input = widget.config.inputs
+        .firstWhere((i) => i["id"] == ref, orElse: () => {});
+    final label = input["label"] ?? ref;
+    final description = input["description"] as String?;
+    final showForModels = input["showForModels"] as List<dynamic>?;
+    
+    // Check if toggle should be shown for current model
+    if (showForModels != null && showForModels.isNotEmpty) {
+      final currentModel = _selectedModelId ?? widget.config.model;
+      if (!showForModels.contains(currentModel)) {
+        return const SizedBox.shrink();
+      }
+    }
+    
+    // Initialize with default value
+    _inputs[ref] ??= input["default"] ?? false;
+    final isEnabled = _inputs[ref] == true;
+
+    return _buildCard(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: (isEnabled ? cs.primary : cs.outline).withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              LucideIcons.sparkles,
+              size: 18,
+              color: isEnabled ? cs.primary : cs.outline,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: cs.onSurface,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                if (description != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    description,
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant.withOpacity(0.7),
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          Switch.adaptive(
+            value: isEnabled,
+            onChanged: (v) => setState(() => _inputs[ref] = v),
+            activeColor: cs.primary,
           ),
         ],
       ),

@@ -15,7 +15,7 @@
           {
             "id": "trending_new",
             "title": "New Arrivals",
-            "templates": ["cyberpunk_style", "neon_glow", "slow_motion_effect"]
+            "templates": ["cyberpunk_style", "neon_glow", "slow_motion_effect", "portrait_enhance", "photo_restore", "face_restore"]
           }
         ],
         "templates": ["animate_portrait", "glow_up_photo", "ai_headshot", "cyberpunk_style", "neon_glow"]
@@ -48,15 +48,15 @@
           {
             "id": "photo_enhance",
             "title": "Enhancement",
-            "templates": ["glow_up_photo", "hd_upscale"]
+            "templates": ["glow_up_photo", "hd_upscale", "portrait_enhance", "photo_restore", "face_restore"]
           },
           {
             "id": "photo_professional",
             "title": "Professional",
-            "templates": ["ai_headshot", "remove_bg_quick"]
+            "templates": ["ai_headshot", "remove_bg_quick", "portrait_enhance"]
           }
         ],
-        "templates": ["glow_up_photo", "ai_headshot", "remove_bg_quick", "hd_upscale"]
+        "templates": ["glow_up_photo", "ai_headshot", "remove_bg_quick", "hd_upscale", "portrait_enhance", "photo_restore", "face_restore"]
       },
       {
         "id": "enhance",
@@ -67,15 +67,15 @@
           {
             "id": "enhance_quality",
             "title": "Quality Boost",
-            "templates": ["hd_upscale", "glow_up_photo"]
+            "templates": ["hd_upscale", "glow_up_photo", "portrait_enhance", "anime_upscale", "face_restore"]
           },
           {
             "id": "enhance_cleanup",
             "title": "Cleanup Tools",
-            "templates": ["remove_bg_quick"]
+            "templates": ["remove_bg_quick", "photo_restore"]
           }
         ],
-        "templates": ["glow_up_photo", "hd_upscale", "remove_bg_quick"]
+        "templates": ["glow_up_photo", "hd_upscale", "remove_bg_quick", "portrait_enhance", "photo_restore", "anime_upscale", "face_restore"]
       },
       {
         "id": "styles",
@@ -96,7 +96,7 @@
           {
             "id": "styles_anime",
             "title": "Anime & Cartoon",
-            "templates": ["anime_portrait", "cartoon_me", "comic_book"]
+            "templates": ["anime_portrait", "cartoon_me", "comic_book", "anime_upscale"]
           }
         ],
         "templates": ["anime_portrait", "oil_painting", "cyberpunk_style", "watercolor_art", "sketch_portrait", "pop_art", "neon_glow"]
@@ -213,6 +213,67 @@
         "capability": "upscale",
         "model": "aurasrv2",
         "preferred_model": "aurasrv2",
+        "job_config": {
+          "scale_factor": 4
+        }
+      },
+      "anime_upscale": {
+        "id": "anime_upscale",
+        "title": "Anime Upscale",
+        "subtitle": "Upscale anime & illustrations perfectly",
+        "media_type": "image",
+        "output_type": "image",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/anime_upscale.jpg",
+        "badges": ["🎌 Anime", "4K"],
+        "capability": "upscale",
+        "model": "realesrgan_anime",
+        "preferred_model": "realesrgan_anime",
+        "job_config": {
+          "scale_factor": 4
+        }
+      },
+      "portrait_enhance": {
+        "id": "portrait_enhance",
+        "title": "Portrait Enhance",
+        "subtitle": "HD upscale with face restoration",
+        "media_type": "image",
+        "output_type": "image",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/portrait_enhance.jpg",
+        "badges": ["👤 Face", "HD"],
+        "capability": "upscale",
+        "model": "realesrgan_face",
+        "preferred_model": "realesrgan_face",
+        "job_config": {
+          "scale_factor": 4
+        }
+      },
+      "face_restore": {
+        "id": "face_restore",
+        "title": "Face Restore",
+        "subtitle": "Fix blurry, old or damaged faces",
+        "media_type": "image",
+        "output_type": "image",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/face_restore.jpg",
+        "badges": ["✨ GFPGAN", "AI Face"],
+        "capability": "upscale",
+        "model": "realesrgan",
+        "preferred_model": "realesrgan",
+        "job_config": {
+          "scale_factor": 2,
+          "face_enhance": true
+        }
+      },
+      "photo_restore": {
+        "id": "photo_restore",
+        "title": "Photo Restore",
+        "subtitle": "Fix old, blurry or compressed photos",
+        "media_type": "image",
+        "output_type": "image",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/photo_restore.jpg",
+        "badges": ["🔧 Restore", "Denoise"],
+        "capability": "upscale",
+        "model": "realesrgan_denoise",
+        "preferred_model": "realesrgan_denoise",
         "job_config": {
           "scale_factor": 4
         }
@@ -659,22 +720,23 @@
           }
         },
         {
-          "id": "sdxl",
+          "id": "sdxl_inpaint",
           "name": "IMAGIA Inpaint",
-          "description": "AI-powered content fill",
-          "cost": 10,
+          "description": "AI-powered content fill with prompt",
+          "cost": 15,
           "costUpscale": 5,
           "offer": 0,
           "params": {
-            "sample_steps": "{{sample_steps}}",
-            "cfg_scale": "1.0",
-            "sampler": "DPMSolverMultistep",
-            "strength": "1.0",
-            "scale_image": true,
-            "scale_factor": "{{scale_factor}}",
-            "seed": "random",
             "init_image": "{{init_image}}",
-            "mask_image": "{{mask_image}}"
+            "mask_image": "{{mask_image}}",
+            "num_inference_steps": 20,
+            "cfg_scale": 7.0,
+            "guidance_scale": 7.0,
+            "binarize_mask": true,
+            "invert_mask": false,
+            "mask_threshold": 127,
+            "scale_image": true,
+            "scale_factor": "{{scale_factor}}"
           },
           "rootParams": {
             "prompt": "{{prompt}}"
@@ -1064,7 +1126,64 @@
           "offer": 0,
           "params": {
             "init_image": "{{image}}",
-            "scale": "{{scale_factor}}"
+            "outscale": "{{scale_factor}}",
+            "model_name": "RealESRGAN_x4plus",
+            "face_enhance": "{{face_enhance}}",
+            "tile": 512,
+            "tile_pad": 10,
+            "fp32": false
+          }
+        },
+        {
+          "id": "realesrgan_anime",
+          "name": "PhotoBoost Anime",
+          "description": "Optimized for anime & illustrations",
+          "cost": 10,
+          "costUpscale": 5,
+          "offer": 0,
+          "params": {
+            "init_image": "{{image}}",
+            "outscale": "{{scale_factor}}",
+            "model_name": "RealESRGAN_x4plus_anime_6B",
+            "face_enhance": false,
+            "tile": 512,
+            "tile_pad": 10,
+            "fp32": false
+          }
+        },
+        {
+          "id": "realesrgan_face",
+          "name": "PhotoBoost Face",
+          "description": "Enhanced face restoration with GFPGAN",
+          "cost": 12,
+          "costUpscale": 5,
+          "offer": 0,
+          "params": {
+            "init_image": "{{image}}",
+            "outscale": "{{scale_factor}}",
+            "model_name": "RealESRGAN_x4plus",
+            "face_enhance": true,
+            "tile": 512,
+            "tile_pad": 10,
+            "fp32": false
+          }
+        },
+        {
+          "id": "realesrgan_denoise",
+          "name": "PhotoBoost Denoise",
+          "description": "Upscale with noise reduction",
+          "cost": 10,
+          "costUpscale": 5,
+          "offer": 0,
+          "params": {
+            "init_image": "{{image}}",
+            "outscale": "{{scale_factor}}",
+            "model_name": "realesr-general-x4v3",
+            "face_enhance": "{{face_enhance}}",
+            "tile": 512,
+            "tile_pad": 10,
+            "fp32": false,
+            "denoise_strength": 0.5
           }
         }
       ],
@@ -1083,12 +1202,24 @@
           "min": 2,
           "max": 4,
           "default": 2
+        },
+        {
+          "id": "face_enhance",
+          "type": "toggle",
+          "label": "Face Enhance",
+          "description": "Restore and enhance faces using GFPGAN",
+          "default": false,
+          "showForModels": ["realesrgan", "realesrgan_denoise"]
         }
       ],
       "elements": [
         {
           "type": "image_upload",
           "input_ref": "image"
+        },
+        {
+          "type": "toggle",
+          "input_ref": "face_enhance"
         },
         {
           "type": "generate_button"
