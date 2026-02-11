@@ -1099,7 +1099,61 @@ class _GenericToolPageState extends State<GenericToolPage>
     }
   }
   
-  /// Apply a template to current settings
+  /// Filter template settings to only include compatible settings for current tool category
+  AdvancedSettings _filterCompatibleSettings(AdvancedSettings templateSettings) {
+    // Start with current settings as base
+    AdvancedSettings filtered = _advancedSettings.copyWith();
+    
+    // Always apply these (universal settings)
+    filtered = filtered.copyWith(
+      enhancePrompt: templateSettings.enhancePrompt,
+      quality: templateSettings.quality,
+    );
+    
+    // Upscale: Only apply if not a video tool (upscale is hidden for video tools)
+    if (!_isVideoTool) {
+      filtered = filtered.copyWith(upscaleOutput: templateSettings.upscaleOutput);
+    } else {
+      // For video tools, disable upscale (not available)
+      filtered = filtered.copyWith(upscaleOutput: false);
+    }
+    
+    // Aspect Ratio: Only apply if not hidden for this tool category
+    if (!_isEditImageTool && 
+        !_isAnimateImageTool && 
+        !_isExpandSceneTool && 
+        !_isUpscalerTool && 
+        !_isInpaintEraseTool && 
+        !_isRemoveBackgroundTool) {
+      filtered = filtered.copyWith(aspectRatio: templateSettings.aspectRatio);
+    }
+    
+    // CFG Scale: Only apply if not hidden for this tool category
+    if (!_isUpscalerTool && !_isRemoveBackgroundTool) {
+      filtered = filtered.copyWith(cfgScale: templateSettings.cfgScale);
+    }
+    
+    // Variations: Apply for both image and video tools
+    if (widget.config.outputType == 'image' || widget.config.outputType == 'video') {
+      filtered = filtered.copyWith(variations: templateSettings.variations);
+    }
+    
+    // Video Duration: Only apply for video tools
+    if (widget.config.outputType == 'video') {
+      filtered = filtered.copyWith(videoDuration: templateSettings.videoDuration);
+    }
+    
+    // Bulk Edit: Only apply if supported (VIP only, and tool supports it)
+    if (_supportsBulkEdit) {
+      filtered = filtered.copyWith(bulkEditEnabled: templateSettings.bulkEditEnabled);
+    } else {
+      filtered = filtered.copyWith(bulkEditEnabled: false);
+    }
+    
+    return filtered;
+  }
+  
+  /// Apply a template to current settings (only compatible settings are applied)
   void _applyTemplate(UserTemplate template) {
     setState(() {
       _promptController.text = template.prompt;
@@ -1110,10 +1164,22 @@ class _GenericToolPageState extends State<GenericToolPage>
           orElse: () => widget.config.models!.first,
         );
       }
-      _advancedSettings = template.settings;
-      _upscaleEnabled = template.settings.upscaleOutput;
-      _scaleFactor = template.settings.upscaleOutput ? 2 : 1;
-      _inputs["scale_factor"] = template.settings.upscaleOutput ? _scaleFactor : 1.0;
+      
+      // Filter template settings to only apply compatible settings
+      final filteredSettings = _filterCompatibleSettings(template.settings);
+      _advancedSettings = filteredSettings;
+      
+      // Update upscale-related state (only if upscale is compatible)
+      if (!_isVideoTool) {
+        _upscaleEnabled = filteredSettings.upscaleOutput;
+        _scaleFactor = filteredSettings.upscaleOutput ? 2 : 1;
+        _inputs["scale_factor"] = filteredSettings.upscaleOutput ? _scaleFactor : 1.0;
+      } else {
+        // For video tools, ensure upscale is disabled
+        _upscaleEnabled = false;
+        _scaleFactor = 1;
+        _inputs["scale_factor"] = 1.0;
+      }
     });
     
     // Update last used
@@ -1482,9 +1548,9 @@ class _GenericToolPageState extends State<GenericToolPage>
                           const SizedBox(height: 16),
                         ],
                         
-                        // Variations Slider (for image generation)
+                        // Variations Slider (for image generation, animate image, and create video tools)
                         // VIP users: max 4, Non-VIP: max 2
-                        if (widget.config.outputType == 'image') ...[
+                        if (widget.config.outputType == 'image' || widget.config.outputType == 'video') ...[
                           _buildSettingSlider(
                             cs: cs,
                             icon: LucideIcons.copy,
