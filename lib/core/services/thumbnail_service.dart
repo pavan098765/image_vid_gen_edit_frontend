@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:image/image.dart' as img;
+import 'package:video_thumbnail/video_thumbnail.dart';
 
 /// Service for efficient thumbnail generation and caching.
 /// Handles large images (16-20MB+) without blocking the main thread.
@@ -52,6 +54,12 @@ class ThumbnailService {
     return '${_thumbnailDir!.path}/$cacheKey.jpg';
   }
 
+  /// Check if file is a video by extension
+  bool _isVideoFile(String filePath) {
+    final ext = filePath.toLowerCase().split('.').last;
+    return ext == 'mp4' || ext == 'mov' || ext == 'avi' || ext == 'mkv' || ext == 'webm';
+  }
+
   /// Get or generate a thumbnail for a file
   /// Returns null if generation fails
   Future<Uint8List?> getThumbnail(
@@ -86,7 +94,7 @@ class ThumbnailService {
       return _pendingGenerations[cacheKey]!.future;
     }
     
-    // 4. Generate new thumbnail in isolate
+    // 4. Generate new thumbnail
     final completer = Completer<Uint8List?>();
     _pendingGenerations[cacheKey] = completer;
     
@@ -97,16 +105,45 @@ class ThumbnailService {
         return null;
       }
       
-      // Run in isolate to avoid blocking main thread
-      final result = await compute(
-        _generateThumbnailIsolate,
-        _ThumbnailParams(
-          filePath: filePath,
-          outputPath: thumbPath,
-          size: size,
-          quality: quality,
-        ),
-      );
+      Uint8List? result;
+      
+      // Handle video files separately (must run on main thread)
+      if (_isVideoFile(filePath)) {
+        debugPrint('🎬 Generating video thumbnail for: $filePath');
+        try {
+          // Generate video thumbnail using video_thumbnail package
+          final thumbnailBytes = await VideoThumbnail.thumbnailData(
+            video: filePath,
+            imageFormat: ImageFormat.JPEG,
+            maxWidth: size,
+            quality: quality,
+            timeMs: 0, // First frame
+          );
+          
+          if (thumbnailBytes != null) {
+            // Save to disk cache
+            final outputFile = File(thumbPath);
+            await outputFile.writeAsBytes(thumbnailBytes);
+            result = thumbnailBytes;
+            debugPrint('✅ Video thumbnail generated successfully');
+          } else {
+            debugPrint('⚠️ Video thumbnail generation returned null');
+          }
+        } catch (e) {
+          debugPrint('❌ Video thumbnail generation failed: $e');
+        }
+      } else {
+        // Handle image files in isolate to avoid blocking main thread
+        result = await compute(
+          _generateThumbnailIsolate,
+          _ThumbnailParams(
+            filePath: filePath,
+            outputPath: thumbPath,
+            size: size,
+            quality: quality,
+          ),
+        );
+      }
       
       if (result != null) {
         _addToMemoryCache(cacheKey, result);

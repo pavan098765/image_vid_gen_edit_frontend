@@ -45,7 +45,7 @@ class _VideoPreviewManager {
   static _VideoPreviewManager get instance => _instance;
   _VideoPreviewManager._();
 
-  static const int maxConcurrentVideos = 2;
+  static const int maxConcurrentVideos = 3; // Increased for better UX with all-video previews
   final Map<String, VideoPlayerController> _activeControllers = {};
   final List<String> _playOrder = []; // Track order for LRU eviction
   Directory? _cacheDir;
@@ -1104,12 +1104,12 @@ class _ExploreAIPageState extends State<ExploreAIPage>
   Widget _buildAIToolsPreview(ColorScheme cs, bool isDark) {
     // Priority tool IDs (most commonly used) - shown first
     const priorityToolIds = [
-      'edit_image', 
-      'animate_image', 
-      'upscale', 
-      'remove_background',
       'create_image',
+      'edit_image',
       'create_video',
+      'animate_image',
+      'upscale',
+      'remove_background',
       'inpaint',
       'expand_scene',
     ];
@@ -3758,6 +3758,11 @@ class _TemplateCardState extends State<_TemplateCard>
       // Load thumbnail first (fast), then video
       _loadThumbnail();
       _initVideoPreview();
+      
+      // Resume playing if video is already initialized
+      if (_isVideoInitialized && _videoController != null) {
+        _VideoPreviewManager.instance.playController(_templateId);
+      }
     }
   }
 

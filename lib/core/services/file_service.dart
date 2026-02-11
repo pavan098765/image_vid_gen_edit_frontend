@@ -229,7 +229,43 @@ class FileService {
       final filePath = '${saveDir.path}/$fileName';
 
       if (context.mounted && showPreview) {
-        _showSavedBottomSheet(context, bytes, filePath, previewBytes);
+        // For video files, generate thumbnail if not provided
+        Uint8List? finalPreviewBytes = previewBytes;
+        final isVideoExt = extension.toLowerCase() == 'mp4' || 
+                           extension.toLowerCase() == 'mov' ||
+                           extension.toLowerCase() == 'avi';
+        if (isVideoExt && finalPreviewBytes == null) {
+          try {
+            // Write to temp file first to generate thumbnail
+            final tempDir = await getTemporaryDirectory();
+            final tempPath = '${tempDir.path}/thumb_${DateTime.now().millisecondsSinceEpoch}.$extension';
+            final tempFile = File(tempPath);
+            await tempFile.writeAsBytes(bytes, flush: true);
+            
+            // Generate thumbnail using ThumbnailService
+            final thumbnail = await ThumbnailService.instance.getThumbnail(
+              tempPath,
+              size: 200, // Good size for preview
+              quality: 85,
+            );
+            
+            if (thumbnail != null) {
+              finalPreviewBytes = thumbnail;
+              debugPrint('✅ Generated video thumbnail for saved popup');
+            }
+            
+            // Clean up temp file
+            try {
+              if (await tempFile.exists()) {
+                await tempFile.delete();
+              }
+            } catch (_) {}
+          } catch (e) {
+            debugPrint('⚠️ Failed to generate video thumbnail for popup: $e');
+          }
+        }
+        
+        _showSavedBottomSheet(context, bytes, filePath, finalPreviewBytes);
       }
 
       debugPrint('✅ Saved file: $filePath');
@@ -279,7 +315,35 @@ class FileService {
   ) async {
     try {
       final bytes = await File(path).readAsBytes();
-      final saved = await saveFile(context, bytes);
+      final isVideo = path.toLowerCase().endsWith('.mp4') || 
+                      path.toLowerCase().endsWith('.mov') ||
+                      path.toLowerCase().endsWith('.avi');
+      
+      // Generate thumbnail for videos
+      Uint8List? previewBytes;
+      if (isVideo) {
+        try {
+          final thumbnail = await ThumbnailService.instance.getThumbnail(
+            path,
+            size: 200,
+            quality: 85,
+          );
+          if (thumbnail != null) {
+            previewBytes = thumbnail;
+            debugPrint('✅ Generated video thumbnail for saveExistingToGallery');
+          }
+        } catch (e) {
+          debugPrint('⚠️ Failed to generate video thumbnail: $e');
+        }
+      }
+      
+      final extension = path.split('.').last.toLowerCase();
+      final saved = await saveFile(
+        context, 
+        bytes,
+        extension: extension,
+        previewBytes: previewBytes,
+      );
       return saved != null;
     } catch (_) {
       return false;
@@ -2030,11 +2094,40 @@ class _VideoPreviewItemState extends State<_VideoPreviewItem> {
   VideoPlayerController? _controller;
   bool _isInitialized = false;
   bool _isPlaying = false;
-
+  bool _showControls = true;
+  Duration _position = Duration.zero;
+  Duration _duration = Duration.zero;
+  String? _fileSize;
+  String? _dimensions;
+  String? _format;
+  
   @override
   void initState() {
     super.initState();
+    _loadVideoInfo();
     _initializeVideo();
+  }
+
+  Future<void> _loadVideoInfo() async {
+    try {
+      final file = File(widget.filePath);
+      if (!file.existsSync()) return;
+
+      // Get file size
+      final sizeBytes = await file.length();
+      final sizeMB = sizeBytes / (1024 * 1024);
+      _fileSize = sizeMB.toStringAsFixed(2);
+
+      // Get format from extension
+      final ext = widget.filePath.split('.').last.toLowerCase();
+      _format = ext.toUpperCase();
+
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (e) {
+      debugPrint('⚠️ Failed to load video info: $e');
+    }
   }
 
   Future<void> _initializeVideo() async {
@@ -2046,11 +2139,36 @@ class _VideoPreviewItemState extends State<_VideoPreviewItem> {
       await _controller!.initialize();
       await _controller!.setLooping(true);
       
+      // Get dimensions
+      if (_controller!.value.size.width > 0 && _controller!.value.size.height > 0) {
+        _dimensions = '${_controller!.value.size.width.toInt()} × ${_controller!.value.size.height.toInt()}';
+      }
+      
+      // Listen to position changes
+      _controller!.addListener(_updatePosition);
+      _duration = _controller!.value.duration;
+      
+      // Auto-hide controls after 3 seconds
+      _hideControlsAfterDelay();
+      
       if (mounted) {
-        setState(() => _isInitialized = true);
+        setState(() {
+          _isInitialized = true;
+        });
       }
     } catch (e) {
       debugPrint('❌ Failed to initialize video: $e');
+    }
+  }
+
+  void _updatePosition() {
+    if (_controller == null) return;
+    if (mounted) {
+      setState(() {
+        _position = _controller!.value.position;
+        _duration = _controller!.value.duration;
+        _isPlaying = _controller!.value.isPlaying;
+      });
     }
   }
 
@@ -2065,11 +2183,44 @@ class _VideoPreviewItemState extends State<_VideoPreviewItem> {
         _controller!.play();
         _isPlaying = true;
       }
+      _showControls = true;
+    });
+    _hideControlsAfterDelay();
+  }
+
+  void _seekTo(Duration position) {
+    if (_controller == null || !_isInitialized) return;
+    _controller!.seekTo(position);
+  }
+
+  String _formatDuration(Duration duration) {
+    final minutes = duration.inMinutes;
+    final seconds = duration.inSeconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  void _toggleControls() {
+    setState(() {
+      _showControls = !_showControls;
+    });
+    if (_showControls) {
+      _hideControlsAfterDelay();
+    }
+  }
+
+  void _hideControlsAfterDelay() {
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted && _isPlaying) {
+        setState(() {
+          _showControls = false;
+        });
+      }
     });
   }
 
   @override
   void dispose() {
+    _controller?.removeListener(_updatePosition);
     _controller?.dispose();
     super.dispose();
   }
@@ -2102,36 +2253,278 @@ class _VideoPreviewItemState extends State<_VideoPreviewItem> {
       );
     }
 
-    return Center(
-      child: GestureDetector(
-        onTap: _togglePlayPause,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            AspectRatio(
+    return GestureDetector(
+      onTap: _toggleControls,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Video player
+          Center(
+            child: AspectRatio(
               aspectRatio: _controller!.value.aspectRatio,
               child: VideoPlayer(_controller!),
             ),
-            // Play/Pause overlay
-            AnimatedOpacity(
-              opacity: !_isPlaying ? 1.0 : 0.0,
-              duration: const Duration(milliseconds: 200),
-              child: Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.5),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                  color: Colors.white,
-                  size: 48,
+          ),
+          
+          // Controls overlay
+          AnimatedOpacity(
+            opacity: _showControls ? 1.0 : 0.0,
+            duration: const Duration(milliseconds: 200),
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withOpacity(0.6),
+                    Colors.transparent,
+                    Colors.transparent,
+                    Colors.black.withOpacity(0.7),
+                  ],
+                  stops: const [0.0, 0.2, 0.7, 1.0],
                 ),
               ),
+              child: Stack(
+                children: [
+                  // Top info bar
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    child: SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: _buildVideoInfo(),
+                      ),
+                    ),
+                  ),
+                  
+                  // Centered play/pause button (like standard video players)
+                  // Only show when controls are visible and video is paused, or when tapping to pause
+                  if (_showControls || !_isPlaying)
+                    Center(
+                      child: GestureDetector(
+                        onTap: _togglePlayPause,
+                        child: AnimatedOpacity(
+                          opacity: _showControls ? 1.0 : 0.6,
+                          duration: const Duration(milliseconds: 200),
+                          child: Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.6),
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.4),
+                                width: 2,
+                              ),
+                            ),
+                            child: Icon(
+                              _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                              color: Colors.white,
+                              size: 48,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  
+                  // Bottom controls - seek bar and time positioned above "Swipe to browse" label
+                  Positioned(
+                    bottom: MediaQuery.of(context).padding.bottom + 100, // Above the "Swipe to browse" label
+                    left: 0,
+                    right: 0,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Seek bar with time on sides
+                          Row(
+                            children: [
+                              // Current time (left side)
+                              Text(
+                                _formatDuration(_position),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                  shadows: [
+                                    Shadow(
+                                      color: Colors.black54,
+                                      blurRadius: 4,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              // Seek bar (expanded)
+                              Expanded(
+                                child: _buildSeekBar(),
+                              ),
+                              const SizedBox(width: 12),
+                              // Total duration (right side)
+                              Text(
+                                _formatDuration(_duration),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                  shadows: [
+                                    Shadow(
+                                      color: Colors.black54,
+                                      blurRadius: 4,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSeekBar() {
+    final progress = _duration.inMilliseconds > 0
+        ? _position.inMilliseconds / _duration.inMilliseconds
+        : 0.0;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapDown: (details) {
+            if (_controller == null || _duration.inMilliseconds == 0) return;
+            final x = details.localPosition.dx;
+            final width = constraints.maxWidth;
+            final newPosition = (x / width).clamp(0.0, 1.0) * _duration.inMilliseconds;
+            _seekTo(Duration(milliseconds: newPosition.toInt()));
+          },
+          child: Container(
+            height: 32, // Larger touch target
+            alignment: Alignment.center,
+            child: Stack(
+              alignment: Alignment.centerLeft,
+              children: [
+                // Background track
+                Container(
+                  height: 4,
+                  width: constraints.maxWidth,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                // Progress track
+                Container(
+                  height: 4,
+                  width: constraints.maxWidth * progress.clamp(0.0, 1.0),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                // Thumb
+                Positioned(
+                  left: (constraints.maxWidth * progress.clamp(0.0, 1.0)) - 8,
+                  child: Container(
+                    width: 16,
+                    height: 16,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.3),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildVideoInfo() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.4),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.1),
+          width: 1,
         ),
       ),
+      child: Wrap(
+        spacing: 12,
+        runSpacing: 6,
+        alignment: WrapAlignment.start,
+        children: [
+          if (_dimensions != null)
+            _buildInfoChip(
+              icon: Icons.aspect_ratio_rounded,
+              label: _dimensions!,
+            ),
+          if (_fileSize != null)
+            _buildInfoChip(
+              icon: Icons.storage_rounded,
+              label: '$_fileSize MB',
+            ),
+          if (_format != null)
+            _buildInfoChip(
+              icon: Icons.video_file_rounded,
+              label: _format!,
+            ),
+          if (_duration.inSeconds > 0)
+            _buildInfoChip(
+              icon: Icons.timer_rounded,
+              label: _formatDuration(_duration),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoChip({required IconData icon, required String label}) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          icon,
+          size: 14,
+          color: Colors.white.withOpacity(0.8),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: TextStyle(
+            color: Colors.white.withOpacity(0.9),
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+            shadows: [
+              Shadow(
+                color: Colors.black.withOpacity(0.5),
+                blurRadius: 2,
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

@@ -187,6 +187,91 @@ class StylePreset {
 /// Fallback categories used if config loading fails
 const List<String> styleCategories = ['All', 'Favorites', 'Fun', 'Realistic', 'Artistic', 'Anime', 'Cinematic'];
 
+/// --------------------------------------
+///  USER TEMPLATE (Saved Settings)
+///  Stores user's custom templates with prompt and settings
+/// --------------------------------------
+class UserTemplate {
+  final String id;
+  final String name;
+  final String prompt;
+  final String? modelId;
+  final AdvancedSettings settings;
+  final DateTime createdAt;
+  final DateTime? lastUsed;
+  
+  UserTemplate({
+    required this.id,
+    required this.name,
+    required this.prompt,
+    this.modelId,
+    required this.settings,
+    required this.createdAt,
+    this.lastUsed,
+  });
+  
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'prompt': prompt,
+      'modelId': modelId,
+      'settings': {
+        'enhancePrompt': settings.enhancePrompt,
+        'upscaleOutput': settings.upscaleOutput,
+        'quality': settings.quality,
+        'aspectRatio': settings.aspectRatio,
+        'variations': settings.variations,
+        'videoDuration': settings.videoDuration,
+        'cfgScale': settings.cfgScale,
+        'bulkEditEnabled': settings.bulkEditEnabled,
+      },
+      'createdAt': createdAt.toIso8601String(),
+      'lastUsed': lastUsed?.toIso8601String(),
+    };
+  }
+  
+  factory UserTemplate.fromJson(Map<String, dynamic> json) {
+    final settingsJson = json['settings'] as Map<String, dynamic>;
+    return UserTemplate(
+      id: json['id'] as String,
+      name: json['name'] as String,
+      prompt: json['prompt'] as String,
+      modelId: json['modelId'] as String?,
+      settings: AdvancedSettings(
+        enhancePrompt: settingsJson['enhancePrompt'] as bool? ?? false,
+        upscaleOutput: settingsJson['upscaleOutput'] as bool? ?? false,
+        quality: settingsJson['quality'] as String? ?? 'High',
+        aspectRatio: settingsJson['aspectRatio'] as String? ?? 'Default',
+        variations: settingsJson['variations'] as int? ?? 1,
+        videoDuration: settingsJson['videoDuration'] as int? ?? 5,
+        cfgScale: settingsJson['cfgScale'] as double? ?? 1.0,
+        bulkEditEnabled: settingsJson['bulkEditEnabled'] as bool? ?? false,
+      ),
+      createdAt: DateTime.parse(json['createdAt'] as String),
+      lastUsed: json['lastUsed'] != null ? DateTime.parse(json['lastUsed'] as String) : null,
+    );
+  }
+  
+  UserTemplate copyWith({
+    String? name,
+    String? prompt,
+    String? modelId,
+    AdvancedSettings? settings,
+    DateTime? lastUsed,
+  }) {
+    return UserTemplate(
+      id: id,
+      name: name ?? this.name,
+      prompt: prompt ?? this.prompt,
+      modelId: modelId ?? this.modelId,
+      settings: settings ?? this.settings,
+      createdAt: createdAt,
+      lastUsed: lastUsed ?? this.lastUsed,
+    );
+  }
+}
+
 const List<StylePreset> allStylePresets = [
   // Fun
   StylePreset(
@@ -588,9 +673,12 @@ class _GenericToolPageState extends State<GenericToolPage>
   List<String>? _configStyleCategories;
   List<PromptChip>? _configQuickTags;
   
+  // -------- User Templates (local storage) --------
+  List<UserTemplate> _userTemplates = [];
+  
   // -------- Prompt Enhancer Section --------
   bool _isEnhancerExpanded = true;
-  int _enhancerTabIndex = 0; // 0 = Styles, 1 = Quick Tags
+  int _enhancerTabIndex = 0; // 0 = Styles, 1 = My Templates
 
   // -------- Advanced Settings --------
   late AdvancedSettings _advancedSettings;
@@ -647,6 +735,53 @@ class _GenericToolPageState extends State<GenericToolPage>
            model == 'aurasrv2' || 
            model == 'swin2sr' || 
            model.startsWith('realesrgan');
+  }
+  
+  /// Check if this is an edit_image category tool
+  /// Edit image tools: have init_image input and outputType is 'image'
+  bool get _isEditImageTool {
+    final hasInitImage = widget.config.inputs.any((i) => i['id'] == 'init_image');
+    return hasInitImage && widget.config.outputType == 'image';
+  }
+  
+  /// Check if this is an animate_image category tool
+  /// Animate image tools: have init_image input and outputType is 'video'
+  bool get _isAnimateImageTool {
+    final hasInitImage = widget.config.inputs.any((i) => i['id'] == 'init_image');
+    return hasInitImage && widget.config.outputType == 'video';
+  }
+  
+  /// Check if this is a video category tool (text to video, image to video, video to video)
+  bool get _isVideoTool => widget.config.outputType == 'video';
+  
+  /// Check if this is an expand scene (outpaint) category tool
+  bool get _isExpandSceneTool => _isOutpaint;
+  
+  /// Check if this is an inpaint & erase category tool
+  /// Includes inpaint, lama, and erase tools
+  bool get _isInpaintEraseTool {
+    final model = widget.config.model.toLowerCase();
+    final title = widget.config.title.toLowerCase();
+    final mode = _selectedModeKey?.toLowerCase() ?? "";
+    final paramMode = (widget.config.params?["mode"]?.toString().toLowerCase() ?? "");
+    return model.contains("inpaint") ||
+           model.contains("lama") ||
+           model.contains("erase") ||
+           title.contains("erase") ||
+           mode.contains("inpaint") ||
+           paramMode.contains("inpaint") ||
+           paramMode.contains("lama") ||
+           paramMode.contains("erase");
+  }
+  
+  /// Check if this is a remove background category tool
+  bool get _isRemoveBackgroundTool {
+    final model = widget.config.model.toLowerCase();
+    final title = widget.config.title.toLowerCase();
+    return model.contains("remove") && model.contains("background") ||
+           title.contains("remove") && title.contains("background") ||
+           model.contains("rembg") ||
+           title.contains("rembg");
   }
   
   /// Check if bulk mode should be available for this tool
@@ -778,6 +913,9 @@ class _GenericToolPageState extends State<GenericToolPage>
     
     // Load styles and quick tags from config for OTA updates
     _loadStylesFromConfig();
+    
+    // Load user templates from local storage
+    _loadUserTemplates();
 
     debugPrint("🔧 Config for ${widget.config.model}");
     debugPrint("  title=${widget.config.title}");
@@ -844,8 +982,200 @@ class _GenericToolPageState extends State<GenericToolPage>
   /// Get the current style categories (config-loaded or fallback)
   List<String> get _currentStyleCategories => _configStyleCategories ?? styleCategories;
   
-  /// Get the current quick tags (config-loaded or fallback)
-  List<PromptChip> get _currentQuickTags => _configQuickTags ?? promptHelperChips;
+  /// Load user templates from SharedPreferences
+  Future<void> _loadUserTemplates() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final templatesJson = prefs.getString('user_templates');
+      if (templatesJson != null) {
+        final decoded = jsonDecode(templatesJson) as List<dynamic>;
+        _userTemplates = decoded
+            .map((e) => UserTemplate.fromJson(e as Map<String, dynamic>))
+            .toList();
+        // Sort by last used (most recent first), then by created date
+        _userTemplates.sort((a, b) {
+          if (a.lastUsed != null && b.lastUsed != null) {
+            return b.lastUsed!.compareTo(a.lastUsed!);
+          }
+          if (a.lastUsed != null) return -1;
+          if (b.lastUsed != null) return 1;
+          return b.createdAt.compareTo(a.createdAt);
+        });
+        if (mounted) setState(() {});
+      }
+    } catch (e) {
+      debugPrint('⚠️ Failed to load user templates: $e');
+    }
+  }
+  
+  /// Save user templates to SharedPreferences
+  Future<void> _saveUserTemplates() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final templatesJson = jsonEncode(_userTemplates.map((t) => t.toJson()).toList());
+      await prefs.setString('user_templates', templatesJson);
+    } catch (e) {
+      debugPrint('⚠️ Failed to save user templates: $e');
+    }
+  }
+  
+  /// Save current settings as a template
+  Future<void> _saveCurrentAsTemplate() async {
+    final cs = Theme.of(context).colorScheme;
+    final nameController = TextEditingController();
+    bool confirmed = false;
+    
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: cs.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Text(
+          'Save Template',
+          style: TextStyle(color: cs.onSurface, fontWeight: FontWeight.bold),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Save your current prompt and settings as a reusable template.',
+              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: nameController,
+              autofocus: true,
+              decoration: InputDecoration(
+                labelText: 'Template Name',
+                hintText: 'e.g., My Portrait Style',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancel', style: TextStyle(color: cs.onSurfaceVariant)),
+          ),
+          TextButton(
+            onPressed: () {
+              if (nameController.text.trim().isNotEmpty) {
+                confirmed = true;
+                Navigator.pop(context);
+              }
+            },
+            child: Text('Save', style: TextStyle(color: cs.primary, fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
+    
+    if (!confirmed || nameController.text.trim().isEmpty) return;
+    
+    final template = UserTemplate(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      name: nameController.text.trim(),
+      prompt: _promptController.text,
+      modelId: _selectedModelId,
+      settings: _advancedSettings,
+      createdAt: DateTime.now(),
+    );
+    
+    _userTemplates.insert(0, template);
+    await _saveUserTemplates();
+    
+    if (mounted) {
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Template "${template.name}" saved!'),
+          duration: const Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+  
+  /// Apply a template to current settings
+  void _applyTemplate(UserTemplate template) {
+    setState(() {
+      _promptController.text = template.prompt;
+      if (template.modelId != null && widget.config.hasMultipleModels) {
+        _selectedModelId = template.modelId;
+        _selectedModelData = widget.config.models?.firstWhere(
+          (m) => m['id'] == template.modelId,
+          orElse: () => widget.config.models!.first,
+        );
+      }
+      _advancedSettings = template.settings;
+      _upscaleEnabled = template.settings.upscaleOutput;
+      _scaleFactor = template.settings.upscaleOutput ? 2 : 1;
+      _inputs["scale_factor"] = template.settings.upscaleOutput ? _scaleFactor : 1.0;
+    });
+    
+    // Update last used
+    final index = _userTemplates.indexWhere((t) => t.id == template.id);
+    if (index != -1) {
+      _userTemplates[index] = template.copyWith(lastUsed: DateTime.now());
+      _saveUserTemplates();
+    }
+  }
+  
+  /// Delete a template
+  Future<void> _deleteTemplate(UserTemplate template) async {
+    final cs = Theme.of(context).colorScheme;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: cs.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Text(
+          'Delete Template?',
+          style: TextStyle(color: cs.onSurface, fontWeight: FontWeight.bold),
+        ),
+        content: Text(
+          'Are you sure you want to delete "${template.name}"?',
+          style: TextStyle(color: cs.onSurfaceVariant),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('Cancel', style: TextStyle(color: cs.onSurfaceVariant)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text('Delete', style: TextStyle(color: cs.error, fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
+    
+    if (confirmed == true) {
+      _userTemplates.removeWhere((t) => t.id == template.id);
+      await _saveUserTemplates();
+      if (mounted) setState(() {});
+    }
+  }
+  
+  /// Format template date
+  String _formatTemplateDate(DateTime date) {
+    final now = DateTime.now();
+    final diff = now.difference(date);
+    
+    if (diff.inDays == 0) {
+      if (diff.inHours == 0) {
+        return '${diff.inMinutes}m ago';
+      }
+      return '${diff.inHours}h ago';
+    } else if (diff.inDays < 7) {
+      return '${diff.inDays}d ago';
+    } else {
+      return '${date.day}/${date.month}/${date.year}';
+    }
+  }
 
   /// Initialize the selected model from config
   void _initializeSelectedModel() {
@@ -881,24 +1211,7 @@ class _GenericToolPageState extends State<GenericToolPage>
       _selectedModelData?['offer'] as int? ?? widget.config.offer;
 
   // -------- Prompt Helper Chips --------
-  
-  /// Append a chip's snippet to the prompt intelligently
-  void _appendChipToPrompt(PromptChip chip) {
-    final currentText = _promptController.text.trim();
-    String newText;
-    
-    if (currentText.isEmpty) {
-      newText = chip.snippet;
-    } else if (currentText.endsWith(',')) {
-      newText = '$currentText ${chip.snippet}';
-    } else {
-      newText = '$currentText, ${chip.snippet}';
-    }
-    
-    _promptController.text = newText;
-    _inputs['prompt'] = newText;
-    setState(() {});
-  }
+  // Note: _appendChipToPrompt removed - quickTags feature deprecated
 
   // -------- Style Library --------
   
@@ -1104,59 +1417,70 @@ class _GenericToolPageState extends State<GenericToolPage>
                           const SizedBox(height: 12),
                         ],
                         
-                        // Upscale Toggle (locked for upscaler tools)
-                        _buildSettingToggle(
-                          cs: cs,
-                          icon: LucideIcons.maximize2,
-                          title: 'Upscale Output',
-                          subtitle: _isUpscalerTool 
-                              ? 'Always enabled for upscaler tools' 
-                              : 'Higher resolution result (+5 credits) - Free for VIP users',
-                          value: _advancedSettings.upscaleOutput,
-                          locked: _isUpscalerTool, // Lock for upscaler tools
-                          onChanged: _isUpscalerTool ? null : (v) {
-                            setSheetState(() {
-                              setState(() {
-                                _advancedSettings = _advancedSettings.copyWith(upscaleOutput: v);
-                                _upscaleEnabled = v;
-                                _inputs["scale_factor"] = v ? _scaleFactor : 1.0;
+                        // Upscale Toggle (locked for upscaler tools, hidden for video tools)
+                        if (!_isVideoTool) ...[
+                          _buildSettingToggle(
+                            cs: cs,
+                            icon: LucideIcons.maximize2,
+                            title: 'Upscale Output',
+                            subtitle: _isUpscalerTool 
+                                ? 'Always enabled for upscaler tools' 
+                                : 'Higher resolution result (+5 credits) - Free for VIP users',
+                            value: _advancedSettings.upscaleOutput,
+                            locked: _isUpscalerTool, // Lock for upscaler tools
+                            onChanged: _isUpscalerTool ? null : (v) {
+                              setSheetState(() {
+                                setState(() {
+                                  _advancedSettings = _advancedSettings.copyWith(upscaleOutput: v);
+                                  _upscaleEnabled = v;
+                                  _inputs["scale_factor"] = v ? _scaleFactor : 1.0;
+                                });
                               });
-                            });
-                          },
-                        ),
+                            },
+                          ),
+                          
+                          // Upscale Factor Selector (2x/4x) - shown when upscale is enabled
+                          AnimatedSize(
+                            duration: const Duration(milliseconds: 200),
+                            child: _advancedSettings.upscaleOutput
+                                ? Padding(
+                                    padding: const EdgeInsets.only(top: 12, left: 8, right: 8),
+                                    child: _buildUpscaleFactorSelector(cs, setSheetState),
+                                  )
+                                : const SizedBox.shrink(),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
                         
-                        // Upscale Factor Selector (2x/4x) - shown when upscale is enabled
-                        AnimatedSize(
-                          duration: const Duration(milliseconds: 200),
-                          child: _advancedSettings.upscaleOutput
-                              ? Padding(
-                                  padding: const EdgeInsets.only(top: 12, left: 8, right: 8),
-                                  child: _buildUpscaleFactorSelector(cs, setSheetState),
-                                )
-                              : const SizedBox.shrink(),
-                        ),
-                        const SizedBox(height: 16),
-                        
-                        // Aspect Ratio Selector
-                        _buildSettingSelector(
-                          cs: cs,
-                          icon: LucideIcons.scaling,
-                          title: 'Aspect Ratio',
-                          options: ['Default', '1:1', '9:16', '16:9', '4:3', '3:4'],
-                          selected: _advancedSettings.aspectRatio,
-                          onChanged: (v) {
-                            setSheetState(() {
-                              setState(() {
-                                _advancedSettings = _advancedSettings.copyWith(aspectRatio: v);
+                        // Aspect Ratio Selector (hidden for edit_image, animate_image, expand scene, upscale, inpaint/erase, remove background tools)
+                        if (!_isEditImageTool && 
+                            !_isAnimateImageTool && 
+                            !_isExpandSceneTool && 
+                            !_isUpscalerTool && 
+                            !_isInpaintEraseTool && 
+                            !_isRemoveBackgroundTool) ...[
+                          _buildSettingSelector(
+                            cs: cs,
+                            icon: LucideIcons.scaling,
+                            title: 'Aspect Ratio',
+                            options: ['Default', '1:1', '9:16', '16:9', '4:3', '3:4'],
+                            selected: _advancedSettings.aspectRatio,
+                            onChanged: (v) {
+                              setSheetState(() {
+                                setState(() {
+                                  _advancedSettings = _advancedSettings.copyWith(aspectRatio: v);
+                                });
                               });
-                            });
-                          },
-                        ),
-                        const SizedBox(height: 16),
+                            },
+                          ),
+                          const SizedBox(height: 16),
+                        ],
                         
-                        // CFG Scale Slider
-                        _buildCfgSlider(cs, setSheetState),
-                        const SizedBox(height: 16),
+                        // CFG Scale Slider (hidden for upscale and remove background tools)
+                        if (!_isUpscalerTool && !_isRemoveBackgroundTool) ...[
+                          _buildCfgSlider(cs, setSheetState),
+                          const SizedBox(height: 16),
+                        ],
                         
                         // Variations Slider (for image generation)
                         // VIP users: max 4, Non-VIP: max 2
@@ -3826,14 +4150,14 @@ class _GenericToolPageState extends State<GenericToolPage>
             child: _isEnhancerExpanded
                 ? Column(
                     children: [
-                      // Tab selector (Styles / Quick Tags)
+                      // Tab selector (Styles / My Templates)
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                         child: Row(
                           children: [
                             _buildEnhancerTab(cs, 0, 'Styles', LucideIcons.palette, styles.length),
                             const SizedBox(width: 8),
-                            _buildEnhancerTab(cs, 1, 'Quick Tags', LucideIcons.tag, _currentQuickTags.length),
+                            _buildEnhancerTab(cs, 1, 'My Templates', LucideIcons.bookmark, _userTemplates.length),
                           ],
                         ),
                       ),
@@ -3843,7 +4167,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                         duration: const Duration(milliseconds: 200),
                         child: _enhancerTabIndex == 0
                             ? _buildStylesContent(cs, styles)
-                            : _buildQuickTagsContent(cs),
+                            : _buildMyTemplatesContent(cs),
                       ),
                       
                       // Show ad when collapsed (if applicable)
@@ -4260,122 +4584,181 @@ class _GenericToolPageState extends State<GenericToolPage>
     );
   }
 
-  /// Build quick tags content (config-driven for OTA updates)
-  Widget _buildQuickTagsContent(ColorScheme cs) {
-    final tags = _currentQuickTags;
-    // Split chips into 2 rows
-    final midPoint = (tags.length / 2).ceil();
-    final firstRow = tags.sublist(0, midPoint);
-    final secondRow = tags.sublist(midPoint);
-    
+  /// Build my templates content
+  Widget _buildMyTemplatesContent(ColorScheme cs) {
     return Padding(
-      key: const ValueKey('tags'),
+      key: const ValueKey('templates'),
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Tap to add to your prompt',
-            style: TextStyle(
-              color: cs.onSurfaceVariant.withOpacity(0.5),
-              fontSize: 11,
+          // Save current as template button
+          GestureDetector(
+            onTap: _saveCurrentAsTemplate,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: cs.primary.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: cs.primary.withOpacity(0.3),
+                  width: 1.5,
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(LucideIcons.plus, size: 16, color: cs.primary),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Save Current Settings as Template',
+                    style: TextStyle(
+                      color: cs.primary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-          const SizedBox(height: 10),
-          // 2 rows of horizontal scrollable chips
-          SizedBox(
-            height: 90,
-            child: Column(
-              children: [
-                // First row
-                SizedBox(
-                  height: 45,
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: firstRow.length,
-                    itemBuilder: (context, index) {
-                      final chip = firstRow[index];
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 8, bottom: 8),
-                        child: GestureDetector(
-                          onTap: () => _appendChipToPrompt(chip),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: cs.surfaceContainerHigh,
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: cs.outlineVariant.withOpacity(0.25),
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(chip.icon, style: const TextStyle(fontSize: 14)),
-                                const SizedBox(width: 6),
-                                Text(
-                                  chip.label,
-                                  style: TextStyle(
-                                    color: cs.onSurface,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
+          const SizedBox(height: 12),
+          
+          // Templates list
+          if (_userTemplates.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Center(
+                child: Column(
+                  children: [
+                    Icon(
+                      LucideIcons.bookmark,
+                      size: 48,
+                      color: cs.onSurfaceVariant.withOpacity(0.3),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'No templates yet',
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant.withOpacity(0.6),
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Save your settings to create one',
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant.withOpacity(0.5),
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
                 ),
-                // Second row
-                SizedBox(
-                  height: 40,
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: secondRow.length,
-                    itemBuilder: (context, index) {
-                      final chip = secondRow[index];
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: GestureDetector(
-                          onTap: () => _appendChipToPrompt(chip),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: cs.surfaceContainerHigh,
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: cs.outlineVariant.withOpacity(0.25),
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(chip.icon, style: const TextStyle(fontSize: 14)),
-                                const SizedBox(width: 6),
-                                Text(
-                                  chip.label,
-                                  style: TextStyle(
-                                    color: cs.onSurface,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
+              ),
+            )
+          else
+            SizedBox(
+              height: 200,
+              child: ListView.builder(
+                itemCount: _userTemplates.length,
+                itemBuilder: (context, index) {
+                  final template = _userTemplates[index];
+                  return _buildTemplateCard(cs, template);
+                },
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
         ],
+      ),
+    );
+  }
+  
+  /// Build template card
+  Widget _buildTemplateCard(ColorScheme cs, UserTemplate template) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: GestureDetector(
+        onTap: () => _applyTemplate(template),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHigh,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: cs.outlineVariant.withOpacity(0.2),
+            ),
+          ),
+          child: Row(
+            children: [
+              // Icon
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: cs.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  LucideIcons.bookmark,
+                  size: 16,
+                  color: cs.primary,
+                ),
+              ),
+              const SizedBox(width: 12),
+              // Content
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      template.name,
+                      style: TextStyle(
+                        color: cs.onSurface,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      template.prompt.isEmpty 
+                          ? 'No prompt' 
+                          : template.prompt.length > 40 
+                              ? '${template.prompt.substring(0, 40)}...' 
+                              : template.prompt,
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant.withOpacity(0.7),
+                        fontSize: 11,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (template.lastUsed != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Last used: ${_formatTemplateDate(template.lastUsed!)}',
+                        style: TextStyle(
+                          color: cs.onSurfaceVariant.withOpacity(0.5),
+                          fontSize: 10,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              // Delete button
+              IconButton(
+                icon: Icon(
+                  LucideIcons.trash2,
+                  size: 16,
+                  color: cs.error.withOpacity(0.7),
+                ),
+                onPressed: () => _deleteTemplate(template),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
