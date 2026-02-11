@@ -232,6 +232,9 @@ class _ResultManagerPageState extends State<ResultManagerPage>
 
   Future<void> _refreshJobs() async {
     try {
+      // Get SharedPreferences instance once at the start (used throughout)
+      final prefs = await SharedPreferences.getInstance();
+      
       // 📁 FIRST: Apply any pending FCM updates from file
       // This is the most reliable cross-isolate sync mechanism
       // CRITICAL: Background FCM handler writes to this file, and SharedPreferences
@@ -239,43 +242,138 @@ class _ResultManagerPageState extends State<ResultManagerPage>
       final appliedFromFile = await applyPendingFcmUpdatesFromFile();
       if (appliedFromFile) {
         debugPrint("✅ [ResultManager] Applied FCM updates from file");
-        // Job list was already updated by applyPendingFcmUpdatesFromFile
         final jobs = jobListNotifier.value;
         final completed = jobs.where((j) => j.status == 'completed').length;
         final processing = jobs.where((j) => j.status == 'processing').length;
         debugPrint("📊 Status after FCM file: $completed completed, $processing processing");
-      }
-      
-      final prefs = await SharedPreferences.getInstance();
-      
-      // 🔄 Multiple reload attempts to ensure cross-isolate sync with FCM background handler
-      await prefs.reload();
-      await Future.delayed(const Duration(milliseconds: 50));
-      await prefs.reload();
-      
-      // Check for pending FCM updates flag (backup mechanism)
-      final hasUpdate = prefs.getBool('has_fcm_update') ?? false;
-      if (hasUpdate) {
-        debugPrint("📦 [ResultManager] Found FCM update flag — forcing reload");
-        await prefs.remove('has_fcm_update');
+        
+        // CRITICAL: After applying file updates, we need to ensure SharedPreferences
+        // is reloaded to get the latest data (file updates were saved to SharedPreferences).
+        // But we should merge, not overwrite, to preserve any local data like localFilePath.
+        await prefs.reload(); // Reload to get the updates we just saved
+        await Future.delayed(const Duration(milliseconds: 100)); // Give it time to flush
         await prefs.reload();
-      }
+        
+        // Now merge SharedPreferences data with current notifier to preserve local fields
+        final jsonStr = prefs.getString('jobs');
+        if (jsonStr != null) {
+          try {
+            final decoded = jsonDecode(jsonStr);
+            if (decoded is List) {
+              final prefsJobs = decoded
+                  .map((e) => JobModel.fromJson(Map<String, dynamic>.from(e)))
+                  .toList();
+              
+              // Merge: use SharedPreferences data (which has file updates) but preserve
+              // any local fields from current notifier that might not be in SharedPreferences
+              final currentJobs = jobListNotifier.value;
+              final mergedJobs = <JobModel>[];
+              
+              // Safety check: if SharedPreferences has fewer jobs than current notifier,
+              // something went wrong - keep current notifier data
+              if (prefsJobs.length < currentJobs.length) {
+                debugPrint("⚠️ [ResultManager] SharedPreferences has ${prefsJobs.length} jobs but notifier has ${currentJobs.length} - keeping notifier data");
+                for (final currentJob in currentJobs) {
+                  final prefsJob = prefsJobs.firstWhere(
+                    (j) => j.jobId == currentJob.jobId,
+                    orElse: () => currentJob,
+                  );
+                  
+                  // Use prefsJob if it has newer status, otherwise keep currentJob
+                  final usePrefs = prefsJob.status != currentJob.status || 
+                                  (prefsJob.downloadUrl != null && prefsJob.downloadUrl != currentJob.downloadUrl);
+                  final sourceJob = usePrefs ? prefsJob : currentJob;
+                  
+                  final mergedJob = JobModel(
+                    jobId: sourceJob.jobId,
+                    title: sourceJob.title,
+                    model: sourceJob.model,
+                    outputType: sourceJob.outputType,
+                    status: sourceJob.status,
+                    downloadUrl: sourceJob.downloadUrl,
+                    createdAt: sourceJob.createdAt,
+                    localFilePath: currentJob.localFilePath ?? sourceJob.localFilePath,
+                    inputImagePath: currentJob.inputImagePath ?? sourceJob.inputImagePath,
+                    enhancedPrompt: sourceJob.enhancedPrompt,
+                    originalPrompt: sourceJob.originalPrompt,
+                    variations: sourceJob.variations,
+                    variationResults: sourceJob.variationResults,
+                  );
+                  mergedJob.promptEnhanced = sourceJob.promptEnhanced;
+                  mergedJob.allCompleted = sourceJob.allCompleted;
+                  mergedJobs.add(mergedJob);
+                }
+              } else {
+                // Normal merge: SharedPreferences has same or more jobs
+                for (final prefsJob in prefsJobs) {
+                  final currentJob = currentJobs.firstWhere(
+                    (j) => j.jobId == prefsJob.jobId,
+                    orElse: () => prefsJob,
+                  );
+                  
+                  // Use prefsJob (has latest status/url) but preserve localFilePath if it exists
+                  final mergedJob = JobModel(
+                    jobId: prefsJob.jobId,
+                    title: prefsJob.title,
+                    model: prefsJob.model,
+                    outputType: prefsJob.outputType,
+                    status: prefsJob.status,
+                    downloadUrl: prefsJob.downloadUrl,
+                    createdAt: prefsJob.createdAt,
+                    localFilePath: currentJob.localFilePath ?? prefsJob.localFilePath,
+                    inputImagePath: currentJob.inputImagePath ?? prefsJob.inputImagePath,
+                    enhancedPrompt: prefsJob.enhancedPrompt,
+                    originalPrompt: prefsJob.originalPrompt,
+                    variations: prefsJob.variations,
+                    variationResults: prefsJob.variationResults,
+                  );
+                  mergedJob.promptEnhanced = prefsJob.promptEnhanced;
+                  mergedJob.allCompleted = prefsJob.allCompleted;
+                  mergedJobs.add(mergedJob);
+                }
+              }
+              
+              jobListNotifier.value = mergedJobs;
+              debugPrint("✅ [ResultManager] Merged ${mergedJobs.length} jobs from file + SharedPreferences");
+              
+              // Continue to check for stuck jobs below
+            }
+          } catch (e) {
+            debugPrint("⚠️ [ResultManager] Failed to merge SharedPreferences data: $e");
+            // Continue with current notifier value (from file updates)
+          }
+        }
+      } else {
+        // No file updates - load from SharedPreferences normally
+        // 🔄 Multiple reload attempts to ensure cross-isolate sync with FCM background handler
+        await prefs.reload();
+        await Future.delayed(const Duration(milliseconds: 50));
+        await prefs.reload();
+        
+        // Check for pending FCM updates flag (backup mechanism)
+        final hasUpdate = prefs.getBool('has_fcm_update') ?? false;
+        if (hasUpdate) {
+          debugPrint("📦 [ResultManager] Found FCM update flag — forcing reload");
+          await prefs.remove('has_fcm_update');
+          await prefs.reload();
+        }
 
-      // ✅ PRIMARY: Load jobs from SharedPreferences (contains FCM updates)
-      // FCM notifications already have status and download_url - trust this data!
-      final localJson = prefs.getString('jobs');
-      if (localJson != null) {
-        final decoded = jsonDecode(localJson);
-        if (decoded is List) {
-          jobListNotifier.value = decoded
-              .map((e) => JobModel.fromJson(Map<String, dynamic>.from(e)))
-              .toList();
-          
-          // Log status summary
-          final jobs = jobListNotifier.value;
-          final completed = jobs.where((j) => j.status == 'completed').length;
-          final processing = jobs.where((j) => j.status == 'processing').length;
-          debugPrint("📊 Loaded ${jobs.length} jobs: $completed completed, $processing processing");
+        // ✅ PRIMARY: Load jobs from SharedPreferences (contains FCM updates)
+        // FCM notifications already have status and download_url - trust this data!
+        final localJson = prefs.getString('jobs');
+        if (localJson != null) {
+          final decoded = jsonDecode(localJson);
+          if (decoded is List) {
+            jobListNotifier.value = decoded
+                .map((e) => JobModel.fromJson(Map<String, dynamic>.from(e)))
+                .toList();
+            
+            // Log status summary
+            final jobs = jobListNotifier.value;
+            final completed = jobs.where((j) => j.status == 'completed').length;
+            final processing = jobs.where((j) => j.status == 'processing').length;
+            debugPrint("📊 Loaded ${jobs.length} jobs: $completed completed, $processing processing");
+          }
         }
       }
 

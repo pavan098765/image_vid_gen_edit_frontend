@@ -818,7 +818,7 @@
             "scale_factor": "{{scale_factor}}",
             "duration_seconds": 5,
             "fps": 24,
-            "mode": "text_to_video"
+            "mode": "t2v"
           },
           "rootParams": {
             "prompt": "{{prompt}}"
@@ -843,7 +843,7 @@
             "scale_image": true,
             "scale_factor": "{{scale_factor}}",
             "duration_seconds": 5,
-            "mode": "text_to_video"
+            "mode": "t2v"
           },
           "rootParams": {
             "prompt": "{{prompt}}"
@@ -905,7 +905,7 @@
             "duration_seconds": 5,
             "fps": 24,
             "init_image": "{{init_image}}",
-            "mode": "image_to_video"
+            "mode": "i2v"
           },
           "rootParams": {
             "prompt": "{{prompt}}"
@@ -970,7 +970,7 @@
             "aspect_ratio": "{{aspect_ratio}}",
             "num_inference_steps": 12,
             "expansion_factor": 1.8,
-            "overlap_percentage": 1,
+            "overlap_percentage": 8,
             "resize_option": "Full",
             "custom_resize_percentage": 100,
             "scale_image": true,

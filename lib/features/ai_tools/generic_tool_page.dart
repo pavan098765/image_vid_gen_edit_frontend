@@ -23,7 +23,6 @@ import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_butto
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/sign_in_prompt.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/themed_native_ad.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/ai_tools/outpaint_canvas_page.dart';
-import 'package:kala_ai_create_images_videos_with_ai/features/credits/credits_page.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/result_manager/result_manager_page.dart';
 import 'package:crypto/crypto.dart';
 import 'package:lucide_icons/lucide_icons.dart';
@@ -3306,8 +3305,15 @@ class _GenericToolPageState extends State<GenericToolPage>
     if (index >= _bulkImages.length) return;
     
     if (_requiresMask) {
-      // Open mask editor for this image
-      final mask = await _openMaskEditor(_bulkImages[index]);
+      // Open mask editor for this specific bulk image
+      // CRITICAL: Pass the existing mask for THIS bulk image only
+      // Set isBulkMode=true to prevent fallback to single image mask
+      final existingMask = (index < _bulkMasks.length) ? _bulkMasks[index] : null;
+      final mask = await _openMaskEditor(
+        _bulkImages[index],
+        existingMask: existingMask,
+        isBulkMode: true,  // CRITICAL: Never use single image mask in bulk mode
+      );
       if (mask != null && mounted) {
         setState(() {
           // Ensure list is long enough
@@ -3315,6 +3321,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             _bulkMasks.add(null);
           }
           _bulkMasks[index] = mask;
+          debugPrint("✅ Saved mask for bulk image $index (total masks: ${_bulkMasks.length})");
         });
       }
     } else if (_isOutpaint) {
@@ -6756,10 +6763,10 @@ class _GenericToolPageState extends State<GenericToolPage>
                   icon: LucideIcons.gem,
                   onPressed: () {
                     Navigator.pop(context); // Close bottom sheet
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const CreditsPage()),
-                    );
+                    // Navigate to main app's credits tab (index 2) instead of standalone page
+                    // This ensures bottom app bar is visible and back button works correctly
+                    Navigator.popUntil(context, (route) => route.isFirst);
+                    selectedIndexNotifier.value = 2; // Credits/Store page
                   },
                   variant: ButtonVariant.primary,
                   size: ButtonSize.large,
@@ -7681,7 +7688,15 @@ class _GenericToolPageState extends State<GenericToolPage>
         }
         
         // --- Add outpaint-specific params ---
-        if (_isOutpaint) {
+        // IMPORTANT: In bulk mode, each image has its own outpaint config sent via
+        // bulk_outpaint_configs. Don't set outpaint params in resolvedParams for bulk mode
+        // or they'll override the per-image configs!
+        final bool isBulkEditEnabled = _advancedSettings.bulkEditEnabled && 
+            _bulkImages.isNotEmpty && 
+            canUseBulkEdit();
+        
+        if (_isOutpaint && !isBulkEditEnabled) {
+          // Single image mode: use outpaint config from _inputs
           // Basic outpaint params
           resolvedParams["alignment"] = _inputs["alignment"] ?? "Middle";
           resolvedParams["aspect_ratio"] = _inputs["aspect_ratio"] ?? "1:1";
@@ -7702,8 +7717,12 @@ class _GenericToolPageState extends State<GenericToolPage>
             resolvedParams["image_top"] = double.tryParse(_inputs["image_top"] ?? "0");
           }
           
-          debugPrint("🖼️ Outpaint params: alignment=${resolvedParams["alignment"]}, "
+          debugPrint("🖼️ Outpaint params (single): alignment=${resolvedParams["alignment"]}, "
               "aspect=${resolvedParams["aspect_ratio"]}, custom=$isCustomMode");
+        } else if (_isOutpaint && isBulkEditEnabled) {
+          // Bulk mode: per-image configs are sent via bulk_outpaint_configs
+          // Don't set any outpaint params here - server will apply per-image configs
+          debugPrint("🖼️ Outpaint params (bulk): ${_bulkOutpaintConfigs.length} per-image configs will be sent");
         }
 
         // --- Build payload ---
@@ -7741,10 +7760,35 @@ class _GenericToolPageState extends State<GenericToolPage>
               .toList();
           basePayload["bulk_images"] = bulkImagesBase64;
           
-          // Remove single init_image from params when bulk edit is enabled
-          // Server will use bulk_images instead
+          // Remove single-image params when bulk edit is enabled
+          // Server will use bulk_images, bulk_masks, and bulk_outpaint_configs instead
           resolvedParams.remove("init_image");
           resolvedParams.remove("image");
+          
+          // For inpaint tools, remove single-image mask - will use bulk_masks instead
+          if (_requiresMask) {
+            resolvedParams.remove("mask_image");
+            resolvedParams.remove("mask");
+            debugPrint("🎭 Removed single mask_image - using bulk_masks instead");
+          }
+          
+          // For outpaint tools, remove single-image outpaint config - will use bulk_outpaint_configs
+          if (_isOutpaint) {
+            resolvedParams.remove("alignment");
+            resolvedParams.remove("aspect_ratio");
+            resolvedParams.remove("is_custom_mode");
+            resolvedParams.remove("custom_scale");
+            resolvedParams.remove("norm_offset_x");
+            resolvedParams.remove("norm_offset_y");
+            resolvedParams.remove("canvas_width");
+            resolvedParams.remove("canvas_height");
+            resolvedParams.remove("image_width");
+            resolvedParams.remove("image_height");
+            resolvedParams.remove("image_left");
+            resolvedParams.remove("image_top");
+            debugPrint("🖼️ Removed single outpaint config - using bulk_outpaint_configs instead");
+          }
+          
           debugPrint("📦 Bulk edit enabled: ${_bulkImages.length} images");
           
           // Add bulk masks if this is an inpaint tool
@@ -8014,14 +8058,30 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   // -------- Painter (Mask Editor) --------
-  Future<Uint8List?> _openMaskEditor(Uint8List base) async {
+  /// Opens mask editor with optional existing mask
+  /// [base] - The base image to draw mask on
+  /// [existingMask] - Optional existing mask to load
+  /// [isBulkMode] - If true, this is for a bulk image (never use single image mask)
+  ///                If false, use _inputs["mask_image"] for single mode
+  Future<Uint8List?> _openMaskEditor(
+    Uint8List base, {
+    Uint8List? existingMask,
+    bool isBulkMode = false,
+  }) async {
     try {
+      // CRITICAL: For bulk mode, NEVER use single image mask
+      // If existingMask is null in bulk mode, start with empty mask
+      // For single mode, fall back to _inputs["mask_image"] if no existingMask provided
+      final maskToLoad = isBulkMode
+          ? existingMask  // Bulk mode: only use the provided mask (or null for fresh start)
+          : (existingMask ?? (_inputs["mask_image"] as Uint8List?));  // Single mode: use provided or fall back to _inputs
+      
       return await Navigator.push<Uint8List?>(
         context,
         MaterialPageRoute(
           builder: (_) => MaskEditorPage(
             baseImageBytes: base,
-            existingMask: _inputs["mask_image"],
+            existingMask: maskToLoad,
           ),
           fullscreenDialog: true,
         ),
@@ -8229,6 +8289,7 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
   Offset _offset = Offset.zero;
   double _baseScale = 1.0;
   Offset _baseOffset = Offset.zero;
+  Offset _focalPointStart = Offset.zero; // Focal point at start of gesture
   bool _isZooming = false;
   int _pointerCount = 0;
 
@@ -8536,6 +8597,7 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
                               onScaleStart: (details) {
                                 _baseScale = _scale;
                                 _baseOffset = _offset;
+                                _focalPointStart = details.localFocalPoint;
                                 if (_pointerCount < 2) {
                                   // Single finger: start drawing
                                   final local = details.localFocalPoint;
@@ -8552,13 +8614,29 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
                                 if (_pointerCount >= 2 || details.scale != 1.0) {
                                   // Multi-finger: zoom and pan
                                   setState(() {
-                                    _scale = (_baseScale * details.scale).clamp(1.0, 5.0);
+                                    final newScale = (_baseScale * details.scale).clamp(1.0, 5.0);
+                                    final scaleDelta = newScale / _baseScale;
+                                    _scale = newScale;
                                     
-                                    // Calculate pan with bounds
+                                    // Calculate the center of the display area
+                                    final centerX = displayW / 2;
+                                    final centerY = displayH / 2;
+                                    
+                                    // Calculate the focal point relative to center
+                                    final focalPointRelativeToCenter = _focalPointStart - Offset(centerX, centerY);
+                                    
+                                    // When zooming, adjust offset so the point under the focal point stays fixed
+                                    // The offset needs to compensate for the scale change at the focal point
+                                    final offsetDelta = focalPointRelativeToCenter * (1 - scaleDelta);
+                                    
+                                    // Also account for pan gesture (focal point movement)
+                                    final panDelta = details.localFocalPoint - _focalPointStart;
+                                    
+                                    // Calculate new offset
                                     final maxOffsetX = (displayW * _scale - displayW) / 2;
                                     final maxOffsetY = (displayH * _scale - displayH) / 2;
                                     
-                                    final newOffset = _baseOffset + (details.focalPoint - details.localFocalPoint);
+                                    final newOffset = _baseOffset + offsetDelta + panDelta;
                                     _offset = Offset(
                                       newOffset.dx.clamp(-maxOffsetX, maxOffsetX),
                                       newOffset.dy.clamp(-maxOffsetY, maxOffsetY),

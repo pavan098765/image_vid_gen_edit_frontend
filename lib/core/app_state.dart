@@ -591,6 +591,10 @@ Future<bool> applyPendingFcmUpdatesFromFile() async {
     
     debugPrint("📁 [FCM File] Found ${decoded.length} pending updates - applying...");
     
+    // Log all job IDs in the file for debugging
+    final jobIdsInFile = decoded.map((u) => u['jobId']?.toString() ?? 'unknown').toList();
+    debugPrint("📁 [FCM File] Job IDs in file: ${jobIdsInFile.join(', ')}");
+    
     // Apply each update to the job list
     final prefs = await SharedPreferences.getInstance();
     
@@ -650,9 +654,11 @@ Future<bool> applyPendingFcmUpdatesFromFile() async {
             'status': newStatus,
             if (newUrl != null && newUrl.isNotEmpty) 'downloadUrl': newUrl,
           };
-          debugPrint("📁 [FCM File] Updated job $jobId: $oldStatus → $newStatus");
+          debugPrint("📁 [FCM File] ✅ Updated job $jobId: $oldStatus → $newStatus (URL: ${newUrl != null && newUrl.isNotEmpty ? 'present' : 'missing'})");
           anyUpdated = true;
           updatedCount++;
+        } else {
+          debugPrint("📁 [FCM File] ⏭️ Skipped job $jobId: oldStatus=$oldStatus, newStatus=$newStatus (no update needed)");
         }
       } else {
         // ✅ CREATE new job (this was the missing piece!)
@@ -669,7 +675,7 @@ Future<bool> applyPendingFcmUpdatesFromFile() async {
           'inputImagePath': null,
         };
         jobs.insert(0, newJob);
-        debugPrint("📁 [FCM File] Created NEW job $jobId (status: $newStatus) - was missing from SharedPreferences!");
+        debugPrint("📁 [FCM File] ✅ Created NEW job $jobId (status: $newStatus, URL: ${newUrl != null && newUrl.isNotEmpty ? 'present' : 'missing'}) - was missing from SharedPreferences!");
         anyUpdated = true;
         createdCount++;
         
@@ -681,23 +687,30 @@ Future<bool> applyPendingFcmUpdatesFromFile() async {
     }
     
     if (anyUpdated) {
-      // Save to SharedPreferences
+      // Save to SharedPreferences with multiple flush attempts
       await prefs.setString('jobs', jsonEncode(jobs));
-      await prefs.reload(); // Ensure disk write
+      await prefs.reload(); // First reload
+      await Future.delayed(const Duration(milliseconds: 100)); // Give time to flush
+      await prefs.reload(); // Second reload to verify
       
-      // Update notifier
+      // Update notifier with the merged jobs
       jobListNotifier.value = jobs
           .map((e) => JobModel.fromJson(Map<String, dynamic>.from(e)))
           .toList();
       
       debugPrint("✅ [FCM File] Applied updates: $updatedCount updated, $createdCount created, $skippedCount skipped");
+      debugPrint("✅ [FCM File] Saved ${jobs.length} total jobs to SharedPreferences");
+      
+      // IMPORTANT: Only clear the file AFTER we've successfully saved to SharedPreferences
+      // AND verified the notifier is updated. This ensures if app crashes, we can retry on next startup
+      await file.writeAsString('[]');
+      debugPrint("📁 [FCM File] Cleared pending updates file after successful sync");
     } else {
       debugPrint("📁 [FCM File] No applicable updates (all jobs already up to date)");
+      // Even if no updates, clear old entries to prevent stale data
+      // But keep the file structure intact for future writes
+      await file.writeAsString('[]');
     }
-    
-    // Clear the file after applying
-    await file.writeAsString('[]');
-    debugPrint("📁 [FCM File] Cleared pending updates file");
     
     return anyUpdated;
   } catch (e, st) {

@@ -613,15 +613,36 @@ class FileService {
         return false;
       }
     } else if (extension.toLowerCase() == 'mp4') {
-      // MP4 signature: ftyp box at start (bytes 4-8 should contain 'ftyp')
+      // MP4 signature: files start with 4-byte size, then box type
+      // Common box types: 'ftyp' (file type), 'moov' (movie header), 'mdat' (media data)
+      // Some MP4s might have 'mdat' first (fast start), or 'moov' first
       if (bytes.length < 12) return false;
-      final ftyp = String.fromCharCodes(bytes.sublist(4, 8));
-      if (ftyp != 'ftyp') {
-        // Check for alternative MP4 signatures
-        final boxType = String.fromCharCodes(bytes.sublist(4, 8));
-        if (boxType != 'ftyp' && boxType != 'moov' && boxType != 'mdat') {
-          return false;
-        }
+      
+      // Check for MP4 box signature at offset 4 (after 4-byte size)
+      final boxType = String.fromCharCodes(bytes.sublist(4, 8));
+      final validBoxTypes = ['ftyp', 'moov', 'mdat', 'free', 'skip', 'wide'];
+      
+      // Also check if it's a valid MP4 by looking for common patterns
+      // Some MP4s might have 'mdat' at the start (fast start encoding)
+      bool isValidMp4 = validBoxTypes.contains(boxType);
+      
+      // If not found at offset 4, check offset 0 (some files might not have size prefix)
+      if (!isValidMp4 && bytes.length >= 8) {
+        final altBoxType = String.fromCharCodes(bytes.sublist(0, 4));
+        isValidMp4 = validBoxTypes.contains(altBoxType);
+      }
+      
+      // Additional check: look for 'mp4' string anywhere in first 100 bytes
+      if (!isValidMp4 && bytes.length >= 100) {
+        final headerString = String.fromCharCodes(bytes.sublist(0, 100));
+        isValidMp4 = headerString.contains('mp4') || 
+                     headerString.contains('isom') || 
+                     headerString.contains('avc1');
+      }
+      
+      if (!isValidMp4) {
+        debugPrint('❌ MP4 validation failed: boxType=$boxType, first 20 bytes: ${bytes.sublist(0, bytes.length < 20 ? bytes.length : 20).map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
+        return false;
       }
     }
 
