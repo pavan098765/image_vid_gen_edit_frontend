@@ -1476,12 +1476,17 @@ class _JobCardState extends State<JobCard> {
     final fileExists = widget.job.localFilePath != null &&
         File(widget.job.localFilePath!).existsSync();
     final isProcessing = widget.job.status == 'processing';
+    final jobCategory = _getJobCategory(widget.job);
+    
+    // Check if file is a text file (text output type or text file extension)
+    final isTextFile = jobCategory == 'text' || 
+                       (fileExists && _isTextFile(widget.job.localFilePath!));
 
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 350),
       child: _AnimatedProcessingBorder(
         isProcessing: isProcessing,
-        jobCategory: _getJobCategory(widget.job),
+        jobCategory: jobCategory,
         child: Container(
           width: 58,
           height: 58,
@@ -1501,7 +1506,7 @@ class _JobCardState extends State<JobCard> {
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(11),
-            child: fileExists
+            child: fileExists && !isTextFile
                 ? Stack(
                     fit: StackFit.expand,
                     children: [
@@ -1538,6 +1543,12 @@ class _JobCardState extends State<JobCard> {
     );
   }
   
+  /// Check if file is a text file by extension
+  bool _isTextFile(String filePath) {
+    final ext = filePath.toLowerCase().split('.').last;
+    return ext == 'txt' || ext == 'json' || ext == 'text';
+  }
+  
   /// Get job category for visual styling
   String _getJobCategory(JobModel job) {
     final output = job.outputType.toLowerCase();
@@ -1547,6 +1558,8 @@ class _JobCardState extends State<JobCard> {
       return 'video';
     } else if (output == 'audio' || model.contains('audio') || model.contains('tts')) {
       return 'audio';
+    } else if (output == 'text' || model.contains('ocr') || model.contains('text')) {
+      return 'text';
     } else if (model.contains('upscale') || model.contains('enhance')) {
       return 'enhance';
     } else if (model.contains('remove') || model.contains('erase') || model.contains('inpaint')) {
@@ -1683,6 +1696,8 @@ class _JobCardState extends State<JobCard> {
       return Icons.videocam_rounded;
     } else if (output == 'audio') {
       return Icons.audiotrack_rounded;
+    } else if (output == 'text') {
+      return Icons.text_snippet_rounded;
     }
     
     // Then check model name for more specific icons
@@ -1690,6 +1705,8 @@ class _JobCardState extends State<JobCard> {
       return Icons.videocam_rounded;
     } else if (modelLower.contains('audio') || modelLower.contains('tts')) {
       return Icons.audiotrack_rounded;
+    } else if (modelLower.contains('ocr') || modelLower.contains('text')) {
+      return Icons.text_snippet_rounded;
     } else if (modelLower.contains('upscale') || modelLower.contains('enhance')) {
       return Icons.auto_awesome;
     } else if (modelLower.contains('remove') || modelLower.contains('erase')) {
@@ -2110,6 +2127,13 @@ class _AnimatedProcessingBorderState extends State<_AnimatedProcessingBorder>
           const Color(0xFF9B8BB0), // Muted violet
           const Color(0xFF6B8FC7), // Muted blue
         ];
+      case 'text':
+        return [
+          const Color(0xFF5BA88F), // Muted teal-green
+          const Color(0xFF6BA3A8), // Muted cyan
+          const Color(0xFF7B9EB0), // Muted sky-blue
+          const Color(0xFF5BA88F), // Muted teal-green
+        ];
       default: // image
         return [
           const Color(0xFF7B8BC7), // Muted indigo
@@ -2308,6 +2332,13 @@ class _AnimatedGradientBackgroundState extends State<_AnimatedGradientBackground
           const Color(0xFF7580B0), // Muted slate blue
           const Color(0xFF8580A8), // Muted lavender blue
           const Color(0xFF6588B8), // Muted azure
+        ];
+      case 'text':
+        return [
+          const Color(0xFF5AA08A), // Muted seafoam-green
+          const Color(0xFF6899A0), // Muted teal
+          const Color(0xFF7094A8), // Muted steel blue
+          const Color(0xFF5AA08A), // Muted seafoam-green
         ];
       default: // image
         return [

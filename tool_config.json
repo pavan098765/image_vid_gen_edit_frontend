@@ -528,6 +528,7 @@
           "cost": 10,
           "costUpscale": 5,
           "offer": 0,
+          "enabled": true,
           "params": {
             "cfg_scale": 1.0,
             "num_inference_steps": 8,
@@ -546,6 +547,7 @@
           "cost": 10,
           "costUpscale": 5,
           "offer": 0,
+          "enabled": true,
           "params": {
             "cfg_scale": 1.0,
             "num_inference_steps": 8,
@@ -564,6 +566,7 @@
           "cost": 10,
           "costUpscale": 5,
           "offer": 20,
+          "enabled": true,
           "params": {
             "sample_steps": "{{sample_steps}}",
             "cfg_scale": "1.0",
@@ -619,6 +622,7 @@
           "cost": 10,
           "costUpscale": 5,
           "offer": 0,
+          "enabled": true,
           "params": {
             "steps": 28,
             "guidance_scale": 3.0,
@@ -639,6 +643,7 @@
           "cost": 10,
           "costUpscale": 5,
           "offer": 0,
+          "enabled": true,
           "params": {
             "num_inference_steps": 8,
             "cfg_scale": 3.0,
@@ -659,6 +664,7 @@
           "cost": 10,
           "costUpscale": 5,
           "offer": 0,
+          "enabled": true,
           "inputOverrides": {
             "init_image": {
               "id": "images",
@@ -672,6 +678,36 @@
             "init_image": "{{images}}",
             "scale_image": true,
             "scale_factor": "{{scale_factor}}"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}",
+            "negative_prompt": " "
+          }
+        },
+        {
+          "id": "qwen_image_edit_2511_rapid_aio",
+          "name": "Revia 3",
+          "description": "Ultra-realistic, Enhanced performance",
+          "cost": 10,
+          "costUpscale": 5,
+          "offer": 0,
+          "enabled": true,
+          "inputOverrides": {
+            "init_image": {
+              "id": "images",
+              "label": "Select up to 3 Images",
+              "max": 3
+            }
+          },
+          "params": {
+            "guidance_scale": 1.0,
+            "num_inference_steps": 4,
+            "init_image": "{{images}}",
+            "scale_image": true,
+            "scale_factor": "{{scale_factor}}",
+            "lora_adapter": "None",
+            "randomize_seed": true,
+            "output_dir": "./outputs"
           },
           "rootParams": {
             "prompt": "{{prompt}}",
@@ -731,6 +767,7 @@
           "cost": 10,
           "costUpscale": 5,
           "offer": 0,
+          "enabled": true,
           "params": {
             "mode": "lama_inpaint",
             "init_image": "{{init_image}}",
@@ -746,6 +783,7 @@
           "cost": 15,
           "costUpscale": 5,
           "offer": 0,
+          "enabled": true,
           "params": {
             "init_image": "{{init_image}}",
             "mask_image": "{{mask_image}}",
@@ -820,11 +858,13 @@
       "models": [
         {
           "id": "fastwan_22_5b",
-          "name": "CineMotion Pro",
+          "name": "CineMotion 2",
           "description": "Higher quality, more detail",
           "cost": 10,
           "costUpscale": 5,
           "offer": 0,
+          "enabled": false,
+          "maxDuration": 8,
           "params": {
             "steps": 8,
             "guidance_scale": 0.0,
@@ -851,6 +891,8 @@
           "cost": 10,
           "costUpscale": 5,
           "offer": 0,
+          "enabled": true,
+          "maxDuration": 8,
           "params": {
             "steps": 8,
             "guidance_scale": 0.0,
@@ -864,6 +906,58 @@
             "scale_factor": "{{scale_factor}}",
             "duration_seconds": 5,
             "mode": "t2v"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        },
+        {
+          "id": "hunyan15_480p_t2V_distilled",
+          "name": "MotionFlow Pro",
+          "description": "Text to video, 480p step distilled",
+          "cost": 10,
+          "costUpscale": 5,
+          "offer": 0,
+          "enabled": true,
+          "maxDuration": 10,
+          "params": {
+            "num_inference_steps": 50,
+            "seed": 42,
+            "randomize_seed": true,
+            "height": 512,
+            "width": 768,
+            "output_dir": "./outputs",
+            "scale_image": true,
+            "scale_factor": "{{scale_factor}}",
+            "fps": 24,
+            "num_frames": 121
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        },
+        {
+          "id": "wan_22_uint4_lightx2v_t2v",
+          "name": "Cinemotion Pro T2V",
+          "description": "High quality text-to-video.",
+          "cost": 15,
+          "costUpscale": 5,
+          "offer": 0,
+          "enabled": true,
+          "maxDuration": 5,
+          "params": {
+            "num_inference_steps": 8,
+            "guidance_scale": 1.0,
+            "guidance_scale_2": 1.0,
+            "randomize_seed": true,
+            "height": 480,
+            "width": 832,           
+            "output_dir": "./outputs",
+            "enable_rife": false,
+            "rife_target_fps": 30,
+            "enable_upscaling": false,
+            "upscale_factor": 2,
+            "postprocess_interpolate_first": false
           },
           "rootParams": {
             "prompt": "{{prompt}}"
@@ -906,11 +1000,13 @@
       "models": [
         {
           "id": "fastwan_22_5b",
-          "name": "CineMotion Pro",
+          "name": "CineMotion 2",
           "description": "Smooth animation, high quality",
           "cost": 10,
           "costUpscale": 5,
           "offer": 0,
+          "enabled": false,
+          "maxDuration": 8,
           "params": {
             "steps": 8,
             "guidance_scale": 0.0,
@@ -930,6 +1026,97 @@
           "rootParams": {
             "prompt": "{{prompt}}"
           }
+        },
+        {
+          "id": "wan_22_uint4_lightx2v_i2v",
+          "name": "Cinemotion Pro I2V",
+          "description": "High quality image-to-video.",
+          "cost": 15,
+          "costUpscale": 5,
+          "offer": 0,
+          "enabled": true,
+          "maxDuration": 5,
+          "params": {
+            "num_inference_steps": 8,
+            "guidance_scale": 1.0,
+            "seed": 42,
+            "randomize_seed": true,
+            "resize_image": true,
+            "output_dir": "./outputs",
+            "init_image": "{{init_image}}",
+            "enable_rife": false,
+            "rife_target_fps": 30,
+            "enable_upscaling": false,
+            "upscale_factor": 2,
+            "postprocess_interpolate_first": false
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        },
+        {
+          "id": "hunyan15_480p_i2V_step_distilled",
+          "name": "AnimateFlow",
+          "description": "Image to video, 480p step distilled",
+          "cost": 10,
+          "costUpscale": 5,
+          "offer": 0,
+          "enabled": true,
+          "maxDuration": 10,
+          "params": {
+            "num_inference_steps": 12,
+            "seed": 42,
+            "randomize_seed": true,
+            "height": 480,
+            "width": 768,
+            "output_dir": "./outputs",
+            "scale_image": true,
+            "scale_factor": "{{scale_factor}}",
+            "fps": 24,
+            "init_image": "{{init_image}}",
+            "num_frames": 121
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        },
+        {
+          "id": "dreamid",
+          "name": "RefMotion",
+          "description": "Image text to video with reference image and video",
+          "cost": 10,
+          "costUpscale": 5,
+          "offer": 0,
+          "enabled": true,
+          "maxDuration": 8,
+          "inputOverrides": {
+            "init_image": {
+              "id": "ref_image",
+              "label": "Reference Image",
+              "min": 1,
+              "max": 1
+            }
+          },
+          "params": {
+            "ref_image": "{{ref_image}}",
+            "ref_video": "{{ref_video}}",
+            "size": "832*480",
+            "sample_steps": 16,
+            "base_seed": 42,
+            "randomize_seed": true,
+            "frame_num": 81,
+            "sample_fps": 24,
+            "output_dir": "./outputs",
+            "scale_image": true,
+            "scale_factor": "{{scale_factor}}",
+            "sample_shift": 5.0,
+            "sample_solver": "unipc",
+            "sample_guide_scale_img": 4.0
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}",
+            "mode": "DreamID-V-Wan-1.3B-Faster"
+          }
         }
       ],
       "inputs": [
@@ -937,6 +1124,20 @@
           "id": "init_image",
           "type": "image",
           "label": "Upload Image",
+          "min": 1,
+          "max": 1
+        },
+        {
+          "id": "ref_image",
+          "type": "image",
+          "label": "Reference Image",
+          "min": 1,
+          "max": 1
+        },
+        {
+          "id": "ref_video",
+          "type": "video",
+          "label": "Reference Video",
           "min": 1,
           "max": 1
         },
@@ -984,6 +1185,7 @@
           "cost": 10,
           "costUpscale": 5,
           "offer": 10,
+          "enabled": true,
           "params": {
             "init_image": "{{init_image}}",
             "alignment": "{{alignment}}",
@@ -1069,6 +1271,7 @@
           "cost": 10,
           "costUpscale": 5,
           "offer": 0,
+          "enabled": true,
           "params": {
             "mode": "bg_remove",
             "init_image": "{{init_image}}",
@@ -1120,6 +1323,7 @@
           "cost": 10,
           "costUpscale": 5,
           "offer": 0,
+          "enabled": true,
           "params": {
             "init_image": "{{image}}",
             "scale": "{{scale_factor}}"
@@ -1132,6 +1336,7 @@
           "cost": 10,
           "costUpscale": 5,
           "offer": 0,
+          "enabled": true,
           "params": {
             "init_image": "{{image}}",
             "scale": "{{scale_factor}}"
@@ -1144,6 +1349,7 @@
           "cost": 10,
           "costUpscale": 5,
           "offer": 0,
+          "enabled": true,
           "params": {
             "init_image": "{{image}}",
             "outscale": "{{scale_factor}}",
@@ -1161,6 +1367,7 @@
           "cost": 10,
           "costUpscale": 5,
           "offer": 0,
+          "enabled": true,
           "params": {
             "init_image": "{{image}}",
             "outscale": "{{scale_factor}}",
@@ -1178,6 +1385,7 @@
           "cost": 12,
           "costUpscale": 5,
           "offer": 0,
+          "enabled": true,
           "params": {
             "init_image": "{{image}}",
             "outscale": "{{scale_factor}}",
@@ -1195,6 +1403,7 @@
           "cost": 10,
           "costUpscale": 5,
           "offer": 0,
+          "enabled": true,
           "params": {
             "init_image": "{{image}}",
             "outscale": "{{scale_factor}}",
@@ -1204,6 +1413,21 @@
             "tile_pad": 10,
             "fp32": false,
             "denoise_strength": 0.5
+          }
+        },
+        {
+          "id": "face_enhancer",
+          "name": "Face Enhancer",
+          "description": "GFPGAN face enhancement with upscaling",
+          "cost": 10,
+          "costUpscale": 5,
+          "offer": 0,
+          "enabled": true,
+          "params": {
+            "init_image": "{{image}}",
+            "version": "v1.4",
+            "scale": "{{scale_factor}}",
+            "output_dir": "./outputs"
           }
         }
       ],
@@ -1240,6 +1464,54 @@
         {
           "type": "toggle",
           "input_ref": "face_enhance"
+        },
+        {
+          "type": "generate_button"
+        }
+      ]
+    },
+    {
+      "id": "glm_ocr",
+      "name": "OCR Text Recognition",
+      "description": "Extract text from images using GLM OCR",
+      "icon": "file-text",
+      "accent": "#10B981",
+      "outputType": "text",
+      "defaultModel": "glm_ocr",
+      "models": [
+        {
+          "id": "glm_ocr",
+          "name": "TextScan",
+          "description": "Text recognition from images",
+          "cost": 5,
+          "costUpscale": 0,
+          "offer": 0,
+          "enabled": true,
+          "params": {
+            "input_image": "{{input_image}}",
+            "prompt_type": "text",
+            "max_new_tokens": 8192,
+            "output_dir": "./outputs",
+            "output_format": "txt"
+          },
+          "rootParams": {
+            "prompt": "Text Recognition:"
+          }
+        }
+      ],
+      "inputs": [
+        {
+          "id": "input_image",
+          "type": "image",
+          "label": "Upload Image",
+          "min": 1,
+          "max": 1
+        }
+      ],
+      "elements": [
+        {
+          "type": "image_upload",
+          "input_ref": "input_image"
         },
         {
           "type": "generate_button"

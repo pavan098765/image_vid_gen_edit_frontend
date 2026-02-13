@@ -424,6 +424,11 @@ class FileService {
     if (_isPreviewOpen) return; // 🚫 prevent double openings
     _isPreviewOpen = true;
 
+    // Check if file is a text file
+    final isTextFile = filePath.toLowerCase().endsWith('.txt') || 
+                       filePath.toLowerCase().endsWith('.json') ||
+                       filePath.toLowerCase().endsWith('.text');
+
     // Filter allPaths to only include existing files
     final List<String> validPaths = allPaths?.where((p) => File(p).existsSync()).toList() ?? [];
     final hasMultiple = validPaths.length > 1;
@@ -464,22 +469,30 @@ class FileService {
             _isPreviewOpen = false;
             return true;
           },
-          child: hasMultiple
-              ? _SwipeableMediaPreview(
-                  filePaths: validPaths,
-                  initialIndex: adjustedIndex,
-                  onClose: () {
-                    _isPreviewOpen = false;
-                    Navigator.of(context, rootNavigator: true).pop();
-                  },
-                )
-              : _ProgressiveImagePreview(
+          child: isTextFile
+              ? _TextFilePreview(
                   filePath: filePath,
                   onClose: () {
                     _isPreviewOpen = false;
                     Navigator.of(context, rootNavigator: true).pop();
                   },
-                ),
+                )
+              : hasMultiple
+                  ? _SwipeableMediaPreview(
+                      filePaths: validPaths,
+                      initialIndex: adjustedIndex,
+                      onClose: () {
+                        _isPreviewOpen = false;
+                        Navigator.of(context, rootNavigator: true).pop();
+                      },
+                    )
+                  : _ProgressiveImagePreview(
+                      filePath: filePath,
+                      onClose: () {
+                        _isPreviewOpen = false;
+                        Navigator.of(context, rootNavigator: true).pop();
+                      },
+                    ),
         );
       },
     ).then((_) {
@@ -2525,6 +2538,242 @@ class _VideoPreviewItemState extends State<_VideoPreviewItem> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Text file preview widget for displaying .txt and .json files
+class _TextFilePreview extends StatefulWidget {
+  final String filePath;
+  final VoidCallback onClose;
+
+  const _TextFilePreview({
+    required this.filePath,
+    required this.onClose,
+  });
+
+  @override
+  State<_TextFilePreview> createState() => _TextFilePreviewState();
+}
+
+class _TextFilePreviewState extends State<_TextFilePreview> {
+  String? _content;
+  bool _isLoading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTextFile();
+  }
+
+  Future<void> _loadTextFile() async {
+    try {
+      final file = File(widget.filePath);
+      if (await file.exists()) {
+        final content = await file.readAsString();
+        if (mounted) {
+          setState(() {
+            _content = content;
+            _isLoading = false;
+          });
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            _error = 'File not found';
+            _isLoading = false;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ Failed to load text file: $e');
+      if (mounted) {
+        setState(() {
+          _error = 'Failed to load file: $e';
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  String get _fileName {
+    final path = widget.filePath;
+    return path.split('/').last.split('\\').last;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final topPadding = MediaQuery.of(context).padding.top;
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        decoration: const BoxDecoration(
+          gradient: RadialGradient(
+            center: Alignment.center,
+            radius: 1.2,
+            colors: [
+              Color(0xFF1a1a2e),
+              Color(0xFF0d0d14),
+              Colors.black,
+            ],
+            stops: [0.0, 0.6, 1.0],
+          ),
+        ),
+        child: Stack(
+          children: [
+            // Top bar with close button
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: SafeArea(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black.withOpacity(0.7),
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _fileName,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded, color: Colors.white),
+                        onPressed: widget.onClose,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+            // Content area
+            Positioned.fill(
+              top: topPadding + 60,
+              bottom: bottomPadding + 60,
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: _isLoading
+                    ? const Center(
+                        child: CircularProgressIndicator(
+                          color: Colors.white70,
+                        ),
+                      )
+                    : _error != null
+                        ? Center(
+                            child: Text(
+                              _error!,
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 14,
+                              ),
+                            ),
+                          )
+                        : Container(
+                            decoration: BoxDecoration(
+                              color: cs.surfaceContainerHighest.withOpacity(0.3),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.1),
+                              ),
+                            ),
+                            padding: const EdgeInsets.all(16),
+                            child: SingleChildScrollView(
+                              child: SelectableText(
+                                _content ?? '',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  fontFamily: 'monospace',
+                                  height: 1.5,
+                                ),
+                              ),
+                            ),
+                          ),
+              ),
+            ),
+
+            // Bottom bar with actions
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: SafeArea(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                      colors: [
+                        Colors.black.withOpacity(0.7),
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Material(
+                        color: cs.primary.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(12),
+                        child: InkWell(
+                          onTap: () async {
+                            await OpenFilex.open(widget.filePath);
+                          },
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 12,
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.folder_open_rounded,
+                                  size: 18,
+                                  color: cs.primary,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Open in App',
+                                  style: TextStyle(
+                                    color: cs.primary,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

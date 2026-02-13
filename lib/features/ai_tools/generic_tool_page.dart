@@ -585,7 +585,7 @@ class AdvancedSettings {
   String quality; // 'Low', 'Medium', 'High'
   String aspectRatio; // 'Default', '1:1', '9:16', '16:9', '4:3', '3:4'
   int variations; // 1-4 (VIP: max 4, non-VIP: max 2)
-  int videoDuration; // 3, 5, 8 seconds
+  int videoDuration; // 1-10 seconds (slider, max depends on model)
   double cfgScale; // 0.1 - 15.0
   bool bulkEditEnabled; // VIP only - process multiple images with same settings
   
@@ -753,6 +753,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   
   /// Check if this is a video category tool (text to video, image to video, video to video)
   bool get _isVideoTool => widget.config.outputType == 'video';
+  bool get _isTextTool => widget.config.outputType == 'text';
   
   /// Check if this is an expand scene (outpaint) category tool
   bool get _isExpandSceneTool => _isOutpaint;
@@ -1253,6 +1254,16 @@ class _GenericToolPageState extends State<GenericToolPage>
         (m) => m['id'] == defaultId,
         orElse: () => widget.config.models!.first,
       );
+      
+      // Clamp videoDuration to model's maxDuration if it's a video tool
+      if (widget.config.outputType == 'video' && _selectedModelData != null) {
+        final maxDuration = (_selectedModelData!['maxDuration'] as num?)?.toInt() ?? 8;
+        if (_advancedSettings.videoDuration > maxDuration) {
+          _advancedSettings = _advancedSettings.copyWith(
+            videoDuration: maxDuration,
+          );
+        }
+      }
     }
   }
 
@@ -1261,7 +1272,19 @@ class _GenericToolPageState extends State<GenericToolPage>
     setState(() {
       _selectedModelId = model['id'] as String;
       _selectedModelData = model;
+      
+      // Clamp videoDuration to new model's maxDuration if it's a video tool
+      if (widget.config.outputType == 'video') {
+        final maxDuration = (model['maxDuration'] as num?)?.toInt() ?? 8;
+        if (_advancedSettings.videoDuration > maxDuration) {
+          _advancedSettings = _advancedSettings.copyWith(
+            videoDuration: maxDuration,
+          );
+        }
+      }
     });
+    // Force rebuild of advanced settings sheet if open
+    // The StatefulBuilder will pick up the new _selectedModelData
   }
 
   /// Get the current model's cost
@@ -1458,14 +1481,28 @@ class _GenericToolPageState extends State<GenericToolPage>
                         ),
                         const SizedBox(height: 24),
                         
-                        // Model Selector (only if multiple models available)
-                        if (widget.config.hasMultipleModels) ...[
-                          _buildModelSelector(cs, setSheetState),
-                          const SizedBox(height: 20),
-                        ],
-                        
-                        // Enhance Prompt Toggle (only for models with prompt)
-                        if (_hasPrompt) ...[
+                        // Hide all advanced settings for text output tools
+                        if (_isTextTool) ...[
+                          Padding(
+                            padding: const EdgeInsets.all(24.0),
+                            child: Text(
+                              'No advanced settings available for text output tools',
+                              style: TextStyle(
+                                color: cs.onSurfaceVariant,
+                                fontSize: 14,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ] else ...[
+                          // Model Selector (only if multiple models available)
+                          if (widget.config.hasMultipleModels) ...[
+                            _buildModelSelector(cs, setSheetState),
+                            const SizedBox(height: 20),
+                          ],
+                          
+                          // Enhance Prompt Toggle (only for models with prompt)
+                          if (_hasPrompt) ...[
                           _buildSettingToggle(
                             cs: cs,
                             icon: LucideIcons.sparkles,
@@ -1575,25 +1612,11 @@ class _GenericToolPageState extends State<GenericToolPage>
                           const SizedBox(height: 16),
                         ],
                         
-                        // Duration Selector (for video generation)
+                        // Duration Slider (for video generation)
                         if (widget.config.outputType == 'video') ...[
-                          _buildSettingSelector(
-                            cs: cs,
-                            icon: LucideIcons.timer,
-                            title: 'Duration',
-                            options: ['3s', '5s', '8s'],
-                            selected: '${_advancedSettings.videoDuration}s',
-                            onChanged: (v) {
-                              setSheetState(() {
-                                setState(() {
-                                  _advancedSettings = _advancedSettings.copyWith(
-                                    videoDuration: int.parse(v.replaceAll('s', '')),
-                                  );
-                                });
-                              });
-                            },
-                          ),
+                          _buildDurationSlider(cs, setSheetState),
                           const SizedBox(height: 16),
+                        ],
                         ],
                       ],
                     ),
@@ -2096,6 +2119,87 @@ class _GenericToolPageState extends State<GenericToolPage>
               setSheetState(() {
                 setState(() {
                   _advancedSettings = _advancedSettings.copyWith(cfgScale: double.parse(v.toStringAsFixed(1)));
+                });
+              });
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Build Duration slider for video generation
+  Widget _buildDurationSlider(ColorScheme cs, StateSetter setSheetState) {
+    // Get maxDuration from selected model config, default to 8
+    final maxDuration = (_selectedModelData?['maxDuration'] as num?)?.toInt() ?? 8;
+    final currentDuration = _advancedSettings.videoDuration.clamp(1, maxDuration);
+    // Use model ID as key to force rebuild when model changes
+    final modelId = _selectedModelId ?? widget.config.model;
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(LucideIcons.timer, size: 18, color: cs.onSurfaceVariant),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Duration',
+                    style: TextStyle(
+                      color: cs.onSurface,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Text(
+                    'Video length in seconds (max: ${maxDuration}s)',
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant.withOpacity(0.7),
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: cs.primary.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                '${currentDuration}s',
+                style: TextStyle(
+                  color: cs.primary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            activeTrackColor: cs.primary,
+            inactiveTrackColor: cs.outlineVariant.withOpacity(0.3),
+            thumbColor: cs.primary,
+            overlayColor: cs.primary.withOpacity(0.15),
+          ),
+          child: Slider(
+            key: ValueKey('duration_slider_$modelId'), // Force rebuild when model changes
+            value: currentDuration.toDouble(),
+            min: 1.0,
+            max: maxDuration.toDouble(),
+            divisions: maxDuration - 1, // 1 second increments
+            onChanged: (v) {
+              setSheetState(() {
+                setState(() {
+                  _advancedSettings = _advancedSettings.copyWith(
+                    videoDuration: v.round(),
+                  );
                 });
               });
             },
@@ -8102,6 +8206,9 @@ class _GenericToolPageState extends State<GenericToolPage>
         resolvedParams["scale_factor"] = _advancedSettings.upscaleOutput ? _scaleFactor : 1;
         resolvedParams["scale_image"] = true;
         
+        // Get model ID for model-specific handling
+        final currentModelId = _selectedModelId ?? widget.config.model;
+        
         // Calculate height/width based on aspect ratio selection
         // If "Default" - use image's original dimensions (already set from image inference above)
         // Otherwise - calculate based on selected aspect ratio
@@ -8129,54 +8236,106 @@ class _GenericToolPageState extends State<GenericToolPage>
               newWidth = (currentHeight * targetRatio).round();
             }
             
-            // Round to nearest 32 (required by most models)
+            // Round to nearest 32 (required by most models) or 8 (for Hunyuan)
             int roundTo32(int x) => ((x / 32).round() * 32).clamp(32, 2048);
-            resolvedParams["width"] = roundTo32(newWidth);
-            resolvedParams["height"] = roundTo32(newHeight);
+            int roundTo8(int x) => ((x / 8).round() * 8).clamp(8, 2048);
+            
+            // Model-specific handling for aspect ratio
+            if (currentModelId == 'dreamid') {
+              // DreamID uses "size" parameter in format "width*height" (string)
+              final finalWidth = roundTo32(newWidth);
+              final finalHeight = roundTo32(newHeight);
+              resolvedParams["size"] = "${finalWidth}*${finalHeight}";
+              // Remove height/width if they exist (DreamID doesn't use them)
+              resolvedParams.remove("width");
+              resolvedParams.remove("height");
+              debugPrint("🎬 DreamID: aspect ratio ${selectedRatio} → size=${finalWidth}*${finalHeight}");
+            } else if (currentModelId == 'hunyan15_480p_i2V_step_distilled' || 
+                       currentModelId == 'hunyan15_480p_t2V_distilled') {
+              // Hunyuan models require dimensions rounded to 8
+              resolvedParams["width"] = roundTo8(newWidth);
+              resolvedParams["height"] = roundTo8(newHeight);
+              debugPrint("🎬 Hunyuan: aspect ratio ${selectedRatio} → ${roundTo8(newWidth)}x${roundTo8(newHeight)}");
+            } else {
+              // Fastwan and other models use height and width (integers, rounded to 32)
+              resolvedParams["width"] = roundTo32(newWidth);
+              resolvedParams["height"] = roundTo32(newHeight);
+              debugPrint("📐 Model $currentModelId: aspect ratio ${selectedRatio} → ${roundTo32(newWidth)}x${roundTo32(newHeight)}");
+            }
           }
         }
         
         // --- Add outpaint-specific params ---
-        // IMPORTANT: In bulk mode, each image has its own outpaint config sent via
-        // bulk_outpaint_configs. Don't set outpaint params in resolvedParams for bulk mode
-        // or they'll override the per-image configs!
+        // IMPORTANT: For outpaint tools, we need to set alignment and aspect_ratio in base params
+        // In bulk mode, per-image configs in bulk_outpaint_configs will override these defaults
         final bool isBulkEditEnabled = _advancedSettings.bulkEditEnabled && 
             _bulkImages.isNotEmpty && 
             canUseBulkEdit();
         
-        if (_isOutpaint && !isBulkEditEnabled) {
-          // Single image mode: use outpaint config from _inputs
-          // Basic outpaint params
-          resolvedParams["alignment"] = _inputs["alignment"] ?? "Middle";
-          resolvedParams["aspect_ratio"] = _inputs["aspect_ratio"] ?? "1:1";
-          
-          // Custom mode params
-          final bool isCustomMode = _inputs["is_custom"] == "true";
-          if (isCustomMode) {
-            resolvedParams["is_custom_mode"] = true;
-            resolvedParams["custom_scale"] = double.tryParse(_inputs["custom_scale"] ?? "0.7") ?? 0.7;
-            resolvedParams["norm_offset_x"] = double.tryParse(_inputs["norm_offset_x"] ?? "0") ?? 0.0;
-            resolvedParams["norm_offset_y"] = double.tryParse(_inputs["norm_offset_y"] ?? "0") ?? 0.0;
-            // Canvas and image dimensions for backend calculation
-            resolvedParams["canvas_width"] = double.tryParse(_inputs["canvas_width"] ?? "0");
-            resolvedParams["canvas_height"] = double.tryParse(_inputs["canvas_height"] ?? "0");
-            resolvedParams["image_width"] = double.tryParse(_inputs["image_width"] ?? "0");
-            resolvedParams["image_height"] = double.tryParse(_inputs["image_height"] ?? "0");
-            resolvedParams["image_left"] = double.tryParse(_inputs["image_left"] ?? "0");
-            resolvedParams["image_top"] = double.tryParse(_inputs["image_top"] ?? "0");
+        if (_isOutpaint) {
+          // Custom mode params (only for single mode, bulk mode uses bulk_outpaint_configs)
+          if (!isBulkEditEnabled) {
+            // Single mode: set alignment and aspect_ratio in base params
+            resolvedParams["alignment"] = _inputs["alignment"] ?? "Middle";
+            resolvedParams["aspect_ratio"] = _inputs["aspect_ratio"] ?? "1:1";
+            
+            final bool isCustomMode = _inputs["is_custom"] == "true";
+            if (isCustomMode) {
+              resolvedParams["is_custom_mode"] = true;
+              resolvedParams["custom_scale"] = double.tryParse(_inputs["custom_scale"] ?? "0.7") ?? 0.7;
+              resolvedParams["norm_offset_x"] = double.tryParse(_inputs["norm_offset_x"] ?? "0") ?? 0.0;
+              resolvedParams["norm_offset_y"] = double.tryParse(_inputs["norm_offset_y"] ?? "0") ?? 0.0;
+              // Canvas and image dimensions for backend calculation
+              resolvedParams["canvas_width"] = double.tryParse(_inputs["canvas_width"] ?? "0");
+              resolvedParams["canvas_height"] = double.tryParse(_inputs["canvas_height"] ?? "0");
+              resolvedParams["image_width"] = double.tryParse(_inputs["image_width"] ?? "0");
+              resolvedParams["image_height"] = double.tryParse(_inputs["image_height"] ?? "0");
+              resolvedParams["image_left"] = double.tryParse(_inputs["image_left"] ?? "0");
+              resolvedParams["image_top"] = double.tryParse(_inputs["image_top"] ?? "0");
+            }
+            
+            debugPrint("🖼️ Outpaint params (single): alignment=${resolvedParams["alignment"]}, "
+                "aspect=${resolvedParams["aspect_ratio"]}, custom=$isCustomMode");
+          } else {
+            // Bulk mode: don't set alignment/aspect_ratio in base params
+            // They will be provided per-image in bulk_outpaint_configs
+            debugPrint("🖼️ Outpaint params (bulk): ${_bulkOutpaintConfigs.length} per-image configs will be sent");
           }
-          
-          debugPrint("🖼️ Outpaint params (single): alignment=${resolvedParams["alignment"]}, "
-              "aspect=${resolvedParams["aspect_ratio"]}, custom=$isCustomMode");
-        } else if (_isOutpaint && isBulkEditEnabled) {
-          // Bulk mode: per-image configs are sent via bulk_outpaint_configs
-          // Don't set any outpaint params here - server will apply per-image configs
-          debugPrint("🖼️ Outpaint params (bulk): ${_bulkOutpaintConfigs.length} per-image configs will be sent");
         }
 
         // --- Build payload ---
         // Send ONE request with variations: N, server creates N jobs internally
         final modelId = _selectedModelId ?? widget.config.model;
+        
+        // Duration handling for video models
+        if (widget.config.outputType == 'video') {
+          final duration = _advancedSettings.videoDuration;
+          
+          // Fastwan models use duration_seconds
+          if (modelId == 'fastwan_21_1b' || modelId == 'fastwan_22_5b') {
+            resolvedParams["duration_seconds"] = duration;
+          }
+          
+          // Hunyuan models: calculate num_frames from duration and fps
+          // fps is typically 24 for hunyuan models
+          if (modelId == 'hunyan15_480p_i2V_step_distilled' || 
+              modelId == 'hunyan15_480p_t2V_distilled') {
+            final fps = (resolvedParams["fps"] as num?)?.toInt() ?? 24;
+            final numFrames = (duration * fps).round();
+            resolvedParams["num_frames"] = numFrames;
+            debugPrint("🎬 Hunyuan: duration=${duration}s, fps=$fps, num_frames=$numFrames");
+          }
+          
+          // DreamID: calculate frame_num from duration and fps
+          // sample_fps is typically 24 for dreamid
+          if (modelId == 'dreamid') {
+            final fps = (resolvedParams["sample_fps"] as num?)?.toInt() ?? 24;
+            final frameNum = (duration * fps).round();
+            resolvedParams["frame_num"] = frameNum;
+            debugPrint("🎬 DreamID: duration=${duration}s, fps=$fps, frame_num=$frameNum");
+          }
+        }
+        
         // Server enforces max variations: 2 for non-VIP, 4 for VIP
         // Client-side clamp is just for preview - server is authoritative
         final int requestedVariations =
@@ -8221,7 +8380,8 @@ class _GenericToolPageState extends State<GenericToolPage>
             debugPrint("🎭 Removed single mask_image - using bulk_masks instead");
           }
           
-          // For outpaint tools, remove single-image outpaint config - will use bulk_outpaint_configs
+          // For outpaint tools in bulk mode, remove all outpaint-specific params from base params
+          // They will be provided per-image in bulk_outpaint_configs
           if (_isOutpaint) {
             resolvedParams.remove("alignment");
             resolvedParams.remove("aspect_ratio");
@@ -8235,7 +8395,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             resolvedParams.remove("image_height");
             resolvedParams.remove("image_left");
             resolvedParams.remove("image_top");
-            debugPrint("🖼️ Removed single outpaint config - using bulk_outpaint_configs instead");
+            debugPrint("🖼️ Removed all outpaint params from base - bulk_outpaint_configs will provide per-image");
           }
           
           debugPrint("📦 Bulk edit enabled: ${_bulkImages.length} images");
@@ -8258,8 +8418,44 @@ class _GenericToolPageState extends State<GenericToolPage>
           if (_isOutpaint && _bulkOutpaintConfigs.isNotEmpty) {
             final List<Map<String, String>?> configs = [];
             for (int i = 0; i < _bulkImages.length; i++) {
-              if (i < _bulkOutpaintConfigs.length) {
-                configs.add(_bulkOutpaintConfigs[i]);
+              if (i < _bulkOutpaintConfigs.length && _bulkOutpaintConfigs[i] != null) {
+                // Create a copy of the config and filter based on is_custom mode
+                final Map<String, String> config = Map<String, String>.from(_bulkOutpaintConfigs[i]!);
+                final isCustom = config["is_custom"] ?? "false";
+                final isCustomMode = config["is_custom_mode"] ?? "false";
+                final bool isActuallyCustom = (isCustom == "true" || isCustom == "True") || 
+                                             (isCustomMode == "true" || isCustomMode == "True");
+                
+                // Only keep is_custom/is_custom_mode if it's true
+                if (!isActuallyCustom) {
+                  config.remove("is_custom");
+                  config.remove("is_custom_mode");
+                  
+                  // Remove custom positioning params when not in custom mode
+                  config.remove("norm_offset_x");
+                  config.remove("norm_offset_y");
+                  config.remove("offset_x");
+                  config.remove("offset_y");
+                  config.remove("canvas_width");
+                  config.remove("canvas_height");
+                  config.remove("fitted_width");
+                  config.remove("fitted_height");
+                  config.remove("image_width");
+                  config.remove("image_height");
+                  config.remove("image_left");
+                  config.remove("image_top");
+                  config.remove("custom_scale");
+                } else {
+                  // In custom mode, ensure is_custom_mode is set correctly
+                  if (isCustom == "true" || isCustom == "True") {
+                    config["is_custom"] = "true";
+                  }
+                  if (isCustomMode == "true" || isCustomMode == "True") {
+                    config["is_custom_mode"] = "true";
+                  }
+                }
+                
+                configs.add(config);
               } else {
                 configs.add(null);
               }
