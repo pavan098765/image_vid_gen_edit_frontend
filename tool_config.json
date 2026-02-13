@@ -1161,6 +1161,14 @@
           "input_ref": "init_image"
         },
         {
+          "type": "image_upload",
+          "input_ref": "ref_image"
+        },
+        {
+          "type": "video_upload",
+          "input_ref": "ref_video"
+        },
+        {
           "type": "prompt",
           "input_ref": "prompt"
         },
@@ -1464,6 +1472,125 @@
         {
           "type": "toggle",
           "input_ref": "face_enhance"
+        },
+        {
+          "type": "generate_button"
+        }
+      ]
+    },
+    {
+      "id": "upscale_video",
+      "name": "Upscale Video",
+      "description": "Enhance video resolution and frame rate",
+      "icon": "video",
+      "accent": "#F59E0B",
+      "outputType": "video",
+      "defaultModel": "video_upscaler",
+      "models": [
+        {
+          "id": "video_upscaler",
+          "name": "Video Enhancer",
+          "description": "Upscale resolution and interpolate frames",
+          "cost": 0,
+          "baseCost": 0,
+          "costUpscale": 0,
+          "offer": 0,
+          "enabled": true,
+          "params": {
+            "input_video": "{{input_video}}",
+            "video_duration": "{{video_duration}}",
+            "enable_interpolation": "{{enable_interpolation}}",
+            "target_fps": "{{target_fps}}",
+            "enable_upscaling": "{{enable_upscaling}}",
+            "upscale_factor": "{{upscale_factor}}",
+            "postprocess_interpolate_first": "{{postprocess_interpolate_first}}",
+            "output_dir": "./outputs"
+          },
+          "rootParams": {
+            "prompt": "Video upscaling",
+            "mode": "upscale"
+          }
+        }
+      ],
+      "inputs": [
+        {
+          "id": "input_video",
+          "type": "video",
+          "label": "Upload Video",
+          "min": 1,
+          "max": 1
+        },
+        {
+          "id": "enable_interpolation",
+          "type": "toggle",
+          "label": "Frame Interpolation",
+          "description": "Increase frame rate using RIFE (up to 60fps)",
+          "default": false
+        },
+        {
+          "id": "target_fps",
+          "type": "slider",
+          "label": "Target FPS",
+          "description": "Target frame rate for interpolation (max 60)",
+          "min": 15,
+          "max": 60,
+          "default": 30,
+          "showWhen": {
+            "enable_interpolation": true
+          }
+        },
+        {
+          "id": "enable_upscaling",
+          "type": "toggle",
+          "label": "Upscale Resolution",
+          "description": "Increase video resolution using Real-ESRGAN",
+          "default": false
+        },
+        {
+          "id": "upscale_factor",
+          "type": "slider",
+          "label": "Upscale Factor",
+          "description": "Resolution multiplier (2x or 4x)",
+          "min": 2,
+          "max": 4,
+          "default": 2,
+          "step": 2,
+          "showWhen": {
+            "enable_upscaling": true
+          }
+        },
+        {
+          "id": "postprocess_interpolate_first",
+          "type": "toggle",
+          "label": "Interpolate First",
+          "description": "If enabled, interpolate frames before upscaling (may cause errors). If disabled, upscale first then interpolate (recommended)",
+          "default": false
+        }
+      ],
+      "elements": [
+        {
+          "type": "video_upload",
+          "input_ref": "input_video"
+        },
+        {
+          "type": "toggle",
+          "input_ref": "enable_interpolation"
+        },
+        {
+          "type": "slider",
+          "input_ref": "target_fps"
+        },
+        {
+          "type": "toggle",
+          "input_ref": "enable_upscaling"
+        },
+        {
+          "type": "slider",
+          "input_ref": "upscale_factor"
+        },
+        {
+          "type": "toggle",
+          "input_ref": "postprocess_interpolate_first"
         },
         {
           "type": "generate_button"

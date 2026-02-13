@@ -454,19 +454,49 @@ class _ExploreAIPageState extends State<ExploreAIPage>
     });
   }
 
-  /// Get all templates for "All" tab
+  /// Check if a template's model is enabled
+  bool _isTemplateModelEnabled(Map<String, dynamic> template) {
+    final capabilityId = template['capability'] as String?;
+    if (capabilityId == null) return true; // Default to enabled if no capability
+    
+    final capability = _capabilities[capabilityId] as Map<String, dynamic>?;
+    if (capability == null) return true; // Default to enabled if capability not found
+    
+    final templateModelId = template['model'] as String? ?? 
+                           template['preferred_model'] as String? ?? 
+                           capability['defaultModel'] as String?;
+    if (templateModelId == null) return true; // Default to enabled if no model specified
+    
+    final allModels = capability['models'] as List<dynamic>? ?? [];
+    final model = allModels.firstWhere(
+      (m) => m['id'] == templateModelId,
+      orElse: () => null,
+    );
+    
+    if (model == null) return true; // Default to enabled if model not found
+    
+    final enabled = model['enabled'];
+    return enabled == null || enabled == true; // Default to enabled if not specified
+  }
+
+  /// Get all templates for "All" tab (filtered by enabled models)
   List<String> _getAllTemplateIds() {
     final allIds = <String>{};
     for (final cat in _categories) {
       final templateIds = (cat['templates'] as List<dynamic>?) ?? [];
       for (final id in templateIds) {
-        allIds.add(id as String);
+        final templateId = id as String;
+        final template = _templates[templateId] as Map<String, dynamic>?;
+        // Only include templates with enabled models
+        if (template != null && _isTemplateModelEnabled(template)) {
+          allIds.add(templateId);
+        }
       }
     }
     return allIds.toList();
   }
 
-  /// Get templates for selected category
+  /// Get templates for selected category (filtered by enabled models)
   List<String> _getSelectedTemplateIds() {
     if (_selectedCategoryIndex == 0) {
       // "All" tab - show all templates
@@ -476,7 +506,13 @@ class _ExploreAIPageState extends State<ExploreAIPage>
     final categoryIndex = _selectedCategoryIndex - 1;
     if (categoryIndex >= 0 && categoryIndex < _categories.length) {
       final cat = _categories[categoryIndex] as Map<String, dynamic>;
-      return ((cat['templates'] as List<dynamic>?) ?? []).cast<String>();
+      final templateIds = (cat['templates'] as List<dynamic>?) ?? [];
+      // Filter to only templates with enabled models
+      return templateIds.where((id) {
+        final templateId = id as String;
+        final template = _templates[templateId] as Map<String, dynamic>?;
+        return template != null && _isTemplateModelEnabled(template);
+      }).cast<String>().toList();
     }
     return [];
   }
@@ -872,7 +908,9 @@ class _ExploreAIPageState extends State<ExploreAIPage>
     if (badgeStr.contains('featured') || badgeStr.contains('⭐')) return 3;
     // Trending/New/Hot get medium priority
     if (badgeStr.contains('trending') || badgeStr.contains('🔥') || 
-        badgeStr.contains('new') || badgeStr.contains('hot')) return 2;
+        badgeStr.contains('new') || badgeStr.contains('hot')) {
+      return 2;
+    }
     return 1;
   }
 
@@ -1132,7 +1170,7 @@ class _ExploreAIPageState extends State<ExploreAIPage>
     }
 
     // Show 6 tools when collapsed (2 rows x 3 cols), all when expanded
-    final collapsedCount = 6;
+    const collapsedCount = 6;
     final visibleTools = _proToolsExpanded ? allTools : allTools.take(collapsedCount).toList();
     final hasMoreTools = allTools.length > collapsedCount;
 
@@ -1260,9 +1298,19 @@ class _ExploreAIPageState extends State<ExploreAIPage>
     final accentHex = capability['accent'] as String? ?? '#9333EA';
     final accent = Color(int.parse(accentHex.substring(1, 7), radix: 16) + 0xFF000000);
 
-    final models = (capability['models'] as List<dynamic>? ?? [])
+    final allModelsJson = capability['models'] as List<dynamic>? ?? [];
+    // Filter to only enabled models
+    final enabledModelsJson = allModelsJson.where((m) {
+      final enabled = m['enabled'];
+      return enabled == null || enabled == true; // Default to enabled if not specified
+    }).toList();
+    
+    if (enabledModelsJson.isEmpty) return const SizedBox.shrink(); // Hide if no enabled models
+    
+    final models = enabledModelsJson
         .map((m) => ModelOption.fromJson(m as Map<String, dynamic>))
         .toList();
+    
     final defaultModelId = capability['defaultModel'] as String?;
     final defaultModel = models.isNotEmpty
         ? models.firstWhere((m) => m.id == defaultModelId, orElse: () => models.first)
@@ -1577,7 +1625,7 @@ class _ExploreAIPageState extends State<ExploreAIPage>
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(
+                            const Icon(
                               LucideIcons.sparkles,
                               size: 12,
                               color: KalaColors.cyan,
@@ -1848,7 +1896,7 @@ class _ExploreAIPageState extends State<ExploreAIPage>
   Widget _buildCategoryTabs(ColorScheme cs, bool isDark) {
     // Build tab items: "All" + each category
     final tabItems = <_TabItem>[
-      _TabItem(id: 'all', title: '✨ All', color: KalaColors.purple),
+      const _TabItem(id: 'all', title: '✨ All', color: KalaColors.purple),
       ..._categories.map((cat) {
         final c = cat as Map<String, dynamic>;
         final colorHex = c['color'] as String? ?? '#8B5CF6';
@@ -2064,10 +2112,25 @@ class _ExploreAIPageState extends State<ExploreAIPage>
       final modelId = selectedModelId ??
           template['model'] as String? ??
           capability['defaultModel'];
-      final models = capability['models'] as List<dynamic>? ?? [];
-      final modelConfig = models.firstWhere(
+      final allModels = capability['models'] as List<dynamic>? ?? [];
+      // Filter to only enabled models
+      final enabledModels = allModels.where((m) {
+        final enabled = m['enabled'];
+        return enabled == null || enabled == true; // Default to enabled if not specified
+      }).toList();
+      
+      // Check if the template's model is enabled
+      final templateModelId = template['model'] as String? ?? capability['defaultModel'];
+      final isTemplateModelEnabled = enabledModels.any((m) => m['id'] == templateModelId);
+      if (!isTemplateModelEnabled && templateModelId != null) {
+        throw Exception('Template model is disabled');
+      }
+      
+      if (enabledModels.isEmpty) throw Exception('No enabled models available');
+      
+      final modelConfig = enabledModels.firstWhere(
         (m) => m['id'] == modelId,
-        orElse: () => models.isNotEmpty ? models.first : <String, dynamic>{},
+        orElse: () => enabledModels.isNotEmpty ? enabledModels.first : <String, dynamic>{},
       ) as Map<String, dynamic>;
 
       // Calculate cost (VIP gets free upscale)
@@ -2110,6 +2173,14 @@ class _ExploreAIPageState extends State<ExploreAIPage>
       modelParams['scale_image'] = upscaleEnabled;
       modelParams['scale_factor'] = scaleFactor;
 
+      final outputType = template['output_type'] as String? ??
+          capability['outputType'] as String? ??
+          'image';
+
+      // Video upscale settings are handled in the _TemplateConfigResult version
+      // This function doesn't have video upscale parameters, so skip for now
+      // (Video templates should use the _TemplateConfigResult version)
+
       // Set prompt
       String prompt = customPrompt ?? jobConfig['prompt'] as String? ?? '';
       rootParams['prompt'] = prompt;
@@ -2125,10 +2196,6 @@ class _ExploreAIPageState extends State<ExploreAIPage>
       if (videoBytes != null) {
         modelParams['init_video'] = base64Encode(videoBytes);
       }
-
-      final outputType = template['output_type'] as String? ??
-          capability['outputType'] as String? ??
-          'image';
 
       String? fcmToken;
       try {
@@ -2343,6 +2410,13 @@ class _TemplateConfigResult {
   final Uint8List? selectedVideo;
   final String? selectedVideoPath;
   final bool readyToSubmit; // If true, submit job; if false, pick media
+  // Video upscale settings
+  final bool enableInterpolate;
+  final int interpolateFps;
+  final bool enableUpscale;
+  final int upscaleFactor;
+  // LoRA adapter (for qwen_image_edit_2511_rapid_aio)
+  final String loraAdapter;
 
   _TemplateConfigResult({
     this.selectedModelId,
@@ -2353,6 +2427,11 @@ class _TemplateConfigResult {
     this.selectedVideo,
     this.selectedVideoPath,
     this.readyToSubmit = false,
+    this.enableInterpolate = false,
+    this.interpolateFps = 30,
+    this.enableUpscale = false,
+    this.upscaleFactor = 2,
+    this.loraAdapter = 'None',
   });
 
   bool get upscaleEnabled => scaleFactor > 1;
@@ -2380,6 +2459,13 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
   late int _scaleFactor;
   late bool _upscaleEnabled;
   final TextEditingController _promptController = TextEditingController();
+  // Video upscale settings
+  bool _enableInterpolate = false;
+  int _interpolateFps = 30;
+  bool _enableUpscale = false;
+  int _upscaleFactor = 2;
+  // LoRA adapter (for qwen_image_edit_2511_rapid_aio)
+  String _loraAdapter = 'None';
   
   // Selected media state
   List<Uint8List> _selectedImages = [];
@@ -2695,6 +2781,15 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
 
                   // Compact Settings Row (Upscale)
                   _buildSettingsRow(cs, isDark),
+                  
+                  // Video Upscale Settings (for video templates)
+                  _buildVideoUpscaleSettings(cs),
+                  
+                  // LoRA Adapter Selector (only for qwen_image_edit_2511_rapid_aio)
+                  if (_selectedModelId == 'qwen_image_edit_2511_rapid_aio') ...[
+                    const SizedBox(height: 16),
+                    _buildLoraAdapterSelector(cs),
+                  ],
 
                   // Model Selection (if multiple)
                   if (_models.length > 1) ...[
@@ -3224,7 +3319,7 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
                         _scaleFactor = v ? 2 : 1;
                       });
                     },
-                    activeColor: KalaColors.cyan,
+                    activeThumbColor: KalaColors.cyan,
                   ),
                 ],
               ),
@@ -3240,6 +3335,327 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
               color: cs.outlineVariant.withValues(alpha: 0.3),
             ),
             _buildCompactScaleSelector(cs),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// Build LoRA Adapter selector (only for qwen_image_edit_2511_rapid_aio)
+  Widget _buildLoraAdapterSelector(ColorScheme cs) {
+    // LoRA adapter options with user-friendly names
+    final loraOptions = [
+      'None',
+      'Consistance',
+      'Semirealistic-photo-detailer',
+      'AnyPose',
+      'Any2Real_2601',
+      'Hyperrealistic-Portrait',
+      'Ultrarealistic-Portrait',
+      'BFS-Best-FaceSwap',
+      'BFS-Best-FaceSwap-merge',
+      'F2P',
+      'Multiple-Angles',
+      'Light-Restoration',
+      'Relight',
+      'Multi-Angle-Lighting',
+      'Edit-Skin',
+      'Next-Scene',
+      'Flat-Log',
+      'Upscale-Image',
+      'Upscale2K',
+    ];
+    
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: cs.outlineVariant.withValues(alpha: 0.2),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(LucideIcons.sparkles, size: 16, color: cs.primary),
+              const SizedBox(width: 8),
+              Text(
+                'LoRA Adapter',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: cs.onSurface,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: loraOptions.map((option) {
+              final isSelected = _loraAdapter == option;
+              return GestureDetector(
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  setState(() => _loraAdapter = option);
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: isSelected ? cs.primary : cs.surfaceContainerHigh,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: isSelected ? cs.primary : cs.outlineVariant.withValues(alpha: 0.3),
+                      width: isSelected ? 2 : 1,
+                    ),
+                  ),
+                  child: Text(
+                    option,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                      color: isSelected ? cs.onPrimary : cs.onSurface,
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildVideoUpscaleSettings(ColorScheme cs) {
+    final outputType = widget.template['output_type'] as String? ?? 'image';
+    if (outputType != 'video') return const SizedBox.shrink();
+    
+    return Container(
+      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(top: 12),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: cs.outlineVariant.withValues(alpha: 0.2),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Video Enhancement',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: cs.onSurface,
+            ),
+          ),
+          const SizedBox(height: 12),
+          
+          // Interpolate Toggle
+          Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    setState(() {
+                      _enableInterpolate = !_enableInterpolate;
+                    });
+                  },
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: _enableInterpolate
+                              ? KalaColors.cyan.withValues(alpha: 0.2)
+                              : cs.surfaceContainerHigh,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(
+                          LucideIcons.zap,
+                          size: 18,
+                          color: _enableInterpolate ? KalaColors.cyan : cs.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Frame Interpolation',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: cs.onSurface,
+                          ),
+                        ),
+                      ),
+                      Switch(
+                        value: _enableInterpolate,
+                        onChanged: (v) {
+                          HapticFeedback.lightImpact();
+                          setState(() => _enableInterpolate = v);
+                        },
+                        activeThumbColor: KalaColors.cyan,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          
+          // Interpolate FPS (shown when enabled)
+          if (_enableInterpolate) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Text(
+                  'Target FPS: ',
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                ),
+                Expanded(
+                  child: Slider(
+                    value: _interpolateFps.toDouble().clamp(24, 60),
+                    min: 24,
+                    max: 60,
+                    divisions: 36,
+                    onChanged: (v) {
+                      setState(() => _interpolateFps = v.round());
+                    },
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: cs.primary.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    '$_interpolateFps',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: cs.primary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          
+          const SizedBox(height: 12),
+          
+          // Upscale Toggle
+          Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    setState(() {
+                      _enableUpscale = !_enableUpscale;
+                    });
+                  },
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: _enableUpscale
+                              ? KalaColors.cyan.withValues(alpha: 0.2)
+                              : cs.surfaceContainerHigh,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(
+                          LucideIcons.maximize2,
+                          size: 18,
+                          color: _enableUpscale ? KalaColors.cyan : cs.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Upscale Video',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: cs.onSurface,
+                              ),
+                            ),
+                            Text(
+                              _freeUpscale ? 'Free (VIP)' : '+$_upscaleCost credits',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: _freeUpscale ? KalaColors.gold : cs.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Switch(
+                        value: _enableUpscale,
+                        onChanged: (v) {
+                          HapticFeedback.lightImpact();
+                          setState(() => _enableUpscale = v);
+                        },
+                        activeThumbColor: KalaColors.cyan,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          
+          // Upscale Factor (shown when enabled)
+          if (_enableUpscale) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [1, 2, 4].map((factor) {
+                final isSelected = _upscaleFactor == factor;
+                return Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.only(right: factor < 4 ? 8 : 0),
+                    child: GestureDetector(
+                      onTap: () {
+                        HapticFeedback.lightImpact();
+                        setState(() => _upscaleFactor = factor);
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        decoration: BoxDecoration(
+                          color: isSelected ? cs.primary : cs.surfaceContainerHigh,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: isSelected ? cs.primary : cs.outlineVariant.withOpacity(0.3),
+                            width: isSelected ? 2 : 1,
+                          ),
+                        ),
+                        child: Center(
+                          child: Text(
+                            '${factor}x',
+                            style: TextStyle(
+                              color: isSelected ? cs.onPrimary : cs.onSurface,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
           ],
         ],
       ),
@@ -3470,7 +3886,7 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
               if (_upscaleEnabled) ...[
                 const SizedBox(width: 8),
                 Text(
-                  _freeUpscale ? '(+FREE HD)' : '(+${_upscaleCost} HD)',
+                  _freeUpscale ? '(+FREE HD)' : '(+$_upscaleCost HD)',
                   style: TextStyle(
                     fontSize: 12,
                     color: _freeUpscale ? KalaColors.gold : cs.onSurfaceVariant,
@@ -3517,6 +3933,7 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
                       Navigator.pop(
                         context,
                         _TemplateConfigResult(
+                          loraAdapter: _loraAdapter,
                           selectedModelId: _selectedModelId,
                           scaleFactor: _scaleFactor,
                           customPrompt: prompt,
@@ -3525,6 +3942,10 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
                           selectedVideo: _selectedVideo,
                           selectedVideoPath: _selectedVideoPath,
                           readyToSubmit: true,
+                          enableInterpolate: _enableInterpolate,
+                          interpolateFps: _interpolateFps,
+                          enableUpscale: _enableUpscale,
+                          upscaleFactor: _upscaleFactor,
                         ),
                       );
                     }
@@ -4448,10 +4869,18 @@ class _CategoryTemplatesPageState extends State<_CategoryTemplatesPage> {
       final modelId = result.selectedModelId ??
           template['model'] as String? ??
           capability['defaultModel'];
-      final models = capability['models'] as List<dynamic>? ?? [];
-      final modelConfig = models.firstWhere(
+      final allModels = capability['models'] as List<dynamic>? ?? [];
+      // Filter to only enabled models
+      final enabledModels = allModels.where((m) {
+        final enabled = m['enabled'];
+        return enabled == null || enabled == true; // Default to enabled if not specified
+      }).toList();
+      
+      if (enabledModels.isEmpty) throw Exception('No enabled models available');
+      
+      final modelConfig = enabledModels.firstWhere(
         (m) => m['id'] == modelId,
-        orElse: () => models.isNotEmpty ? models.first : <String, dynamic>{},
+        orElse: () => enabledModels.isNotEmpty ? enabledModels.first : <String, dynamic>{},
       ) as Map<String, dynamic>;
 
       final baseCost = modelConfig['cost'] as int? ?? 10;
@@ -4488,8 +4917,38 @@ class _CategoryTemplatesPageState extends State<_CategoryTemplatesPage> {
       modelParams['scale_image'] = upscaleEnabled;
       modelParams['scale_factor'] = result.scaleFactor;
 
+      final outputType = template['output_type'] as String? ??
+          capability['outputType'] as String? ??
+          'image';
+
+      // Video upscale settings (for video templates)
+      if (outputType == 'video') {
+        if (result.enableInterpolate) {
+          modelParams['enable_rife'] = true;
+          modelParams['rife_target_fps'] = result.interpolateFps;
+          // postprocess_interpolate_first: if both are enabled, interpolate first then upscale
+          if (result.enableUpscale) {
+            modelParams['postprocess_interpolate_first'] = true;
+          }
+        } else {
+          modelParams['enable_rife'] = false;
+        }
+        
+        if (result.enableUpscale) {
+          modelParams['enable_upscaling'] = true;
+          modelParams['upscale_factor'] = result.upscaleFactor;
+        } else {
+          modelParams['enable_upscaling'] = false;
+        }
+      }
+
       String prompt = result.customPrompt ?? jobConfig['prompt'] as String? ?? '';
       rootParams['prompt'] = prompt;
+      
+      // LoRA adapter for qwen_image_edit_2511_rapid_aio
+      if (modelId == 'qwen_image_edit_2511_rapid_aio') {
+        modelParams['lora_adapter'] = result.loraAdapter;
+      }
 
       // Handle media
       if (result.selectedImages != null && result.selectedImages!.length > 1) {
@@ -4501,9 +4960,6 @@ class _CategoryTemplatesPageState extends State<_CategoryTemplatesPage> {
       if (result.selectedVideo != null) {
         modelParams['init_video'] = base64Encode(result.selectedVideo!);
       }
-
-      final outputType = template['output_type'] as String? ??
-          capability['outputType'] as String? ?? 'image';
 
       String? fcmToken;
       try {
@@ -4957,10 +5413,18 @@ class _CategoryDetailPageState extends State<_CategoryDetailPage> {
       final modelId = result.selectedModelId ??
           template['model'] as String? ??
           capability['defaultModel'];
-      final models = capability['models'] as List<dynamic>? ?? [];
-      final modelConfig = models.firstWhere(
+      final allModels = capability['models'] as List<dynamic>? ?? [];
+      // Filter to only enabled models
+      final enabledModels = allModels.where((m) {
+        final enabled = m['enabled'];
+        return enabled == null || enabled == true; // Default to enabled if not specified
+      }).toList();
+      
+      if (enabledModels.isEmpty) throw Exception('No enabled models available');
+      
+      final modelConfig = enabledModels.firstWhere(
         (m) => m['id'] == modelId,
-        orElse: () => models.isNotEmpty ? models.first : <String, dynamic>{},
+        orElse: () => enabledModels.isNotEmpty ? enabledModels.first : <String, dynamic>{},
       ) as Map<String, dynamic>;
 
       final baseCost = modelConfig['cost'] as int? ?? 10;

@@ -83,23 +83,31 @@ class Capability {
     required this.elements,
   });
 
-  factory Capability.fromJson(Map<String, dynamic> json) => Capability(
-        id: json['id'],
-        name: json['name'],
-        description: json['description'] ?? '',
-        icon: json['icon'] ?? 'cpu',
-        accent: Color(
-          int.parse(json['accent'].substring(1, 7), radix: 16) + 0xFF000000,
-        ),
-        outputType: json['outputType'] ?? 'image',
-        defaultModel: json['defaultModel'] ?? '',
-        models: (json['models'] as List?)
-                ?.map((m) => ModelOption.fromJson(m))
-                .toList() ??
-            [],
-        inputs: json['inputs'] ?? [],
-        elements: json['elements'] ?? [],
-      );
+  factory Capability.fromJson(Map<String, dynamic> json) {
+    final allModels = (json['models'] as List? ?? []);
+    // Filter to only enabled models
+    final enabledModels = allModels.where((m) {
+      final enabled = m['enabled'];
+      return enabled == null || enabled == true; // Default to enabled if not specified
+    }).toList();
+    
+    return Capability(
+      id: json['id'],
+      name: json['name'],
+      description: json['description'] ?? '',
+      icon: json['icon'] ?? 'cpu',
+      accent: Color(
+        int.parse(json['accent'].substring(1, 7), radix: 16) + 0xFF000000,
+      ),
+      outputType: json['outputType'] ?? 'image',
+      defaultModel: json['defaultModel'] ?? '',
+      models: enabledModels
+          .map((m) => ModelOption.fromJson(m))
+          .toList(),
+      inputs: json['inputs'] ?? [],
+      elements: json['elements'] ?? [],
+    );
+  }
 
   /// Get the default model option
   ModelOption? get defaultModelOption {

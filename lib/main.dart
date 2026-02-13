@@ -1082,10 +1082,10 @@ class _ModernBottomNav extends StatelessWidget {
     
     // Navigation items configuration
     final items = [
-      _NavItem(icon: LucideIcons.palette, label: 'Editor'),
-      _NavItem(icon: LucideIcons.sparkles, label: 'AI Explore'),
-      _NavItem(icon: LucideIcons.gem, label: 'Store'),
-      _NavItem(icon: LucideIcons.settings, label: 'Settings'),
+      const _NavItem(icon: LucideIcons.palette, label: 'Editor'),
+      const _NavItem(icon: LucideIcons.sparkles, label: 'AI Explore'),
+      const _NavItem(icon: LucideIcons.gem, label: 'Store'),
+      const _NavItem(icon: LucideIcons.settings, label: 'Settings'),
     ];
 
     return Container(
