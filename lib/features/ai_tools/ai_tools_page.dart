@@ -22,6 +22,7 @@ class ModelOption {
   final Map<String, dynamic>? params;
   final Map<String, dynamic>? rootParams;
   final Map<String, dynamic>? inputOverrides;
+  final Map<String, dynamic> rawJson;
 
   ModelOption({
     required this.id,
@@ -32,6 +33,7 @@ class ModelOption {
     this.params,
     this.rootParams,
     this.inputOverrides,
+    required this.rawJson,
   });
 
   factory ModelOption.fromJson(Map<String, dynamic> json) => ModelOption(
@@ -43,18 +45,21 @@ class ModelOption {
         params: json['params'],
         rootParams: json['rootParams'],
         inputOverrides: json['inputOverrides'],
+        rawJson: Map<String, dynamic>.from(json),
       );
 
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'description': description,
-        'cost': cost,
-        'costUpscale': costUpscale,
-        'params': params,
-        'rootParams': rootParams,
-        'inputOverrides': inputOverrides,
-      };
+  Map<String, dynamic> toJson() {
+    final map = Map<String, dynamic>.from(rawJson);
+    map['id'] = id;
+    map['name'] = name;
+    map['description'] = description;
+    map['cost'] = cost;
+    map['costUpscale'] = costUpscale;
+    map['params'] = params;
+    map['rootParams'] = rootParams;
+    map['inputOverrides'] = inputOverrides;
+    return map;
+  }
 }
 
 /// Represents a capability (e.g., Create Image, Edit Image)
@@ -83,23 +88,31 @@ class Capability {
     required this.elements,
   });
 
-  factory Capability.fromJson(Map<String, dynamic> json) => Capability(
-        id: json['id'],
-        name: json['name'],
-        description: json['description'] ?? '',
-        icon: json['icon'] ?? 'cpu',
-        accent: Color(
-          int.parse(json['accent'].substring(1, 7), radix: 16) + 0xFF000000,
-        ),
-        outputType: json['outputType'] ?? 'image',
-        defaultModel: json['defaultModel'] ?? '',
-        models: (json['models'] as List?)
-                ?.map((m) => ModelOption.fromJson(m))
-                .toList() ??
-            [],
-        inputs: json['inputs'] ?? [],
-        elements: json['elements'] ?? [],
-      );
+  factory Capability.fromJson(Map<String, dynamic> json) {
+    final allModels = (json['models'] as List? ?? []);
+    // Filter to only enabled models
+    final enabledModels = allModels.where((m) {
+      final enabled = m['enabled'];
+      return enabled == null || enabled == true; // Default to enabled if not specified
+    }).toList();
+    
+    return Capability(
+      id: json['id'],
+      name: json['name'],
+      description: json['description'] ?? '',
+      icon: json['icon'] ?? 'cpu',
+      accent: Color(
+        int.parse(json['accent'].substring(1, 7), radix: 16) + 0xFF000000,
+      ),
+      outputType: json['outputType'] ?? 'image',
+      defaultModel: json['defaultModel'] ?? '',
+      models: enabledModels
+          .map((m) => ModelOption.fromJson(m))
+          .toList(),
+      inputs: json['inputs'] ?? [],
+      elements: json['elements'] ?? [],
+    );
+  }
 
   /// Get the default model option
   ModelOption? get defaultModelOption {
@@ -713,16 +726,7 @@ class _CapabilityCardState extends State<_CapabilityCard> {
                       costUpscale: defaultModel?.costUpscale ?? 5,
                       // Pass models for model selector
                       models: cap.models
-                          .map((m) => {
-                                'id': m.id,
-                                'name': m.name,
-                                'description': m.description,
-                                'cost': m.cost,
-                                'costUpscale': m.costUpscale,
-                                'params': m.params,
-                                'rootParams': m.rootParams,
-                                'inputOverrides': m.inputOverrides,
-                              })
+                          .map((m) => m.toJson())
                           .toList(),
                       defaultModel: cap.defaultModel,
                     ),

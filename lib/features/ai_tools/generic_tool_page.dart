@@ -225,6 +225,11 @@ class UserTemplate {
         'videoDuration': settings.videoDuration,
         'cfgScale': settings.cfgScale,
         'bulkEditEnabled': settings.bulkEditEnabled,
+        'enableInterpolate': settings.enableInterpolate,
+        'interpolateFps': settings.interpolateFps,
+        'enableUpscale': settings.enableUpscale,
+        'upscaleFactor': settings.upscaleFactor,
+        'loraAdapter': settings.loraAdapter,
       },
       'createdAt': createdAt.toIso8601String(),
       'lastUsed': lastUsed?.toIso8601String(),
@@ -247,6 +252,11 @@ class UserTemplate {
         videoDuration: settingsJson['videoDuration'] as int? ?? 5,
         cfgScale: settingsJson['cfgScale'] as double? ?? 1.0,
         bulkEditEnabled: settingsJson['bulkEditEnabled'] as bool? ?? false,
+        enableInterpolate: settingsJson['enableInterpolate'] as bool? ?? false,
+        interpolateFps: settingsJson['interpolateFps'] as int? ?? 30,
+        enableUpscale: settingsJson['enableUpscale'] as bool? ?? false,
+        upscaleFactor: settingsJson['upscaleFactor'] as int? ?? 2,
+        loraAdapter: settingsJson['loraAdapter'] as String? ?? 'None',
       ),
       createdAt: DateTime.parse(json['createdAt'] as String),
       lastUsed: json['lastUsed'] != null ? DateTime.parse(json['lastUsed'] as String) : null,
@@ -588,6 +598,13 @@ class AdvancedSettings {
   int videoDuration; // 1-10 seconds (slider, max depends on model)
   double cfgScale; // 0.1 - 15.0
   bool bulkEditEnabled; // VIP only - process multiple images with same settings
+  // Video upscale settings
+  bool enableInterpolate; // Enable frame interpolation (RIFE)
+  int interpolateFps; // Target FPS for interpolation (1-60)
+  bool enableUpscale; // Enable video upscaling
+  int upscaleFactor; // Upscale factor (1-4)
+  // LoRA adapter (for qwen_image_edit_2511_rapid_aio)
+  String loraAdapter; // LoRA adapter name (e.g., "None", "Consistance", etc.)
   
   AdvancedSettings({
     this.enhancePrompt = false,
@@ -598,6 +615,11 @@ class AdvancedSettings {
     this.videoDuration = 5,
     this.cfgScale = 1.0,
     this.bulkEditEnabled = false,
+    this.enableInterpolate = false,
+    this.interpolateFps = 30,
+    this.enableUpscale = false,
+    this.upscaleFactor = 2,
+    this.loraAdapter = 'None',
   });
   
   AdvancedSettings copyWith({
@@ -609,6 +631,11 @@ class AdvancedSettings {
     int? videoDuration,
     double? cfgScale,
     bool? bulkEditEnabled,
+    bool? enableInterpolate,
+    int? interpolateFps,
+    bool? enableUpscale,
+    int? upscaleFactor,
+    String? loraAdapter,
   }) {
     return AdvancedSettings(
       enhancePrompt: enhancePrompt ?? this.enhancePrompt,
@@ -619,6 +646,11 @@ class AdvancedSettings {
       cfgScale: cfgScale ?? this.cfgScale,
       videoDuration: videoDuration ?? this.videoDuration,
       bulkEditEnabled: bulkEditEnabled ?? this.bulkEditEnabled,
+      enableInterpolate: enableInterpolate ?? this.enableInterpolate,
+      interpolateFps: interpolateFps ?? this.interpolateFps,
+      enableUpscale: enableUpscale ?? this.enableUpscale,
+      upscaleFactor: upscaleFactor ?? this.upscaleFactor,
+      loraAdapter: loraAdapter ?? this.loraAdapter,
     );
   }
 }
@@ -645,8 +677,52 @@ class GenericToolPage extends StatefulWidget {
 
 class _GenericToolPageState extends State<GenericToolPage>
     with TickerProviderStateMixin, WidgetsBindingObserver {
+
+  // ── Friendly display names for LoRA adapters ──
+  // Key = raw adapter value sent to backend, Value = user-friendly label
+  static const Map<String, String> _loraFriendlyNames = {
+    'None': 'None',
+    'Consistance': 'Consistency',
+    'Semirealistic-photo-detailer': 'Photo Detailer',
+    'AnyPose': 'Pose Transfer',
+    'Any2Real_2601': 'Any to Realistic',
+    'Hyperrealistic-Portrait': 'Hyper Portrait',
+    'Ultrarealistic-Portrait': 'Ultra Portrait',
+    'BFS-Best-FaceSwap-merge': 'Face Swap Blend',
+    'F2P': 'Face to Photo',
+    'Multiple-Angles': 'Multi-Angle View',
+    'Light-Restoration': 'Light Restore',
+    'Relight': 'Relight',
+    'Edit-Skin': 'Skin Editor',
+    'Next-Scene': 'Next Scene',
+    'Flat-Log': 'Flat / Log',
+  };
+
+  // Short descriptions for each LoRA adapter mode
+  static const Map<String, String> _loraDescriptions = {
+    'None': 'Standard edit — no special mode',
+    'Consistance': 'Keep character identity consistent',
+    'Semirealistic-photo-detailer': 'Enhance photo with fine details',
+    'AnyPose': 'Change pose while keeping identity',
+    'Any2Real_2601': 'Convert any style to realistic photo',
+    'Hyperrealistic-Portrait': 'Hyper-detailed portrait output',
+    'Ultrarealistic-Portrait': 'Ultra-realistic portrait style',
+    'BFS-Best-FaceSwap-merge': 'Blend swapped face seamlessly',
+    'F2P': 'Generate full photo from a face',
+    'Multiple-Angles': 'Generate multiple angle views',
+    'Light-Restoration': 'Restore and fix lighting',
+    'Relight': 'Re-light the scene creatively',
+    'Edit-Skin': 'Enhance and retouch skin texture',
+    'Next-Scene': 'Generate a continuation scene',
+    'Flat-Log': 'Apply flat / log color grading',
+  };
+
   final picker = ImagePicker();
   final Map<String, dynamic> _inputs = {};
+  // Store video duration for video upscaler cost calculation
+  Duration? _inputVideoDuration;
+  // Fallback LoRA adapter metadata loaded from local tool_config.json
+  final Map<String, List<String>> _loraAdaptersByModel = {};
   bool _loading = false;
   bool _autoOpenMaskAfterPick = false;
   String? _selectedModeKey;
@@ -700,9 +776,12 @@ class _GenericToolPageState extends State<GenericToolPage>
   
   // -------- Bulk Edit (VIP only) --------
   // Stores multiple images for bulk processing (max 10 for VIP)
-  List<Uint8List> _bulkImages = [];
+  final List<Uint8List> _bulkImages = [];
   // Stores masks for each bulk image (for inpaint/erase tools)
   final List<Uint8List?> _bulkMasks = [];
+  
+  // Video controllers for user-uploaded videos (e.g., ref_video for dreamid)
+  final Map<String, VideoPlayerController> _userVideoControllers = {};
   // Stores outpaint configurations for each bulk image (for expand scene)
   final List<Map<String, String>?> _bulkOutpaintConfigs = [];
   static const int _maxBulkImages = 10;
@@ -749,6 +828,15 @@ class _GenericToolPageState extends State<GenericToolPage>
   bool get _isAnimateImageTool {
     final hasInitImage = widget.config.inputs.any((i) => i['id'] == 'init_image');
     return hasInitImage && widget.config.outputType == 'video';
+  }
+  
+  /// Check if this is a video upscaler tool
+  bool get _isVideoUpscalerTool {
+    final model = widget.config.model.toLowerCase();
+    final title = widget.config.title.toLowerCase();
+    // Check if model is video_upscaler or title contains both "upscale" and "video"
+    return model == 'video_upscaler' || 
+           (title.contains('upscale') && title.contains('video'));
   }
   
   /// Check if this is a video category tool (text to video, image to video, video to video)
@@ -799,14 +887,31 @@ class _GenericToolPageState extends State<GenericToolPage>
   /// Calculate the total credit cost for this job
   /// VIP users get FREE upscale
   int _calculateTotalCost() {
+    // Video upscaler billing: base cost per 5 seconds, always charged (VIP included).
+    if (_isVideoUpscalerTool) {
+      final baseCostPer5Sec = _currentModelCost;
+      final offer = _currentModelOffer;
+      if (_inputVideoDuration == null || _inputVideoDuration!.inSeconds <= 0) {
+        return 0;
+      }
+      final units = (_inputVideoDuration!.inSeconds / 5).ceil().clamp(1, 10000);
+      var total = baseCostPer5Sec * units;
+      if (offer > 0) {
+        total = (total * (1 - offer / 100)).round();
+      }
+      return total;
+    }
+
     // Use model-specific cost if available
     final baseCost = _currentModelCost;
     final upscaleCost = _currentModelUpscaleCost;
     final offer = _currentModelOffer;
     final variations = _advancedSettings.variations.clamp(1, getMaxVariations());
     
-    // Check if upscale is enabled - use advanced settings, not _inputs
-    final bool isUpscaled = _advancedSettings.upscaleOutput && _scaleFactor > 1;
+    // Check upscale status based on tool type.
+    final bool isUpscaled = _isVideoUpscalerTool
+        ? _advancedSettings.enableUpscale
+        : (_advancedSettings.upscaleOutput && _scaleFactor > 1);
     
     // VIP users get FREE upscale
     final bool freeUpscale = isUpscaleFree();
@@ -829,16 +934,66 @@ class _GenericToolPageState extends State<GenericToolPage>
     // For bulk edit: each image gets processed with N variations
     return costPerVariation * variations * imageCount;
   }
+  
+  /// Format duration as MM:SS
+  String _formatDuration(Duration duration) {
+    final minutes = duration.inMinutes;
+    final seconds = duration.inSeconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
 
   // Dynamic element cache
   List<Map<String, dynamic>> get _currentElements {
+    List<Map<String, dynamic>> allElements;
     if (widget.config.modes != null &&
         _selectedModeKey != null &&
         widget.config.modes!.containsKey(_selectedModeKey)) {
-      return List<Map<String, dynamic>>.from(
+      allElements = List<Map<String, dynamic>>.from(
           widget.config.modes![_selectedModeKey]!["elements"] ?? []);
+    } else {
+      allElements = List<Map<String, dynamic>>.from(widget.config.elements ?? []);
     }
-    return List<Map<String, dynamic>>.from(widget.config.elements ?? []);
+    
+    // Filter elements based on selected model for animate_image
+    // ref_image and ref_video should only show for dreamid model
+    if (_isAnimateImageTool) {
+      final currentModelId = _selectedModelId ?? widget.config.model;
+      return allElements.where((e) {
+        final inputRef = e['input_ref'] as String?;
+        // Always show primary input/prompt and non-reference elements.
+        if (inputRef == null || inputRef == 'init_image' || inputRef == 'prompt') {
+          return true;
+        }
+        // Keep only one image uploader for DreamID:
+        // - init_image (relabeled by inputOverrides) + ref_video
+        // - hide explicit ref_image element to avoid duplicate image cards
+        if (inputRef == 'ref_image') {
+          return false;
+        }
+        if (inputRef == 'ref_video') {
+          return currentModelId == 'dreamid';
+        }
+        // Show all other elements (sliders, toggles, etc.)
+        return true;
+      }).toList();
+    }
+
+    // For video upscaler, keep enhancement controls only in Additional Settings.
+    if (_isVideoUpscalerTool) {
+      const hiddenMainRefs = <String>{
+        'enable_interpolation',
+        'target_fps',
+        'enable_upscaling',
+        'upscale_factor',
+        'postprocess_interpolate_first',
+      };
+      return allElements.where((e) {
+        final inputRef = e['input_ref'] as String?;
+        return inputRef == null || !hiddenMainRefs.contains(inputRef);
+      }).toList();
+    }
+    
+    return allElements;
   }
 
   bool get _hasPrompt => widget.config.inputs.any((i) => i['id'] == 'prompt');
@@ -914,6 +1069,8 @@ class _GenericToolPageState extends State<GenericToolPage>
     
     // Load styles and quick tags from config for OTA updates
     _loadStylesFromConfig();
+    // Load LoRA adapters from local config as fallback for selector metadata
+    _loadLoraAdaptersFromConfig();
     
     // Load user templates from local storage
     _loadUserTemplates();
@@ -935,11 +1092,47 @@ class _GenericToolPageState extends State<GenericToolPage>
     // This makes the "X slots free" hint update in real-time
     if (mounted) setState(() {});
   }
+
+  Future<void> _loadLoraAdaptersFromConfig() async {
+    try {
+      // Read from SharedPreferences cache (tool_config is fetched from CDN, not bundled as an asset)
+      final prefs = await SharedPreferences.getInstance();
+      final configStr = prefs.getString('cached_tool_config_v3');
+      if (configStr == null || configStr.isEmpty) {
+        debugPrint('⚠️ No cached tool_config found for LoRA adapters');
+        return;
+      }
+      final config = jsonDecode(configStr) as Map<String, dynamic>;
+      final capabilities = (config['capabilities'] as List<dynamic>?) ?? const [];
+      for (final cap in capabilities) {
+        final models = (cap as Map<String, dynamic>)['models'] as List<dynamic>? ?? const [];
+        for (final model in models) {
+          final modelMap = model as Map<String, dynamic>;
+          final modelId = modelMap['id']?.toString();
+          if (modelId == null || modelId.isEmpty) continue;
+          final adapters = (modelMap['loraAdapters'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList();
+          if (adapters != null && adapters.isNotEmpty) {
+            _loraAdaptersByModel[modelId] = adapters;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ Failed to load LoRA adapters fallback: $e');
+    }
+  }
   
-  /// Load styles and quick tags from tool_config.json for OTA updates
+  /// Load styles and quick tags from cached tool_config for OTA updates
   Future<void> _loadStylesFromConfig() async {
     try {
-      final configStr = await rootBundle.loadString('tool_config.json');
+      // Read from SharedPreferences cache (tool_config is fetched from CDN, not bundled as an asset)
+      final prefs = await SharedPreferences.getInstance();
+      final configStr = prefs.getString('cached_tool_config_v3');
+      if (configStr == null || configStr.isEmpty) {
+        debugPrint('⚠️ No cached tool_config found for styles/quick tags');
+        return;
+      }
       final config = jsonDecode(configStr) as Map<String, dynamic>;
       
       // Load style presets
@@ -1142,6 +1335,19 @@ class _GenericToolPageState extends State<GenericToolPage>
     // Video Duration: Only apply for video tools
     if (widget.config.outputType == 'video') {
       filtered = filtered.copyWith(videoDuration: templateSettings.videoDuration);
+      // Video upscale settings
+      filtered = filtered.copyWith(
+        enableInterpolate: templateSettings.enableInterpolate,
+        interpolateFps: templateSettings.interpolateFps,
+        enableUpscale: templateSettings.enableUpscale,
+        upscaleFactor: templateSettings.upscaleFactor,
+      );
+    }
+    
+    // LoRA adapter: Only apply for qwen_image_edit_2511_rapid_aio
+    final currentModel = _selectedModelId ?? widget.config.model;
+    if (currentModel == 'qwen_image_edit_2511_rapid_aio') {
+      filtered = filtered.copyWith(loraAdapter: templateSettings.loraAdapter);
     }
     
     // Bulk Edit: Only apply if supported (VIP only, and tool supports it)
@@ -1247,12 +1453,20 @@ class _GenericToolPageState extends State<GenericToolPage>
   /// Initialize the selected model from config
   void _initializeSelectedModel() {
     if (widget.config.models != null && widget.config.models!.isNotEmpty) {
-      // Use default model if specified, otherwise first model
+      // Filter to only enabled models
+      final enabledModels = widget.config.models!.where((m) {
+        final enabled = m['enabled'];
+        return enabled == null || enabled == true; // Default to enabled if not specified
+      }).toList();
+      
+      if (enabledModels.isEmpty) return;
+      
+      // Use default model if specified, otherwise first enabled model
       final defaultId = widget.config.defaultModel ?? widget.config.model;
       _selectedModelId = defaultId;
-      _selectedModelData = widget.config.models!.firstWhere(
-        (m) => m['id'] == defaultId,
-        orElse: () => widget.config.models!.first,
+      _selectedModelData = enabledModels.firstWhere(
+        (m) => m['id'] == defaultId && (m['enabled'] == null || m['enabled'] == true),
+        orElse: () => enabledModels.first,
       );
       
       // Clamp videoDuration to model's maxDuration if it's a video tool
@@ -1289,7 +1503,9 @@ class _GenericToolPageState extends State<GenericToolPage>
 
   /// Get the current model's cost
   int get _currentModelCost => 
-      _selectedModelData?['cost'] as int? ?? widget.config.cost;
+      _selectedModelData?['baseCost'] as int? ??
+      _selectedModelData?['cost'] as int? ??
+      widget.config.cost;
 
   /// Get the current model's upscale cost
   int get _currentModelUpscaleCost => 
@@ -1495,14 +1711,14 @@ class _GenericToolPageState extends State<GenericToolPage>
                             ),
                           ),
                         ] else ...[
-                          // Model Selector (only if multiple models available)
-                          if (widget.config.hasMultipleModels) ...[
-                            _buildModelSelector(cs, setSheetState),
-                            const SizedBox(height: 20),
-                          ],
-                          
-                          // Enhance Prompt Toggle (only for models with prompt)
-                          if (_hasPrompt) ...[
+                        // Model Selector (only if multiple models available)
+                        if (widget.config.hasMultipleModels) ...[
+                          _buildModelSelector(cs, setSheetState),
+                          const SizedBox(height: 20),
+                        ],
+                        
+                        // Enhance Prompt Toggle (only for models with prompt)
+                        if (_hasPrompt) ...[
                           _buildSettingToggle(
                             cs: cs,
                             icon: LucideIcons.sparkles,
@@ -1612,9 +1828,21 @@ class _GenericToolPageState extends State<GenericToolPage>
                           const SizedBox(height: 16),
                         ],
                         
-                        // Duration Slider (for video generation)
-                        if (widget.config.outputType == 'video') ...[
+                        // Duration Slider (for video generation, but not for video upscaler)
+                        if (widget.config.outputType == 'video' && !_isVideoUpscalerTool) ...[
                           _buildDurationSlider(cs, setSheetState),
+                          const SizedBox(height: 16),
+                        ],
+                        
+                        // Video enhancement settings (for all video tools, in Additional Settings)
+                        if (widget.config.outputType == 'video') ...[
+                          _buildVideoUpscaleSettings(cs, setSheetState),
+                          const SizedBox(height: 16),
+                        ],
+                        
+                        // LoRA Adapter Selector (only for qwen_image_edit_2511_rapid_aio)
+                        if ((_selectedModelId ?? widget.config.model) == 'qwen_image_edit_2511_rapid_aio') ...[
+                          _buildLoraAdapterSelector(cs, setSheetState),
                           const SizedBox(height: 16),
                         ],
                         ],
@@ -2131,12 +2359,14 @@ class _GenericToolPageState extends State<GenericToolPage>
   /// Build Duration slider for video generation
   Widget _buildDurationSlider(ColorScheme cs, StateSetter setSheetState) {
     // Get maxDuration from selected model config, default to 8
+    // Read directly from _selectedModelData to ensure we get the latest value
     final maxDuration = (_selectedModelData?['maxDuration'] as num?)?.toInt() ?? 8;
     final currentDuration = _advancedSettings.videoDuration.clamp(1, maxDuration);
-    // Use model ID as key to force rebuild when model changes
+    // Use model ID and maxDuration as key to force rebuild when model changes
     final modelId = _selectedModelId ?? widget.config.model;
     
     return Column(
+      key: ValueKey('duration_slider_container_${modelId}_$maxDuration'), // Force rebuild when model or maxDuration changes
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
@@ -2189,7 +2419,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             overlayColor: cs.primary.withOpacity(0.15),
           ),
           child: Slider(
-            key: ValueKey('duration_slider_$modelId'), // Force rebuild when model changes
+            key: ValueKey('duration_slider_${modelId}_$maxDuration'), // Force rebuild when model or maxDuration changes
             value: currentDuration.toDouble(),
             min: 1.0,
             max: maxDuration.toDouble(),
@@ -2198,12 +2428,354 @@ class _GenericToolPageState extends State<GenericToolPage>
               setSheetState(() {
                 setState(() {
                   _advancedSettings = _advancedSettings.copyWith(
-                    videoDuration: v.round(),
+                    videoDuration: v.round().clamp(1, maxDuration),
                   );
                 });
               });
             },
           ),
+        ),
+      ],
+    );
+  }
+
+  /// Build Video Upscale Settings (Interpolate and Upscale)
+  /// Build LoRA Adapter selector (only for qwen_image_edit_2511_rapid_aio)
+  Widget _buildLoraAdapterSelector(ColorScheme cs, StateSetter setSheetState) {
+    // Get LoRA adapter options from model config
+    final modelId = _selectedModelId ?? widget.config.model;
+    Map<String, dynamic> modelData = _selectedModelData ?? <String, dynamic>{};
+    
+    // If _selectedModelData is null, try to find model from config
+    if (modelData.isEmpty) {
+      modelData = widget.config.models?.firstWhere(
+        (m) => m['id'] == modelId,
+        orElse: () => <String, dynamic>{},
+      ) ?? <String, dynamic>{};
+    }
+    
+    var loraAdapters = (modelData['loraAdapters'] as List<dynamic>?)
+        ?.map((e) => e.toString())
+        .toList() ?? ['None'];
+    // Fallback from local tool_config metadata if model map misses loraAdapters
+    if (loraAdapters.length <= 1) {
+      loraAdapters = _loraAdaptersByModel[modelId] ?? loraAdapters;
+    }
+    if (loraAdapters.isEmpty) {
+      loraAdapters = ['None'];
+    }
+    final selected = loraAdapters.contains(_advancedSettings.loraAdapter)
+        ? _advancedSettings.loraAdapter
+        : loraAdapters.first;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: cs.outlineVariant.withOpacity(0.2),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(LucideIcons.sparkles, size: 16, color: cs.primary),
+              const SizedBox(width: 8),
+              Text(
+                'Mode',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: cs.onSurface,
+                ),
+              ),
+              const Spacer(),
+              // Show currently selected friendly name as a subtle badge
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: cs.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  _loraFriendlyNames[selected] ?? selected,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: cs.primary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          // Scrollable list of modes with friendly names + descriptions
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 260),
+            child: ListView.separated(
+              shrinkWrap: true,
+              padding: EdgeInsets.zero,
+              itemCount: loraAdapters.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 6),
+              itemBuilder: (context, index) {
+                final option = loraAdapters[index];
+                final isSelected = selected == option;
+                final friendlyName = _loraFriendlyNames[option] ?? option;
+                final description = _loraDescriptions[option];
+
+                return GestureDetector(
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    setSheetState(() {
+                      setState(() {
+                        _advancedSettings = _advancedSettings.copyWith(loraAdapter: option);
+                      });
+                    });
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? cs.primary.withOpacity(0.12)
+                          : cs.surfaceContainerHigh.withOpacity(0.5),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: isSelected
+                            ? cs.primary.withOpacity(0.5)
+                            : cs.outlineVariant.withOpacity(0.15),
+                        width: isSelected ? 1.5 : 1,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        // Selection indicator
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          width: 20,
+                          height: 20,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: isSelected ? cs.primary : Colors.transparent,
+                            border: Border.all(
+                              color: isSelected ? cs.primary : cs.outlineVariant.withOpacity(0.4),
+                              width: 2,
+                            ),
+                          ),
+                          child: isSelected
+                              ? const Icon(Icons.check, size: 12, color: Colors.white)
+                              : null,
+                        ),
+                        const SizedBox(width: 12),
+                        // Name + description
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                friendlyName,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                                  color: isSelected ? cs.primary : cs.onSurface,
+                                ),
+                              ),
+                              if (description != null) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  description,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: cs.onSurfaceVariant.withOpacity(0.6),
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildVideoUpscaleSettings(ColorScheme cs, StateSetter setSheetState) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Section header
+        Row(
+          children: [
+            Icon(LucideIcons.maximize2, size: 18, color: cs.onSurfaceVariant),
+            const SizedBox(width: 8),
+            Text(
+              'Video Enhancement',
+              style: TextStyle(
+                color: cs.onSurface,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        
+        // Interpolate Toggle
+        _buildSettingToggle(
+          cs: cs,
+          icon: LucideIcons.zap,
+          title: 'Frame Interpolation',
+          subtitle: 'Smooth motion by increasing FPS',
+          value: _advancedSettings.enableInterpolate,
+          onChanged: (v) {
+            setSheetState(() {
+              setState(() {
+                _advancedSettings = _advancedSettings.copyWith(enableInterpolate: v);
+              });
+            });
+          },
+        ),
+        
+        // Interpolate FPS Slider (shown when interpolate is enabled)
+        AnimatedSize(
+          duration: const Duration(milliseconds: 200),
+          child: _advancedSettings.enableInterpolate
+              ? Padding(
+                  padding: const EdgeInsets.only(top: 12, left: 8, right: 8),
+                  child: _buildSettingSlider(
+                    cs: cs,
+                    icon: LucideIcons.gauge,
+                    title: 'Target FPS',
+                    subtitle: 'Frames per second (16-60)',
+                    value: _advancedSettings.interpolateFps.toDouble().clamp(16, 60),
+                    min: 16,
+                    max: 60,
+                    divisions: 44, // 1 FPS increments (16-60 = 44 divisions)
+                    onChanged: (v) {
+                      setSheetState(() {
+                        setState(() {
+                          _advancedSettings = _advancedSettings.copyWith(
+                            interpolateFps: v.round().clamp(16, 60),
+                          );
+                        });
+                      });
+                    },
+                  ),
+                )
+              : const SizedBox.shrink(),
+        ),
+        
+        const SizedBox(height: 16),
+        
+        // Upscale Toggle (replicate image upscaler toggle style)
+        _buildSettingToggle(
+          cs: cs,
+          icon: LucideIcons.maximize2,
+          title: 'Upscale Video',
+          subtitle: () {
+            final extraCost = _currentModelUpscaleCost;
+            if (_isVideoUpscalerTool) {
+              return extraCost > 0
+                  ? 'Higher resolution result (+$extraCost credits)'
+                  : 'Higher resolution result';
+            }
+            if (isVipUser()) return 'Higher resolution result (FREE for VIP)';
+            if (extraCost > 0) {
+              return 'Higher resolution result (+$extraCost credits) - Free for VIP users';
+            }
+            return 'Higher resolution result';
+          }(),
+          value: _advancedSettings.enableUpscale,
+          locked: false,
+          onChanged: (v) {
+            setSheetState(() {
+              setState(() {
+                _advancedSettings = _advancedSettings.copyWith(enableUpscale: v);
+              });
+            });
+          },
+        ),
+        
+        // Upscale Factor Selector (shown when upscale is enabled)
+        AnimatedSize(
+          duration: const Duration(milliseconds: 200),
+          child: _advancedSettings.enableUpscale
+              ? Padding(
+                  padding: const EdgeInsets.only(top: 12, left: 8, right: 8),
+                  child: _buildVideoUpscaleFactorSelector(cs, setSheetState),
+                )
+              : const SizedBox.shrink(),
+        ),
+      ],
+    );
+  }
+
+  /// Build Video Upscale Factor Selector (2x, 4x)
+  Widget _buildVideoUpscaleFactorSelector(ColorScheme cs, StateSetter setSheetState) {
+    final factors = [2, 4];
+    final currentFactor = _advancedSettings.upscaleFactor.clamp(2, 4);
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Upscale Factor',
+          style: TextStyle(
+            color: cs.onSurfaceVariant,
+            fontSize: 12,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: factors.map((factor) {
+            final isSelected = currentFactor == factor;
+            return Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(right: factor < 4 ? 8 : 0),
+                child: GestureDetector(
+                  onTap: () {
+                    setSheetState(() {
+                      setState(() {
+                        _advancedSettings = _advancedSettings.copyWith(upscaleFactor: factor);
+                      });
+                    });
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color: isSelected ? cs.primary : cs.surfaceContainerHigh,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: isSelected ? cs.primary : cs.outlineVariant.withOpacity(0.3),
+                        width: isSelected ? 2 : 1,
+                      ),
+                    ),
+                    child: Center(
+                      child: Text(
+                        '${factor}x',
+                        style: TextStyle(
+                          color: isSelected ? cs.onPrimary : cs.onSurface,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
         ),
       ],
     );
@@ -2278,7 +2850,12 @@ class _GenericToolPageState extends State<GenericToolPage>
 
   /// Build model selector for advanced settings
   Widget _buildModelSelector(ColorScheme cs, StateSetter setSheetState) {
-    final models = widget.config.models ?? [];
+    final allModels = widget.config.models ?? [];
+    // Filter to only enabled models
+    final models = allModels.where((m) {
+      final enabled = m['enabled'];
+      return enabled == null || enabled == true; // Default to enabled if not specified
+    }).toList();
     if (models.isEmpty) return const SizedBox.shrink();
 
     return Column(
@@ -2514,6 +3091,11 @@ class _GenericToolPageState extends State<GenericToolPage>
     _glowAnimationController.dispose();
     isAdFreeNotifier.removeListener(_onAdFreeStatusChanged);
     jobListNotifier.removeListener(_onJobListChanged);
+    // Dispose all user video controllers
+    for (final controller in _userVideoControllers.values) {
+      controller.dispose();
+    }
+    _userVideoControllers.clear();
     super.dispose();
   }
 
@@ -2750,16 +3332,20 @@ class _GenericToolPageState extends State<GenericToolPage>
   // -------- Generate Button --------
   Widget _buildGenerateButton() {
     final cs = Theme.of(context).colorScheme;
-    final baseCost = widget.config.cost;
-    final upscaleCost = widget.config.costUpscale;
-    final offer = widget.config.offer;
-    final scaleFactor = _inputs["scale_factor"] ?? 1.0;
+    final offer = _currentModelOffer;
 
-    // Calculate costs
-    final int baseTotal = baseCost + ((scaleFactor > 1) ? upscaleCost : 0);
-    int totalCost = baseTotal;
-    if (offer > 0) {
-      totalCost = (baseTotal * (1 - offer / 100)).round();
+    // Use unified cost calculation (handles video upscaler duration-based pricing)
+    final int totalCost = _calculateTotalCost();
+    // Cost before discount (for strikethrough display)
+    int baseTotal;
+    if (_isVideoUpscalerTool && _inputVideoDuration != null && _inputVideoDuration!.inSeconds > 0) {
+      final units = (_inputVideoDuration!.inSeconds / 5).ceil().clamp(1, 10000);
+      baseTotal = _currentModelCost * units;
+    } else {
+      final scaleFactor = _inputs["scale_factor"] ?? 1.0;
+      final baseCost = _currentModelCost;
+      final upscaleCost = _currentModelUpscaleCost;
+      baseTotal = baseCost + ((scaleFactor > 1) ? upscaleCost : 0);
     }
 
     // Check if button should be enabled
@@ -2960,7 +3546,7 @@ class _GenericToolPageState extends State<GenericToolPage>
           ),
           
           // Upscale info badge (when upscale is enabled)
-          if (_upscaleEnabled && upscaleCost > 0)
+          if (_upscaleEnabled && _currentModelUpscaleCost > 0)
             Padding(
               padding: const EdgeInsets.only(top: 10),
               child: Row(
@@ -2973,7 +3559,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                   ),
                   const SizedBox(width: 6),
                   Text(
-                    "${_scaleFactor}x upscale (+$upscaleCost credits)",
+                    "${_scaleFactor}x upscale (+${_currentModelUpscaleCost} credits)",
                       style: TextStyle(
                       color: cs.onSurfaceVariant.withOpacity(0.7),
                       fontSize: 12,
@@ -3922,6 +4508,8 @@ class _GenericToolPageState extends State<GenericToolPage>
         return _buildPrompt(ref);
       case "image_upload":
         return _buildImageUpload(ref);
+      case "video_upload":
+        return _buildVideoUpload(ref);
       case "slider":
         return _buildSlider(ref);
       case "dropdown":
@@ -3991,11 +4579,11 @@ class _GenericToolPageState extends State<GenericToolPage>
                       color: KalaColors.purple.withOpacity(0.3),
                     ),
                   ),
-                  child: Row(
+                  child: const Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(LucideIcons.sparkles, size: 12, color: KalaColors.purple),
-                      const SizedBox(width: 4),
+                      SizedBox(width: 4),
                       Text(
                         'Browse Templates',
                         style: TextStyle(
@@ -4004,7 +4592,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                      const SizedBox(width: 2),
+                      SizedBox(width: 2),
                       Icon(LucideIcons.arrowRight, size: 10, color: KalaColors.purple),
                     ],
                   ),
@@ -4221,7 +4809,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                         color: KalaColors.purple.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(6),
                       ),
-                      child: Icon(
+                      child: const Icon(
                         LucideIcons.chevronDown,
                         size: 14,
                         color: KalaColors.purple,
@@ -4230,7 +4818,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                   ),
                   const SizedBox(width: 10),
                   // Title with icon
-                  Icon(LucideIcons.sparkle, size: 16, color: KalaColors.purple),
+                  const Icon(LucideIcons.sparkle, size: 16, color: KalaColors.purple),
                   const SizedBox(width: 6),
                   Text(
                     'Style & Tags',
@@ -4291,11 +4879,11 @@ class _GenericToolPageState extends State<GenericToolPage>
                             color: KalaColors.purple.withOpacity(0.3),
                           ),
                         ),
-                        child: Row(
+                        child: const Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(LucideIcons.shuffle, size: 12, color: KalaColors.purple),
-                            const SizedBox(width: 4),
+                            SizedBox(width: 4),
                             Text(
                               'Random',
                               style: TextStyle(
@@ -4943,9 +5531,61 @@ class _GenericToolPageState extends State<GenericToolPage>
     final isBulkMode = _advancedSettings.bulkEditEnabled && isVip;
     
     // Only show bulk mode option for tools that support it (have init_image input)
-    final showBulkOption = _supportsBulkEdit;
+    final showBulkOption = _supportsBulkEdit && ref == 'init_image';
+    final label = input["label"] ?? "Upload Image";
 
-    return _buildCard(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Section header for reference inputs (ref_image)
+        if (ref == 'ref_image') ...[
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: cs.primary.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    LucideIcons.image,
+                    size: 14,
+                    color: cs.primary,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: cs.onSurface,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: cs.primaryContainer.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    'Optional',
+                    style: TextStyle(
+                      color: cs.primary,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+        _buildCard(
       elevated: hasImage || _bulkImages.isNotEmpty,
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -4999,7 +5639,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             else
               GradientButton(
                 icon: LucideIcons.upload,
-                label: "Upload Image",
+                label: label,
                 onPressed: () => _pickImage(input),
                 variant: ButtonVariant.primary,
                 size: ButtonSize.medium,
@@ -5008,7 +5648,456 @@ class _GenericToolPageState extends State<GenericToolPage>
           ],
         ],
       ),
+        ),
+      ],
     );
+  }
+
+  /// Build video upload widget
+  Widget _buildVideoUpload(String ref) {
+    final cs = Theme.of(context).colorScheme;
+    final input = _effectiveInputConfig(ref);
+    final hasVideo = _inputs[ref] != null && _inputs[ref] is String && (_inputs[ref] as String).isNotEmpty;
+    final label = input["label"] ?? "Upload Video";
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Section header for reference inputs (ref_image, ref_video)
+        if (ref == 'ref_image' || ref == 'ref_video') ...[
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: cs.primary.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    ref == 'ref_image' ? LucideIcons.image : LucideIcons.video,
+                    size: 14,
+                    color: cs.primary,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: cs.onSurface,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: cs.primaryContainer.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    'Optional',
+                    style: TextStyle(
+                      color: cs.primary,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+        _buildCard(
+          elevated: hasVideo,
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildVideoPreview(ref),
+              const SizedBox(height: 16),
+              // Buttons row
+              if (hasVideo)
+                Row(
+                  children: [
+                    // Change video button
+                    Expanded(
+                      child: GradientButton(
+                        icon: LucideIcons.video,
+                        label: "Change",
+                        onPressed: () => _pickVideo(input),
+                        variant: ButtonVariant.primary,
+                        size: ButtonSize.medium,
+                        expanded: true,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    // Remove button
+                    GradientButton(
+                      icon: LucideIcons.trash2,
+                      label: "Remove",
+                      onPressed: () {
+                        setState(() {
+                          _inputs.remove(ref);
+                          _inputs.remove("${ref}_path");
+                        });
+                      },
+                      variant: ButtonVariant.secondary,
+                      size: ButtonSize.medium,
+                      expanded: false,
+                    ),
+                  ],
+                )
+              else
+                GradientButton(
+                  icon: LucideIcons.video,
+                  label: label,
+                  onPressed: () => _pickVideo(input),
+                  variant: ButtonVariant.primary,
+                  size: ButtonSize.medium,
+                  expanded: true,
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Build video preview widget
+  Widget _buildVideoPreview(String ref) {
+    final cs = Theme.of(context).colorScheme;
+    final videoPath = _inputs["${ref}_path"] as String?;
+    final hasVideo = videoPath != null && videoPath.isNotEmpty;
+
+    if (!hasVideo) {
+      return Container(
+        height: 200,
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHigh.withOpacity(0.5),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: cs.outlineVariant.withOpacity(0.2),
+            style: BorderStyle.solid,
+          ),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                LucideIcons.video,
+                size: 48,
+                color: cs.onSurfaceVariant.withOpacity(0.5),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'No video selected',
+                style: TextStyle(
+                  color: cs.onSurfaceVariant.withOpacity(0.7),
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final controller = _userVideoControllers[videoPath];
+    
+    return Container(
+      height: 200,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: cs.outlineVariant.withOpacity(0.2),
+        ),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: controller != null && _isVideoUpscalerTool
+            ? GestureDetector(
+                onTap: () {
+                  if (controller.value.isPlaying) {
+                    controller.pause();
+                  } else {
+                    controller.play();
+                  }
+                },
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    // Video player
+                    VideoPlayer(controller),
+                    // Play/Pause button overlay
+                    ValueListenableBuilder<VideoPlayerValue>(
+                      valueListenable: controller,
+                      builder: (context, value, child) {
+                        // Show overlay when paused, hide when playing
+                        final showOverlay = !value.isPlaying;
+                        return AnimatedOpacity(
+                          opacity: showOverlay ? 1.0 : 0.0,
+                          duration: const Duration(milliseconds: 200),
+                          child: Container(
+                            color: Colors.black.withOpacity(0.3),
+                            child: Center(
+                              child: Icon(
+                                value.isPlaying ? LucideIcons.pause : LucideIcons.play,
+                                size: 48,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              )
+            : Stack(
+                fit: StackFit.expand,
+                children: [
+                  // Video player
+                  if (controller != null)
+                    VideoPlayer(controller),
+                  // For non-upscaler tools, show static play icon (existing behavior)
+                  if (controller != null && !_isVideoUpscalerTool)
+                    Container(
+                      color: Colors.black.withOpacity(0.3),
+                      child: Center(
+                        child: Icon(
+                          LucideIcons.play,
+                          size: 48,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  /// Pick video from gallery or camera
+  Future<void> _pickVideo(Map<String, dynamic> input) async {
+    final cs = Theme.of(context).colorScheme;
+    try {
+      final source = await showModalBottomSheet<ImageSource>(
+        context: context,
+        backgroundColor: Colors.transparent,
+        isScrollControlled: true,
+        builder: (_) {
+          return Container(
+            decoration: BoxDecoration(
+              color: cs.surface,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.2),
+                  blurRadius: 20,
+                  offset: const Offset(0, -4),
+                ),
+              ],
+            ),
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Handle bar
+                    Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: cs.outlineVariant.withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    
+                    // Title
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: cs.primary.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Icon(
+                            LucideIcons.video,
+                            color: cs.primary,
+                            size: 22,
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Text(
+                          'Choose Video Source',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: cs.onSurface,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    
+                    // Options
+                    Row(
+                      children: [
+                        // Gallery option
+                        Expanded(
+                          child: _buildPickerOption(
+                            icon: LucideIcons.image,
+                            label: 'Gallery',
+                            sublabel: 'Choose from videos',
+                            color: cs.primary,
+                            onTap: () => Navigator.pop(context, ImageSource.gallery),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        
+                        // Camera option
+                        Expanded(
+                          child: _buildPickerOption(
+                            icon: LucideIcons.camera,
+                            label: 'Camera',
+                            sublabel: 'Record a new video',
+                            color: cs.secondary,
+                            onTap: () => Navigator.pop(context, ImageSource.camera),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      );
+
+      if (source == null) return;
+
+      final file = await picker.pickVideo(source: source);
+      if (file == null) return;
+
+      final videoPath = file.path;
+
+      // Initialize video player to get duration
+      final controller = VideoPlayerController.file(File(videoPath));
+      await controller.initialize();
+      final originalDuration = controller.value.duration;
+      
+      // For video upscaler: check maxDuration cap from tool_config.json (default 2 minutes = 120 seconds)
+      if (_isVideoUpscalerTool) {
+        // Get maxDuration from tool_config.json
+        final modelId = _selectedModelId ?? widget.config.model;
+        final modelData = widget.config.models?.firstWhere(
+          (m) => m['id'] == modelId,
+          orElse: () => <String, dynamic>{},
+        ) ?? <String, dynamic>{};
+        final maxDurationSeconds = (modelData['maxDuration'] as int?) ?? 120;
+        final maxDuration = Duration(seconds: maxDurationSeconds);
+        
+        if (originalDuration > maxDuration) {
+          // Warn user and ask to proceed with trimmed video
+          final shouldProceed = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Video Too Long'),
+              content: Text(
+                'Your video is ${_formatDuration(originalDuration)} long. '
+                'Only the first ${_formatDuration(maxDuration)} will be processed. '
+                'Do you want to continue?',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Continue'),
+                ),
+              ],
+            ),
+          );
+          
+          if (shouldProceed != true) {
+            await controller.dispose();
+            return;
+          }
+          
+          // Store the trimmed duration
+          _inputVideoDuration = maxDuration;
+        } else {
+          _inputVideoDuration = originalDuration;
+        }
+      } else {
+        _inputVideoDuration = originalDuration;
+      }
+      
+      // Read video bytes (for video upscaler, we'll use the full file path)
+      // The backend will handle trimming if needed
+      final videoBytes = await file.readAsBytes();
+      final base64Video = base64Encode(videoBytes);
+
+      // For video upscaler: disable looping and don't auto-play (user controls playback)
+      if (_isVideoUpscalerTool) {
+        controller.setLooping(false);
+      } else {
+        controller.setLooping(true);
+      }
+      controller.setVolume(0);
+
+      setState(() {
+        _inputs[input['id']] = base64Video;
+        _inputs["${input['id']}_path"] = videoPath;
+        _userVideoControllers[videoPath] = controller;
+        // Store duration for cost calculation and backend
+        if (_inputVideoDuration != null) {
+          final durationSeconds = _inputVideoDuration!.inSeconds;
+          _inputs["${input['id']}_duration"] = durationSeconds;
+          // Also store as video_duration for template resolution
+          if (_isVideoUpscalerTool) {
+            // Get maxDuration from tool_config.json (default 2 minutes = 120 seconds)
+            final modelId = _selectedModelId ?? widget.config.model;
+            final modelData = widget.config.models?.firstWhere(
+              (m) => m['id'] == modelId,
+              orElse: () => <String, dynamic>{},
+            ) ?? <String, dynamic>{};
+            final maxDurationSeconds = (modelData['maxDuration'] as int?) ?? 120;
+            final maxDuration = Duration(seconds: maxDurationSeconds);
+            
+            // Cap at maxDuration for backend
+            final actualDuration = _inputVideoDuration! > maxDuration 
+                ? maxDuration.inSeconds 
+                : durationSeconds;
+            _inputs["video_duration"] = actualDuration;
+          }
+        }
+      });
+
+      // Don't auto-play for video upscaler - let user control playback
+      if (!_isVideoUpscalerTool) {
+        controller.play();
+      }
+    } catch (e) {
+      debugPrint('❌ Error picking video: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error picking video: $e')),
+        );
+      }
+    }
   }
 
   /// Build the mode switch between Single Image and Bulk Edit
@@ -5885,6 +6974,18 @@ class _GenericToolPageState extends State<GenericToolPage>
     final cs = Theme.of(context).colorScheme;
     final input = widget.config.inputs
         .firstWhere((i) => i["id"] == ref, orElse: () => {});
+    
+    // Check showWhen condition
+    final showWhen = input["showWhen"] as Map<String, dynamic>?;
+    if (showWhen != null) {
+      final conditionKey = showWhen.keys.first;
+      final conditionValue = showWhen[conditionKey];
+      final actualValue = _inputs[conditionKey];
+      if (actualValue != conditionValue) {
+        return const SizedBox.shrink();
+      }
+    }
+    
     final label = input["label"] ?? ref;
     _inputs[ref] ??= input["default"] ?? input["min"] ?? 1.0;
     final minVal = (input["min"] as num?)?.toDouble() ?? 0;
@@ -5997,6 +7098,17 @@ class _GenericToolPageState extends State<GenericToolPage>
     if (showForModels != null && showForModels.isNotEmpty) {
       final currentModel = _selectedModelId ?? widget.config.model;
       if (!showForModels.contains(currentModel)) {
+        return const SizedBox.shrink();
+      }
+    }
+    
+    // Check showWhen condition
+    final showWhen = input["showWhen"] as Map<String, dynamic>?;
+    if (showWhen != null) {
+      final conditionKey = showWhen.keys.first;
+      final conditionValue = showWhen[conditionKey];
+      final actualValue = _inputs[conditionKey];
+      if (actualValue != conditionValue) {
         return const SizedBox.shrink();
       }
     }
@@ -6427,8 +7539,12 @@ class _GenericToolPageState extends State<GenericToolPage>
         widget.config.model;
     
     // Check upscale status
-    final isUpscaled = _advancedSettings.upscaleOutput;
-    final scaleFactor = _scaleFactor;
+    final isUpscaled = (_isVideoUpscalerTool || _isVideoTool)
+        ? _advancedSettings.enableUpscale
+        : _advancedSettings.upscaleOutput;
+    final scaleFactor = (_isVideoUpscalerTool || _isVideoTool)
+        ? _advancedSettings.upscaleFactor
+        : _scaleFactor;
     final variations = _advancedSettings.variations;
     
     return Padding(
@@ -6473,6 +7589,14 @@ class _GenericToolPageState extends State<GenericToolPage>
                       highlight: isUpscaled,
                       isPositive: isUpscaled,
                     ),
+                    // Frame interpolation chip (for video tools)
+                    if (_isVideoTool && _advancedSettings.enableInterpolate)
+                      _buildSummaryChip(
+                        cs,
+                        icon: LucideIcons.zap,
+                        label: '${_advancedSettings.interpolateFps} FPS',
+                        highlight: true,
+                      ),
                     // Variations (if > 1)
                     if (variations > 1)
                       _buildSummaryChip(
@@ -6551,7 +7675,9 @@ class _GenericToolPageState extends State<GenericToolPage>
     final variations = _advancedSettings.variations.clamp(1, getMaxVariations());
     
     // Check if upscale is enabled
-    final bool isUpscaled = _advancedSettings.upscaleOutput && _scaleFactor > 1;
+    final bool isUpscaled = _isVideoUpscalerTool
+        ? _advancedSettings.enableUpscale
+        : (_advancedSettings.upscaleOutput && _scaleFactor > 1);
     
     // VIP benefits
     final int imageCount = _advancedSettings.bulkEditEnabled && _bulkImages.isNotEmpty 
@@ -6565,8 +7691,14 @@ class _GenericToolPageState extends State<GenericToolPage>
     final totalCost = _calculateTotalCost();
     
     // Calculate cost before discount (for showing strikethrough if offer or VIP free upscale)
+    int totalBeforeDiscount;
+    if (_isVideoUpscalerTool && _inputVideoDuration != null && _inputVideoDuration!.inSeconds > 0) {
+      final units = (_inputVideoDuration!.inSeconds / 5).ceil().clamp(1, 10000);
+      totalBeforeDiscount = _currentModelCost * units;
+    } else {
     final baseCostPerVariation = _currentModelCost + (isUpscaled ? _currentModelUpscaleCost : 0);
-    final totalBeforeDiscount = baseCostPerVariation * variations * imageCount;
+      totalBeforeDiscount = baseCostPerVariation * variations * imageCount;
+    }
 
     // Check if button should be enabled
     final isEnabled = _areRequiredInputsFilled();
@@ -8209,6 +9341,11 @@ class _GenericToolPageState extends State<GenericToolPage>
         // Get model ID for model-specific handling
         final currentModelId = _selectedModelId ?? widget.config.model;
         
+        // LoRA adapter for qwen_image_edit_2511_rapid_aio
+        if (currentModelId == 'qwen_image_edit_2511_rapid_aio') {
+          resolvedParams['lora_adapter'] = _advancedSettings.loraAdapter;
+        }
+        
         // Calculate height/width based on aspect ratio selection
         // If "Default" - use image's original dimensions (already set from image inference above)
         // Otherwise - calculate based on selected aspect ratio
@@ -8245,22 +9382,22 @@ class _GenericToolPageState extends State<GenericToolPage>
               // DreamID uses "size" parameter in format "width*height" (string)
               final finalWidth = roundTo32(newWidth);
               final finalHeight = roundTo32(newHeight);
-              resolvedParams["size"] = "${finalWidth}*${finalHeight}";
+              resolvedParams["size"] = "$finalWidth*$finalHeight";
               // Remove height/width if they exist (DreamID doesn't use them)
               resolvedParams.remove("width");
               resolvedParams.remove("height");
-              debugPrint("🎬 DreamID: aspect ratio ${selectedRatio} → size=${finalWidth}*${finalHeight}");
+              debugPrint("🎬 DreamID: aspect ratio $selectedRatio → size=$finalWidth*$finalHeight");
             } else if (currentModelId == 'hunyan15_480p_i2V_step_distilled' || 
                        currentModelId == 'hunyan15_480p_t2V_distilled') {
               // Hunyuan models require dimensions rounded to 8
               resolvedParams["width"] = roundTo8(newWidth);
               resolvedParams["height"] = roundTo8(newHeight);
-              debugPrint("🎬 Hunyuan: aspect ratio ${selectedRatio} → ${roundTo8(newWidth)}x${roundTo8(newHeight)}");
+              debugPrint("🎬 Hunyuan: aspect ratio $selectedRatio → ${roundTo8(newWidth)}x${roundTo8(newHeight)}");
             } else {
               // Fastwan and other models use height and width (integers, rounded to 32)
-              resolvedParams["width"] = roundTo32(newWidth);
-              resolvedParams["height"] = roundTo32(newHeight);
-              debugPrint("📐 Model $currentModelId: aspect ratio ${selectedRatio} → ${roundTo32(newWidth)}x${roundTo32(newHeight)}");
+            resolvedParams["width"] = roundTo32(newWidth);
+            resolvedParams["height"] = roundTo32(newHeight);
+              debugPrint("📐 Model $currentModelId: aspect ratio $selectedRatio → ${roundTo32(newWidth)}x${roundTo32(newHeight)}");
             }
           }
         }
@@ -8276,36 +9413,41 @@ class _GenericToolPageState extends State<GenericToolPage>
           // Custom mode params (only for single mode, bulk mode uses bulk_outpaint_configs)
           if (!isBulkEditEnabled) {
             // Single mode: set alignment and aspect_ratio in base params
-            resolvedParams["alignment"] = _inputs["alignment"] ?? "Middle";
-            resolvedParams["aspect_ratio"] = _inputs["aspect_ratio"] ?? "1:1";
-            
-            final bool isCustomMode = _inputs["is_custom"] == "true";
-            if (isCustomMode) {
-              resolvedParams["is_custom_mode"] = true;
-              resolvedParams["custom_scale"] = double.tryParse(_inputs["custom_scale"] ?? "0.7") ?? 0.7;
-              resolvedParams["norm_offset_x"] = double.tryParse(_inputs["norm_offset_x"] ?? "0") ?? 0.0;
-              resolvedParams["norm_offset_y"] = double.tryParse(_inputs["norm_offset_y"] ?? "0") ?? 0.0;
-              // Canvas and image dimensions for backend calculation
-              resolvedParams["canvas_width"] = double.tryParse(_inputs["canvas_width"] ?? "0");
-              resolvedParams["canvas_height"] = double.tryParse(_inputs["canvas_height"] ?? "0");
-              resolvedParams["image_width"] = double.tryParse(_inputs["image_width"] ?? "0");
-              resolvedParams["image_height"] = double.tryParse(_inputs["image_height"] ?? "0");
-              resolvedParams["image_left"] = double.tryParse(_inputs["image_left"] ?? "0");
-              resolvedParams["image_top"] = double.tryParse(_inputs["image_top"] ?? "0");
-            }
-            
-            debugPrint("🖼️ Outpaint params (single): alignment=${resolvedParams["alignment"]}, "
-                "aspect=${resolvedParams["aspect_ratio"]}, custom=$isCustomMode");
+          resolvedParams["alignment"] = _inputs["alignment"] ?? "Middle";
+          resolvedParams["aspect_ratio"] = _inputs["aspect_ratio"] ?? "1:1";
+          
+          final bool isCustomMode = _inputs["is_custom"] == "true";
+          if (isCustomMode) {
+            resolvedParams["is_custom_mode"] = true;
+            resolvedParams["custom_scale"] = double.tryParse(_inputs["custom_scale"] ?? "0.7") ?? 0.7;
+            resolvedParams["norm_offset_x"] = double.tryParse(_inputs["norm_offset_x"] ?? "0") ?? 0.0;
+            resolvedParams["norm_offset_y"] = double.tryParse(_inputs["norm_offset_y"] ?? "0") ?? 0.0;
+            // Canvas and image dimensions for backend calculation
+            resolvedParams["canvas_width"] = double.tryParse(_inputs["canvas_width"] ?? "0");
+            resolvedParams["canvas_height"] = double.tryParse(_inputs["canvas_height"] ?? "0");
+            resolvedParams["image_width"] = double.tryParse(_inputs["image_width"] ?? "0");
+            resolvedParams["image_height"] = double.tryParse(_inputs["image_height"] ?? "0");
+            resolvedParams["image_left"] = double.tryParse(_inputs["image_left"] ?? "0");
+            resolvedParams["image_top"] = double.tryParse(_inputs["image_top"] ?? "0");
+          }
+          
+          debugPrint("🖼️ Outpaint params (single): alignment=${resolvedParams["alignment"]}, "
+              "aspect=${resolvedParams["aspect_ratio"]}, custom=$isCustomMode");
           } else {
             // Bulk mode: don't set alignment/aspect_ratio in base params
             // They will be provided per-image in bulk_outpaint_configs
-            debugPrint("🖼️ Outpaint params (bulk): ${_bulkOutpaintConfigs.length} per-image configs will be sent");
+          debugPrint("🖼️ Outpaint params (bulk): ${_bulkOutpaintConfigs.length} per-image configs will be sent");
           }
         }
 
         // --- Build payload ---
         // Send ONE request with variations: N, server creates N jobs internally
         final modelId = _selectedModelId ?? widget.config.model;
+        
+        // LoRA adapter for qwen_image_edit_2511_rapid_aio
+        if (modelId == 'qwen_image_edit_2511_rapid_aio') {
+          resolvedParams['lora_adapter'] = _advancedSettings.loraAdapter;
+        }
         
         // Duration handling for video models
         if (widget.config.outputType == 'video') {
@@ -8333,6 +9475,60 @@ class _GenericToolPageState extends State<GenericToolPage>
             final frameNum = (duration * fps).round();
             resolvedParams["frame_num"] = frameNum;
             debugPrint("🎬 DreamID: duration=${duration}s, fps=$fps, frame_num=$frameNum");
+          }
+          
+          // Video upscale settings for generation models (not the dedicated video upscaler tool)
+          if (!_isVideoUpscalerTool) {
+            if (_advancedSettings.enableInterpolate) {
+              resolvedParams["enable_rife"] = true;
+              resolvedParams["rife_target_fps"] = _advancedSettings.interpolateFps;
+            } else {
+              resolvedParams["enable_rife"] = false;
+            }
+
+            if (_advancedSettings.enableUpscale) {
+              resolvedParams["enable_upscaling"] = true;
+              resolvedParams["upscale_factor"] = _advancedSettings.upscaleFactor;
+            } else {
+              resolvedParams["enable_upscaling"] = false;
+            }
+          }
+        }
+        
+        // Video upscaler tool: map Additional Settings directly to backend params
+        if (_isVideoUpscalerTool) {
+          resolvedParams['enable_interpolation'] = _advancedSettings.enableInterpolate;
+          resolvedParams['target_fps'] = _advancedSettings.interpolateFps.clamp(16, 60);
+          resolvedParams['enable_upscaling'] = _advancedSettings.enableUpscale;
+          if (_advancedSettings.enableUpscale) {
+            resolvedParams['upscale_factor'] = _advancedSettings.upscaleFactor;
+          } else {
+            resolvedParams.remove('upscale_factor');
+          }
+          // User should not control this; keep deterministic backend behavior.
+          resolvedParams['postprocess_interpolate_first'] = false;
+
+          // Add video duration for backend cost calculation
+          if (_inputVideoDuration != null) {
+            // Get maxDuration from tool_config.json (default to 2 minutes = 120 seconds)
+            final modelId = _selectedModelId ?? widget.config.model;
+            final modelData = widget.config.models?.firstWhere(
+              (m) => m['id'] == modelId,
+              orElse: () => <String, dynamic>{},
+            ) ?? <String, dynamic>{};
+            final maxDurationSeconds = (modelData['maxDuration'] as int?) ?? 120;
+            final maxDuration = Duration(seconds: maxDurationSeconds);
+            
+            // Send actual video duration in seconds (capped at maxDuration)
+            final actualDuration = _inputVideoDuration! > maxDuration 
+                ? maxDuration 
+                : _inputVideoDuration!;
+            resolvedParams['video_duration'] = actualDuration.inSeconds;
+            
+            // Also send max_duration_seconds if video was trimmed
+            if (_inputVideoDuration! > maxDuration) {
+              resolvedParams['max_duration_seconds'] = maxDuration.inSeconds;
+            }
           }
         }
         

@@ -111,8 +111,7 @@ class ResultManagerPage extends StatefulWidget {
   State<ResultManagerPage> createState() => _ResultManagerPageState();
 }
 
-class _ResultManagerPageState extends State<ResultManagerPage>
-    with WidgetsBindingObserver {
+class _ResultManagerPageState extends State<ResultManagerPage> {
   // Multi-select state
   bool _isSelectionMode = false;
   final Set<String> _selectedJobIds = <String>{};
@@ -130,7 +129,6 @@ class _ResultManagerPageState extends State<ResultManagerPage>
   void initState() {
     super.initState();
     isResultManagerOpen = true;
-    WidgetsBinding.instance.addObserver(this);
     _refreshJobs();
     _markAllCompletedAsSeen();
     _loadBannerPreference();
@@ -218,16 +216,8 @@ class _ResultManagerPageState extends State<ResultManagerPage>
   @override
   void dispose() {
     _searchController.dispose();
-    WidgetsBinding.instance.removeObserver(this);
     isResultManagerOpen = false;
     super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _refreshJobs();
-    }
   }
 
   Future<void> _refreshJobs() async {
@@ -882,6 +872,7 @@ class _ResultManagerPageState extends State<ResultManagerPage>
                     physics: const AlwaysScrollableScrollPhysics(),
                     itemCount: filteredJobs.length,
                     itemBuilder: (_, i) => JobCard(
+                      key: ValueKey(filteredJobs[i].jobId),
                       job: filteredJobs[i],
                       isSelectionMode: _isSelectionMode,
                       isSelected: _selectedJobIds.contains(filteredJobs[i].jobId),
@@ -1143,13 +1134,19 @@ class _JobCardState extends State<JobCard> {
       }
 
       try {
-        await precacheImage(FileImage(file), context);
+        // Only precache images, not videos
+        if (!savedPath.toLowerCase().endsWith('.mp4') && 
+            !savedPath.toLowerCase().endsWith('.mov')) {
+          await precacheImage(FileImage(file), context);
+        }
       } catch (_) {}
 
+      // Directly mutate widget.job so the current State sees the update immediately
       widget.job.localFilePath = savedPath;
       await addOrUpdateJob(widget.job);
       await saveJobsToPrefs();
 
+      // Force ValueListenableBuilder rebuild to update thumbnail
       jobListNotifier.value = List<JobModel>.from(jobListNotifier.value);
     }
     // Note: Error snackbars are handled by FileService with debouncing
@@ -1472,19 +1469,160 @@ class _JobCardState extends State<JobCard> {
   }
 
   // ✅ Thumbnail widget - uses cached thumbnails for large images
+  //
+  // Three visual states:
+  //  1. Processing       → blurred input + shimmer  (or animated gradient if no input)
+  //  2. Completed, not   → blurred input, no shimmer (or static gradient icon)
+  //     yet downloaded
+  //  3. Downloaded        → actual result thumbnail  (CachedThumbnail / text icon)
+  //
+  // "Downloaded" = localFilePath != null.  We intentionally do NOT use
+  // File.existsSync() to gate this branch because gallery paths on Android 11+
+  // may become inaccessible after the initial save due to scoped storage.
   Widget _buildThumbnail(ColorScheme cs) {
-    final fileExists = widget.job.localFilePath != null &&
+    final isDownloaded = widget.job.localFilePath != null &&
+        widget.job.localFilePath!.isNotEmpty;
+    final fileAccessible = isDownloaded &&
         File(widget.job.localFilePath!).existsSync();
     final isProcessing = widget.job.status == 'processing';
     final jobCategory = _getJobCategory(widget.job);
     
     // Check if file is a text file (text output type or text file extension)
     final isTextFile = jobCategory == 'text' || 
-                       (fileExists && _isTextFile(widget.job.localFilePath!));
+                       (isDownloaded && _isTextFile(widget.job.localFilePath!));
+    
+    // Decide which content to render inside the thumbnail box
+    Widget thumbnailContent;
+    // Check if the saved file is a video by extension
+    final isVideoFile = isDownloaded && 
+        (widget.job.localFilePath!.toLowerCase().endsWith('.mp4') ||
+         widget.job.localFilePath!.toLowerCase().endsWith('.mov') ||
+         widget.job.localFilePath!.toLowerCase().endsWith('.avi'));
+    
+    if (isDownloaded && !isTextFile) {
+      if (fileAccessible && !isVideoFile) {
+        // Image file on disk → use Flutter's native Image.file for reliable decoding
+        thumbnailContent = Stack(
+          key: ValueKey('thumb_${widget.job.localFilePath}'),
+          fit: StackFit.expand,
+          children: [
+            Image.file(
+              File(widget.job.localFilePath!),
+              width: 58,
+              height: 58,
+              fit: BoxFit.cover,
+              cacheWidth: 174, // 58 * 3 for high-DPI; only set width to preserve aspect ratio
+              gaplessPlayback: true,
+              filterQuality: FilterQuality.medium,
+              errorBuilder: (context, error, stackTrace) {
+                debugPrint('❌ Thumbnail image error: $error');
+                return Container(
+                  color: cs.surfaceContainerHigh,
+                  child: Icon(
+                    Icons.image_not_supported_outlined,
+                    size: 20,
+                    color: cs.onSurfaceVariant.withOpacity(0.5),
+                  ),
+                );
+              },
+            ),
+            // Subtle gradient overlay for depth
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.transparent,
+                      Colors.black.withOpacity(0.05),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      } else if (fileAccessible && isVideoFile) {
+        // Video file on disk → generate thumbnail from video
+        thumbnailContent = Stack(
+          key: ValueKey('video_thumb_${widget.job.localFilePath}'),
+          fit: StackFit.expand,
+          children: [
+            CachedThumbnail(
+              key: ValueKey(widget.job.localFilePath),
+              filePath: widget.job.localFilePath,
+              width: 58,
+              height: 58,
+              fit: BoxFit.cover,
+              thumbnailSize: 150,
+              errorWidget: Container(
+                color: cs.surfaceContainerHighest,
+                child: Center(
+                  child: Icon(
+                    Icons.videocam_rounded,
+                    color: cs.primary.withOpacity(0.7),
+                    size: 24,
+                  ),
+                ),
+              ),
+            ),
+            // Small video indicator badge
+            Positioned(
+              right: 2,
+              bottom: 2,
+              child: Container(
+                padding: const EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.6),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Icon(
+                  Icons.play_arrow_rounded,
+                  color: Colors.white,
+                  size: 10,
+                ),
+              ),
+            ),
+          ],
+        );
+      } else {
+        // Downloaded but file not directly accessible (scoped storage).
+        // Show a "saved" placeholder instead of blur.
+        thumbnailContent = Container(
+          key: const ValueKey('saved_placeholder'),
+          color: cs.surfaceContainerHighest,
+          child: Center(
+            child: Icon(
+              Icons.check_circle_rounded,
+              color: Colors.green.withOpacity(0.7),
+              size: 26,
+            ),
+          ),
+        );
+      }
+    } else if (isDownloaded && isTextFile) {
+      // Text file – show text icon
+      thumbnailContent = Container(
+        key: const ValueKey('text_placeholder'),
+        color: cs.surfaceContainerHighest,
+        child: Center(
+          child: Icon(
+            Icons.text_snippet_rounded,
+            color: cs.primary.withOpacity(0.7),
+            size: 24,
+          ),
+        ),
+      );
+    } else {
+      // Not downloaded yet → blur / processing placeholder
+      thumbnailContent = _buildBlurOrPlaceholder(cs);
+    }
 
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 350),
       child: _AnimatedProcessingBorder(
+        key: ValueKey('thumb_${widget.job.localFilePath ?? 'pending_${widget.job.status}'}'),
         isProcessing: isProcessing,
         jobCategory: jobCategory,
         child: Container(
@@ -1506,37 +1644,7 @@ class _JobCardState extends State<JobCard> {
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(11),
-            child: fileExists && !isTextFile
-                ? Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      CachedThumbnail(
-                        key: ValueKey(widget.job.localFilePath),
-                        filePath: widget.job.localFilePath,
-                        width: 58,
-                        height: 58,
-                        fit: BoxFit.cover,
-                        thumbnailSize: 150, // Generate 150px thumbnails for crisp display
-                        placeholder: _buildLoadingPlaceholder(cs),
-                      ),
-                      // Subtle gradient overlay for depth
-                      Positioned.fill(
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                Colors.transparent,
-                                Colors.black.withOpacity(0.05),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  )
-                : _buildBlurOrPlaceholder(cs),
+            child: thumbnailContent,
           ),
         ),
       ),
@@ -1558,7 +1666,7 @@ class _JobCardState extends State<JobCard> {
       return 'video';
     } else if (output == 'audio' || model.contains('audio') || model.contains('tts')) {
       return 'audio';
-    } else if (output == 'text' || model.contains('ocr') || model.contains('text')) {
+    } else if (output == 'text' || model.contains('ocr')) {
       return 'text';
     } else if (model.contains('upscale') || model.contains('enhance')) {
       return 'enhance';
@@ -1568,32 +1676,6 @@ class _JobCardState extends State<JobCard> {
     return 'image';
   }
   
-  Widget _buildLoadingPlaceholder(ColorScheme cs) {
-    return Container(
-      width: 58,
-      height: 58,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            cs.surfaceContainerHigh,
-            cs.surfaceContainerHighest,
-          ],
-        ),
-      ),
-      child: Center(
-        child: SizedBox(
-          width: 18,
-          height: 18,
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            color: cs.primary.withOpacity(0.5),
-          ),
-        ),
-      ),
-    );
-  }
 
   Widget _buildBlurOrPlaceholder(ColorScheme cs) {
     final job = widget.job;
@@ -1605,6 +1687,11 @@ class _JobCardState extends State<JobCard> {
     final jobCategory = _getJobCategory(job);
 
     // For jobs WITH input image (image-to-image, image-to-video, etc.)
+    // The blur stays until the result is downloaded (localFilePath exists).
+    // _buildThumbnail already shows CachedThumbnail when localFilePath exists,
+    // so this branch only runs for NOT-YET-DOWNLOADED jobs.
+    // • Processing  → blur + shimmer/glow
+    // • Completed (not downloaded) → blur only (no shimmer)
     if (inputExists) {
       return Stack(
         key: const ValueKey('blurred'),
@@ -2057,6 +2144,7 @@ class _AnimatedProcessingBorder extends StatefulWidget {
   final Widget child;
   
   const _AnimatedProcessingBorder({
+    super.key,
     required this.isProcessing,
     required this.jobCategory,
     required this.child,

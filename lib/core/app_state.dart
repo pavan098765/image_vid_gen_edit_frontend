@@ -556,7 +556,7 @@ Future<bool> applyPendingFcmUpdatesFromFile() async {
     }
     
     // Small delay to ensure any in-flight background writes complete
-    await Future.delayed(const Duration(milliseconds: 100));
+    await Future.delayed(const Duration(milliseconds: 30));
     
     final content = await file.readAsString();
     if (content.isEmpty || content == '[]') {
@@ -600,7 +600,7 @@ Future<bool> applyPendingFcmUpdatesFromFile() async {
     
     // Multiple reload attempts to ensure we have fresh data
     await prefs.reload();
-    await Future.delayed(const Duration(milliseconds: 50));
+    await Future.delayed(const Duration(milliseconds: 20));
     await prefs.reload();
     
     final jsonStr = prefs.getString('jobs');
