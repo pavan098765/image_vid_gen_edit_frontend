@@ -132,8 +132,8 @@
         "preview_type": "video",
         "badges": ["🔥 Trending", "Video"],
         "capability": "animate_image",
-        "model": "fastwan_22_5b",
-        "preferred_model": "fastwan_22_5b",
+        "model": "wan_22_uint4_lightx2v_i2v",
+        "preferred_model": "wan_22_uint4_lightx2v_i2v",
         "job_config": {
           "prompt": "Natural subtle motion, gentle head movement, blinking eyes, soft breathing, cinematic quality",
           "scale_factor": 1
@@ -297,8 +297,8 @@
         "preview_type": "video",
         "badges": ["🎬 Pro"],
         "capability": "create_video",
-        "model": "fastwan_22_5b",
-        "preferred_model": "fastwan_22_5b",
+        "model": "wan_22_uint4_lightx2v_i2v",
+        "preferred_model": "wan_22_uint4_lightx2v_i2v",
         "show_prompt": true,
         "prompt_placeholder": "Describe your cinematic scene...",
         "job_config": {
@@ -383,8 +383,8 @@
         "preview_type": "video",
         "badges": ["🎬 Cinematic"],
         "capability": "animate_image",
-        "model": "fastwan_22_5b",
-        "preferred_model": "fastwan_22_5b",
+        "model": "wan_22_uint4_lightx2v_i2v",
+        "preferred_model": "wan_22_uint4_lightx2v_i2v",
         "job_config": {
           "prompt": "Slow motion cinematic movement, dramatic pause, hair flowing gracefully, fabric rippling, particles floating, time frozen moment, ultra smooth motion",
           "scale_factor": 1
@@ -561,11 +561,11 @@
         },
         {
           "id": "sdxl",
-          "name": "IMAGIA",
+          "name": "Imagia",
           "description": "Versatile, classic quality",
-          "cost": 10,
+          "cost": 8,
           "costUpscale": 5,
-          "offer": 20,
+          "offer": 0,
           "enabled": true,
           "params": {
             "sample_steps": "{{sample_steps}}",
@@ -573,8 +573,7 @@
             "sampler": "DPMSolverMultistep",
             "strength": "1.0",
             "scale_image": true,
-            "scale_factor": "{{scale_factor}}",
-            "seed": "random"
+            "scale_factor": "{{scale_factor}}"
           },
           "rootParams": {
             "prompt": "{{prompt}}"
@@ -626,7 +625,6 @@
           "params": {
             "steps": 28,
             "guidance_scale": 3.0,
-            "seed": "random",
             "negative_prompt": "blurry, distorted, lowres",
             "init_image": "{{init_image}}",
             "scale_image": true,
@@ -647,7 +645,6 @@
           "params": {
             "num_inference_steps": 8,
             "cfg_scale": 3.0,
-            "seed": "random",
             "init_image": "{{init_image}}",
             "scale_image": true,
             "scale_factor": "{{scale_factor}}"
@@ -699,6 +696,23 @@
               "max": 3
             }
           },
+          "loraAdapters": [
+            "None",
+            "Consistance",
+            "Semirealistic-photo-detailer",
+            "AnyPose",
+            "Any2Real_2601",
+            "Hyperrealistic-Portrait",
+            "Ultrarealistic-Portrait",
+            "BFS-Best-FaceSwap-merge",
+            "F2P",
+            "Multiple-Angles",
+            "Light-Restoration",
+            "Relight",
+            "Edit-Skin",
+            "Next-Scene",
+            "Flat-Log"
+          ],
           "params": {
             "guidance_scale": 1.0,
             "num_inference_steps": 4,
@@ -763,7 +777,7 @@
         {
           "id": "basic_utils",
           "name": "Object Eraser",
-          "description": "Smart fill, seamless repair",
+          "description": "Fast Generation, Smart Fill",
           "cost": 10,
           "costUpscale": 5,
           "offer": 0,
@@ -778,7 +792,7 @@
         },
         {
           "id": "sdxl_inpaint",
-          "name": "IMAGIA Inpaint",
+          "name": "Imagia Inpaint",
           "description": "AI-powered content fill with prompt",
           "cost": 15,
           "costUpscale": 5,
@@ -854,49 +868,20 @@
       "icon": "video",
       "accent": "#F59E0B",
       "outputType": "video",
-      "defaultModel": "fastwan_22_5b",
+      "defaultModel": "wan_22_uint4_lightx2v_t2v",
       "models": [
-        {
-          "id": "fastwan_22_5b",
-          "name": "CineMotion 2",
-          "description": "Higher quality, more detail",
-          "cost": 10,
-          "costUpscale": 5,
-          "offer": 0,
-          "enabled": false,
-          "maxDuration": 8,
-          "params": {
-            "steps": 8,
-            "guidance_scale": 0.0,
-            "seed": 42,
-            "randomize_seed": true,
-            "height": 896,
-            "width": 896,
-            "negative_prompt": "blurry, distorted, lowres",
-            "output_dir": "./outputs",
-            "scale_image": true,
-            "scale_factor": "{{scale_factor}}",
-            "duration_seconds": 5,
-            "fps": 24,
-            "mode": "t2v"
-          },
-          "rootParams": {
-            "prompt": "{{prompt}}"
-          }
-        },
         {
           "id": "fastwan_21_1b",
           "name": "CineMotion",
           "description": "Fast generation, creative motion",
-          "cost": 10,
+          "cost": 15,
           "costUpscale": 5,
           "offer": 0,
           "enabled": true,
-          "maxDuration": 8,
+          "maxDuration": 5,
           "params": {
             "steps": 8,
             "guidance_scale": 0.0,
-            "seed": 42,
             "randomize_seed": true,
             "height": 896,
             "width": 896,
@@ -913,24 +898,26 @@
         },
         {
           "id": "hunyan15_480p_t2V_distilled",
-          "name": "MotionFlow Pro",
-          "description": "Text to video, 480p step distilled",
-          "cost": 10,
+          "name": "MotionFlow",
+          "description": "High visual quality and motion coherence",
+          "cost": 15,
           "costUpscale": 5,
           "offer": 0,
           "enabled": true,
-          "maxDuration": 10,
+          "maxDuration": 8,
           "params": {
             "num_inference_steps": 50,
-            "seed": 42,
             "randomize_seed": true,
             "height": 512,
             "width": 768,
             "output_dir": "./outputs",
-            "scale_image": true,
-            "scale_factor": "{{scale_factor}}",
             "fps": 24,
-            "num_frames": 121
+            "num_frames": 121,
+            "enable_rife": false,
+            "rife_target_fps": 30,
+            "enable_upscaling": false,
+            "upscale_factor": 2,
+            "postprocess_interpolate_first": false
           },
           "rootParams": {
             "prompt": "{{prompt}}"
@@ -938,8 +925,8 @@
         },
         {
           "id": "wan_22_uint4_lightx2v_t2v",
-          "name": "Cinemotion Pro T2V",
-          "description": "High quality text-to-video.",
+          "name": "Cinemotion Pro",
+          "description": "Cinematic-level Aesthetics.",
           "cost": 15,
           "costUpscale": 5,
           "offer": 0,
@@ -950,6 +937,7 @@
             "guidance_scale": 1.0,
             "guidance_scale_2": 1.0,
             "randomize_seed": true,
+	          "mode":"t2v",
             "height": 480,
             "width": 832,           
             "output_dir": "./outputs",
@@ -996,40 +984,11 @@
       "icon": "film",
       "accent": "#F59E0B",
       "outputType": "video",
-      "defaultModel": "fastwan_22_5b",
+      "defaultModel": "wan_22_uint4_lightx2v_i2v",
       "models": [
         {
-          "id": "fastwan_22_5b",
-          "name": "CineMotion 2",
-          "description": "Smooth animation, high quality",
-          "cost": 10,
-          "costUpscale": 5,
-          "offer": 0,
-          "enabled": false,
-          "maxDuration": 8,
-          "params": {
-            "steps": 8,
-            "guidance_scale": 0.0,
-            "seed": 42,
-            "randomize_seed": true,
-            "height": 896,
-            "width": 896,
-            "negative_prompt": "blurry, distorted, lowres",
-            "output_dir": "./outputs",
-            "scale_image": true,
-            "scale_factor": "{{scale_factor}}",
-            "duration_seconds": 5,
-            "fps": 24,
-            "init_image": "{{init_image}}",
-            "mode": "i2v"
-          },
-          "rootParams": {
-            "prompt": "{{prompt}}"
-          }
-        },
-        {
           "id": "wan_22_uint4_lightx2v_i2v",
-          "name": "Cinemotion Pro I2V",
+          "name": "Cinemotion Pro",
           "description": "High quality image-to-video.",
           "cost": 15,
           "costUpscale": 5,
@@ -1039,7 +998,7 @@
           "params": {
             "num_inference_steps": 8,
             "guidance_scale": 1.0,
-            "seed": 42,
+	          "mode":"i2v",
             "randomize_seed": true,
             "resize_image": true,
             "output_dir": "./outputs",
@@ -1057,24 +1016,24 @@
         {
           "id": "hunyan15_480p_i2V_step_distilled",
           "name": "AnimateFlow",
-          "description": "Image to video, 480p step distilled",
-          "cost": 10,
+          "description": "Smooth, high-quality motion for vivid videos",
+          "cost": 15,
           "costUpscale": 5,
           "offer": 0,
           "enabled": true,
           "maxDuration": 10,
           "params": {
             "num_inference_steps": 12,
-            "seed": 42,
             "randomize_seed": true,
-            "height": 480,
-            "width": 768,
             "output_dir": "./outputs",
-            "scale_image": true,
-            "scale_factor": "{{scale_factor}}",
             "fps": 24,
             "init_image": "{{init_image}}",
-            "num_frames": 121
+            "num_frames": 121,
+            "enable_rife": false,
+            "rife_target_fps": 30,
+            "enable_upscaling": false,
+            "upscale_factor": 2,
+            "postprocess_interpolate_first": false
           },
           "rootParams": {
             "prompt": "{{prompt}}"
@@ -1083,12 +1042,12 @@
         {
           "id": "dreamid",
           "name": "RefMotion",
-          "description": "Image text to video with reference image and video",
-          "cost": 10,
+          "description": "Create videos from text with reference image/video.",
+          "cost": 15,
           "costUpscale": 5,
           "offer": 0,
           "enabled": true,
-          "maxDuration": 8,
+          "maxDuration": 5,
           "inputOverrides": {
             "init_image": {
               "id": "ref_image",
@@ -1190,7 +1149,7 @@
           "id": "diffusers_outpaint",
           "name": "Scene Expander",
           "description": "AI-powered outpainting",
-          "cost": 10,
+          "cost": 8,
           "costUpscale": 5,
           "offer": 10,
           "enabled": true,
@@ -1276,7 +1235,7 @@
           "id": "basic_utils",
           "name": "Background Remover",
           "description": "Instant cutout, clean edges",
-          "cost": 10,
+          "cost": 5,
           "costUpscale": 5,
           "offer": 0,
           "enabled": true,
@@ -1328,7 +1287,7 @@
           "id": "aurasrv2",
           "name": "Ultra Enhance",
           "description": "Best quality, crisp details",
-          "cost": 10,
+          "cost": 8,
           "costUpscale": 5,
           "offer": 0,
           "enabled": true,
@@ -1341,7 +1300,7 @@
           "id": "swin2sr",
           "name": "Sharp Refine",
           "description": "Edge sharpening, clarity",
-          "cost": 10,
+          "cost": 5,
           "costUpscale": 5,
           "offer": 0,
           "enabled": true,
@@ -1353,8 +1312,8 @@
         {
           "id": "realesrgan",
           "name": "PhotoBoost",
-          "description": "Photo realism, natural look",
-          "cost": 10,
+          "description": "Fast, Good Quality Upscaling",
+          "cost": 5,
           "costUpscale": 5,
           "offer": 0,
           "enabled": true,
@@ -1372,7 +1331,7 @@
           "id": "realesrgan_anime",
           "name": "PhotoBoost Anime",
           "description": "Optimized for anime & illustrations",
-          "cost": 10,
+          "cost": 5,
           "costUpscale": 5,
           "offer": 0,
           "enabled": true,
@@ -1389,8 +1348,8 @@
         {
           "id": "realesrgan_face",
           "name": "PhotoBoost Face",
-          "description": "Enhanced face restoration with GFPGAN",
-          "cost": 12,
+          "description": "Enhanced face restoration",
+          "cost": 5,
           "costUpscale": 5,
           "offer": 0,
           "enabled": true,
@@ -1408,7 +1367,7 @@
           "id": "realesrgan_denoise",
           "name": "PhotoBoost Denoise",
           "description": "Upscale with noise reduction",
-          "cost": 10,
+          "cost": 5,
           "costUpscale": 5,
           "offer": 0,
           "enabled": true,
@@ -1426,8 +1385,8 @@
         {
           "id": "face_enhancer",
           "name": "Face Enhancer",
-          "description": "GFPGAN face enhancement with upscaling",
-          "cost": 10,
+          "description": "Face enhancement with upscaling",
+          "cost": 5,
           "costUpscale": 5,
           "offer": 0,
           "enabled": true,
@@ -1492,10 +1451,11 @@
           "name": "Video Enhancer",
           "description": "Upscale resolution and interpolate frames",
           "cost": 0,
-          "baseCost": 0,
+          "baseCost": 3,
           "costUpscale": 0,
           "offer": 0,
           "enabled": true,
+          "maxDuration": 120,
           "params": {
             "input_video": "{{input_video}}",
             "video_duration": "{{video_duration}}",
@@ -1503,7 +1463,6 @@
             "target_fps": "{{target_fps}}",
             "enable_upscaling": "{{enable_upscaling}}",
             "upscale_factor": "{{upscale_factor}}",
-            "postprocess_interpolate_first": "{{postprocess_interpolate_first}}",
             "output_dir": "./outputs"
           },
           "rootParams": {
@@ -1524,7 +1483,7 @@
           "id": "enable_interpolation",
           "type": "toggle",
           "label": "Frame Interpolation",
-          "description": "Increase frame rate using RIFE (up to 60fps)",
+          "description": "Increase frame rate using AI (up to 60fps)",
           "default": false
         },
         {
@@ -1532,7 +1491,7 @@
           "type": "slider",
           "label": "Target FPS",
           "description": "Target frame rate for interpolation (max 60)",
-          "min": 15,
+          "min": 16,
           "max": 60,
           "default": 30,
           "showWhen": {
@@ -1543,7 +1502,7 @@
           "id": "enable_upscaling",
           "type": "toggle",
           "label": "Upscale Resolution",
-          "description": "Increase video resolution using Real-ESRGAN",
+          "description": "Increase video resolution upto 4k!",
           "default": false
         },
         {
@@ -1558,13 +1517,6 @@
           "showWhen": {
             "enable_upscaling": true
           }
-        },
-        {
-          "id": "postprocess_interpolate_first",
-          "type": "toggle",
-          "label": "Interpolate First",
-          "description": "If enabled, interpolate frames before upscaling (may cause errors). If disabled, upscale first then interpolate (recommended)",
-          "default": false
         }
       ],
       "elements": [
@@ -1589,18 +1541,14 @@
           "input_ref": "upscale_factor"
         },
         {
-          "type": "toggle",
-          "input_ref": "postprocess_interpolate_first"
-        },
-        {
           "type": "generate_button"
         }
       ]
     },
     {
       "id": "glm_ocr",
-      "name": "OCR Text Recognition",
-      "description": "Extract text from images using GLM OCR",
+      "name": "Extract Text",
+      "description": "Extract text from images",
       "icon": "file-text",
       "accent": "#10B981",
       "outputType": "text",

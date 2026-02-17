@@ -1333,11 +1333,9 @@ class _ExploreAIPageState extends State<ExploreAIPage>
                 outputType: capability['outputType'] as String? ?? 'image',
                 cost: defaultModel?.cost ?? 10,
                 costUpscale: defaultModel?.costUpscale ?? 5,
-                models: models.map((m) => {
-                  'id': m.id, 'name': m.name, 'description': m.description,
-                  'cost': m.cost, 'costUpscale': m.costUpscale, 'params': m.params,
-                  'rootParams': m.rootParams, 'inputOverrides': m.inputOverrides,
-                }).toList(),
+                // Use toJson() to pass ALL model fields (baseCost, offer,
+                // maxDuration, enabled, loraAdapters, etc.) through to GenericToolPage.
+                models: models.map((m) => m.toJson()).toList(),
                 defaultModel: defaultModelId ?? '',
               ),
             ),
@@ -2455,6 +2453,52 @@ class _TemplateConfigSheet extends StatefulWidget {
 }
 
 class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
+
+  // ── Friendly display names for LoRA adapters ──
+  static const Map<String, String> _loraFriendlyNames = {
+    'None': 'None',
+    'Consistance': 'Consistency',
+    'Semirealistic-photo-detailer': 'Photo Detailer',
+    'AnyPose': 'Pose Transfer',
+    'Any2Real_2601': 'Any to Realistic',
+    'Hyperrealistic-Portrait': 'Hyper Portrait',
+    'Ultrarealistic-Portrait': 'Ultra Portrait',
+    'BFS-Best-FaceSwap': 'Face Swap',
+    'BFS-Best-FaceSwap-merge': 'Face Swap Blend',
+    'F2P': 'Face to Photo',
+    'Multiple-Angles': 'Multi-Angle View',
+    'Light-Restoration': 'Light Restore',
+    'Relight': 'Relight',
+    'Multi-Angle-Lighting': 'Multi-Angle Light',
+    'Edit-Skin': 'Skin Editor',
+    'Next-Scene': 'Next Scene',
+    'Flat-Log': 'Flat / Log',
+    'Upscale-Image': 'Upscale Image',
+    'Upscale2K': 'Upscale 2K',
+  };
+
+  static const Map<String, String> _loraDescriptions = {
+    'None': 'Standard edit — no special mode',
+    'Consistance': 'Keep character identity consistent',
+    'Semirealistic-photo-detailer': 'Enhance photo with fine details',
+    'AnyPose': 'Change pose while keeping identity',
+    'Any2Real_2601': 'Convert any style to realistic photo',
+    'Hyperrealistic-Portrait': 'Hyper-detailed portrait output',
+    'Ultrarealistic-Portrait': 'Ultra-realistic portrait style',
+    'BFS-Best-FaceSwap': 'Swap faces between images',
+    'BFS-Best-FaceSwap-merge': 'Blend swapped face seamlessly',
+    'F2P': 'Generate full photo from a face',
+    'Multiple-Angles': 'Generate multiple angle views',
+    'Light-Restoration': 'Restore and fix lighting',
+    'Relight': 'Re-light the scene creatively',
+    'Multi-Angle-Lighting': 'Adjust lighting from multiple angles',
+    'Edit-Skin': 'Enhance and retouch skin texture',
+    'Next-Scene': 'Generate a continuation scene',
+    'Flat-Log': 'Apply flat / log color grading',
+    'Upscale-Image': 'Increase image resolution',
+    'Upscale2K': 'Upscale to 2K resolution',
+  };
+
   late String? _selectedModelId;
   late int _scaleFactor;
   late bool _upscaleEnabled;
@@ -3343,28 +3387,11 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
 
   /// Build LoRA Adapter selector (only for qwen_image_edit_2511_rapid_aio)
   Widget _buildLoraAdapterSelector(ColorScheme cs) {
-    // LoRA adapter options with user-friendly names
-    final loraOptions = [
-      'None',
-      'Consistance',
-      'Semirealistic-photo-detailer',
-      'AnyPose',
-      'Any2Real_2601',
-      'Hyperrealistic-Portrait',
-      'Ultrarealistic-Portrait',
-      'BFS-Best-FaceSwap',
-      'BFS-Best-FaceSwap-merge',
-      'F2P',
-      'Multiple-Angles',
-      'Light-Restoration',
-      'Relight',
-      'Multi-Angle-Lighting',
-      'Edit-Skin',
-      'Next-Scene',
-      'Flat-Log',
-      'Upscale-Image',
-      'Upscale2K',
-    ];
+    // Get LoRA adapter options from model config
+    final modelData = _selectedModel ?? <String, dynamic>{};
+    final loraAdapters = (modelData['loraAdapters'] as List<dynamic>?)
+        ?.map((e) => e.toString())
+        .toList() ?? ['None'];
     
     return Container(
       padding: const EdgeInsets.all(12),
@@ -3383,47 +3410,117 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
               Icon(LucideIcons.sparkles, size: 16, color: cs.primary),
               const SizedBox(width: 8),
               Text(
-                'LoRA Adapter',
+                'Mode',
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
                   color: cs.onSurface,
                 ),
               ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: cs.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  _loraFriendlyNames[_loraAdapter] ?? _loraAdapter,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: cs.primary,
+                  ),
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: loraOptions.map((option) {
-              final isSelected = _loraAdapter == option;
-              return GestureDetector(
-                onTap: () {
-                  HapticFeedback.lightImpact();
-                  setState(() => _loraAdapter = option);
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: isSelected ? cs.primary : cs.surfaceContainerHigh,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: isSelected ? cs.primary : cs.outlineVariant.withValues(alpha: 0.3),
-                      width: isSelected ? 2 : 1,
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 260),
+            child: ListView.separated(
+              shrinkWrap: true,
+              padding: EdgeInsets.zero,
+              itemCount: loraAdapters.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 6),
+              itemBuilder: (context, index) {
+                final option = loraAdapters[index];
+                final isSelected = _loraAdapter == option;
+                final friendlyName = _loraFriendlyNames[option] ?? option;
+                final description = _loraDescriptions[option];
+
+                return GestureDetector(
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    setState(() => _loraAdapter = option);
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? cs.primary.withValues(alpha: 0.12)
+                          : cs.surfaceContainerHigh.withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: isSelected
+                            ? cs.primary.withValues(alpha: 0.5)
+                            : cs.outlineVariant.withValues(alpha: 0.15),
+                        width: isSelected ? 1.5 : 1,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          width: 20,
+                          height: 20,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: isSelected ? cs.primary : Colors.transparent,
+                            border: Border.all(
+                              color: isSelected ? cs.primary : cs.outlineVariant.withValues(alpha: 0.4),
+                              width: 2,
+                            ),
+                          ),
+                          child: isSelected
+                              ? const Icon(Icons.check, size: 12, color: Colors.white)
+                              : null,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                friendlyName,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                                  color: isSelected ? cs.primary : cs.onSurface,
+                                ),
+                              ),
+                              if (description != null) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  description,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: cs.onSurfaceVariant.withValues(alpha: 0.6),
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  child: Text(
-                    option,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                      color: isSelected ? cs.onPrimary : cs.onSurface,
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
+                );
+              },
+            ),
           ),
         ],
       ),
@@ -3521,10 +3618,10 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
                 ),
                 Expanded(
                   child: Slider(
-                    value: _interpolateFps.toDouble().clamp(24, 60),
-                    min: 24,
+                    value: _interpolateFps.toDouble().clamp(16, 60),
+                    min: 16,
                     max: 60,
-                    divisions: 36,
+                    divisions: 44,
                     onChanged: (v) {
                       setState(() => _interpolateFps = v.round());
                     },
@@ -4926,10 +5023,6 @@ class _CategoryTemplatesPageState extends State<_CategoryTemplatesPage> {
         if (result.enableInterpolate) {
           modelParams['enable_rife'] = true;
           modelParams['rife_target_fps'] = result.interpolateFps;
-          // postprocess_interpolate_first: if both are enabled, interpolate first then upscale
-          if (result.enableUpscale) {
-            modelParams['postprocess_interpolate_first'] = true;
-          }
         } else {
           modelParams['enable_rife'] = false;
         }

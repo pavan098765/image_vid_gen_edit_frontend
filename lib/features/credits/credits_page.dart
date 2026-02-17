@@ -114,7 +114,12 @@ class _CreditsPageState extends State<CreditsPage> {
       final status = _purchaseService.statusNotifier.value;
       final productId = _purchaseService.currentPurchaseProductId;
       if (status == IAPState.completed) {
-        _showPurchaseSuccessSnackBar(productId: productId);
+        // Skip generic snackbar for VIP and ad-free purchases (they have dedicated handlers)
+        final isVip = kVipProductIds.contains(productId);
+        final isAdFree = productId == kRemoveAdsProductId;
+        if (!isVip && !isAdFree) {
+          _showPurchaseSuccessSnackBar(productId: productId);
+        }
       } else if (status == IAPState.failed) {
         _showPurchaseErrorSnackBar(_purchaseService.errorNotifier.value, productId: productId);
       }

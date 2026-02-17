@@ -223,10 +223,29 @@ class FileService {
         );
       }
 
-      // ✅ Compute correct save path
-      final Directory baseDir = Directory('/storage/emulated/0/Pictures');
-      final saveDir = Directory('${baseDir.path}/$subfolder');
-      final filePath = '${saveDir.path}/$fileName';
+      // ✅ ALWAYS create a local app-documents copy for reliable thumbnail/preview access.
+      // Gallery paths (e.g. /storage/emulated/0/Pictures/) are unreliable on Android 11+
+      // due to scoped storage — File.existsSync() may return true right after Gal.put*
+      // but false on subsequent checks. The app-documents copy is always accessible.
+      String resolvedPath;
+      try {
+        final appDir = await getApplicationDocumentsDirectory();
+        final cacheDir = Directory('${appDir.path}/saved_results');
+        if (!await cacheDir.exists()) {
+          await cacheDir.create(recursive: true);
+        }
+        final localPath = '${cacheDir.path}/$fileName';
+        final localFile = File(localPath);
+        await localFile.writeAsBytes(bytes, flush: true);
+        resolvedPath = localPath;
+        debugPrint('📦 Local saved copy created: $resolvedPath');
+      } catch (e) {
+        debugPrint('⚠️ Failed to create local saved copy: $e');
+        // Fall back to computed gallery path (may not be accessible)
+        final Directory baseDir = Directory('/storage/emulated/0/Pictures');
+        final saveDir = Directory('${baseDir.path}/$subfolder');
+        resolvedPath = '${saveDir.path}/$fileName';
+      }
 
       if (context.mounted && showPreview) {
         // For video files, generate thumbnail if not provided
@@ -265,11 +284,11 @@ class FileService {
           }
         }
         
-        _showSavedBottomSheet(context, bytes, filePath, finalPreviewBytes);
+        _showSavedBottomSheet(context, bytes, resolvedPath, finalPreviewBytes);
       }
 
-      debugPrint('✅ Saved file: $filePath');
-      return filePath;
+      debugPrint('✅ Saved file: $resolvedPath');
+      return resolvedPath;
     } catch (e) {
       debugPrint('❌ Save error: $e');
       return null;
@@ -826,7 +845,17 @@ class FileService {
 
         if (savedPath != null) {
           final jobs = List<JobModel>.from(jobListNotifier.value);
-          final idx = jobs.indexWhere((j) => j.downloadUrl == url);
+          // Try matching by downloadUrl first, then fall back to jobId (suggestedFileName).
+          // Signed URLs change frequently (refreshes, FCM updates), so URL matching
+          // can silently fail — causing the saved file to never link to its job.
+          var idx = jobs.indexWhere((j) => j.downloadUrl == url);
+          if (idx == -1 && suggestedFileName != null && suggestedFileName.isNotEmpty) {
+            // suggestedFileName is typically the jobId
+            idx = jobs.indexWhere((j) => j.jobId == suggestedFileName);
+            if (idx != -1) {
+              debugPrint("📸 URL match failed, matched by jobId instead: $suggestedFileName");
+            }
+          }
           if (idx != -1) {
             final job = jobs[idx];
             job.localFilePath = savedPath;
@@ -834,6 +863,8 @@ class FileService {
             jobListNotifier.value = jobs;
             await saveJobsToPrefs();
             debugPrint("📸 Linked downloaded file to job ${job.jobId}");
+          } else {
+            debugPrint("⚠️ Could not link downloaded file to any job (url: $url, suggested: $suggestedFileName)");
           }
           return savedPath;
         }
