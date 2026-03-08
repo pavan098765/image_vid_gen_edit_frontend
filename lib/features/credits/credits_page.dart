@@ -308,6 +308,7 @@ class _CreditsPageState extends State<CreditsPage> {
   
   Future<void> _checkSpinEligibility() async {
     if (!_authService.isSignedIn) {
+      if (!mounted) return;
       setState(() {
         _isCheckingSpinEligibility = false;
         _canSpin = false;
@@ -315,6 +316,7 @@ class _CreditsPageState extends State<CreditsPage> {
       return;
     }
     
+    if (!mounted) return;
     setState(() => _isCheckingSpinEligibility = true);
     
     try {
@@ -407,6 +409,7 @@ class _CreditsPageState extends State<CreditsPage> {
   
   Future<void> _checkAdEligibility() async {
     if (!_authService.isSignedIn) {
+      if (!mounted) return;
       setState(() {
         _isCheckingAdEligibility = false;
         _adStatus = null;
@@ -414,6 +417,7 @@ class _CreditsPageState extends State<CreditsPage> {
       return;
     }
     
+    if (!mounted) return;
     setState(() => _isCheckingAdEligibility = true);
     
     try {

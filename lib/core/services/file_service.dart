@@ -17,6 +17,7 @@ import 'package:video_player/video_player.dart';
 class FileService {
   static bool _isSaving = false;
   static String? _lastSavedHash;
+  static String? _lastSavedPath;
   static bool _cleanupStarted = false;
   static bool _isPreviewOpen = false;
   static final Map<String, String> _previewCache =
@@ -44,6 +45,7 @@ class FileService {
     String subfolder = 'Kala_AI',
     void Function(double progress)? onProgress,
     int maxRetries = 3,
+    String? outputType,
   }) async {
     // Prevent excessive queueing
     if (_downloadQueue.length >= _maxQueuedDownloads) {
@@ -63,6 +65,7 @@ class FileService {
       subfolder: subfolder,
       onProgress: onProgress,
       maxRetries: maxRetries,
+      outputType: outputType,
       completer: completer,
     );
     
@@ -112,6 +115,7 @@ class FileService {
         subfolder: task.subfolder,
         onProgress: task.onProgress,
         maxRetries: task.maxRetries,
+        outputType: task.outputType,
       ).then((result) async {
         task.completer.complete(result);
         _activeDownloads--;
@@ -140,7 +144,10 @@ class FileService {
 
   static Future<Directory> getTempDir() async => await getTemporaryDirectory();
 
-  /// 🚀 Save raw bytes (image/video) to the gallery.
+  /// 🚀 Save raw bytes (image/video/text) to the gallery or app-documents.
+  /// Text files are saved to app-documents only (not gallery).
+  /// Images/videos are saved to gallery, and localFilePath prefers the gallery
+  /// path so that deleting from gallery correctly resets the job state.
   static Future<String?> saveFile(
     BuildContext context,
     Uint8List bytes, {
@@ -152,8 +159,11 @@ class FileService {
   }) async {
     final currentHash = sha1.convert(bytes).toString();
 
-    if (currentHash == _lastSavedHash) {
-      debugPrint('⚠️ Skipping duplicate save (same content)');
+    // Only skip if same content AND the previously saved file still exists on disk
+    if (currentHash == _lastSavedHash &&
+        _lastSavedPath != null &&
+        File(_lastSavedPath!).existsSync()) {
+      debugPrint('⚠️ Skipping duplicate save (same content, file still exists at $_lastSavedPath)');
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('File already saved!')),
@@ -171,6 +181,49 @@ class FileService {
     _lastSavedHash = currentHash;
 
     try {
+      String fileName = (customFileName != null &&
+              customFileName.toLowerCase().endsWith('.$extension'))
+          ? customFileName
+          : _normalizeFileName(customFileName ?? const Uuid().v4(),
+              defaultExt: extension);
+
+      // 🧩 Final sanity cleanup: if ".png.png" slipped in, fix it
+      fileName = fileName.replaceAll('.$extension.$extension', '.$extension');
+      debugPrint("File name to save: $fileName");
+
+      // =====================================================================
+      // TEXT FILES: Save to app-documents only (text files don't go to gallery)
+      // =====================================================================
+      if (_isTextExtension(extension)) {
+        String resolvedPath;
+        try {
+          final appDir = await getApplicationDocumentsDirectory();
+          final cacheDir = Directory('${appDir.path}/saved_results');
+          if (!await cacheDir.exists()) {
+            await cacheDir.create(recursive: true);
+          }
+          final localPath = '${cacheDir.path}/$fileName';
+          final localFile = File(localPath);
+          await localFile.writeAsBytes(bytes, flush: true);
+          resolvedPath = localPath;
+          debugPrint('📦 Text file saved to app-documents: $resolvedPath');
+        } catch (e) {
+          debugPrint('❌ Failed to save text file: $e');
+          return null;
+        }
+
+        if (context.mounted && showPreview) {
+          _showSavedBottomSheet(context, bytes, resolvedPath, null);
+        }
+
+        debugPrint('✅ Saved text file: $resolvedPath');
+        _lastSavedPath = resolvedPath;
+        return resolvedPath;
+      }
+
+      // =====================================================================
+      // IMAGES & VIDEOS: Save to gallery, prefer gallery path for localFilePath
+      // =====================================================================
       final hasPermission = await Gal.requestAccess();
       if (!hasPermission) {
         debugPrint('❌ Gallery access not granted.');
@@ -181,16 +234,6 @@ class FileService {
         }
         return null;
       }
-
-      String fileName = (customFileName != null &&
-              customFileName.toLowerCase().endsWith('.$extension'))
-          ? customFileName
-          : _normalizeFileName(customFileName ?? const Uuid().v4(),
-              defaultExt: extension);
-
-      // 🧩 Final sanity cleanup: if ".png.png" slipped in, fix it
-      fileName = fileName.replaceAll('.$extension.$extension', '.$extension');
-      debugPrint("File name to save: $fileName");
 
       // ✅ Strip extension before passing to Gal (it auto-adds one for images)
       final galName = fileName.replaceAll(RegExp('\\.$extension\$'), '');
@@ -223,28 +266,54 @@ class FileService {
         );
       }
 
-      // ✅ ALWAYS create a local app-documents copy for reliable thumbnail/preview access.
-      // Gallery paths (e.g. /storage/emulated/0/Pictures/) are unreliable on Android 11+
-      // due to scoped storage — File.existsSync() may return true right after Gal.put*
-      // but false on subsequent checks. The app-documents copy is always accessible.
+      // ✅ Resolve saved file path.
+      // PRIORITY: Use gallery path if accessible (so deleting from gallery resets the job).
+      // FALLBACK: Create app-documents copy only when gallery path is inaccessible
+      //           (e.g. Android 11+ scoped storage edge cases).
       String resolvedPath;
-      try {
-        final appDir = await getApplicationDocumentsDirectory();
-        final cacheDir = Directory('${appDir.path}/saved_results');
-        if (!await cacheDir.exists()) {
-          await cacheDir.create(recursive: true);
+      
+      // Wait briefly for gallery filesystem sync
+      await Future.delayed(const Duration(milliseconds: 300));
+      
+      // Try candidate gallery paths
+      final candidatePaths = [
+        '/storage/emulated/0/Pictures/$subfolder/$fileName',
+        '/storage/emulated/0/DCIM/$subfolder/$fileName',
+        '/storage/emulated/0/Movies/$subfolder/$fileName',
+      ];
+      
+      String? galleryPath;
+      for (final candidate in candidatePaths) {
+        if (File(candidate).existsSync()) {
+          galleryPath = candidate;
+          break;
         }
-        final localPath = '${cacheDir.path}/$fileName';
-        final localFile = File(localPath);
-        await localFile.writeAsBytes(bytes, flush: true);
-        resolvedPath = localPath;
-        debugPrint('📦 Local saved copy created: $resolvedPath');
-      } catch (e) {
-        debugPrint('⚠️ Failed to create local saved copy: $e');
-        // Fall back to computed gallery path (may not be accessible)
-        final Directory baseDir = Directory('/storage/emulated/0/Pictures');
-        final saveDir = Directory('${baseDir.path}/$subfolder');
-        resolvedPath = '${saveDir.path}/$fileName';
+      }
+      
+      if (galleryPath != null) {
+        // Gallery path is accessible — use it directly.
+        // When user deletes from gallery, File.existsSync() will return false
+        // and the stale-path cleanup in JobCard.build() will reset the job.
+        resolvedPath = galleryPath;
+        debugPrint('✅ Using gallery path: $resolvedPath');
+      } else {
+        // Gallery path not accessible (Android 11+ scoped storage) — create app-docs copy
+        try {
+          final appDir = await getApplicationDocumentsDirectory();
+          final cacheDir = Directory('${appDir.path}/saved_results');
+          if (!await cacheDir.exists()) {
+            await cacheDir.create(recursive: true);
+          }
+          final localPath = '${cacheDir.path}/$fileName';
+          final localFile = File(localPath);
+          await localFile.writeAsBytes(bytes, flush: true);
+          resolvedPath = localPath;
+          debugPrint('📦 Gallery path inaccessible, using app-documents copy: $resolvedPath');
+        } catch (e) {
+          debugPrint('⚠️ Failed to create local saved copy: $e');
+          // Last resort: computed gallery path (may not be accessible)
+          resolvedPath = '/storage/emulated/0/Pictures/$subfolder/$fileName';
+        }
       }
 
       if (context.mounted && showPreview) {
@@ -284,10 +353,19 @@ class FileService {
           }
         }
         
-        _showSavedBottomSheet(context, bytes, resolvedPath, finalPreviewBytes);
+        // Only show preview if context is still mounted
+        if (context.mounted && showPreview) {
+          try {
+            _showSavedBottomSheet(context, bytes, resolvedPath, finalPreviewBytes);
+          } catch (e) {
+            // Context may have become invalid - file is still saved successfully
+            debugPrint('⚠️ Could not show save preview (context invalid): $e');
+          }
+        }
       }
 
       debugPrint('✅ Saved file: $resolvedPath');
+      _lastSavedPath = resolvedPath;
       return resolvedPath;
     } catch (e) {
       debugPrint('❌ Save error: $e');
@@ -665,13 +743,25 @@ class FileService {
     return "${prefix}_$formatted.$ext";
   }
 
-  static String _safeExtensionFromUrl(String url) {
+  static String _safeExtensionFromUrl(String url, {String? outputType}) {
     final uri = Uri.tryParse(url);
     final path = uri?.path ?? '';
     final ext = path.split('.').last.toLowerCase();
     if (ext.contains('png')) return 'png';
     if (ext.contains('jpg') || ext.contains('jpeg')) return 'jpg';
     if (ext.contains('mp4')) return 'mp4';
+    if (ext.contains('webp')) return 'webp';
+    if (ext.contains('txt') || ext.contains('text')) return 'txt';
+    if (ext.contains('json')) return 'json';
+    
+    // Fallback: use outputType from job metadata when URL extension is ambiguous
+    if (outputType != null) {
+      final ot = outputType.toLowerCase();
+      if (ot == 'text') return 'txt';
+      if (ot == 'video') return 'mp4';
+      if (ot == 'audio') return 'mp3';
+    }
+    
     return 'png';
   }
 
@@ -681,11 +771,28 @@ class FileService {
     return url.contains('/download/') && !url.contains('workers.dev');
   }
 
-  /// 🔍 Validate downloaded image/video content
+  /// 🔍 Check if extension is a text file type
+  static bool _isTextExtension(String ext) {
+    final e = ext.toLowerCase();
+    return e == 'txt' || e == 'json' || e == 'text';
+  }
+
+  /// 🔍 Validate downloaded image/video/text content
   static bool _isValidContent(Uint8List bytes, String extension) {
     if (bytes.isEmpty) {
       debugPrint('❌ Downloaded file is empty');
       return false;
+    }
+
+    // Text files: just check non-empty and decodable as UTF-8
+    if (_isTextExtension(extension)) {
+      try {
+        utf8.decode(bytes);
+        return true;
+      } catch (e) {
+        debugPrint('❌ Text file is not valid UTF-8: $e');
+        return false;
+      }
     }
 
     // Minimum file size check (blank/black images are usually very small)
@@ -745,7 +852,7 @@ class FileService {
     return true;
   }
 
-  /// 🧩 Download file (image/video) from [url] and save to gallery, with progress callback.
+  /// 🧩 Download file (image/video/text) from [url] and save to gallery/app-docs, with progress callback.
   /// Includes retry logic and content validation.
   static Future<String?> downloadFromUrl(
     BuildContext context,
@@ -754,6 +861,7 @@ class FileService {
     String subfolder = 'Kala_AI',
     void Function(double progress)? onProgress, // progress: 0.0 → 1.0
     int maxRetries = 3,
+    String? outputType,
   }) async {
     // 🔐 Safety check: reject old download endpoint URLs
     if (_isOldDownloadEndpoint(url)) {
@@ -767,7 +875,7 @@ class FileService {
     }
 
     final uri = Uri.parse(url);
-    final safeExt = _safeExtensionFromUrl(url);
+    final safeExt = _safeExtensionFromUrl(url, outputType: outputType);
     http.Client? client;
 
     for (int attempt = 0; attempt < maxRetries; attempt++) {
@@ -976,15 +1084,25 @@ class FileService {
     String filePath,
     Uint8List? previewBytes,
   ) {
-    final cs = Theme.of(context).colorScheme;
-    final isVideo = filePath.toLowerCase().endsWith(".mp4");
-    final fileName = filePath.split('/').last;
+    // Safety check: ensure context is still valid
+    if (!context.mounted) {
+      debugPrint('⚠️ Context not mounted, skipping save preview');
+      return;
+    }
+    
+    try {
+      final cs = Theme.of(context).colorScheme;
+      final isVideo = filePath.toLowerCase().endsWith(".mp4");
+      final fileName = filePath.split('/').last;
 
-    // Clear any existing snackbars to prevent stacking
-    ScaffoldMessenger.of(context).clearSnackBars();
+      // Clear any existing snackbars to prevent stacking
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars();
+      }
 
-    // Show a premium styled snackbar with preview
-    ScaffoldMessenger.of(context).showSnackBar(
+      // Show a premium styled snackbar with preview
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         duration: const Duration(seconds: 5),
         behavior: SnackBarBehavior.floating,
@@ -1168,6 +1286,10 @@ class FileService {
         ),
       ),
     );
+    } catch (e) {
+      // Context may have become invalid - this is OK, file is still saved
+      debugPrint('⚠️ Could not show save preview: $e');
+    }
   }
 }
 
@@ -2817,6 +2939,7 @@ class _DownloadTask {
   final String subfolder;
   final void Function(double progress)? onProgress;
   final int maxRetries;
+  final String? outputType;
   final Completer<String?> completer;
 
   _DownloadTask({
@@ -2826,6 +2949,7 @@ class _DownloadTask {
     required this.subfolder,
     this.onProgress,
     required this.maxRetries,
+    this.outputType,
     required this.completer,
   });
 }

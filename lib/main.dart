@@ -30,6 +30,7 @@ import 'features/credits/credits_page.dart';
 import 'features/settings/settings_page.dart';
 import 'features/result_manager/result_manager_page.dart'; // 🔹 NEW import
 import 'features/splash/splash_screen.dart'; // 🔹 Splash screen
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
 
 // Global navigator key
@@ -856,9 +857,12 @@ Future<void> main() async {
 
   // 🟢 Run the app IMMEDIATELY to show splash screen
   // Heavy initialization happens in the background while splash is visible
+  // ProviderScope is required for Riverpod (used by VideoEditorPage and its state)
   runApp(
-    const AppLifecycleHandler(
-      child: KalaAIApp(),
+    const ProviderScope(
+      child: AppLifecycleHandler(
+        child: KalaAIApp(),
+      ),
     ),
   );
 

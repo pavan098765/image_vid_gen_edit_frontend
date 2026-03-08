@@ -19,6 +19,65 @@ import 'package:shared_preferences/shared_preferences.dart';
 bool isResultManagerOpen = false;
 
 /// =============================================================================
+/// MODEL NAME HELPER
+/// =============================================================================
+/// Cache for model ID to friendly name mapping
+final Map<String, String> _modelNameCache = {};
+bool _modelNameCacheLoaded = false;
+
+/// Load model name cache from tool_config.json
+Future<void> _loadModelNameCache() async {
+  if (_modelNameCacheLoaded) return;
+  
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final configStr = prefs.getString('cached_tool_config_v3');
+    if (configStr == null || configStr.isEmpty) {
+      _modelNameCacheLoaded = true; // Mark as loaded even if empty to avoid retries
+      return;
+    }
+    
+    final config = jsonDecode(configStr) as Map<String, dynamic>;
+    final capabilities = config['capabilities'] as List<dynamic>?;
+    
+    if (capabilities == null) {
+      _modelNameCacheLoaded = true;
+      return;
+    }
+    
+    // Search through all capabilities and their models
+    for (final cap in capabilities) {
+      final models = cap['models'] as List<dynamic>?;
+      if (models == null) continue;
+      
+      for (final model in models) {
+        final id = model['id'] as String?;
+        final name = model['name'] as String?;
+        if (id != null && name != null && name.isNotEmpty) {
+          _modelNameCache[id] = name;
+        }
+      }
+    }
+    
+    _modelNameCacheLoaded = true;
+    debugPrint('✅ Loaded ${_modelNameCache.length} model names from config');
+  } catch (e) {
+    debugPrint('⚠️ Failed to load model name cache: $e');
+    _modelNameCacheLoaded = true; // Mark as loaded to avoid infinite retries
+  }
+}
+
+/// Get friendly model name from model ID (uses cache)
+String _getFriendlyModelName(String modelId) {
+  if (modelId.isEmpty || modelId == 'unknown') {
+    return modelId;
+  }
+  
+  // Return cached name if available
+  return _modelNameCache[modelId] ?? modelId;
+}
+
+/// =============================================================================
 /// SHARED ANIMATION CONTROLLER FOR PROCESSING JOBS
 /// =============================================================================
 /// Single controller shared across all processing job previews to minimize
@@ -133,6 +192,7 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
     _markAllCompletedAsSeen();
     _loadBannerPreference();
     _prefetchDownloadUrls(); // Pre-fetch URLs in background
+    _loadModelNameCache(); // Load model name cache for friendly names
 
     SharedPreferences.getInstance().then((prefs) async {
       await prefs.reload();
@@ -1104,6 +1164,7 @@ class _JobCardState extends State<JobCard> {
         downloadUrl,
         suggestedFileName: widget.job.jobId,
         maxRetries: 2,
+        outputType: widget.job.outputType,
         onProgress: (progress) {
           if (mounted) {
             setState(() => _downloadProgress = progress);
@@ -1134,9 +1195,13 @@ class _JobCardState extends State<JobCard> {
       }
 
       try {
-        // Only precache images, not videos
-        if (!savedPath.toLowerCase().endsWith('.mp4') && 
-            !savedPath.toLowerCase().endsWith('.mov')) {
+        // Only precache images, not videos or text files
+        final lp = savedPath.toLowerCase();
+        if (!lp.endsWith('.mp4') && 
+            !lp.endsWith('.mov') &&
+            !lp.endsWith('.txt') &&
+            !lp.endsWith('.json') &&
+            !lp.endsWith('.text')) {
           await precacheImage(FileImage(file), context);
         }
       } catch (_) {}
@@ -1165,6 +1230,20 @@ class _JobCardState extends State<JobCard> {
     final textTheme = Theme.of(context).textTheme;
     final job = widget.job;
     
+    // Clear stale localFilePath if file was deleted from device
+    if (job.localFilePath != null &&
+        job.localFilePath!.isNotEmpty &&
+        !File(job.localFilePath!).existsSync()) {
+      // Fire-and-forget cleanup - clear stale path reference
+      Future.microtask(() async {
+        if (mounted) {
+          job.localFilePath = null;
+          await addOrUpdateJob(job);
+          await saveJobsToPrefs();
+        }
+      });
+    }
+    
     // Check if expired (>24h old and not saved locally)
     final isExpired = job.isCloudExpired && !job.isSavedLocally;
     final isSaved = job.isSavedLocally;
@@ -1183,7 +1262,7 @@ class _JobCardState extends State<JobCard> {
     return InkWell(
       onTap: widget.isSelectionMode
           ? widget.onTap
-          : (job.status == 'completed' && !isExpired ? () => _openPreview(context) : null),
+          : (job.status == 'completed' && !isExpired && isSaved ? () => _openPreview(context) : null),
       onLongPress: widget.onLongPress,
       borderRadius: BorderRadius.circular(16),
       child: Opacity(
@@ -1215,9 +1294,13 @@ class _JobCardState extends State<JobCard> {
                 // ✅ Thumbnail (always visible, including in selection mode)
                 leading: _buildThumbnail(cs),
 
-                // ✅ Title
+                // ✅ Title: "FriendlyModelName Job-MMDDMMSS"
                 title: Text(
-                  job.title,
+                  job.model.isNotEmpty && job.model != 'unknown'
+                      ? '${_getFriendlyModelName(job.model)} ${job.title}'
+                      : job.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: textTheme.bodyLarge?.copyWith(
                     fontWeight: FontWeight.w600,
                     color: isExpired ? cs.onSurface.withOpacity(0.7) : cs.onSurface,
@@ -1476,13 +1559,11 @@ class _JobCardState extends State<JobCard> {
   //     yet downloaded
   //  3. Downloaded        → actual result thumbnail  (CachedThumbnail / text icon)
   //
-  // "Downloaded" = localFilePath != null.  We intentionally do NOT use
-  // File.existsSync() to gate this branch because gallery paths on Android 11+
-  // may become inaccessible after the initial save due to scoped storage.
+  // "Downloaded" = localFilePath != null AND File.existsSync() returns true.
+  // If file is deleted from device, reverts to state 2 (blur/placeholder).
   Widget _buildThumbnail(ColorScheme cs) {
     final isDownloaded = widget.job.localFilePath != null &&
-        widget.job.localFilePath!.isNotEmpty;
-    final fileAccessible = isDownloaded &&
+        widget.job.localFilePath!.isNotEmpty &&
         File(widget.job.localFilePath!).existsSync();
     final isProcessing = widget.job.status == 'processing';
     final jobCategory = _getJobCategory(widget.job);
@@ -1500,7 +1581,7 @@ class _JobCardState extends State<JobCard> {
          widget.job.localFilePath!.toLowerCase().endsWith('.avi'));
     
     if (isDownloaded && !isTextFile) {
-      if (fileAccessible && !isVideoFile) {
+      if (!isVideoFile) {
         // Image file on disk → use Flutter's native Image.file for reliable decoding
         thumbnailContent = Stack(
           key: ValueKey('thumb_${widget.job.localFilePath}'),
@@ -1543,7 +1624,7 @@ class _JobCardState extends State<JobCard> {
             ),
           ],
         );
-      } else if (fileAccessible && isVideoFile) {
+      } else {
         // Video file on disk → generate thumbnail from video
         thumbnailContent = Stack(
           key: ValueKey('video_thumb_${widget.job.localFilePath}'),
@@ -1585,20 +1666,6 @@ class _JobCardState extends State<JobCard> {
               ),
             ),
           ],
-        );
-      } else {
-        // Downloaded but file not directly accessible (scoped storage).
-        // Show a "saved" placeholder instead of blur.
-        thumbnailContent = Container(
-          key: const ValueKey('saved_placeholder'),
-          color: cs.surfaceContainerHighest,
-          child: Center(
-            child: Icon(
-              Icons.check_circle_rounded,
-              color: Colors.green.withOpacity(0.7),
-              size: 26,
-            ),
-          ),
         );
       }
     } else if (isDownloaded && isTextFile) {
