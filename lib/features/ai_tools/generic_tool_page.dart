@@ -16,6 +16,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/auth_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/file_service.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/services/media_upload_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/user_service.dart'
     hide userCreditsNotifier, currentUserNotifier, isLoadingUserNotifier, UserData;
 import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
@@ -809,7 +810,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     final title = widget.config.title.toLowerCase();
     final model = widget.config.model.toLowerCase();
     // Check by title or model name
-    // RealESRGAN variants: realesrgan, realesrgan_anime, realesrgan_face, realesrgan_denoise
+    // Upscale models: realesrgan, realesrgan_anime, realesrgan_denoise, face_enhancer
     return title.contains('upscale') || 
            model == 'aurasrv2' || 
            model == 'swin2sr' || 
@@ -884,6 +885,18 @@ class _GenericToolPageState extends State<GenericToolPage>
     return hasInitImage || hasImageInput;
   }
 
+  /// Duration-based cost for animate_image and create_video: 5s=15, 8s=24, 10s=30.
+  /// Formula: duration<=5 ? 3*duration : 15+(duration-5)*3, capped by model maxDuration.
+  int _getDurationBasedCost() {
+    final duration = _advancedSettings.videoDuration;
+    final maxDuration = (_selectedModelData?['maxDuration'] as num?)?.toInt() ?? 10;
+    final d = duration.clamp(1, maxDuration);
+    if (d <= 5) {
+      return (3 * d).round();
+    }
+    return 15 + (d - 5) * 3;
+  }
+
   /// Calculate the total credit cost for this job
   /// VIP users get FREE upscale
   int _calculateTotalCost() {
@@ -902,8 +915,9 @@ class _GenericToolPageState extends State<GenericToolPage>
       return total;
     }
 
-    // Use model-specific cost if available
-    final baseCost = _currentModelCost;
+    // Animate image / create video: duration-based cost (5s=15, 8s=24, 10s=30)
+    final bool isVideoGenTool = widget.config.outputType == 'video' && !_isVideoUpscalerTool;
+    final baseCost = isVideoGenTool ? _getDurationBasedCost() : _currentModelCost;
     final upscaleCost = _currentModelUpscaleCost;
     final offer = _currentModelOffer;
     final variations = _advancedSettings.variations.clamp(1, getMaxVariations());
@@ -2435,6 +2449,22 @@ class _GenericToolPageState extends State<GenericToolPage>
             },
           ),
         ),
+        // Cost preview (updates in real time when duration changes)
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Icon(LucideIcons.gem, size: 14, color: cs.primary.withOpacity(0.8)),
+            const SizedBox(width: 6),
+            Text(
+              'Est. cost: ${_calculateTotalCost()} credits',
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
       ],
     );
   }
@@ -3334,13 +3364,15 @@ class _GenericToolPageState extends State<GenericToolPage>
     final cs = Theme.of(context).colorScheme;
     final offer = _currentModelOffer;
 
-    // Use unified cost calculation (handles video upscaler duration-based pricing)
+    // Use unified cost calculation (handles video upscaler + animate/create_video duration-based pricing)
     final int totalCost = _calculateTotalCost();
     // Cost before discount (for strikethrough display)
     int baseTotal;
     if (_isVideoUpscalerTool && _inputVideoDuration != null && _inputVideoDuration!.inSeconds > 0) {
       final units = (_inputVideoDuration!.inSeconds / 5).ceil().clamp(1, 10000);
       baseTotal = _currentModelCost * units;
+    } else if (widget.config.outputType == 'video' && !_isVideoUpscalerTool) {
+      baseTotal = _getDurationBasedCost();
     } else {
       final scaleFactor = _inputs["scale_factor"] ?? 1.0;
       final baseCost = _currentModelCost;
@@ -3559,7 +3591,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                   ),
                   const SizedBox(width: 6),
                   Text(
-                    "${_scaleFactor}x upscale (+${_currentModelUpscaleCost} credits)",
+                    "${_scaleFactor}x upscale (+$_currentModelUpscaleCost credits)",
                       style: TextStyle(
                       color: cs.onSurfaceVariant.withOpacity(0.7),
                       fontSize: 12,
@@ -3928,7 +3960,7 @@ class _GenericToolPageState extends State<GenericToolPage>
 
     // HARD CAPS: limit both max dimension AND total pixel area.
     // This avoids OOM spikes for tall images even when one side is within maxDim.
-    const int maxDim = 1536;
+    const int maxDim = 1280;
     const int maxPixels = 700000; // ~576x1184 = 681k (safe), 800x1184 = 947k (too big)
 
     // 1) Cap by max dimension
@@ -4128,7 +4160,7 @@ class _GenericToolPageState extends State<GenericToolPage>
       final List<Uint8List> newImages = [];
       for (final file in files) {
         if (newImages.length >= remainingSlots) break;
-        final bytes = await file.readAsBytes();
+        final bytes = await _resizeImageSafe(await file.readAsBytes());
         newImages.add(bytes);
       }
       
@@ -5868,7 +5900,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                   if (controller != null && !_isVideoUpscalerTool)
                     Container(
                       color: Colors.black.withOpacity(0.3),
-                      child: Center(
+                      child: const Center(
                         child: Icon(
                           LucideIcons.play,
                           size: 48,
@@ -6060,6 +6092,7 @@ class _GenericToolPageState extends State<GenericToolPage>
 
       setState(() {
         _inputs[input['id']] = base64Video;
+        _inputs["${input['id']}_bytes"] = videoBytes; // raw bytes for R2 upload
         _inputs["${input['id']}_path"] = videoPath;
         _userVideoControllers[videoPath] = controller;
         // Store duration for cost calculation and backend
@@ -7695,8 +7728,11 @@ class _GenericToolPageState extends State<GenericToolPage>
     if (_isVideoUpscalerTool && _inputVideoDuration != null && _inputVideoDuration!.inSeconds > 0) {
       final units = (_inputVideoDuration!.inSeconds / 5).ceil().clamp(1, 10000);
       totalBeforeDiscount = _currentModelCost * units;
+    } else if (widget.config.outputType == 'video' && !_isVideoUpscalerTool) {
+      final baseCostPerVariation = _getDurationBasedCost() + (isUpscaled ? _currentModelUpscaleCost : 0);
+      totalBeforeDiscount = baseCostPerVariation * variations * imageCount;
     } else {
-    final baseCostPerVariation = _currentModelCost + (isUpscaled ? _currentModelUpscaleCost : 0);
+      final baseCostPerVariation = _currentModelCost + (isUpscaled ? _currentModelUpscaleCost : 0);
       totalBeforeDiscount = baseCostPerVariation * variations * imageCount;
     }
 
@@ -9449,9 +9485,11 @@ class _GenericToolPageState extends State<GenericToolPage>
           resolvedParams['lora_adapter'] = _advancedSettings.loraAdapter;
         }
         
-        // Duration handling for video models
-        if (widget.config.outputType == 'video') {
+        // Duration handling for video models (animate_image, create_video — not video upscaler)
+        if (widget.config.outputType == 'video' && !_isVideoUpscalerTool) {
           final duration = _advancedSettings.videoDuration;
+          // Add duration key for all animate_image and create_video models (from UI slider)
+          resolvedParams['duration'] = duration;
           
           // Fastwan models use duration_seconds
           if (modelId == 'fastwan_21_1b' || modelId == 'fastwan_22_5b') {
@@ -9740,6 +9778,129 @@ class _GenericToolPageState extends State<GenericToolPage>
         // Always remove the "images" key - backend expects only init_image.
         paramsForSubmit.remove("images");
 
+        // ─── R2 presigned media upload ──────────────────────────────────
+        // Upload media to R2 via presigned URLs and send R2 keys instead
+        // of base64 in the payload. Falls back to base64 on any failure.
+        // ────────────────────────────────────────────────────────────────
+        try {
+          dialogMessage.value = "Uploading media…\nPlease be patient if your internet connection is slow.";
+
+          if (!isBulkEdit) {
+            // ── Single / multi init_image ──
+            // _inputs stores raw Uint8List bytes for images
+            final imageInputDef = widget.config.inputs
+                .firstWhere((i) => i["type"] == "image", orElse: () => <String, dynamic>{});
+            final String? imageInputId = imageInputDef.isNotEmpty ? imageInputDef["id"] as String? : null;
+
+            if (imageInputId != null) {
+              final rawImageData = _inputs[imageInputId];
+              List<Uint8List>? rawImageList;
+              if (rawImageData is List && rawImageData.isNotEmpty && rawImageData.first is Uint8List) {
+                rawImageList = rawImageData.cast<Uint8List>().toList();
+              } else if (rawImageData is Uint8List) {
+                rawImageList = [rawImageData];
+              }
+
+              if (rawImageList != null && rawImageList.isNotEmpty) {
+                final imageKeys = await MediaUploadService.uploadMediaBatch(
+                  files: rawImageList,
+                  mediaType: "image",
+                  authToken: firebaseToken,
+                );
+                if (imageKeys != null) {
+                  basePayload["input_image_r2_keys"] = imageKeys;
+                  // Remove ALL image base64 from params — workers now accept the
+                  // canonical "init_image" delivered via R2 presigned URL as fallback
+                  // for model-specific names (ref_image, input_image, etc.).
+                  for (final k in ["init_image", "images", "image", "ref_image",
+                                   "input_image", "source_image", "face_image"]) {
+                    paramsForSubmit.remove(k);
+                  }
+                  debugPrint("☁️ R2: uploaded ${imageKeys.length} init image(s)");
+                }
+              }
+            }
+
+            // ── Single mask ──
+            final rawMask = _inputs["mask_image"];
+            if (rawMask is Uint8List) {
+              final maskKeys = await MediaUploadService.uploadMediaBatch(
+                files: [rawMask],
+                mediaType: "image",
+                authToken: firebaseToken,
+              );
+              if (maskKeys != null && maskKeys.isNotEmpty) {
+                basePayload["mask_image_r2_key"] = maskKeys.first;
+                paramsForSubmit.remove("mask_image");
+                paramsForSubmit.remove("mask");
+                debugPrint("☁️ R2: uploaded mask image");
+              }
+            }
+          } else {
+            // ── Bulk images ──
+            if (_bulkImages.isNotEmpty) {
+              final bulkImageKeys = await MediaUploadService.uploadMediaBatch(
+                files: _bulkImages,
+                mediaType: "image",
+                authToken: firebaseToken,
+              );
+              if (bulkImageKeys != null) {
+                basePayload["input_image_r2_keys"] = bulkImageKeys;
+                basePayload.remove("bulk_images"); // drop base64 version
+                debugPrint("☁️ R2: uploaded ${bulkImageKeys.length} bulk image(s)");
+              }
+            }
+
+            // ── Bulk masks ──
+            if (_requiresMask && _bulkMasks.isNotEmpty) {
+              final bulkMaskKeys = await MediaUploadService.uploadNullableMediaBatch(
+                files: _bulkMasks,
+                mediaType: "image",
+                authToken: firebaseToken,
+              );
+              if (bulkMaskKeys != null) {
+                basePayload["bulk_mask_r2_keys"] = bulkMaskKeys;
+                basePayload.remove("bulk_masks"); // drop base64 version
+                debugPrint("☁️ R2: uploaded bulk masks");
+              }
+            }
+          }
+
+          // ── Video ──
+          // Note: inputs array uses "type": "video", elements array uses "video_upload"
+          final videoInputDef = widget.config.inputs
+              .firstWhere((i) => i["type"] == "video", orElse: () => <String, dynamic>{});
+          if (videoInputDef.isNotEmpty) {
+            final videoId = videoInputDef["id"] as String?;
+            if (videoId != null) {
+              final rawVideoBytes = _inputs["${videoId}_bytes"] as Uint8List?;
+              if (rawVideoBytes != null && rawVideoBytes.isNotEmpty) {
+                final videoKeys = await MediaUploadService.uploadMediaBatch(
+                  files: [rawVideoBytes],
+                  mediaType: "video",
+                  authToken: firebaseToken,
+                );
+                if (videoKeys != null && videoKeys.isNotEmpty) {
+                  basePayload["input_video_r2_key"] = videoKeys.first;
+                  // Remove ALL video base64 from params — workers now accept the
+                  // canonical "input_video" delivered via R2 presigned URL as fallback
+                  // for model-specific names (ref_video, init_video, etc.).
+                  for (final k in ["init_video", "input_video", "ref_video"]) {
+                    paramsForSubmit.remove(k);
+                  }
+                  debugPrint("☁️ R2: uploaded video");
+                }
+              }
+            }
+          }
+
+          dialogMessage.value = "Hang tight while we queue and process your request.\nAvoid pressing back or closing the app.";
+        } catch (e) {
+          debugPrint("⚠️ R2 media upload failed, falling back to base64: $e");
+          // Payload still has base64 data — submit will work fine.
+        }
+        // ─── End R2 upload ──────────────────────────────────────────────
+
         final dynamic ii = paramsForSubmit["init_image"];
         final int iiCount = ii is List
             ? ii.length
@@ -9826,10 +9987,12 @@ class _GenericToolPageState extends State<GenericToolPage>
           }
           
           final String title = await generateFriendlyJobName();
+          // Use selected model ID if available, otherwise fall back to config default
+          final actualModelId = _selectedModelId ?? widget.config.model;
           final newJob = JobModel(
             jobId: jobId,
             title: title,
-            model: widget.config.model,
+            model: actualModelId,
             outputType: widget.config.outputType,
             downloadUrl: downloadUrl,
             status: 'processing',

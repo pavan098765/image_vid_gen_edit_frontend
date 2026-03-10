@@ -71,6 +71,7 @@ dependencies:
 
   # Video-Editing
   pro_video_editor: ^0.3.0
+  ffmpeg_kit_flutter_new: ^4.1.0
   animated_text_kit: ^4.3.0
   video_thumbnail: ^0.5.3  # For extracting thumbnails from videos
 

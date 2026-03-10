@@ -3,7 +3,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:path_provider/path_provider.dart';
@@ -16,6 +15,7 @@ import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/auth_service.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/services/media_upload_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/user_service.dart'
     hide userCreditsNotifier, currentUserNotifier, isLoadingUserNotifier, UserData;
 import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
@@ -2216,6 +2216,53 @@ class _ExploreAIPageState extends State<ExploreAIPage>
       if (firebaseToken == null) {
         throw Exception('Not authenticated. Please sign in first.');
       }
+
+      // ── R2 presigned media upload (falls back to base64 on failure) ──
+      try {
+        dialogMessage.value = 'Uploading media…\nPlease be patient if your internet connection is slow.';
+
+        // Images
+        final List<Uint8List>? rawImages = allImageBytes != null && allImageBytes.length > 1
+            ? allImageBytes
+            : (imageBytes != null ? [imageBytes] : null);
+
+        if (rawImages != null && rawImages.isNotEmpty) {
+          final imageKeys = await MediaUploadService.uploadMediaBatch(
+            files: rawImages,
+            mediaType: 'image',
+            authToken: firebaseToken,
+          );
+          if (imageKeys != null) {
+            payload['input_image_r2_keys'] = imageKeys;
+            for (final k in ['init_image', 'images', 'image', 'ref_image',
+                             'input_image', 'source_image', 'face_image']) {
+              modelParams.remove(k);
+            }
+            debugPrint('☁️ R2: uploaded ${imageKeys.length} image(s)');
+          }
+        }
+
+        // Video
+        if (videoBytes != null) {
+          final videoKeys = await MediaUploadService.uploadMediaBatch(
+            files: [videoBytes],
+            mediaType: 'video',
+            authToken: firebaseToken,
+          );
+          if (videoKeys != null && videoKeys.isNotEmpty) {
+            payload['input_video_r2_key'] = videoKeys.first;
+            for (final k in ['init_video', 'input_video', 'ref_video']) {
+              modelParams.remove(k);
+            }
+            debugPrint('☁️ R2: uploaded video');
+          }
+        }
+
+        dialogMessage.value = 'Submitting job...';
+      } catch (e) {
+        debugPrint('⚠️ R2 upload failed, falling back to base64: $e');
+      }
+      // ── End R2 upload ──
 
       final headers = {
         'Content-Type': 'application/json',
@@ -5073,6 +5120,49 @@ class _CategoryTemplatesPageState extends State<_CategoryTemplatesPage> {
         throw Exception('Not authenticated. Please sign in first.');
       }
 
+      // ── R2 presigned media upload (falls back to base64 on failure) ──
+      try {
+        dialogMessage.value = 'Uploading media…\nPlease be patient if your internet connection is slow.';
+
+        // Images
+        if (result.selectedImages != null && result.selectedImages!.isNotEmpty) {
+          final imageKeys = await MediaUploadService.uploadMediaBatch(
+            files: result.selectedImages!,
+            mediaType: 'image',
+            authToken: firebaseToken,
+          );
+          if (imageKeys != null) {
+            payload['input_image_r2_keys'] = imageKeys;
+            for (final k in ['init_image', 'images', 'image', 'ref_image',
+                             'input_image', 'source_image', 'face_image']) {
+              modelParams.remove(k);
+            }
+            debugPrint('☁️ R2 (CategoryTemplates): uploaded ${imageKeys.length} image(s)');
+          }
+        }
+
+        // Video
+        if (result.selectedVideo != null) {
+          final videoKeys = await MediaUploadService.uploadMediaBatch(
+            files: [result.selectedVideo!],
+            mediaType: 'video',
+            authToken: firebaseToken,
+          );
+          if (videoKeys != null && videoKeys.isNotEmpty) {
+            payload['input_video_r2_key'] = videoKeys.first;
+            for (final k in ['init_video', 'input_video', 'ref_video']) {
+              modelParams.remove(k);
+            }
+            debugPrint('☁️ R2 (CategoryTemplates): uploaded video');
+          }
+        }
+
+        dialogMessage.value = 'Submitting job...';
+      } catch (e) {
+        debugPrint('⚠️ R2 upload failed, falling back to base64: $e');
+      }
+      // ── End R2 upload ──
+
       final headers = {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $firebaseToken',
@@ -5588,6 +5678,49 @@ class _CategoryDetailPageState extends State<_CategoryDetailPage> {
       if (firebaseToken == null) {
         throw Exception('Not authenticated. Please sign in first.');
       }
+
+      // ── R2 presigned media upload (falls back to base64 on failure) ──
+      try {
+        dialogMessage.value = 'Uploading media…\nPlease be patient if your internet connection is slow.';
+
+        // Images
+        if (result.selectedImages != null && result.selectedImages!.isNotEmpty) {
+          final imageKeys = await MediaUploadService.uploadMediaBatch(
+            files: result.selectedImages!,
+            mediaType: 'image',
+            authToken: firebaseToken,
+          );
+          if (imageKeys != null) {
+            payload['input_image_r2_keys'] = imageKeys;
+            for (final k in ['init_image', 'images', 'image', 'ref_image',
+                             'input_image', 'source_image', 'face_image']) {
+              modelParams.remove(k);
+            }
+            debugPrint('☁️ R2 (CategoryDetail): uploaded ${imageKeys.length} image(s)');
+          }
+        }
+
+        // Video
+        if (result.selectedVideo != null) {
+          final videoKeys = await MediaUploadService.uploadMediaBatch(
+            files: [result.selectedVideo!],
+            mediaType: 'video',
+            authToken: firebaseToken,
+          );
+          if (videoKeys != null && videoKeys.isNotEmpty) {
+            payload['input_video_r2_key'] = videoKeys.first;
+            for (final k in ['init_video', 'input_video', 'ref_video']) {
+              modelParams.remove(k);
+            }
+            debugPrint('☁️ R2 (CategoryDetail): uploaded video');
+          }
+        }
+
+        dialogMessage.value = 'Submitting job...';
+      } catch (e) {
+        debugPrint('⚠️ R2 upload failed, falling back to base64: $e');
+      }
+      // ── End R2 upload ──
 
       final headers = {
         'Content-Type': 'application/json',

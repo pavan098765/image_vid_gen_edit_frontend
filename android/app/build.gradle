@@ -54,7 +54,7 @@ android {
 
     defaultConfig {
         applicationId "com.shambhutech.kalaai"
-        minSdk flutter.minSdkVersion
+        minSdk 24
         targetSdk flutter.targetSdkVersion
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
@@ -76,6 +76,7 @@ android {
             signingConfig signingConfigs.release
             minifyEnabled true
             shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
 

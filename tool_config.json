@@ -10,15 +10,32 @@
           {
             "id": "trending_hot",
             "title": "Hot Right Now",
-            "templates": ["animate_portrait", "glow_up_photo", "ai_headshot"]
+            "templates": [
+              "animate_portrait",
+              "glow_up_photo",
+              "ai_headshot"
+            ]
           },
           {
             "id": "trending_new",
             "title": "New Arrivals",
-            "templates": ["cyberpunk_style", "neon_glow", "slow_motion_effect", "portrait_enhance", "photo_restore", "face_restore"]
+            "templates": [
+              "cyberpunk_style",
+              "neon_glow",
+              "slow_motion_effect",
+              "portrait_enhance",
+              "photo_restore",
+              "face_restore"
+            ]
           }
         ],
-        "templates": ["animate_portrait", "glow_up_photo", "ai_headshot", "cyberpunk_style", "neon_glow"]
+        "templates": [
+          "animate_portrait",
+          "glow_up_photo",
+          "ai_headshot",
+          "cyberpunk_style",
+          "neon_glow"
+        ]
       },
       {
         "id": "video",
@@ -29,15 +46,24 @@
           {
             "id": "video_animate",
             "title": "Photo Animation",
-            "templates": ["animate_portrait", "slow_motion_effect"]
+            "templates": [
+              "animate_portrait",
+              "slow_motion_effect"
+            ]
           },
           {
             "id": "video_create",
             "title": "Text to Video",
-            "templates": ["cinematic_video"]
+            "templates": [
+              "cinematic_video"
+            ]
           }
         ],
-        "templates": ["animate_portrait", "cinematic_video", "slow_motion_effect"]
+        "templates": [
+          "animate_portrait",
+          "cinematic_video",
+          "slow_motion_effect"
+        ]
       },
       {
         "id": "photo",
@@ -48,15 +74,33 @@
           {
             "id": "photo_enhance",
             "title": "Enhancement",
-            "templates": ["glow_up_photo", "hd_upscale", "portrait_enhance", "photo_restore", "face_restore"]
+            "templates": [
+              "glow_up_photo",
+              "hd_upscale",
+              "portrait_enhance",
+              "photo_restore",
+              "face_restore"
+            ]
           },
           {
             "id": "photo_professional",
             "title": "Professional",
-            "templates": ["ai_headshot", "remove_bg_quick", "portrait_enhance"]
+            "templates": [
+              "ai_headshot",
+              "remove_bg_quick",
+              "portrait_enhance"
+            ]
           }
         ],
-        "templates": ["glow_up_photo", "ai_headshot", "remove_bg_quick", "hd_upscale", "portrait_enhance", "photo_restore", "face_restore"]
+        "templates": [
+          "glow_up_photo",
+          "ai_headshot",
+          "remove_bg_quick",
+          "hd_upscale",
+          "portrait_enhance",
+          "photo_restore",
+          "face_restore"
+        ]
       },
       {
         "id": "enhance",
@@ -67,15 +111,32 @@
           {
             "id": "enhance_quality",
             "title": "Quality Boost",
-            "templates": ["hd_upscale", "glow_up_photo", "portrait_enhance", "anime_upscale", "face_restore"]
+            "templates": [
+              "hd_upscale",
+              "glow_up_photo",
+              "portrait_enhance",
+              "anime_upscale",
+              "face_restore"
+            ]
           },
           {
             "id": "enhance_cleanup",
             "title": "Cleanup Tools",
-            "templates": ["remove_bg_quick", "photo_restore"]
+            "templates": [
+              "remove_bg_quick",
+              "photo_restore"
+            ]
           }
         ],
-        "templates": ["glow_up_photo", "hd_upscale", "remove_bg_quick", "portrait_enhance", "photo_restore", "anime_upscale", "face_restore"]
+        "templates": [
+          "glow_up_photo",
+          "hd_upscale",
+          "remove_bg_quick",
+          "portrait_enhance",
+          "photo_restore",
+          "anime_upscale",
+          "face_restore"
+        ]
       },
       {
         "id": "styles",
@@ -86,20 +147,41 @@
           {
             "id": "styles_artistic",
             "title": "Artistic",
-            "templates": ["oil_painting", "watercolor_art", "sketch_portrait"]
+            "templates": [
+              "oil_painting",
+              "watercolor_art",
+              "sketch_portrait"
+            ]
           },
           {
             "id": "styles_modern",
             "title": "Modern & Digital",
-            "templates": ["cyberpunk_style", "neon_glow", "pop_art"]
+            "templates": [
+              "cyberpunk_style",
+              "neon_glow",
+              "pop_art"
+            ]
           },
           {
             "id": "styles_anime",
             "title": "Anime & Cartoon",
-            "templates": ["anime_portrait", "cartoon_me", "comic_book", "anime_upscale"]
+            "templates": [
+              "anime_portrait",
+              "cartoon_me",
+              "comic_book",
+              "anime_upscale"
+            ]
           }
         ],
-        "templates": ["anime_portrait", "oil_painting", "cyberpunk_style", "watercolor_art", "sketch_portrait", "pop_art", "neon_glow"]
+        "templates": [
+          "anime_portrait",
+          "oil_painting",
+          "cyberpunk_style",
+          "watercolor_art",
+          "sketch_portrait",
+          "pop_art",
+          "neon_glow"
+        ]
       },
       {
         "id": "fun",
@@ -110,15 +192,29 @@
           {
             "id": "fun_characters",
             "title": "Character Styles",
-            "templates": ["cartoon_me", "caricature", "comic_book"]
+            "templates": [
+              "cartoon_me",
+              "caricature",
+              "comic_book"
+            ]
           },
           {
             "id": "fun_retro",
             "title": "Retro Vibes",
-            "templates": ["vintage_filter", "pixel_art"]
+            "templates": [
+              "vintage_filter",
+              "pixel_art"
+            ]
           }
         ],
-        "templates": ["anime_portrait", "cartoon_me", "vintage_filter", "pixel_art", "caricature", "comic_book"]
+        "templates": [
+          "anime_portrait",
+          "cartoon_me",
+          "vintage_filter",
+          "pixel_art",
+          "caricature",
+          "comic_book"
+        ]
       }
     ],
     "templates": {
@@ -130,7 +226,10 @@
         "output_type": "video",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/animate_portrait.mp4",
         "preview_type": "video",
-        "badges": ["🔥 Trending", "Video"],
+        "badges": [
+          "🔥 Trending",
+          "Video"
+        ],
         "capability": "animate_image",
         "model": "wan_22_fp8_lightx2v_i2v",
         "preferred_model": "wan_22_fp8_lightx2v_i2v",
@@ -147,14 +246,14 @@
         "output_type": "image",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/glow_up.mp4",
         "preview_type": "video",
-        "badges": ["✨ Popular"],
+        "badges": [
+          "✨ Popular"
+        ],
         "capability": "edit_image",
-        "model": "flux_kontext_dev",
-        "preferred_model": "flux_kontext_dev",
+        "model": "flux_klein",
+        "preferred_model": "flux_klein",
         "job_config": {
-          "prompt": "Professional photo enhancement, soft glowing skin, balanced lighting, subtle retouching, natural look, high quality",
-          "scale_factor": 2
-        }
+          "prompt": "Professional photo enhancement, soft glowing skin, balanced lighting, subtle retouching, natural look, high quality"        }
       },
       "ai_headshot": {
         "id": "ai_headshot",
@@ -164,13 +263,14 @@
         "output_type": "image",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/headshot.mp4",
         "preview_type": "video",
-        "badges": ["Professional"],
+        "badges": [
+          "Professional"
+        ],
         "capability": "edit_image",
-        "model": "flux_kontext_dev",
-        "preferred_model": "flux_kontext_dev",
+        "model": "flux_klein",
+        "preferred_model": "flux_klein",
         "job_config": {
-          "prompt": "Professional headshot photo, studio lighting, clean background, sharp focus, business attire appearance, LinkedIn profile quality",
-          "scale_factor": 2
+          "prompt": "Professional headshot photo, studio lighting, clean background, sharp focus, business attire appearance, LinkedIn profile quality"
         }
       },
       "anime_portrait": {
@@ -181,13 +281,14 @@
         "output_type": "image",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/anime.mp4",
         "preview_type": "video",
-        "badges": ["🎨 Art"],
+        "badges": [
+          "🎨 Art"
+        ],
         "capability": "edit_image",
-        "model": "qwen_image_edit",
-        "preferred_model": "qwen_image_edit",
+        "model": "qwen_image_edit_2511_rapid_aio",
+        "preferred_model": "qwen_image_edit_2511_rapid_aio",
         "job_config": {
-          "prompt": "Anime style portrait, detailed eyes, soft shading, studio ghibli inspired, vibrant colors, clean linework, beautiful anime character",
-          "scale_factor": 2
+          "prompt": "Anime style portrait, detailed eyes, soft shading, studio ghibli inspired, vibrant colors, clean linework, beautiful anime character"        
         }
       },
       "remove_bg_quick": {
@@ -198,7 +299,9 @@
         "output_type": "image",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/remove_bg.mp4",
         "preview_type": "video",
-        "badges": ["⚡ Quick"],
+        "badges": [
+          "⚡ Quick"
+        ],
         "capability": "remove_background",
         "model": "basic_utils",
         "preferred_model": "basic_utils",
@@ -214,7 +317,9 @@
         "output_type": "image",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/upscale.mp4",
         "preview_type": "video",
-        "badges": ["HD"],
+        "badges": [
+          "HD"
+        ],
         "capability": "upscale",
         "model": "aurasrv2",
         "preferred_model": "aurasrv2",
@@ -230,7 +335,10 @@
         "output_type": "image",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/anime_upscale.mp4",
         "preview_type": "video",
-        "badges": ["🎌 Anime", "4K"],
+        "badges": [
+          "🎌 Anime",
+          "4K"
+        ],
         "capability": "upscale",
         "model": "realesrgan_anime",
         "preferred_model": "realesrgan_anime",
@@ -246,10 +354,13 @@
         "output_type": "image",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/portrait_enhance.mp4",
         "preview_type": "video",
-        "badges": ["👤 Face", "HD"],
+        "badges": [
+          "👤 Face",
+          "HD"
+        ],
         "capability": "upscale",
-        "model": "realesrgan_face",
-        "preferred_model": "realesrgan_face",
+        "model": "face_enhancer",
+        "preferred_model": "face_enhancer",
         "job_config": {
           "scale_factor": 4
         }
@@ -262,7 +373,10 @@
         "output_type": "image",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/face_restore.mp4",
         "preview_type": "video",
-        "badges": ["✨ GFPGAN", "AI Face"],
+        "badges": [
+          "✨ GFPGAN",
+          "AI Face"
+        ],
         "capability": "upscale",
         "model": "realesrgan",
         "preferred_model": "realesrgan",
@@ -279,7 +393,10 @@
         "output_type": "image",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/photo_restore.mp4",
         "preview_type": "video",
-        "badges": ["🔧 Restore", "Denoise"],
+        "badges": [
+          "🔧 Restore",
+          "Denoise"
+        ],
         "capability": "upscale",
         "model": "realesrgan_denoise",
         "preferred_model": "realesrgan_denoise",
@@ -295,7 +412,9 @@
         "output_type": "video",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/cinematic.mp4",
         "preview_type": "video",
-        "badges": ["🎬 Pro"],
+        "badges": [
+          "🎬 Pro"
+        ],
         "capability": "create_video",
         "model": "wan_22_fp8_lightx2v_i2v",
         "preferred_model": "wan_22_fp8_lightx2v_i2v",
@@ -313,13 +432,14 @@
         "output_type": "image",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/oil_painting.mp4",
         "preview_type": "video",
-        "badges": ["🎨 Art"],
+        "badges": [
+          "🎨 Art"
+        ],
         "capability": "edit_image",
-        "model": "qwen_image_edit",
-        "preferred_model": "qwen_image_edit",
+        "model": "qwen_image_edit_2511_rapid_aio",
+        "preferred_model": "qwen_image_edit_2511_rapid_aio",
         "job_config": {
-          "prompt": "Oil painting style, rich brushstrokes, classical art technique, museum quality, vivid colors, canvas texture, masterpiece painting",
-          "scale_factor": 2
+          "prompt": "Oil painting style, rich brushstrokes, classical art technique, museum quality, vivid colors, canvas texture, masterpiece painting"
         }
       },
       "cyberpunk_style": {
@@ -330,13 +450,14 @@
         "output_type": "image",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/cyberpunk.mp4",
         "preview_type": "video",
-        "badges": ["🌆 Sci-Fi"],
+        "badges": [
+          "🌆 Sci-Fi"
+        ],
         "capability": "edit_image",
-        "model": "qwen_image_edit",
-        "preferred_model": "qwen_image_edit",
+        "model": "qwen_image_edit_2511_rapid_aio",
+        "preferred_model": "qwen_image_edit_2511_rapid_aio",
         "job_config": {
-          "prompt": "Cyberpunk style, neon lights, futuristic cityscape background, holographic effects, rain-soaked streets, blade runner aesthetic, vibrant pink and blue lighting",
-          "scale_factor": 2
+          "prompt": "Cyberpunk style, neon lights, futuristic cityscape background, holographic effects, rain-soaked streets, blade runner aesthetic, vibrant pink and blue lighting"
         }
       },
       "cartoon_me": {
@@ -347,13 +468,14 @@
         "output_type": "image",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/cartoon.mp4",
         "preview_type": "video",
-        "badges": ["🎭 Fun"],
+        "badges": [
+          "🎭 Fun"
+        ],
         "capability": "edit_image",
-        "model": "qwen_image_edit",
-        "preferred_model": "qwen_image_edit",
+        "model": "qwen_image_edit_2511_rapid_aio",
+        "preferred_model": "qwen_image_edit_2511_rapid_aio",
         "job_config": {
-          "prompt": "3D cartoon style, Pixar animation quality, expressive features, smooth render, vibrant colors, friendly character design, CGI quality",
-          "scale_factor": 2
+          "prompt": "3D cartoon style, Pixar animation quality, expressive features, smooth render, vibrant colors, friendly character design, CGI quality"
         }
       },
       "vintage_filter": {
@@ -364,13 +486,14 @@
         "output_type": "image",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/vintage.mp4",
         "preview_type": "video",
-        "badges": ["📷 Retro"],
+        "badges": [
+          "📷 Retro"
+        ],
         "capability": "edit_image",
-        "model": "qwen_image_edit",
-        "preferred_model": "qwen_image_edit",
+        "model": "qwen_image_edit_2511_rapid_aio",
+        "preferred_model": "qwen_image_edit_2511_rapid_aio",
         "job_config": {
-          "prompt": "Vintage film photography, warm color grading, subtle film grain, nostalgic mood, 1970s aesthetic, soft vignette, analog camera look",
-          "scale_factor": 2
+          "prompt": "Vintage film photography, warm color grading, subtle film grain, nostalgic mood, 1970s aesthetic, soft vignette, analog camera look"
         }
       },
       "slow_motion_effect": {
@@ -381,7 +504,9 @@
         "output_type": "video",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/slowmo.mp4",
         "preview_type": "video",
-        "badges": ["🎬 Cinematic"],
+        "badges": [
+          "🎬 Cinematic"
+        ],
         "capability": "animate_image",
         "model": "wan_22_fp8_lightx2v_i2v",
         "preferred_model": "wan_22_fp8_lightx2v_i2v",
@@ -398,13 +523,14 @@
         "output_type": "image",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/watercolor.mp4",
         "preview_type": "video",
-        "badges": ["🎨 Art"],
+        "badges": [
+          "🎨 Art"
+        ],
         "capability": "edit_image",
-        "model": "qwen_image_edit",
-        "preferred_model": "qwen_image_edit",
+        "model": "qwen_image_edit_2511_rapid_aio",
+        "preferred_model": "qwen_image_edit_2511_rapid_aio",
         "job_config": {
-          "prompt": "Watercolor painting style, soft washes, flowing colors, delicate brush strokes, artistic paper texture, dreamy atmosphere, professional watercolor art",
-          "scale_factor": 2
+          "prompt": "Watercolor painting style, soft washes, flowing colors, delicate brush strokes, artistic paper texture, dreamy atmosphere, professional watercolor art"
         }
       },
       "sketch_portrait": {
@@ -415,13 +541,14 @@
         "output_type": "image",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/sketch.mp4",
         "preview_type": "video",
-        "badges": ["✏️ Classic"],
+        "badges": [
+          "✏️ Classic"
+        ],
         "capability": "edit_image",
-        "model": "qwen_image_edit",
-        "preferred_model": "qwen_image_edit",
+        "model": "qwen_image_edit_2511_rapid_aio",
+        "preferred_model": "qwen_image_edit_2511_rapid_aio",
         "job_config": {
-          "prompt": "Pencil sketch portrait, detailed shading, graphite drawing, realistic charcoal art, fine lines, artistic hatching, professional sketch",
-          "scale_factor": 2
+          "prompt": "Pencil sketch portrait, detailed shading, graphite drawing, realistic charcoal art, fine lines, artistic hatching, professional sketch"
         }
       },
       "pop_art": {
@@ -432,13 +559,14 @@
         "output_type": "image",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/popart.mp4",
         "preview_type": "video",
-        "badges": ["🎨 Retro"],
+        "badges": [
+          "🎨 Retro"
+        ],
         "capability": "edit_image",
-        "model": "qwen_image_edit",
-        "preferred_model": "qwen_image_edit",
+        "model": "qwen_image_edit_2511_rapid_aio",
+        "preferred_model": "qwen_image_edit_2511_rapid_aio",
         "job_config": {
-          "prompt": "Pop art style, bold colors, high contrast, Andy Warhol inspired, comic book halftone dots, vibrant artistic poster",
-          "scale_factor": 2
+          "prompt": "Pop art style, bold colors, high contrast, Andy Warhol inspired, comic book halftone dots, vibrant artistic poster"
         }
       },
       "neon_glow": {
@@ -449,13 +577,14 @@
         "output_type": "image",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/neon.mp4",
         "preview_type": "video",
-        "badges": ["✨ Glow"],
+        "badges": [
+          "✨ Glow"
+        ],
         "capability": "edit_image",
-        "model": "qwen_image_edit",
-        "preferred_model": "qwen_image_edit",
+        "model": "qwen_image_edit_2511_rapid_aio",
+        "preferred_model": "qwen_image_edit_2511_rapid_aio",
         "job_config": {
-          "prompt": "Neon glow effect, electric light trails, vibrant pink and blue neon, dark background, glowing outlines, synthwave aesthetic, dramatic lighting",
-          "scale_factor": 2
+          "prompt": "Neon glow effect, electric light trails, vibrant pink and blue neon, dark background, glowing outlines, synthwave aesthetic, dramatic lighting"
         }
       },
       "pixel_art": {
@@ -466,13 +595,14 @@
         "output_type": "image",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/pixel.mp4",
         "preview_type": "video",
-        "badges": ["🎮 Retro"],
+        "badges": [
+          "🎮 Retro"
+        ],
         "capability": "edit_image",
-        "model": "qwen_image_edit",
-        "preferred_model": "qwen_image_edit",
+        "model": "qwen_image_edit_2511_rapid_aio",
+        "preferred_model": "qwen_image_edit_2511_rapid_aio",
         "job_config": {
-          "prompt": "Pixel art style, 8-bit retro gaming aesthetic, blocky pixels, limited color palette, nostalgic video game character, sprite art",
-          "scale_factor": 2
+          "prompt": "Pixel art style, 8-bit retro gaming aesthetic, blocky pixels, limited color palette, nostalgic video game character, sprite art"
         }
       },
       "caricature": {
@@ -483,13 +613,14 @@
         "output_type": "image",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/caricature.mp4",
         "preview_type": "video",
-        "badges": ["😂 Fun"],
+        "badges": [
+          "😂 Fun"
+        ],
         "capability": "edit_image",
-        "model": "qwen_image_edit",
-        "preferred_model": "qwen_image_edit",
+        "model": "qwen_image_edit_2511_rapid_aio",
+        "preferred_model": "qwen_image_edit_2511_rapid_aio",
         "job_config": {
-          "prompt": "Caricature art style, exaggerated features, humorous portrait, cartoon proportions, expressive face, professional caricature artist quality",
-          "scale_factor": 2
+          "prompt": "Caricature art style, exaggerated features, humorous portrait, cartoon proportions, expressive face, professional caricature artist quality"
         }
       },
       "comic_book": {
@@ -500,13 +631,14 @@
         "output_type": "image",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/comic.mp4",
         "preview_type": "video",
-        "badges": ["💥 Hero"],
+        "badges": [
+          "💥 Hero"
+        ],
         "capability": "edit_image",
-        "model": "qwen_image_edit",
-        "preferred_model": "qwen_image_edit",
+        "model": "qwen_image_edit_2511_rapid_aio",
+        "preferred_model": "qwen_image_edit_2511_rapid_aio",
         "job_config": {
-          "prompt": "Comic book style, bold outlines, dramatic shading, superhero aesthetic, action pose, vibrant colors, Marvel DC inspired, dynamic composition",
-          "scale_factor": 2
+          "prompt": "Comic book style, bold outlines, dramatic shading, superhero aesthetic, action pose, vibrant colors, Marvel DC inspired, dynamic composition"
         }
       }
     }
@@ -526,15 +658,32 @@
           "name": "Lumora",
           "description": "Fast generation, high detail",
           "cost": 10,
-          "costUpscale": 5,
+          "costUpscale": 3,
           "offer": 0,
           "enabled": true,
           "params": {
             "cfg_scale": 1.0,
             "num_inference_steps": 8,
             "scale_image": true,
-            "scale_factor": "{{scale_factor}}",
-            "negative_prompt": " "
+            "scale_factor": "{{scale_factor}}"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        },
+        {
+          "id": "flux_klein",
+          "name": "Vectra",
+          "description": "Fast generation, high detail",
+          "cost": 8,
+          "costUpscale": 3,
+          "offer": 0,
+          "enabled": true,
+          "params": {
+            "guidance_scale": 1.0,
+            "num_inference_steps": 4,
+            "scale_image": true,
+            "scale_factor": "{{scale_factor}}"
           },
           "rootParams": {
             "prompt": "{{prompt}}"
@@ -545,33 +694,29 @@
           "name": "Klyra",
           "description": "Ultra-fast generation, Realistic images",
           "cost": 10,
-          "costUpscale": 5,
+          "costUpscale": 3,
           "offer": 0,
           "enabled": true,
           "params": {
             "cfg_scale": 1.0,
             "num_inference_steps": 8,
             "scale_image": true,
-            "scale_factor": "{{scale_factor}}",
-            "negative_prompt": " "
+            "scale_factor": "{{scale_factor}}"
           },
           "rootParams": {
             "prompt": "{{prompt}}"
           }
         },
         {
-          "id": "sdxl",
+          "id": "sdxl_t2i",
           "name": "Imagia",
-          "description": "Versatile, classic quality",
-          "cost": 8,
-          "costUpscale": 5,
+          "description": "Fast, Versatile, classic quality",
+          "cost": 6,
+          "costUpscale": 3,
           "offer": 0,
           "enabled": true,
           "params": {
-            "sample_steps": "{{sample_steps}}",
-            "cfg_scale": "1.0",
-            "sampler": "DPMSolverMultistep",
-            "strength": "1.0",
+            "sample_steps": 8,
             "scale_image": true,
             "scale_factor": "{{scale_factor}}"
           },
@@ -612,20 +757,39 @@
       "icon": "sparkles",
       "accent": "#8B5CF6",
       "outputType": "image",
-      "defaultModel": "flux_kontext_dev",
+      "defaultModel": "flux_klein",
       "models": [
         {
-          "id": "flux_kontext_dev",
+          "id": "sdxl_i2i",
+          "name": "Imagia",
+          "description": "Fast Image Editing",
+          "cost": 6,
+          "costUpscale": 3,
+          "offer": 0,
+          "enabled": false,
+          "params": {
+            "sample_steps": 8,
+            "cfg_scale": 1.0,
+            "strength": 0.7,
+            "init_image": "{{init_image}}",
+            "scale_image": true,
+            "scale_factor": "{{scale_factor}}"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        },
+        {
+          "id": "flux_klein",
           "name": "Vectra",
           "description": "Context-aware, instant repaint",
-          "cost": 10,
-          "costUpscale": 5,
+          "cost": 8,
+          "costUpscale": 3,
           "offer": 0,
           "enabled": true,
           "params": {
-            "steps": 28,
-            "guidance_scale": 3.0,
-            "negative_prompt": "blurry, distorted, lowres",
+            "num_inference_steps": 8,
+            "guidance_scale": 1.0,
             "init_image": "{{init_image}}",
             "scale_image": true,
             "scale_factor": "{{scale_factor}}"
@@ -639,12 +803,12 @@
           "name": "Revia",
           "description": "Precise retouch, style transfer",
           "cost": 10,
-          "costUpscale": 5,
+          "costUpscale": 3,
           "offer": 0,
-          "enabled": true,
+          "enabled": false,
           "params": {
             "num_inference_steps": 8,
-            "cfg_scale": 3.0,
+            "cfg_scale": 1.0,
             "init_image": "{{init_image}}",
             "scale_image": true,
             "scale_factor": "{{scale_factor}}"
@@ -656,10 +820,10 @@
         },
         {
           "id": "qwen_image_edit_2509",
-          "name": "Revia 2",
+          "name": "Revia",
           "description": "Multi-image, consistent style",
           "cost": 10,
-          "costUpscale": 5,
+          "costUpscale": 3,
           "offer": 0,
           "enabled": true,
           "inputOverrides": {
@@ -671,7 +835,7 @@
           },
           "params": {
             "cfg_scale": 1.0,
-            "num_inference_steps": 4,
+            "num_inference_steps": 8,
             "init_image": "{{images}}",
             "scale_image": true,
             "scale_factor": "{{scale_factor}}"
@@ -683,10 +847,10 @@
         },
         {
           "id": "qwen_image_edit_2511_rapid_aio",
-          "name": "Revia 3",
+          "name": "Revia 2",
           "description": "Ultra-realistic, Enhanced performance",
           "cost": 10,
-          "costUpscale": 5,
+          "costUpscale": 3,
           "offer": 0,
           "enabled": true,
           "inputOverrides": {
@@ -715,7 +879,7 @@
           ],
           "params": {
             "guidance_scale": 1.0,
-            "num_inference_steps": 4,
+            "num_inference_steps": 8,
             "init_image": "{{images}}",
             "scale_image": true,
             "scale_factor": "{{scale_factor}}",
@@ -724,9 +888,7 @@
             "output_dir": "./outputs"
           },
           "rootParams": {
-            "prompt": "{{prompt}}",
-            "negative_prompt": " "
-          }
+            "prompt": "{{prompt}}"          }
         }
       ],
       "inputs": [
@@ -779,7 +941,7 @@
           "name": "Object Eraser",
           "description": "Fast Generation, Smart Fill",
           "cost": 10,
-          "costUpscale": 5,
+          "costUpscale": 3,
           "offer": 0,
           "enabled": true,
           "params": {
@@ -794,15 +956,14 @@
           "id": "sdxl_inpaint",
           "name": "Imagia Inpaint",
           "description": "AI-powered content fill with prompt",
-          "cost": 15,
-          "costUpscale": 5,
+          "cost": 6,
+          "costUpscale": 3,
           "offer": 0,
-          "enabled": true,
+          "enabled": false,
           "params": {
             "init_image": "{{init_image}}",
             "mask_image": "{{mask_image}}",
-            "num_inference_steps": 20,
-            "cfg_scale": 7.0,
+            "sample_steps": 8,
             "guidance_scale": 7.0,
             "binarize_mask": true,
             "invert_mask": false,
@@ -811,7 +972,8 @@
             "scale_factor": "{{scale_factor}}"
           },
           "rootParams": {
-            "prompt": "{{prompt}}"
+            "prompt": "{{prompt}}",
+            "mode": "inpaint"
           }
         }
       ],
@@ -875,7 +1037,8 @@
           "name": "CineMotion",
           "description": "Fast generation, creative motion",
           "cost": 15,
-          "costUpscale": 5,
+          "baseCost5Sec": 15,
+          "costUpscale": 3,
           "offer": 0,
           "enabled": true,
           "maxDuration": 5,
@@ -901,12 +1064,13 @@
           "name": "MotionFlow",
           "description": "High visual quality and motion coherence",
           "cost": 15,
-          "costUpscale": 5,
+          "baseCost5Sec": 15,
+          "costUpscale": 3,
           "offer": 0,
           "enabled": true,
-          "maxDuration": 8,
+          "maxDuration": 10,
           "params": {
-            "num_inference_steps": 50,
+            "num_inference_steps": 4,
             "randomize_seed": true,
             "height": 512,
             "width": 768,
@@ -928,18 +1092,19 @@
           "name": "Cinemotion Pro",
           "description": "Cinematic-level Aesthetics.",
           "cost": 15,
-          "costUpscale": 5,
+          "baseCost5Sec": 15,
+          "costUpscale": 3,
           "offer": 0,
           "enabled": true,
-          "maxDuration": 5,
+          "maxDuration": 10,
           "params": {
             "num_inference_steps": 8,
             "guidance_scale": 1.0,
             "guidance_scale_2": 1.0,
             "randomize_seed": true,
-	          "mode":"t2v",
+            "mode": "t2v",
             "height": 480,
-            "width": 832,           
+            "width": 832,
             "output_dir": "./outputs",
             "enable_rife": false,
             "rife_target_fps": 30,
@@ -991,14 +1156,15 @@
           "name": "Cinemotion Pro",
           "description": "High quality image-to-video.",
           "cost": 15,
-          "costUpscale": 5,
+          "baseCost5Sec": 15,
+          "costUpscale": 3,
           "offer": 0,
           "enabled": true,
-          "maxDuration": 5,
+          "maxDuration": 10,
           "params": {
             "num_inference_steps": 8,
             "guidance_scale": 1.0,
-	          "mode":"i2v",
+            "mode": "i2v",
             "randomize_seed": true,
             "resize_image": true,
             "output_dir": "./outputs",
@@ -1018,7 +1184,8 @@
           "name": "AnimateFlow",
           "description": "Smooth, high-quality motion for vivid videos",
           "cost": 15,
-          "costUpscale": 5,
+          "baseCost5Sec": 15,
+          "costUpscale": 3,
           "offer": 0,
           "enabled": true,
           "maxDuration": 10,
@@ -1044,7 +1211,8 @@
           "name": "RefMotion",
           "description": "Create videos from text with reference image/video.",
           "cost": 15,
-          "costUpscale": 5,
+          "baseCost5Sec": 15,
+          "costUpscale": 3,
           "offer": 0,
           "enabled": true,
           "maxDuration": 5,
@@ -1057,8 +1225,8 @@
             }
           },
           "params": {
-            "ref_image": "{{ref_image}}",
-            "ref_video": "{{ref_video}}",
+            "init_image": "{{init_image}}",
+            "input_video": "{{ref_video}}",
             "size": "832*480",
             "sample_steps": 16,
             "base_seed": 42,
@@ -1150,7 +1318,7 @@
           "name": "Scene Expander",
           "description": "AI-powered outpainting",
           "cost": 8,
-          "costUpscale": 5,
+          "costUpscale": 3,
           "offer": 10,
           "enabled": true,
           "params": {
@@ -1189,14 +1357,27 @@
           "id": "alignment",
           "type": "dropdown",
           "label": "Expand Direction",
-          "options": ["Top", "Bottom", "Left", "Right", "All Sides", "Middle"],
+          "options": [
+            "Top",
+            "Bottom",
+            "Left",
+            "Right",
+            "All Sides",
+            "Middle"
+          ],
           "default": "Middle"
         },
         {
           "id": "aspect_ratio",
           "type": "dropdown",
           "label": "Aspect Ratio",
-          "options": ["1:1", "16:9", "9:16", "4:3", "3:4"],
+          "options": [
+            "1:1",
+            "16:9",
+            "9:16",
+            "4:3",
+            "3:4"
+          ],
           "default": "9:16"
         },
         {
@@ -1236,7 +1417,7 @@
           "name": "Background Remover",
           "description": "Instant cutout, clean edges",
           "cost": 5,
-          "costUpscale": 5,
+          "costUpscale": 3,
           "offer": 0,
           "enabled": true,
           "params": {
@@ -1288,7 +1469,7 @@
           "name": "Ultra Enhance",
           "description": "Best quality, crisp details",
           "cost": 8,
-          "costUpscale": 5,
+          "costUpscale": 3,
           "offer": 0,
           "enabled": true,
           "params": {
@@ -1301,7 +1482,7 @@
           "name": "Sharp Refine",
           "description": "Edge sharpening, clarity",
           "cost": 5,
-          "costUpscale": 5,
+          "costUpscale": 3,
           "offer": 0,
           "enabled": true,
           "params": {
@@ -1314,13 +1495,13 @@
           "name": "PhotoBoost",
           "description": "Fast, Good Quality Upscaling",
           "cost": 5,
-          "costUpscale": 5,
+          "costUpscale": 3,
           "offer": 0,
           "enabled": true,
           "params": {
             "init_image": "{{image}}",
             "outscale": "{{scale_factor}}",
-            "model_name": "RealESRGAN_x4plus",
+            "model_name": "realesr-general-x4v3",
             "face_enhance": "{{face_enhance}}",
             "tile": 512,
             "tile_pad": 10,
@@ -1332,7 +1513,7 @@
           "name": "PhotoBoost Anime",
           "description": "Optimized for anime & illustrations",
           "cost": 5,
-          "costUpscale": 5,
+          "costUpscale": 3,
           "offer": 0,
           "enabled": true,
           "params": {
@@ -1346,54 +1527,19 @@
           }
         },
         {
-          "id": "realesrgan_face",
-          "name": "PhotoBoost Face",
-          "description": "Enhanced face restoration",
-          "cost": 5,
-          "costUpscale": 5,
-          "offer": 0,
-          "enabled": true,
-          "params": {
-            "init_image": "{{image}}",
-            "outscale": "{{scale_factor}}",
-            "model_name": "RealESRGAN_x4plus",
-            "face_enhance": true,
-            "tile": 512,
-            "tile_pad": 10,
-            "fp32": false
-          }
-        },
-        {
-          "id": "realesrgan_denoise",
-          "name": "PhotoBoost Denoise",
-          "description": "Upscale with noise reduction",
-          "cost": 5,
-          "costUpscale": 5,
-          "offer": 0,
-          "enabled": true,
-          "params": {
-            "init_image": "{{image}}",
-            "outscale": "{{scale_factor}}",
-            "model_name": "realesr-general-x4v3",
-            "face_enhance": "{{face_enhance}}",
-            "tile": 512,
-            "tile_pad": 10,
-            "fp32": false,
-            "denoise_strength": 0.5
-          }
-        },
-        {
           "id": "face_enhancer",
           "name": "Face Enhancer",
-          "description": "Face enhancement with upscaling",
+          "description": "Face restore + upscale, or upscale only",
           "cost": 5,
-          "costUpscale": 5,
+          "costUpscale": 3,
           "offer": 0,
           "enabled": true,
           "params": {
             "init_image": "{{image}}",
-            "version": "v1.4",
+            "mode": "{{mode}}",
             "scale": "{{scale_factor}}",
+            "bg_model": "{{bg_model}}",
+            "face_enhance": "{{enhance_faces}}",
             "output_dir": "./outputs"
           }
         }
@@ -1409,32 +1555,55 @@
         {
           "id": "scale_factor",
           "type": "slider",
-          "label": "Scale Factor",
+          "label": "Upscale",
           "min": 2,
           "max": 4,
-          "default": 2
+          "default": 2,
+          "step": 1
         },
         {
           "id": "face_enhance",
           "type": "toggle",
           "label": "Face Enhance",
-          "description": "Restore and enhance faces using GFPGAN",
+          "description": "Add face restoration (GFPGAN)",
           "default": false,
           "showForModels": ["realesrgan", "realesrgan_denoise"]
+        },
+        {
+          "id": "mode",
+          "type": "dropdown",
+          "label": "Face model",
+          "description": "GFPGAN variant (face restore quality)",
+          "options": ["v1.4", "v1.3", "v1.2", "RestoreFormer", "CodeFormer", "RealESR-General-x4v3"],
+          "default": "v1.4",
+          "showForModels": ["face_enhancer"]
+        },
+        {
+          "id": "bg_model",
+          "type": "dropdown",
+          "label": "Upscaler",
+          "description": "General 4×, 2×, or Anime",
+          "options": ["realesr-general-x4v3", "RealESRGAN_x2plus", "RealESRGAN_x4plus_anime_6B"],
+          "default": "realesr-general-x4v3",
+          "showForModels": ["face_enhancer"]
+        },
+        {
+          "id": "enhance_faces",
+          "type": "toggle",
+          "label": "Restore faces",
+          "description": "Off = upscale only",
+          "default": true,
+          "showForModels": ["face_enhancer"]
         }
       ],
       "elements": [
-        {
-          "type": "image_upload",
-          "input_ref": "image"
-        },
-        {
-          "type": "toggle",
-          "input_ref": "face_enhance"
-        },
-        {
-          "type": "generate_button"
-        }
+        { "type": "image_upload", "input_ref": "image" },
+        { "type": "slider", "input_ref": "scale_factor" },
+        { "type": "toggle", "input_ref": "face_enhance" },
+        { "type": "dropdown", "input_ref": "mode" },
+        { "type": "dropdown", "input_ref": "bg_model" },
+        { "type": "toggle", "input_ref": "enhance_faces" },
+        { "type": "generate_button" }
       ]
     },
     {
@@ -1563,7 +1732,7 @@
           "offer": 0,
           "enabled": true,
           "params": {
-            "input_image": "{{input_image}}",
+            "init_image": "{{input_image}}",
             "prompt_type": "text",
             "max_new_tokens": 8192,
             "output_dir": "./outputs",
@@ -1595,7 +1764,15 @@
     }
   ],
   "stylePresets": {
-    "categories": ["All", "Favorites", "Fun", "Realistic", "Artistic", "Anime", "Cinematic"],
+    "categories": [
+      "All",
+      "Favorites",
+      "Fun",
+      "Realistic",
+      "Artistic",
+      "Anime",
+      "Cinematic"
+    ],
     "presets": [
       {
         "id": "cartoon_3d",

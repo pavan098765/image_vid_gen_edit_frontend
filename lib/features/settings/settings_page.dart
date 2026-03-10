@@ -65,11 +65,13 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _loadAppInfo() async {
     try {
       final info = await PackageInfo.fromPlatform();
+      if (!mounted) return;
       setState(() {
         _appVersion = info.version;
         _buildNumber = info.buildNumber;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _appVersion = '1.0.0';
         _buildNumber = '1';
@@ -102,6 +104,7 @@ class _SettingsPageState extends State<SettingsPage> {
       // Total app storage
       int totalSize = thumbSize + previewSize;
 
+      if (!mounted) return;
       setState(() {
         _thumbnailCacheSize = _formatBytes(thumbSize);
         _previewCacheSize = _formatBytes(previewSize);
@@ -109,6 +112,7 @@ class _SettingsPageState extends State<SettingsPage> {
       });
     } catch (e) {
       debugPrint('Error calculating cache size: $e');
+      if (!mounted) return;
       setState(() {
         _thumbnailCacheSize = 'Unknown';
         _previewCacheSize = 'Unknown';
