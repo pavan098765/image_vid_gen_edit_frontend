@@ -29,7 +29,7 @@ class ModelOption {
     required this.name,
     this.description,
     this.cost = 10,
-    this.costUpscale = 5,
+    this.costUpscale = 0,
     this.params,
     this.rootParams,
     this.inputOverrides,
@@ -41,7 +41,7 @@ class ModelOption {
         name: json['name'],
         description: json['description'],
         cost: json['cost'] ?? 10,
-        costUpscale: json['costUpscale'] ?? 5,
+        costUpscale: json['costUpscale'] ?? 0,
         params: json['params'],
         rootParams: json['rootParams'],
         inputOverrides: json['inputOverrides'],
@@ -723,7 +723,7 @@ class _CapabilityCardState extends State<_CapabilityCard> {
                       elements: cap.elements,
                       outputType: cap.outputType,
                       cost: defaultModel?.cost ?? 10,
-                      costUpscale: defaultModel?.costUpscale ?? 5,
+                      costUpscale: defaultModel?.costUpscale ?? 0,
                       // Pass models for model selector
                       models: cap.models
                           .map((m) => m.toJson())

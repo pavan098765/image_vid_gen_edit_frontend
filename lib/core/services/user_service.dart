@@ -165,9 +165,10 @@ int getMaxVariations() {
   return isVipUser() ? 4 : 2;
 }
 
-/// Check if bulk edit is allowed (VIP only)
+/// Check if bulk edit is allowed
+/// Requires authenticated user (tier-specific limits are enforced elsewhere).
 bool canUseBulkEdit() {
-  return isVipUser();
+  return currentUserNotifier.value != null;
 }
 
 /// Check if upscale should be free (VIP benefit)

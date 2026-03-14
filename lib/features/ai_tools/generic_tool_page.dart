@@ -598,7 +598,7 @@ class AdvancedSettings {
   int variations; // 1-4 (VIP: max 4, non-VIP: max 2)
   int videoDuration; // 1-10 seconds (slider, max depends on model)
   double cfgScale; // 0.1 - 15.0
-  bool bulkEditEnabled; // VIP only - process multiple images with same settings
+  bool bulkEditEnabled; // Process multiple images with same settings
   // Video upscale settings
   bool enableInterpolate; // Enable frame interpolation (RIFE)
   int interpolateFps; // Target FPS for interpolation (1-60)
@@ -775,8 +775,8 @@ class _GenericToolPageState extends State<GenericToolPage>
   int _scaleFactor = 2;
   bool _upscaleEnabled = false;
   
-  // -------- Bulk Edit (VIP only) --------
-  // Stores multiple images for bulk processing (max 10 for VIP)
+  // -------- Bulk Edit --------
+  // Stores multiple images for bulk processing (tier-based limits)
   final List<Uint8List> _bulkImages = [];
   // Stores masks for each bulk image (for inpaint/erase tools)
   final List<Uint8List?> _bulkMasks = [];
@@ -785,9 +785,11 @@ class _GenericToolPageState extends State<GenericToolPage>
   final Map<String, VideoPlayerController> _userVideoControllers = {};
   // Stores outpaint configurations for each bulk image (for expand scene)
   final List<Map<String, String>?> _bulkOutpaintConfigs = [];
-  static const int _maxBulkImages = 10;
+  static const int _maxBulkImagesVip = 15;
+  static const int _maxBulkImagesNonVip = 5;
+  int get _maxBulkImages => isVipUser() ? _maxBulkImagesVip : _maxBulkImagesNonVip;
   // Max total jobs per submission (images × variations) to prevent server overload
-  static const int _maxTotalJobs = 25;
+  static const int _maxTotalJobs = 15;
   
   /// Check if tool requires mask for each image (inpaint/erase tools)
   bool get _requiresMask {
@@ -1364,7 +1366,7 @@ class _GenericToolPageState extends State<GenericToolPage>
       filtered = filtered.copyWith(loraAdapter: templateSettings.loraAdapter);
     }
     
-    // Bulk Edit: Only apply if supported (VIP only, and tool supports it)
+    // Bulk Edit: Only apply when the current tool supports it.
     if (_supportsBulkEdit) {
       filtered = filtered.copyWith(bulkEditEnabled: templateSettings.bulkEditEnabled);
     } else {
@@ -1756,9 +1758,16 @@ class _GenericToolPageState extends State<GenericToolPage>
                             cs: cs,
                             icon: LucideIcons.maximize2,
                             title: 'Upscale Output',
-                            subtitle: _isUpscalerTool 
-                                ? 'Always enabled for upscaler tools' 
-                                : 'Higher resolution result (+5 credits) - Free for VIP users',
+                            subtitle: _isUpscalerTool
+                                ? 'Always enabled for upscaler tools'
+                                : (() {
+                                    final extraCost = _currentModelUpscaleCost;
+                                    if (isVipUser()) return 'Higher resolution result (FREE for VIP)';
+                                    if (extraCost > 0) {
+                                      return 'Higher resolution result (+$extraCost credits) - Free for VIP users';
+                                    }
+                                    return 'Higher resolution result';
+                                  })(),
                             value: _advancedSettings.upscaleOutput,
                             locked: _isUpscalerTool, // Lock for upscaler tools
                             onChanged: _isUpscalerTool ? null : (v) {
@@ -1969,186 +1978,6 @@ class _GenericToolPageState extends State<GenericToolPage>
             value: value,
             onChanged: locked ? null : onChanged,
             activeThumbColor: cs.primary,
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Build bulk edit toggle with VIP badge (VIP only feature)
-  /// Show dialog prompting user to upgrade to VIP
-  void _showVipRequiredDialog(ColorScheme cs, String featureName) {
-    showDialog(
-      context: context,
-      builder: (ctx) => Dialog(
-        backgroundColor: cs.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Header with crown icon
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.amber.shade600, Colors.orange.shade700],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.amber.withOpacity(0.3),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: const Icon(LucideIcons.crown, color: Colors.white, size: 28),
-              ),
-              const SizedBox(height: 16),
-              
-              // Title
-              Text(
-                'VIP Feature',
-                style: TextStyle(
-                  color: cs.onSurface,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 8),
-              
-              // Description
-              Text(
-                '$featureName requires VIP membership',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: cs.onSurfaceVariant,
-                  fontSize: 14,
-                ),
-              ),
-              const SizedBox(height: 20),
-              
-              // Benefits container
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: cs.surfaceContainerHigh,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: cs.outlineVariant.withOpacity(0.3),
-                  ),
-                ),
-                child: Column(
-                  children: [
-                    _buildVipBenefit(cs, LucideIcons.layers, 'Bulk edit up to 10 images'),
-                    _buildVipBenefit(cs, LucideIcons.copy, 'Up to 4 variations'),
-                    _buildVipBenefit(cs, LucideIcons.maximize2, 'Free upscaling'),
-                    _buildVipBenefit(cs, LucideIcons.zap, '25 concurrent jobs (5x more!)'),
-                    _buildVipBenefit(cs, LucideIcons.eyeOff, 'Ad-free experience'),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
-              
-              // Buttons
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        side: BorderSide(color: cs.outlineVariant),
-                      ),
-                      child: Text(
-                        'Maybe Later',
-                        style: TextStyle(color: cs.onSurfaceVariant),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [Colors.amber.shade600, Colors.orange.shade700],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(10),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.amber.withOpacity(0.3),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          onTap: () {
-                            // Close the dialog first
-                            Navigator.pop(ctx);
-                            // Navigate back to main page and then to Credits tab
-                            WidgetsBinding.instance.addPostFrameCallback((_) {
-                              // Pop the GenericToolPage to go back to main scaffold
-                              if (Navigator.canPop(context)) {
-                                Navigator.pop(context);
-                              }
-                              // Then navigate to Credits page (index 2)
-                              selectedIndexNotifier.value = 2;
-                            });
-                          },
-                          borderRadius: BorderRadius.circular(10),
-                          child: const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 12),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(LucideIcons.crown, color: Colors.white, size: 18),
-                                SizedBox(width: 6),
-                                Text(
-                                  'Get VIP',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 15,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildVipBenefit(ColorScheme cs, IconData icon, String text) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
-        children: [
-          Icon(icon, size: 14, color: cs.primary),
-          const SizedBox(width: 8),
-          Text(
-            text,
-            style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
           ),
         ],
       ),
@@ -3144,7 +2973,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     if (_isProcessingImage) return false;
     
     // Check if bulk edit mode is enabled
-    final isBulkMode = _advancedSettings.bulkEditEnabled && isVipUser();
+    final isBulkMode = _advancedSettings.bulkEditEnabled && _supportsBulkEdit;
     
     // Calculate total jobs for rate limit check
     final variations = _advancedSettings.variations.clamp(1, getMaxVariations());
@@ -3243,7 +3072,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     }
     
     // Check if bulk edit mode is enabled
-    final isBulkMode = _advancedSettings.bulkEditEnabled && isVipUser();
+    final isBulkMode = _advancedSettings.bulkEditEnabled && _supportsBulkEdit;
     
     // Calculate total jobs for rate limit check
     final variations = _advancedSettings.variations.clamp(1, getMaxVariations());
@@ -4133,14 +3962,8 @@ class _GenericToolPageState extends State<GenericToolPage>
     }
   }
 
-  /// Pick multiple images for bulk edit (VIP only)
+  /// Pick multiple images for bulk edit
   Future<void> _pickBulkImages() async {
-    if (!canUseBulkEdit()) {
-      final cs = Theme.of(context).colorScheme;
-      _showVipRequiredDialog(cs, 'Bulk Edit');
-      return;
-    }
-    
     try {
       // Calculate how many more images can be added
       final int currentCount = _bulkImages.length;
@@ -5560,7 +5383,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     final hasImage = _inputs[ref] != null && 
         (_inputs[ref] is List && (_inputs[ref] as List).isNotEmpty);
     final isVip = isVipUser();
-    final isBulkMode = _advancedSettings.bulkEditEnabled && isVip;
+    final isBulkMode = _advancedSettings.bulkEditEnabled && _supportsBulkEdit;
     
     // Only show bulk mode option for tools that support it (have init_image input)
     final showBulkOption = _supportsBulkEdit && ref == 'init_image';
@@ -5623,7 +5446,7 @@ class _GenericToolPageState extends State<GenericToolPage>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Mode Switch (Single / Bulk) - only for VIP with image output
+          // Mode Switch (Single / Bulk)
           if (showBulkOption) ...[
             _buildImageModeSwitch(cs, isVip, isBulkMode),
             const SizedBox(height: 16),
@@ -6186,14 +6009,10 @@ class _GenericToolPageState extends State<GenericToolPage>
           Expanded(
             child: GestureDetector(
               onTap: () {
-                if (isVip) {
-                  if (!isBulkMode) {
-                    setState(() {
-                      _advancedSettings = _advancedSettings.copyWith(bulkEditEnabled: true);
-                    });
-                  }
-                } else {
-                  _showVipRequiredDialog(cs, 'Bulk Edit');
+                if (!isBulkMode) {
+                  setState(() {
+                    _advancedSettings = _advancedSettings.copyWith(bulkEditEnabled: true);
+                  });
                 }
               },
               child: AnimatedContainer(
@@ -6220,25 +6039,15 @@ class _GenericToolPageState extends State<GenericToolPage>
                         fontSize: 13,
                       ),
                     ),
-                    // VIP badge for non-VIP users
-                    if (!isVip) ...[
-                      const SizedBox(width: 4),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(colors: [cs.primary, cs.tertiary]),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          'VIP',
-                          style: TextStyle(
-                            color: cs.onPrimary,
-                            fontSize: 8,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
+                    const SizedBox(width: 4),
+                    Text(
+                      '(${isVip ? _maxBulkImagesVip : _maxBulkImagesNonVip})',
+                      style: TextStyle(
+                        color: isBulkMode ? cs.onPrimary.withOpacity(0.9) : cs.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 11,
                       ),
-                    ],
+                    ),
                   ],
                 ),
               ),
@@ -8049,6 +7858,21 @@ class _GenericToolPageState extends State<GenericToolPage>
                       value: '$variations per image',
                       iconColor: Colors.orange,
                     ),
+                    // Duration (video tools only: upscaler = input video duration, image/text-to-video = selected duration)
+                    if (_isVideoTool) ...[
+                      const SizedBox(height: 12),
+                      _buildConfirmDetailRow(
+                        cs,
+                        icon: LucideIcons.clock,
+                        label: _isVideoUpscalerTool ? 'Input video' : 'Duration',
+                        value: _isVideoUpscalerTool
+                            ? (_inputVideoDuration != null && _inputVideoDuration!.inSeconds > 0
+                                ? _formatDuration(_inputVideoDuration!)
+                                : '—')
+                            : '${_advancedSettings.videoDuration}s',
+                        iconColor: Colors.teal,
+                      ),
+                    ],
                     const SizedBox(height: 12),
                     
                     // Upscale
@@ -8078,6 +7902,11 @@ class _GenericToolPageState extends State<GenericToolPage>
                       iconColor: cs.primary,
                       isBold: true,
                     ),
+                    // Cost breakup (video tools only)
+                    if (_isVideoTool) ...[
+                      const SizedBox(height: 12),
+                      _buildVideoCostBreakup(cs, totalCost, variations, imageCount, isUpscaled, freeUpscale),
+                    ],
                     const SizedBox(height: 12),
                     
                     // Total cost
@@ -8224,6 +8053,77 @@ class _GenericToolPageState extends State<GenericToolPage>
     );
     
     return result ?? false;
+  }
+
+  /// Cost breakup for video tools only (image-to-video, text-to-video, video upscaler).
+  /// Shows how duration/variations/images affect total cost.
+  Widget _buildVideoCostBreakup(
+    ColorScheme cs,
+    int totalCost,
+    int variations,
+    int imageCount,
+    bool isUpscaled,
+    bool freeUpscale,
+  ) {
+    final offer = _currentModelOffer;
+    final smallStyle = TextStyle(
+      color: cs.onSurface.withOpacity(0.7),
+      fontSize: 12,
+    );
+    final lineStyle = TextStyle(
+      color: cs.onSurface.withOpacity(0.85),
+      fontSize: 13,
+    );
+
+    if (_isVideoUpscalerTool) {
+      if (_inputVideoDuration == null || _inputVideoDuration!.inSeconds <= 0) {
+        return Text('Cost based on input video length (per 5s)', style: smallStyle);
+      }
+      final baseCostPer5Sec = _currentModelCost;
+      final units = (_inputVideoDuration!.inSeconds / 5).ceil().clamp(1, 10000);
+      final subTotal = baseCostPer5Sec * units;
+      final parts = <String>['$units unit${units > 1 ? 's' : ''} × $baseCostPer5Sec = $subTotal'];
+      if (offer > 0) {
+        parts.add(' (−$offer% offer) = $totalCost');
+      }
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Cost breakup', style: smallStyle.copyWith(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 4),
+          Text(parts.join(), style: lineStyle),
+        ],
+      );
+    }
+
+    // Image-to-video / text-to-video: duration → per variation, × variations × images
+    final durationCost = _getDurationBasedCost();
+    final upscaleCost = _currentModelUpscaleCost;
+    final basePerVariation = durationCost + (isUpscaled && !freeUpscale ? upscaleCost : 0);
+    final costPerVariation = offer > 0
+        ? (basePerVariation * (1 - offer / 100)).round()
+        : basePerVariation;
+    final lines = <Widget>[
+      Text(
+        '${_advancedSettings.videoDuration}s → $durationCost per variation'
+        '${isUpscaled && !freeUpscale ? ' + $upscaleCost upscale' : ''}'
+        '${offer > 0 ? ' (−$offer% offer)' : ''} = $costPerVariation each',
+        style: lineStyle,
+      ),
+      const SizedBox(height: 2),
+      Text(
+        '× $variations variation${variations > 1 ? 's' : ''} × $imageCount image${imageCount > 1 ? 's' : ''} = $totalCost credits',
+        style: lineStyle,
+      ),
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Cost breakup', style: smallStyle.copyWith(fontWeight: FontWeight.w600)),
+        const SizedBox(height: 4),
+        ...lines,
+      ],
+    );
   }
 
   /// Helper to build a detail row in the confirmation dialog
@@ -8875,7 +8775,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          'Upgrade to VIP for 25 concurrent jobs (5x more!) plus bulk edit, free upscale & more!',
+                          'Upgrade to VIP for 15 concurrent jobs (3x more!), higher bulk limits, free upscale & more!',
                           style: TextStyle(
                             color: cs.onSurface,
                             fontSize: 12,
@@ -8966,7 +8866,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     
     // --- RATE LIMITING CHECK ---
     // Prevents server overload by limiting concurrent processing jobs
-    // Non-VIP: max 5 processing, VIP: max 25 processing
+    // Non-VIP: max 5 processing, VIP: max 15 processing
     final rateLimitError = checkRateLimitForSubmission(totalJobsToSubmit);
     if (rateLimitError != null) {
       _isSubmittingJob = false;
@@ -9575,21 +9475,22 @@ class _GenericToolPageState extends State<GenericToolPage>
         final int requestedVariations =
             _advancedSettings.variations.clamp(1, getMaxVariations());
         
-        // Check if bulk edit is enabled (VIP only)
+        // Check if bulk edit is enabled
         final bool isBulkEdit = _advancedSettings.bulkEditEnabled && 
             _bulkImages.isNotEmpty && 
             canUseBulkEdit();
+
+        // User-controlled enhance prompt (sent in params)
+        resolvedParams['enhance_prompt'] = _advancedSettings.enhancePrompt;
 
         final basePayload = <String, dynamic>{
           "model": modelId,
           "params": resolvedParams,
           "fcm_token": fcmToken,
-          // Root level settings (not in params)
-          "enhance_prompt": _advancedSettings.enhancePrompt,
           // Server will create N jobs internally based on variations count
           // Server enforces VIP limits (max 2 for non-VIP, max 4 for VIP)
           "variations": requestedVariations,
-          // Bulk edit flag - server validates VIP status before processing
+          // Bulk edit flag - server validates per-tier limits before processing
           "is_bulk": isBulkEdit,
           ...rootParams,
         };

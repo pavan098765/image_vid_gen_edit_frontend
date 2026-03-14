@@ -1332,7 +1332,7 @@ class _ExploreAIPageState extends State<ExploreAIPage>
                 elements: capability['elements'] ?? [],
                 outputType: capability['outputType'] as String? ?? 'image',
                 cost: defaultModel?.cost ?? 10,
-                costUpscale: defaultModel?.costUpscale ?? 5,
+                costUpscale: defaultModel?.costUpscale ?? 0,
                 // Use toJson() to pass ALL model fields (baseCost, offer,
                 // maxDuration, enabled, loraAdapters, etc.) through to GenericToolPage.
                 models: models.map((m) => m.toJson()).toList(),

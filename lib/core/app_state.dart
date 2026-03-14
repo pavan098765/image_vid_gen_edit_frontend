@@ -812,12 +812,12 @@ Future<void> loadAdFreeStatus() async {
 
 // ==================== RATE LIMITING ====================
 // Protects server from overload by limiting concurrent processing jobs
-// Non-VIP: max 5 processing jobs, VIP: max 25 processing jobs
+// Non-VIP: max 5 processing jobs, VIP: max 15 processing jobs
 
 /// Maximum concurrent processing jobs allowed
-/// Non-VIP: 5, VIP: 25
+/// Non-VIP: 5, VIP: 15
 int getMaxConcurrentJobs() {
-  return isVipUser() ? 25 : 5;
+  return isVipUser() ? 15 : 5;
 }
 
 /// Server job timeout in minutes (matches backend timeout)
@@ -867,7 +867,7 @@ bool canSubmitJobs(int jobCount) {
 /// Returns null if allowed, or an error message if blocked
 /// 
 /// This function implements intelligent rate limiting:
-/// 1. Checks concurrent job limit (5 non-VIP, 25 VIP)
+/// 1. Checks concurrent job limit (5 non-VIP, 15 VIP)
 /// 2. Enforces cooldown between batch submissions
 /// 3. Handles bulk mode intelligently - blocks entire batch if it would exceed limit
 /// 4. Cleans up stale "processing" jobs that timed out
@@ -894,13 +894,13 @@ String? checkRateLimitForSubmission(int jobsToSubmit) {
       // No slots available at all
       final vipHint = isVipUser() 
           ? 'You have $currentProcessing jobs processing. Please wait for some to complete.'
-          : 'You have $currentProcessing jobs processing. Upgrade to VIP for 25 concurrent jobs!';
+          : 'You have $currentProcessing jobs processing. Upgrade to VIP for 15 concurrent jobs!';
       return 'Job limit reached ($currentProcessing/$maxJobs). $vipHint';
     } else {
       // Some slots available but not enough for this batch
       final vipHint = isVipUser() 
           ? '' 
-          : ' Upgrade to VIP for 25 concurrent jobs!';
+          : ' Upgrade to VIP for 15 concurrent jobs!';
       return 'Cannot submit $jobsToSubmit jobs. Only $available slots available ($currentProcessing/$maxJobs processing).$vipHint';
     }
   }
