@@ -55,7 +55,7 @@ class _CreditsPageState extends State<CreditsPage> {
   // Ad cooldown state (between ads)
   Timer? _adCooldownTimer;
   Duration _adCooldownDuration = Duration.zero;
-  
+
   /// Check if features requiring verification are blocked
   /// (User signed up via email but hasn't verified yet)
   bool get _needsEmailVerification => _authService.needsEmailVerification;
@@ -98,7 +98,7 @@ class _CreditsPageState extends State<CreditsPage> {
       _checkAdEligibility();
     }
   }
-  
+
   void _initPurchaseService() async {
     await _purchaseService.initialize();
   }
@@ -1308,7 +1308,7 @@ class _CreditsPageState extends State<CreditsPage> {
         children: [
           // Compact gem balance header
           _buildCompactGemBalance(cs),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
           
           // Free Gems Section - Combined Daily Spin + Ads
           _buildSectionHeader(cs, 'Free Gems', LucideIcons.gift),
@@ -2364,7 +2364,7 @@ class _CreditsPageState extends State<CreditsPage> {
                           colors: KalaColors.brandGradient,
                         ).createShader(bounds),
                         child: Text(
-                          _formatGemAmount(pack.gems),
+                          _formatGemAmount(pack.totalCreditsAwarded),
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 24,
@@ -2382,6 +2382,19 @@ class _CreditsPageState extends State<CreditsPage> {
                       ),
                     ],
                   ),
+                  if (pack.hasServerCreditBonus)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        'Total includes 10% extra bonus gems!',
+                        style: TextStyle(
+                          color: cs.primary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          height: 1.25,
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -2551,7 +2564,7 @@ class _CreditsPageState extends State<CreditsPage> {
                 
                 // Gem amount
                 Text(
-                  _formatGemAmount(pack.gems),
+                  _formatGemAmount(pack.totalCreditsAwarded),
                   style: TextStyle(
                     color: isSelected ? tierColors[0] : cs.onSurface,
                     fontWeight: FontWeight.bold,
@@ -2559,6 +2572,15 @@ class _CreditsPageState extends State<CreditsPage> {
                   ),
                   textAlign: TextAlign.center,
                 ),
+                if (pack.hasServerCreditBonus)
+                  Text(
+                    'incl. 10% extra',
+                    style: TextStyle(
+                      color: tierColors[0],
+                      fontSize: 8,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 
                 // Pack label
                 Text(
@@ -2724,12 +2746,23 @@ class _CreditsPageState extends State<CreditsPage> {
                           Icon(LucideIcons.gem, size: 12, color: tierColors[0]),
                           const SizedBox(width: 4),
                           Text(
-                            '${_formatGemAmount(pack.gems)} gems',
+                            '${_formatGemAmount(pack.totalCreditsAwarded)} gems',
                             style: TextStyle(
                               color: cs.onSurfaceVariant,
                               fontSize: 13,
                             ),
                           ),
+                          if (pack.hasServerCreditBonus) ...[
+                            const SizedBox(width: 6),
+                            Text(
+                              '\n(total incl. 10% extra bonus)',
+                              style: TextStyle(
+                                color: tierColors[0],
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ],

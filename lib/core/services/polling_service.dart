@@ -232,6 +232,12 @@ class PollingService {
       final bool allCompleted = data['all_completed'] ?? (status == 'completed' || status == 'failed');
       final String? enhancedPrompt = data['enhanced_prompt'];
       final bool promptEnhanced = data['prompt_enhanced'] ?? false;
+      final int? estimatedWaitSeconds = (data['estimated_wait_seconds'] is num)
+          ? (data['estimated_wait_seconds'] as num).toInt()
+          : null;
+      final int? queuePosition = (data['queue_position'] is num)
+          ? (data['queue_position'] as num).toInt()
+          : null;
 
       // --- 2️⃣ Emit event to UI
 
@@ -260,6 +266,8 @@ class PollingService {
           createdAt: old.createdAt,
           inputImagePath: old.inputImagePath,
           localFilePath: old.localFilePath,
+          estimatedWaitSeconds: estimatedWaitSeconds ?? old.estimatedWaitSeconds,
+          queuePosition: queuePosition ?? old.queuePosition,
           // Keep original variations (each job is a single variation in the batch)
           variations: old.variations,
           variationResults: variationResults ?? old.variationResults,
@@ -271,11 +279,26 @@ class PollingService {
         jobListNotifier.value = jobs;
       }
 
+      // Persist ETA / queue info to prefs (best-effort)
+      unawaited(updateJobFields(
+        jobId: jobId,
+        status: status,
+        downloadUrl: downloadUrl,
+        estimatedWaitSeconds: estimatedWaitSeconds,
+        queuePosition: queuePosition,
+        variationResults: variationResults,
+        allCompleted: allCompleted,
+        enhancedPrompt: enhancedPrompt,
+        promptEnhanced: promptEnhanced,
+      ));
+
       if (!_onStatus.isClosed) {
         _onStatus.add({
           "job_id": jobId,
           "status": status,
           "download_url": downloadUrl,
+          "estimated_wait_seconds": estimatedWaitSeconds,
+          "queue_position": queuePosition,
           "raw": data,
         });
       }
@@ -473,6 +496,12 @@ class PollingService {
         final bool allCompleted = data['all_completed'] ?? (status == 'completed' || status == 'failed');
         final String? enhancedPrompt = data['enhanced_prompt'];
         final bool promptEnhanced = data['prompt_enhanced'] ?? false;
+        final int? estimatedWaitSeconds = (data['estimated_wait_seconds'] is num)
+            ? (data['estimated_wait_seconds'] as num).toInt()
+            : null;
+        final int? queuePosition = (data['queue_position'] is num)
+            ? (data['queue_position'] as num).toInt()
+            : null;
 
         final idx = jobs.indexWhere((j) => j.jobId == jobId);
         if (idx != -1) {
@@ -495,6 +524,8 @@ class PollingService {
             createdAt: old.createdAt,
             inputImagePath: old.inputImagePath,
             localFilePath: old.localFilePath,
+            estimatedWaitSeconds: estimatedWaitSeconds ?? old.estimatedWaitSeconds,
+            queuePosition: queuePosition ?? old.queuePosition,
             variations: old.variations,
             variationResults: variationResults ?? old.variationResults,
             allCompleted: allCompleted,
@@ -542,6 +573,8 @@ class PollingService {
                 createdAt: old.createdAt,
                 inputImagePath: old.inputImagePath,
                 localFilePath: old.localFilePath,
+                estimatedWaitSeconds: old.estimatedWaitSeconds,
+                queuePosition: old.queuePosition,
                 variations: old.variations,
                 variationResults: old.variationResults,
                 allCompleted: old.allCompleted,
@@ -714,6 +747,12 @@ class PollingService {
           final bool allCompleted = data['all_completed'] ?? (status == 'completed' || status == 'failed');
           final String? enhancedPrompt = data['enhanced_prompt'];
           final bool promptEnhanced = data['prompt_enhanced'] ?? false;
+          final int? estimatedWaitSeconds = (data['estimated_wait_seconds'] is num)
+              ? (data['estimated_wait_seconds'] as num).toInt()
+              : null;
+          final int? queuePosition = (data['queue_position'] is num)
+              ? (data['queue_position'] as num).toInt()
+              : null;
           
           // 🛡️ NEVER downgrade terminal status
           String finalStatus = status;
@@ -732,6 +771,8 @@ class PollingService {
             createdAt: old.createdAt,
             inputImagePath: preservedInputPath,
             localFilePath: old.localFilePath,
+            estimatedWaitSeconds: estimatedWaitSeconds ?? old.estimatedWaitSeconds,
+            queuePosition: queuePosition ?? old.queuePosition,
             variations: old.variations,
             variationResults: variationResults ?? old.variationResults,
             allCompleted: allCompleted,
@@ -780,6 +821,8 @@ class PollingService {
                 createdAt: old.createdAt,
                 inputImagePath: old.inputImagePath,
                 localFilePath: old.localFilePath,
+                estimatedWaitSeconds: old.estimatedWaitSeconds,
+                queuePosition: old.queuePosition,
                 variations: old.variations,
                 variationResults: old.variationResults,
                 allCompleted: old.allCompleted,

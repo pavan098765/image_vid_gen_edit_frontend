@@ -53,7 +53,12 @@ Future<void> _loadModelNameCache() async {
       for (final model in models) {
         final id = model['id'] as String?;
         final name = model['name'] as String?;
-        if (id != null && name != null && name.isNotEmpty) {
+        // First occurrence wins so duplicate model ids (e.g. basic_utils on
+        // inpaint vs remove background) keep a stable, capability-ordered name.
+        if (id != null &&
+            name != null &&
+            name.isNotEmpty &&
+            !_modelNameCache.containsKey(id)) {
           _modelNameCache[id] = name;
         }
       }
@@ -119,21 +124,25 @@ class _ProcessingAnimationController {
   }
 }
 
-/// Tracks downloads for rewarded ad rate limiting (every 5th download)
-/// Returns true if ad should be shown, false otherwise
+/// Tracks downloads for rewarded ad rate limiting.
+/// Heavy tier: ad before every download. Light tier: every 5th download.
 Future<bool> _shouldShowDownloadAd() async {
-  // Disable ads in debug mode
   if (kDebugMode) return false;
-  
-  // Check if user should see ads (secure check with server verification)
+
   if (!shouldShowAds()) return false;
-  
+
+  final tier = adExperienceNotifier.value;
+  if (tier == 'heavy') {
+    return true;
+  }
+  if (tier != 'light') {
+    return false;
+  }
+
   final prefs = await SharedPreferences.getInstance();
-  int downloadCount = prefs.getInt('download_count_for_ad') ?? 0;
+  var downloadCount = prefs.getInt('download_count_for_ad') ?? 0;
   downloadCount++;
   await prefs.setInt('download_count_for_ad', downloadCount);
-  
-  // Show ad every 5th download
   return downloadCount % 5 == 0;
 }
 
@@ -1288,8 +1297,11 @@ class _JobCardState extends State<JobCard> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               ListTile(
+                dense: true,
+                visualDensity: VisualDensity.compact,
+                minVerticalPadding: 0,
                 contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
 
                 // ✅ Thumbnail (always visible, including in selection mode)
                 leading: _buildThumbnail(cs),
@@ -1301,8 +1313,9 @@ class _JobCardState extends State<JobCard> {
                       : job.title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: textTheme.bodyLarge?.copyWith(
+                  style: textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w600,
+                    height: 1.15,
                     color: isExpired ? cs.onSurface.withOpacity(0.7) : cs.onSurface,
                 ),
               ),
@@ -1310,6 +1323,12 @@ class _JobCardState extends State<JobCard> {
                 // ✅ Status animated
                 subtitle: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 300),
+                  layoutBuilder: (currentChild, previousChildren) {
+                    return Align(
+                      alignment: Alignment.centerLeft,
+                      child: currentChild,
+                    );
+                  },
                   child: _buildStatus(cs),
                 ),
 
@@ -1885,8 +1904,24 @@ class _JobCardState extends State<JobCard> {
         final completed = job.variationResults!.where((v) => v.status == 'completed' || v.status == 'failed').length;
         statusText = "PROCESSING… ($completed/${job.variations})";
       }
-      return Row(
+      String? etaText;
+      final eta = job.estimatedWaitSeconds;
+      if (eta != null && eta > 0) {
+        final m = (eta ~/ 60);
+        final s = (eta % 60);
+        etaText = m > 0 ? '~${m}m ${s}s' : '~${s}s';
+      }
+
+      String? queueText;
+      final qp = job.queuePosition;
+      if (qp != null && qp > 0) {
+        queueText = 'Queue #$qp';
+      }
+
+      return Column(
         key: const ValueKey('processing'),
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             statusText,
@@ -1894,8 +1929,23 @@ class _JobCardState extends State<JobCard> {
               color: cs.primary,
               fontSize: 13,
               fontWeight: FontWeight.w600,
+              height: 1.2,
             ),
           ),
+          if (etaText != null || queueText != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                [if (queueText != null) queueText, if (etaText != null) 'ETA $etaText']
+                    .join(' • '),
+                style: TextStyle(
+                  color: cs.onSurfaceVariant,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  height: 1.2,
+                ),
+              ),
+            ),
         ],
       );
     }

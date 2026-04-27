@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -10,11 +11,15 @@ import 'package:crypto/crypto.dart';
 import 'dart:io';
 
 import 'auth_service.dart';
+import 'ad_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/main.dart' show navigatorKey;
 
 // ============================================================
 // AD-FREE STATE MANAGEMENT (Global - exported from app_state.dart)
 // ============================================================
+
+/// Server ad tier: `none` (VIP / ad-free), `light` (credit pack purchasers), `heavy` (free-only).
+final ValueNotifier<String> adExperienceNotifier = ValueNotifier<String>('heavy');
 
 /// Global notifier for ad-free status (from in-app purchase)
 /// SECURITY NOTE: This value requires server verification for ad-free status
@@ -23,32 +28,106 @@ final ValueNotifier<bool> isAdFreeNotifier = ValueNotifier<bool>(false);
 /// Internal flag tracking if ad-free was verified with server this session
 bool _adFreeVerifiedWithServer = false;
 
+/// Native / banner placements: free-only [heavy] tier only.
+bool shouldShowNativeBannerAds() {
+  if (currentUserNotifier.value == null) return true;
+  if (adExperienceNotifier.value != 'heavy') return false;
+  // Align with product: VIP / Remove Ads stay banner-free even if ad_experience lags the server.
+  if (isAdFreeNotifier.value) return false;
+  if (isVipUser()) return false;
+  return true;
+}
+
+/// Rewarded gates (submit, export, etc.): heavy tier only (and guests).
+bool shouldRequireHeavyTierRewardedAd() {
+  if (kDebugMode) return false;
+  if (currentUserNotifier.value == null) return true;
+  if (adExperienceNotifier.value != 'heavy') return false;
+  if (isAdFreeNotifier.value) return false;
+  if (isVipUser()) return false;
+  return true;
+}
+
+/// Load/show rewarded ad when [shouldRequireHeavyTierRewardedAd] is true.
+/// Returns false if the user must watch an ad but dismissed or failed to complete it.
+Future<bool> completeHeavyTierRewardedAdIfNeeded(BuildContext? context) async {
+  if (!shouldRequireHeavyTierRewardedAd()) return true;
+  final adService = AdService();
+  if (!adService.isAdReadyNotifier.value) {
+    if (context != null && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              ),
+              SizedBox(width: 12),
+              Text('Loading ad...'),
+            ],
+          ),
+          duration: Duration(seconds: 3),
+        ),
+      );
+    }
+    await adService.loadRewardedAd();
+    for (var i = 0; i < 10; i++) {
+      if (adService.isAdReadyNotifier.value) break;
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
+    if (context != null && context.mounted) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    }
+    if (!adService.isAdReadyNotifier.value) return true;
+  }
+  return adService.showAdForFeatureGate();
+}
+
 /// Check if user should see ads (the SECURE way)
 /// Returns true if ads should be shown, false if user is genuinely ad-free
 /// SECURITY: Unauthenticated users ALWAYS see ads
-/// 
-/// Ad-free applies in two cases:
-/// 1. User purchased standalone "Remove Ads" (permanent)
-/// 2. User has active VIP membership (duration-based)
 bool shouldShowAds() {
-  // Always show ads to unauthenticated users - no exceptions
   if (currentUserNotifier.value == null) {
     return true;
   }
-  
-  // VIP BENEFIT: Active VIP members get ad-free experience
-  // VIP status is verified by server, so we can trust it
-  if (_vipVerifiedWithServer && vipStatusNotifier.value.isVip) {
-    return false; // VIP members don't see ads
+  if (isAdFreeNotifier.value) return false;
+  if (isVipUser()) return false;
+  return adExperienceNotifier.value != 'none';
+}
+
+/// Apply `/auth/sync` and `/auth/me` fields that drive ads and VIP (server-verified in response).
+void applyAuthUserApiFields(Map<String, dynamic> data, {bool setAdFreeFromPayload = true}) {
+  if (data.containsKey('ad_experience')) {
+    adExperienceNotifier.value = (data['ad_experience'] as String?) ?? 'heavy';
   }
-  
-  // If server hasn't verified ad-free status yet this session, show ads
-  if (!_adFreeVerifiedWithServer) {
-    return true;
+
+  if (setAdFreeFromPayload && data.containsKey('is_ad_free')) {
+    notifyAdFreeStatusChanged(data['is_ad_free'] == true, verifiedByServer: true);
   }
-  
-  // Use the verified ad-free status (standalone purchase)
-  return !isAdFreeNotifier.value;
+
+  if (!data.containsKey('is_vip')) {
+    return;
+  }
+
+  final isVip = data['is_vip'] == true;
+  final expRaw = data['vip_expires_at'];
+  final expiresAt =
+      expRaw is String && expRaw.isNotEmpty ? DateTime.tryParse(expRaw) : null;
+  if (isVip && expiresAt != null) {
+    final days = expiresAt.difference(DateTime.now()).inDays;
+    notifyVipStatusChanged(
+      VipStatus(
+        isVip: true,
+        expiresAt: expiresAt,
+        daysRemaining: days < 0 ? 0 : days,
+      ),
+      verifiedByServer: true,
+    );
+  } else {
+    notifyVipStatusChanged(VipStatus.notVip(), verifiedByServer: true);
+  }
 }
 
 /// Call this when ad-free purchase status changes
@@ -221,6 +300,11 @@ class UserData {
   final bool isActive;
   final DateTime? createdAt;
   final DateTime? lastSeen;
+  final bool isVip;
+  final DateTime? vipExpiresAt;
+  final String adExperience;
+  final bool hasPurchasedCredits;
+  final int dailyCreditsGrantedThisSync;
 
   UserData({
     required this.id,
@@ -231,9 +315,15 @@ class UserData {
     required this.isActive,
     this.createdAt,
     this.lastSeen,
+    this.isVip = false,
+    this.vipExpiresAt,
+    this.adExperience = 'heavy',
+    this.hasPurchasedCredits = false,
+    this.dailyCreditsGrantedThisSync = 0,
   });
 
   factory UserData.fromJson(Map<String, dynamic> json) {
+    final vipExp = json['vip_expires_at'];
     return UserData(
       id: json['user_id'] ?? json['id'] ?? '',
       firebaseUid: json['firebase_uid'] ?? '',
@@ -241,12 +331,19 @@ class UserData {
       totalCredits: json['total_credits'] ?? 0,
       bonusGranted: json['bonus_granted'] ?? 0,
       isActive: json['is_active'] ?? true,
-      createdAt: json['created_at'] != null 
-          ? DateTime.tryParse(json['created_at']) 
+      createdAt: json['created_at'] != null
+          ? DateTime.tryParse(json['created_at'].toString())
           : null,
-      lastSeen: json['last_seen'] != null 
-          ? DateTime.tryParse(json['last_seen']) 
+      lastSeen: json['last_seen'] != null
+          ? DateTime.tryParse(json['last_seen'].toString())
           : null,
+      isVip: json['is_vip'] == true,
+      vipExpiresAt:
+          vipExp != null ? DateTime.tryParse(vipExp.toString()) : null,
+      adExperience: json['ad_experience'] as String? ?? 'heavy',
+      hasPurchasedCredits: json['has_purchased_credits'] == true,
+      dailyCreditsGrantedThisSync:
+          int.tryParse('${json['daily_credits_granted_this_sync'] ?? 0}') ?? 0,
     );
   }
 
@@ -259,6 +356,11 @@ class UserData {
     'is_active': isActive,
     'created_at': createdAt?.toIso8601String(),
     'last_seen': lastSeen?.toIso8601String(),
+    'is_vip': isVip,
+    'vip_expires_at': vipExpiresAt?.toIso8601String(),
+    'ad_experience': adExperience,
+    'has_purchased_credits': hasPurchasedCredits,
+    'daily_credits_granted_this_sync': dailyCreditsGrantedThisSync,
   };
 
   UserData copyWith({
@@ -270,6 +372,11 @@ class UserData {
     bool? isActive,
     DateTime? createdAt,
     DateTime? lastSeen,
+    bool? isVip,
+    DateTime? vipExpiresAt,
+    String? adExperience,
+    bool? hasPurchasedCredits,
+    int? dailyCreditsGrantedThisSync,
   }) {
     return UserData(
       id: id ?? this.id,
@@ -280,6 +387,12 @@ class UserData {
       isActive: isActive ?? this.isActive,
       createdAt: createdAt ?? this.createdAt,
       lastSeen: lastSeen ?? this.lastSeen,
+      isVip: isVip ?? this.isVip,
+      vipExpiresAt: vipExpiresAt ?? this.vipExpiresAt,
+      adExperience: adExperience ?? this.adExperience,
+      hasPurchasedCredits: hasPurchasedCredits ?? this.hasPurchasedCredits,
+      dailyCreditsGrantedThisSync:
+          dailyCreditsGrantedThisSync ?? this.dailyCreditsGrantedThisSync,
     );
   }
 }
@@ -404,39 +517,22 @@ class UserService {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final userData = UserData.fromJson(data);
-        
-        // Update notifiers
+        applyAuthUserApiFields(data);
+
         currentUserNotifier.value = userData;
         userCreditsNotifier.value = userData.totalCredits;
-        
-        // Cache locally
+
         await _cacheUserData(userData);
-        
+
         debugPrint("✅ User synced: ${userData.email}, credits: ${userData.totalCredits}");
-        
-        // Check if signup bonus was granted
         if (data['signup_bonus_granted'] == true) {
           debugPrint("🎁 Signup bonus granted: 50 credits");
         }
-        
-        // Check ad-free status from server
-        // This ensures ad-free is synced after every login
-        try {
-          final isAdFree = await checkAdFreeStatus();
-          debugPrint("✅ Ad-free status after sync: $isAdFree");
-        } catch (e) {
-          debugPrint("⚠️ Failed to check ad-free status after sync: $e");
+        final daily = userData.dailyCreditsGrantedThisSync;
+        if (daily > 0) {
+          debugPrint("📅 Daily login credits granted: $daily");
         }
-        
-        // Check VIP status from server
-        // This ensures VIP is synced after every login
-        try {
-          final vipStatus = await checkVipStatus();
-          debugPrint("👑 VIP status after sync: ${vipStatus.isVip} (days: ${vipStatus.daysRemaining})");
-        } catch (e) {
-          debugPrint("⚠️ Failed to check VIP status after sync: $e");
-        }
-        
+
         return userData;
       } else if (response.statusCode == 401) {
         debugPrint("⚠️ Token expired or invalid - signing out");
@@ -511,6 +607,27 @@ class UserService {
     return credits >= required;
   }
 
+  /// Fetch credit transaction history (paginated)
+  Future<Map<String, dynamic>?> getCreditHistory({int limit = 50, int offset = 0}) async {
+    if (!_authService.isSignedIn) return null;
+    try {
+      final token = await _authService.getIdToken();
+      if (token == null) return null;
+
+      final resp = await _authenticatedGet(
+        '/auth/credit-history?limit=$limit&offset=$offset',
+        token,
+      );
+      if (resp.statusCode == 200) {
+        return Map<String, dynamic>.from(jsonDecode(resp.body));
+      }
+      return null;
+    } catch (e) {
+      debugPrint('❌ getCreditHistory failed: $e');
+      return null;
+    }
+  }
+
   // ============================================================
   // USER PROFILE
   // ============================================================
@@ -528,11 +645,12 @@ class UserService {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final userData = UserData.fromJson(data);
-        
+        applyAuthUserApiFields(data);
+
         currentUserNotifier.value = userData;
         userCreditsNotifier.value = userData.totalCredits;
         await _cacheUserData(userData);
-        
+
         return userData;
       } else if (response.statusCode == 404) {
         debugPrint("⚠️ Get profile: account not found (404) - signing out");
@@ -619,6 +737,7 @@ class UserService {
         final userData = UserData.fromJson(jsonDecode(userJson));
         currentUserNotifier.value = userData;
         userCreditsNotifier.value = userData.totalCredits;
+        adExperienceNotifier.value = userData.adExperience;
         debugPrint("📦 Loaded cached user: ${userData.email}");
       }
       
@@ -633,7 +752,8 @@ class UserService {
   Future<void> _clearUserData() async {
     currentUserNotifier.value = null;
     userCreditsNotifier.value = 0;
-    
+    adExperienceNotifier.value = 'heavy';
+
     // SECURITY: Reset ad-free verification on sign out
     // This ensures user must re-authenticate to get ad-free status
     resetAdFreeVerification();

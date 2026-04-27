@@ -1,4 +1,5 @@
 // lib/main.dart
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -22,6 +23,8 @@ import 'core/services/notification_service.dart';
 import 'core/services/user_service.dart';
 import 'core/services/ad_service.dart';
 import 'core/services/integrity_service.dart';
+import 'core/services/model_cache_service.dart';
+import 'core/services/sale_service.dart';
 
 import 'features/media_editor/media_editor_page.dart';
 import 'features/ai_tools/generic_tool_page.dart';
@@ -605,6 +608,8 @@ Future<void> initializeApp() async {
   await ThumbnailService.instance.init();
   await UserService().initialize();
   await AdService.initialize();
+  unawaited(ModelCacheService.prefetchInpaintModelInBackground());
+  SaleService().start();
   
   // ============================================================
   // AD-FREE STATUS - Requires authentication + server verification

@@ -8,14 +8,20 @@ import 'package:shared_preferences/shared_preferences.dart';
 // Import user service for credit notifier, ad-free state, and VIP state
 import 'package:kala_ai_create_images_videos_with_ai/core/services/user_service.dart'
     show userCreditsNotifier, currentUserNotifier, isLoadingUserNotifier, UserData,
-         isAdFreeNotifier, shouldShowAds, notifyAdFreeStatusChanged, resetAdFreeVerification,
-         VipStatus, vipStatusNotifier, isVipUser, getMaxVariations, canUseBulkEdit, 
+         isAdFreeNotifier, shouldShowAds, shouldShowNativeBannerAds,
+         shouldRequireHeavyTierRewardedAd, completeHeavyTierRewardedAdIfNeeded,
+         adExperienceNotifier, applyAuthUserApiFields,
+         notifyAdFreeStatusChanged, resetAdFreeVerification,
+         VipStatus, vipStatusNotifier, isVipUser, getMaxVariations, canUseBulkEdit,
          isUpscaleFree, notifyVipStatusChanged, resetVipVerification;
 
 // Re-export for other files that import app_state.dart
 export 'package:kala_ai_create_images_videos_with_ai/core/services/user_service.dart'
     show userCreditsNotifier, currentUserNotifier, isLoadingUserNotifier, UserData,
-         isAdFreeNotifier, shouldShowAds, notifyAdFreeStatusChanged, resetAdFreeVerification,
+         isAdFreeNotifier, shouldShowAds, shouldShowNativeBannerAds,
+         shouldRequireHeavyTierRewardedAd, completeHeavyTierRewardedAdIfNeeded,
+         adExperienceNotifier, applyAuthUserApiFields,
+         notifyAdFreeStatusChanged, resetAdFreeVerification,
          VipStatus, vipStatusNotifier, isVipUser, getMaxVariations, canUseBulkEdit,
          isUpscaleFree, notifyVipStatusChanged, resetVipVerification;
 
@@ -185,6 +191,8 @@ class JobModel {
   DateTime createdAt;
   String? localFilePath; // store preview/download file path
   String? inputImagePath;
+  int? estimatedWaitSeconds;
+  int? queuePosition;
   
   // NEW: Variation support
   int variations; // Number of variations requested (1-4)
@@ -209,6 +217,8 @@ class JobModel {
     DateTime? createdAt,
     this.localFilePath,
     this.inputImagePath,
+    this.estimatedWaitSeconds,
+    this.queuePosition,
     this.variations = 1,
     this.variationResults,
     this.allCompleted = false,
@@ -259,6 +269,8 @@ class JobModel {
         'createdAt': createdAt.toIso8601String(),
         'localFilePath': localFilePath,
         'inputImagePath': inputImagePath,
+        'estimatedWaitSeconds': estimatedWaitSeconds,
+        'queuePosition': queuePosition,
         'variations': variations,
         'variationResults': variationResults?.map((v) => v.toJson()).toList(),
         'allCompleted': allCompleted,
@@ -295,6 +307,12 @@ class JobModel {
       createdAt: DateTime.tryParse(json['createdAt'] ?? json['created_at'] ?? '') ?? DateTime.now(),
       localFilePath: json['localFilePath'],
       inputImagePath: json['inputImagePath'] as String?,
+      estimatedWaitSeconds: (json['estimatedWaitSeconds'] ?? json['estimated_wait_seconds']) is num
+          ? (json['estimatedWaitSeconds'] ?? json['estimated_wait_seconds']).toInt()
+          : null,
+      queuePosition: (json['queuePosition'] ?? json['queue_position']) is num
+          ? (json['queuePosition'] ?? json['queue_position']).toInt()
+          : null,
       variations: json['variations'] ?? 1,
       variationResults: variationResults,
       allCompleted: json['allCompleted'] ?? json['all_completed'] ?? false,
@@ -384,6 +402,8 @@ Future<void> updateJobFields({
   String? outputType,
   String? inputImagePath, // ✅ optional explicit override
   String? localFilePath, // ✅ optional explicit override
+  int? estimatedWaitSeconds,
+  int? queuePosition,
   // NEW: Variation and prompt enhancement fields
   int? variations,
   List<VariationResult>? variationResults,
@@ -420,6 +440,9 @@ Future<void> updateJobFields({
       // ✅ Preserve paths by default
       localFilePath: localFilePath ?? old.localFilePath,
       inputImagePath: inputImagePath ?? old.inputImagePath,
+
+      estimatedWaitSeconds: estimatedWaitSeconds ?? old.estimatedWaitSeconds,
+      queuePosition: queuePosition ?? old.queuePosition,
       
       // ✅ Variation fields
       variations: variations ?? old.variations,
@@ -453,6 +476,8 @@ Future<void> updateJobFields({
         status: status ?? 'processing',
         inputImagePath: inputImagePath,
         localFilePath: localFilePath,
+        estimatedWaitSeconds: estimatedWaitSeconds,
+        queuePosition: queuePosition,
         variations: variations ?? 1,
         variationResults: variationResults,
         allCompleted: allCompleted ?? false,

@@ -13,20 +13,160 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HapticFeedback, SystemNavigator;
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/api/submit_payload_helpers.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/auth_service.dart';
-import 'package:kala_ai_create_images_videos_with_ai/core/services/media_upload_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/user_service.dart'
     hide userCreditsNotifier, currentUserNotifier, isLoadingUserNotifier, UserData;
 import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_button.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/sign_in_prompt.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/sale_banner.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/services/sale_service.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/utils/rife_interpolation.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/result_manager/result_manager_page.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/ai_tools/ai_tools_page.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/ai_tools/generic_tool_page.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
+
+// -----------------------------------------------------------------------------
+// Explore submit: build params + fetch FCM/auth tokens in parallel with the
+// heavy-tier rewarded ad (same idea as generic_tool_page _runJob).
+// -----------------------------------------------------------------------------
+
+class _ExploreSubmitPrepBundle {
+  final Map<String, dynamic> modelParams;
+  final Map<String, dynamic> payload;
+  final String firebaseToken;
+  final String prompt;
+
+  const _ExploreSubmitPrepBundle({
+    required this.modelParams,
+    required this.payload,
+    required this.firebaseToken,
+    required this.prompt,
+  });
+}
+
+Future<_ExploreSubmitPrepBundle?> _runExploreHeavyTierGateWithParallelPrep(
+  BuildContext context,
+  Future<_ExploreSubmitPrepBundle> Function() prep,
+) async {
+  if (!shouldRequireHeavyTierRewardedAd()) {
+    return prep();
+  }
+  final results = await Future.wait<Object>([
+    completeHeavyTierRewardedAdIfNeeded(context),
+    prep(),
+  ]);
+  if (!(results[0] as bool)) return null;
+  return results[1] as _ExploreSubmitPrepBundle;
+}
+
+Future<_ExploreSubmitPrepBundle> _buildExploreSubmitPrepBeforeUpload({
+  required Map<String, dynamic> jobConfig,
+  required Map<String, dynamic> modelConfig,
+  required String modelId,
+  required String outputType,
+  required bool upscaleEnabled,
+  required int scaleFactor,
+  required bool enableInterpolate,
+  required int interpolateFps,
+  required bool enableVideoEnhanceUpscale,
+  required int videoEnhanceUpscaleFactor,
+  required String prompt,
+  String? loraAdapter,
+}) async {
+  final modelParams = Map<String, dynamic>.from(
+      modelConfig['params'] as Map<String, dynamic>? ?? {});
+  final rootParams = Map<String, dynamic>.from(
+      modelConfig['rootParams'] as Map<String, dynamic>? ?? {});
+
+  for (final entry in jobConfig.entries) {
+    if (entry.key == 'prompt') continue;
+    if (entry.key == 'scale_factor') {
+      if (outputType == 'video') {
+        modelParams['scale_factor'] = entry.value;
+        modelParams['scale_image'] = false;
+      } else {
+        modelParams['scale_factor'] = scaleFactor;
+        modelParams['scale_image'] = upscaleEnabled;
+      }
+    } else {
+      modelParams[entry.key] = entry.value;
+    }
+  }
+
+  final dynamic useExternalApiRaw =
+      modelConfig['useExternalApi'] ?? modelConfig['use_external_api'];
+  if (useExternalApiRaw is bool) {
+    modelParams['use_external_api'] = useExternalApiRaw;
+  }
+
+  if (outputType == 'video') {
+    modelParams['scale_image'] = false;
+    modelParams.putIfAbsent('scale_factor', () => 1);
+    if (enableInterpolate) {
+      final mult = migrateLegacyInterpolateStorageValue(interpolateFps);
+      final baseFps = estimatedBaseFpsForRife(
+        modelId: modelId,
+        modelParams: modelParams,
+        isVideoUpscalerTool: false,
+      );
+      modelParams['enable_rife'] = true;
+      modelParams['rife_target_fps'] = rifeTargetFpsForSubmit(
+        multiplier: mult,
+        baseFps: baseFps,
+        forUpscalerTargetFps: false,
+      );
+    } else {
+      modelParams['enable_rife'] = false;
+    }
+    if (enableVideoEnhanceUpscale) {
+      modelParams['enable_upscaling'] = true;
+      modelParams['upscale_factor'] = videoEnhanceUpscaleFactor;
+    } else {
+      modelParams['enable_upscaling'] = false;
+    }
+  } else {
+    modelParams['scale_image'] = upscaleEnabled;
+    modelParams['scale_factor'] = scaleFactor;
+  }
+
+  rootParams['prompt'] = prompt;
+
+  if (loraAdapter != null && modelId == 'qwen_image_edit_2511_rapid_aio') {
+    modelParams['lora_adapter'] = loraAdapter;
+  }
+
+  String? fcmToken;
+  try {
+    fcmToken = await FirebaseMessaging.instance.getToken();
+  } catch (_) {}
+
+  final payload = buildSubmitPayload(
+    modelId: modelId,
+    modelParams: modelParams,
+    fcmToken: fcmToken,
+    rootParams: rootParams,
+    enhancePrompt: false,
+    variations: 1,
+  );
+
+  final firebaseToken = await AuthService().getIdToken();
+  if (firebaseToken == null) {
+    throw Exception('Not authenticated. Please sign in first.');
+  }
+
+  return _ExploreSubmitPrepBundle(
+    modelParams: modelParams,
+    payload: payload,
+    firebaseToken: firebaseToken,
+    prompt: prompt,
+  );
+}
 
 /// =============================================================================
 /// EXPLORE AI PAGE - Premium Template-Based AI Tool Launcher
@@ -358,6 +498,7 @@ class _ExploreAIPageState extends State<ExploreAIPage>
     // Listen to shared seen jobs changes
     seenJobIdsNotifier.addListener(_onStateChanged);
     jobListNotifier.addListener(_onStateChanged);
+    SaleService().state.addListener(_onStateChanged);
     _loadConfig();
   }
 
@@ -439,6 +580,7 @@ class _ExploreAIPageState extends State<ExploreAIPage>
     _heroSlideshowTimer?.cancel();
     seenJobIdsNotifier.removeListener(_onStateChanged);
     jobListNotifier.removeListener(_onStateChanged);
+    SaleService().state.removeListener(_onStateChanged);
     // Dispose all video preview controllers
     _VideoPreviewManager.instance.disposeAll();
     super.dispose();
@@ -479,15 +621,28 @@ class _ExploreAIPageState extends State<ExploreAIPage>
     return enabled == null || enabled == true; // Default to enabled if not specified
   }
 
+  /// All template id strings from a category's root `templates` and each `subcategories[].templates`.
+  List<String> _rawTemplateIdsFromCategoryMap(Map<String, dynamic> cat) {
+    final out = <String>[];
+    for (final id in (cat['templates'] as List<dynamic>?) ?? []) {
+      if (id is String) out.add(id);
+    }
+    for (final sub in (cat['subcategories'] as List<dynamic>?) ?? []) {
+      if (sub is! Map) continue;
+      for (final id in (sub['templates'] as List<dynamic>?) ?? []) {
+        if (id is String) out.add(id);
+      }
+    }
+    return out;
+  }
+
   /// Get all templates for "All" tab (filtered by enabled models)
   List<String> _getAllTemplateIds() {
     final allIds = <String>{};
     for (final cat in _categories) {
-      final templateIds = (cat['templates'] as List<dynamic>?) ?? [];
-      for (final id in templateIds) {
-        final templateId = id as String;
+      final c = cat as Map<String, dynamic>;
+      for (final templateId in _rawTemplateIdsFromCategoryMap(c)) {
         final template = _templates[templateId] as Map<String, dynamic>?;
-        // Only include templates with enabled models
         if (template != null && _isTemplateModelEnabled(template)) {
           allIds.add(templateId);
         }
@@ -502,17 +657,14 @@ class _ExploreAIPageState extends State<ExploreAIPage>
       // "All" tab - show all templates
       return _getAllTemplateIds();
     }
-    // Specific category (index - 1 because 0 is "All")
     final categoryIndex = _selectedCategoryIndex - 1;
     if (categoryIndex >= 0 && categoryIndex < _categories.length) {
       final cat = _categories[categoryIndex] as Map<String, dynamic>;
-      final templateIds = (cat['templates'] as List<dynamic>?) ?? [];
-      // Filter to only templates with enabled models
-      return templateIds.where((id) {
-        final templateId = id as String;
+      return _rawTemplateIdsFromCategoryMap(cat)
+          .where((templateId) {
         final template = _templates[templateId] as Map<String, dynamic>?;
         return template != null && _isTemplateModelEnabled(template);
-      }).cast<String>().toList();
+      }).toList();
     }
     return [];
   }
@@ -859,6 +1011,11 @@ class _ExploreAIPageState extends State<ExploreAIPage>
             child: _buildAIToolsPreview(cs, isDark),
           ),
 
+        // Hero slideshow — below Pro Tools (see _buildHeader: sale stays up top)
+        SliverToBoxAdapter(
+          child: _buildHeroBanner(cs, isDark),
+        ),
+
         // Sticky Category Tabs
         SliverPersistentHeader(
           pinned: true,
@@ -874,8 +1031,23 @@ class _ExploreAIPageState extends State<ExploreAIPage>
   }
 
   Widget _buildTabContent(ColorScheme cs, bool isDark) {
+    if (_selectedCategoryIndex > 0) {
+      final categoryIndex = _selectedCategoryIndex - 1;
+      if (categoryIndex < _categories.length) {
+        final category = _categories[categoryIndex] as Map<String, dynamic>;
+        final subcategories =
+            (category['subcategories'] as List<dynamic>?) ?? [];
+        if (subcategories.isNotEmpty) {
+          return SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+            child: _buildInlineSubcategorySections(cs, isDark, category),
+          );
+        }
+      }
+    }
+
     final templateIds = _getSelectedTemplateIds();
-    
+
     if (templateIds.isEmpty) {
       return Center(
         child: Column(
@@ -895,6 +1067,118 @@ class _ExploreAIPageState extends State<ExploreAIPage>
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
       child: _buildStaggeredTemplateGrid(cs, isDark, templateIds),
+    );
+  }
+
+  /// When a category defines [subcategories], show each as a title + horizontal template strip in-place.
+  Widget _buildInlineSubcategorySections(
+    ColorScheme cs,
+    bool isDark,
+    Map<String, dynamic> category,
+  ) {
+    final colorHex = category['color'] as String? ?? '#8B5CF6';
+    final accent = Color(int.parse(colorHex.substring(1), radix: 16) + 0xFF000000);
+    final subcategories = (category['subcategories'] as List<dynamic>?) ?? [];
+    if (subcategories.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final children = <Widget>[];
+    for (final sub in subcategories) {
+      if (sub is! Map<String, dynamic>) continue;
+      final section = _buildExploreSubcategoryRow(cs, isDark, sub, accent);
+      if (section != null) {
+        children.add(section);
+      }
+    }
+
+    if (children.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.only(top: 48),
+          child: Text(
+            'No templates available',
+            style: TextStyle(color: cs.onSurfaceVariant),
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: children,
+    );
+  }
+
+  /// One subcategory: label + horizontal [ListView] of large template cards. Returns null if no templates.
+  Widget? _buildExploreSubcategoryRow(
+    ColorScheme cs,
+    bool isDark,
+    Map<String, dynamic> subcategory,
+    Color accentColor,
+  ) {
+    final title = subcategory['title'] as String? ?? 'Subcategory';
+    final rawIds = (subcategory['templates'] as List<dynamic>?) ?? [];
+    final templateIds = rawIds
+        .whereType<String>()
+        .where((id) {
+      final t = _templates[id] as Map<String, dynamic>?;
+      return t != null && _isTemplateModelEnabled(t);
+    }).toList();
+    if (templateIds.isEmpty) return null;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = constraints.maxWidth;
+        final cardW = (w * 0.46).clamp(200.0, 260.0);
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: accentColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: accentColor.withValues(alpha: 0.2)),
+                ),
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: accentColor,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 300,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                  itemCount: templateIds.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 14),
+                  itemBuilder: (context, index) {
+                    final template = _templates[templateIds[index]] as Map<String, dynamic>?;
+                    if (template == null) return const SizedBox.shrink();
+                    return SizedBox(
+                      width: cardW,
+                      child: _TemplateCard(
+                        template: template,
+                        capabilities: _capabilities,
+                        isDark: isDark,
+                        onTap: () => _showTemplateConfigSheet(template),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -958,7 +1242,7 @@ class _ExploreAIPageState extends State<ExploreAIPage>
         Padding(
           padding: const EdgeInsets.only(bottom: 12),
           child: SizedBox(
-            height: 200,
+            height: 240,
             child: _TemplateCard(
               template: template,
               capabilities: _capabilities,
@@ -985,7 +1269,7 @@ class _ExploreAIPageState extends State<ExploreAIPage>
       final priority1 = template1 != null ? _getTemplatePriority(template1) : 1;
       final priority2 = template2 != null ? _getTemplatePriority(template2) : 1;
       final maxPriority = priority1 > priority2 ? priority1 : priority2;
-      final rowHeight = maxPriority >= 2 ? 200.0 : 180.0;
+      final rowHeight = maxPriority >= 2 ? 230.0 : 210.0;
       
       widgets.add(
         Padding(
@@ -1035,20 +1319,6 @@ class _ExploreAIPageState extends State<ExploreAIPage>
       );
     }
     
-    // Add "See All" button for current category (not for "All" tab)
-    if (_selectedCategoryIndex > 0) {
-      final categoryIndex = _selectedCategoryIndex - 1;
-      if (categoryIndex < _categories.length) {
-        final category = _categories[categoryIndex] as Map<String, dynamic>;
-        widgets.add(
-          Padding(
-            padding: const EdgeInsets.only(top: 16),
-            child: _buildCategorySeeAllButton(cs, isDark, category),
-          ),
-        );
-      }
-    }
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: widgets,
@@ -1086,49 +1356,6 @@ class _ExploreAIPageState extends State<ExploreAIPage>
                 color: cs.onSurface,
               ),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCategorySeeAllButton(ColorScheme cs, bool isDark, Map<String, dynamic> category) {
-    final title = category['title'] as String? ?? 'Category';
-    final colorHex = category['color'] as String? ?? '#8B5CF6';
-    final color = Color(int.parse(colorHex.substring(1), radix: 16) + 0xFF000000);
-    
-    return GestureDetector(
-      onTap: () => _showCategoryDetail(category),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              color.withValues(alpha: 0.15),
-              color.withValues(alpha: 0.05),
-            ],
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-          ),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withValues(alpha: 0.3)),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(LucideIcons.layoutGrid, size: 18, color: color),
-            const SizedBox(width: 8),
-            Text(
-              'View All $title',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: color,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Icon(LucideIcons.arrowRight, size: 16, color: color),
           ],
         ),
       ),
@@ -1333,6 +1560,8 @@ class _ExploreAIPageState extends State<ExploreAIPage>
                 outputType: capability['outputType'] as String? ?? 'image',
                 cost: defaultModel?.cost ?? 10,
                 costUpscale: defaultModel?.costUpscale ?? 0,
+                offer: (defaultModel?.rawJson['offer'] as num?)?.toInt() ?? 0,
+                capabilityId: capability['id'] as String?,
                 // Use toJson() to pass ALL model fields (baseCost, offer,
                 // maxDuration, enabled, loraAdapters, etc.) through to GenericToolPage.
                 models: models.map((m) => m.toJson()).toList(),
@@ -1487,15 +1716,18 @@ class _ExploreAIPageState extends State<ExploreAIPage>
           ),
         ),
 
-        // Hero Banner with Slideshow
-        _buildHeroBanner(cs, isDark),
+        // Sale / next-sale — primary focal point above hero carousel
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 0, 16, 2),
+          child: SaleBanner(display: SaleBannerDisplay.highlight),
+        ),
       ],
     );
   }
 
   Widget _buildHeroBanner(ColorScheme cs, bool isDark) {
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       height: 200,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
@@ -1974,24 +2206,6 @@ class _ExploreAIPageState extends State<ExploreAIPage>
   }
 
   // ============================================================================
-  // CATEGORY DETAIL PAGE - Shows subcategories and all templates
-  // ============================================================================
-
-  void _showCategoryDetail(Map<String, dynamic> category) {
-    HapticFeedback.mediumImpact();
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => _CategoryDetailPage(
-          category: category,
-          templates: _templates,
-          capabilities: _capabilities,
-        ),
-      ),
-    );
-  }
-
-  // ============================================================================
   // TEMPLATE CONFIG SHEET - Intermediate Screen
   // ============================================================================
 
@@ -2028,6 +2242,10 @@ class _ExploreAIPageState extends State<ExploreAIPage>
         customPrompt: result.customPrompt,
         selectedModelId: result.selectedModelId,
         scaleFactor: result.scaleFactor,
+        enableInterpolate: result.enableInterpolate,
+        interpolateFps: result.interpolateFps,
+        enableVideoEnhanceUpscale: result.enableUpscale,
+        videoEnhanceUpscaleFactor: result.upscaleFactor,
       );
     } else if (result.selectedVideo != null) {
       await _submitJob(
@@ -2037,6 +2255,10 @@ class _ExploreAIPageState extends State<ExploreAIPage>
         customPrompt: result.customPrompt,
         selectedModelId: result.selectedModelId,
         scaleFactor: result.scaleFactor,
+        enableInterpolate: result.enableInterpolate,
+        interpolateFps: result.interpolateFps,
+        enableVideoEnhanceUpscale: result.enableUpscale,
+        videoEnhanceUpscaleFactor: result.upscaleFactor,
       );
     } else {
       // Text-only or prompt-based
@@ -2045,6 +2267,10 @@ class _ExploreAIPageState extends State<ExploreAIPage>
         customPrompt: result.customPrompt,
         selectedModelId: result.selectedModelId,
         scaleFactor: result.scaleFactor,
+        enableInterpolate: result.enableInterpolate,
+        interpolateFps: result.interpolateFps,
+        enableVideoEnhanceUpscale: result.enableUpscale,
+        videoEnhanceUpscaleFactor: result.upscaleFactor,
       );
     }
   }
@@ -2063,6 +2289,10 @@ class _ExploreAIPageState extends State<ExploreAIPage>
     String? selectedModelId,
     int scaleFactor = 2,
     List<Uint8List>? allImageBytes, // For multi-image models
+    bool enableInterpolate = false,
+    int interpolateFps = 2,
+    bool enableVideoEnhanceUpscale = false,
+    int videoEnhanceUpscaleFactor = 2,
   }) async {
     if (_isSubmittingJob) return;
     setState(() => _isSubmittingJob = true);
@@ -2131,12 +2361,27 @@ class _ExploreAIPageState extends State<ExploreAIPage>
         orElse: () => enabledModels.isNotEmpty ? enabledModels.first : <String, dynamic>{},
       ) as Map<String, dynamic>;
 
-      // Calculate cost (VIP gets free upscale)
+      final outputType = template['output_type'] as String? ??
+          capability['outputType'] as String? ??
+          'image';
+      final imageHdUpscaleCharges = upscaleEnabled && outputType != 'video';
+
+      // Calculate cost (VIP gets free upscale; HD upscale surcharge applies to image jobs only)
       final baseCost = modelConfig['cost'] as int? ?? 10;
-      final offer = modelConfig['offer'] as int? ?? 0;
+      final modelOffer = modelConfig['offer'] as int? ?? 0;
+      final sale = SaleService().state.value;
+      final offer = (sale.isActive && sale.discountPercent > 0)
+          ? sale.discountPercent
+          : modelOffer;
       final effectiveBaseCost = offer > 0 ? (baseCost * (1 - offer / 100)).round() : baseCost;
       final upscaleCost = isUpscaleFree() ? 0 : (modelConfig['costUpscale'] as int? ?? 5);
-      final totalCost = effectiveBaseCost + (upscaleEnabled ? upscaleCost : 0);
+      final videoEnhancementCharges = outputType == 'video' &&
+              (enableInterpolate || enableVideoEnhanceUpscale)
+          ? upscaleCost
+          : 0;
+      final totalCost = effectiveBaseCost +
+          (imageHdUpscaleCharges ? upscaleCost : 0) +
+          videoEnhancementCharges;
       final currentCredits = userCreditsNotifier.value;
 
       if (!UserService().hasEnoughCredits(totalCost)) {
@@ -2146,123 +2391,57 @@ class _ExploreAIPageState extends State<ExploreAIPage>
         return;
       }
 
-      dialogMessage.value = 'Submitting job...';
-
-      // Build params
       final jobConfig = template['job_config'] as Map<String, dynamic>? ?? {};
-      final modelParams = Map<String, dynamic>.from(
-          modelConfig['params'] as Map<String, dynamic>? ?? {});
-      final rootParams = Map<String, dynamic>.from(
-          modelConfig['rootParams'] as Map<String, dynamic>? ?? {});
+      final prompt = customPrompt ?? jobConfig['prompt'] as String? ?? '';
 
-      // Apply job config
-      for (final entry in jobConfig.entries) {
-        if (entry.key == 'prompt') continue;
-        if (entry.key == 'scale_factor') {
-          // Use user-selected scale factor
-          modelParams['scale_factor'] = scaleFactor;
-          modelParams['scale_image'] = upscaleEnabled;
-        } else {
-          modelParams[entry.key] = entry.value;
-        }
+      final prepBundle = await _runExploreHeavyTierGateWithParallelPrep(
+        context,
+        () => _buildExploreSubmitPrepBeforeUpload(
+          jobConfig: jobConfig,
+          modelConfig: modelConfig,
+          modelId: modelId.toString(),
+          outputType: outputType,
+          upscaleEnabled: upscaleEnabled,
+          scaleFactor: scaleFactor,
+          enableInterpolate: enableInterpolate,
+          interpolateFps: interpolateFps,
+          enableVideoEnhanceUpscale: enableVideoEnhanceUpscale,
+          videoEnhanceUpscaleFactor: videoEnhanceUpscaleFactor,
+          prompt: prompt,
+          loraAdapter: null,
+        ),
+      );
+      if (prepBundle == null) {
+        dismissDialog();
+        setState(() => _isSubmittingJob = false);
+        return;
       }
 
-      // Set scale_image flag and factor
-      modelParams['scale_image'] = upscaleEnabled;
-      modelParams['scale_factor'] = scaleFactor;
+      final modelParams = prepBundle.modelParams;
+      final payload = prepBundle.payload;
+      final firebaseToken = prepBundle.firebaseToken;
 
-      final outputType = template['output_type'] as String? ??
-          capability['outputType'] as String? ??
-          'image';
-
-      // Video upscale settings are handled in the _TemplateConfigResult version
-      // This function doesn't have video upscale parameters, so skip for now
-      // (Video templates should use the _TemplateConfigResult version)
-
-      // Set prompt
-      String prompt = customPrompt ?? jobConfig['prompt'] as String? ?? '';
-      rootParams['prompt'] = prompt;
-
-      // Add media - handle multi-image for models that support it
-      if (allImageBytes != null && allImageBytes.length > 1) {
-        // Multi-image models (like Revia 2)
-        final encodedImages = allImageBytes.map((b) => base64Encode(b)).toList();
-        modelParams['init_image'] = encodedImages;
-      } else if (imageBytes != null) {
-        modelParams['init_image'] = base64Encode(imageBytes);
-      }
-      if (videoBytes != null) {
-        modelParams['init_video'] = base64Encode(videoBytes);
-      }
-
-      String? fcmToken;
-      try {
-        fcmToken = await FirebaseMessaging.instance.getToken();
-      } catch (_) {}
-
-      final payload = <String, dynamic>{
-        'model': modelId,
-        'params': modelParams,
-        'fcm_token': fcmToken,
-        'enhance_prompt': false,
-        'variations': 1,
-        ...rootParams,
-      };
-
+      dialogMessage.value = 'Submitting job...';
       debugPrint('🚀 Explore submit: model=$modelId, capability=$capabilityId');
 
-      final prefs = await SharedPreferences.getInstance();
-      final firebaseToken = await AuthService().getIdToken();
-      if (firebaseToken == null) {
-        throw Exception('Not authenticated. Please sign in first.');
-      }
+      dialogMessage.value =
+          'Uploading media…\nPlease be patient if your internet connection is slow.';
 
-      // ── R2 presigned media upload (falls back to base64 on failure) ──
-      try {
-        dialogMessage.value = 'Uploading media…\nPlease be patient if your internet connection is slow.';
+      final List<Uint8List>? rawImages =
+          allImageBytes != null && allImageBytes.length > 1
+              ? allImageBytes
+              : (imageBytes != null ? [imageBytes] : null);
 
-        // Images
-        final List<Uint8List>? rawImages = allImageBytes != null && allImageBytes.length > 1
-            ? allImageBytes
-            : (imageBytes != null ? [imageBytes] : null);
+      await applyExploreMediaR2Upload(
+        images: rawImages,
+        videoBytes: videoBytes,
+        modelParams: modelParams,
+        payload: payload,
+        authToken: firebaseToken,
+      );
+      stripForbiddenMediaFromParams(modelParams);
 
-        if (rawImages != null && rawImages.isNotEmpty) {
-          final imageKeys = await MediaUploadService.uploadMediaBatch(
-            files: rawImages,
-            mediaType: 'image',
-            authToken: firebaseToken,
-          );
-          if (imageKeys != null) {
-            payload['input_image_r2_keys'] = imageKeys;
-            for (final k in ['init_image', 'images', 'image', 'ref_image',
-                             'input_image', 'source_image', 'face_image']) {
-              modelParams.remove(k);
-            }
-            debugPrint('☁️ R2: uploaded ${imageKeys.length} image(s)');
-          }
-        }
-
-        // Video
-        if (videoBytes != null) {
-          final videoKeys = await MediaUploadService.uploadMediaBatch(
-            files: [videoBytes],
-            mediaType: 'video',
-            authToken: firebaseToken,
-          );
-          if (videoKeys != null && videoKeys.isNotEmpty) {
-            payload['input_video_r2_key'] = videoKeys.first;
-            for (final k in ['init_video', 'input_video', 'ref_video']) {
-              modelParams.remove(k);
-            }
-            debugPrint('☁️ R2: uploaded video');
-          }
-        }
-
-        dialogMessage.value = 'Submitting job...';
-      } catch (e) {
-        debugPrint('⚠️ R2 upload failed, falling back to base64: $e');
-      }
-      // ── End R2 upload ──
+      dialogMessage.value = 'Submitting job...';
 
       final headers = {
         'Content-Type': 'application/json',
@@ -2305,6 +2484,7 @@ class _ExploreAIPageState extends State<ExploreAIPage>
 
       await addOrUpdateJob(newJob);
 
+      final prefs = await SharedPreferences.getInstance();
       final jobContext = {
         'title': template['title'],
         'model': modelId,
@@ -2473,7 +2653,7 @@ class _TemplateConfigResult {
     this.selectedVideoPath,
     this.readyToSubmit = false,
     this.enableInterpolate = false,
-    this.interpolateFps = 30,
+    this.interpolateFps = 2,
     this.enableUpscale = false,
     this.upscaleFactor = 2,
     this.loraAdapter = 'None',
@@ -2550,11 +2730,8 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
   late int _scaleFactor;
   late bool _upscaleEnabled;
   final TextEditingController _promptController = TextEditingController();
-  // Video upscale settings
-  bool _enableInterpolate = false;
-  int _interpolateFps = 30;
-  bool _enableUpscale = false;
-  int _upscaleFactor = 2;
+  // Video enhancement (combined UI → fixed 2× FPS + 2× upscale in submit params)
+  bool _videoEnhancementOn = false;
   // LoRA adapter (for qwen_image_edit_2511_rapid_aio)
   String _loraAdapter = 'None';
   
@@ -2573,9 +2750,15 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
     super.initState();
     _selectedModelId = widget.template['model'] as String?;
     final jobConfig = widget.template['job_config'] as Map<String, dynamic>? ?? {};
-    _scaleFactor = jobConfig['scale_factor'] as int? ?? 2;
-    _upscaleEnabled = _scaleFactor > 1;
-    
+    final outputType = widget.template['output_type'] as String? ?? 'image';
+    if (outputType == 'video') {
+      _scaleFactor = jobConfig['scale_factor'] as int? ?? 1;
+      _upscaleEnabled = false;
+    } else {
+      _scaleFactor = jobConfig['scale_factor'] as int? ?? 2;
+      _upscaleEnabled = _scaleFactor > 1;
+    }
+
     // Initialize video player if preview is a video
     _initPreviewVideo();
   }
@@ -2617,8 +2800,6 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
     return models.cast<Map<String, dynamic>>();
   }
 
-  String? get _preferredModelId => widget.template['preferred_model'] as String?;
-
   Map<String, dynamic>? get _selectedModel {
     return _models.firstWhere(
       (m) => m['id'] == _selectedModelId,
@@ -2626,12 +2807,15 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
     );
   }
 
-  bool get _isVip => isVipUser();
   bool get _freeUpscale => isUpscaleFree();
 
   int get _baseCost {
     final cost = _selectedModel?['cost'] as int? ?? 10;
-    final offer = _selectedModel?['offer'] as int? ?? 0;
+    final modelOffer = _selectedModel?['offer'] as int? ?? 0;
+    final sale = SaleService().state.value;
+    final offer = (sale.isActive && sale.discountPercent > 0)
+        ? sale.discountPercent
+        : modelOffer;
     if (offer > 0) {
       return (cost * (1 - offer / 100)).round();
     }
@@ -2643,11 +2827,30 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
     return _selectedModel?['costUpscale'] as int? ?? 5;
   }
 
+  /// Listed model surcharge from config (before VIP waiver), for labels only.
+  int get _modelListedCostUpscale =>
+      _selectedModel?['costUpscale'] as int? ?? 5;
+
+  bool get _exploreTemplateIsLtx23SpatialVideo =>
+      (_selectedModelId ?? '').toLowerCase().startsWith('ltx2_3');
+
+  /// Same rule as [GenericToolPage._enhancementUpscaleCreditsPerVariation]: one
+  /// [costUpscale] add-on when interpolation or video upscale is on; VIP pays 0.
+  int get _videoEnhancementAddOn {
+    if (!_isVideoOutput) return 0;
+    if (!_videoEnhancementOn) return 0;
+    return _upscaleCost;
+  }
+
   int get _totalCost {
+    if (_isVideoOutput) return _baseCost + _videoEnhancementAddOn;
     return _baseCost + (_upscaleEnabled ? _upscaleCost : 0);
   }
 
   String get _mediaType => widget.template['media_type'] as String? ?? 'image';
+
+  bool get _isVideoOutput =>
+      (widget.template['output_type'] as String? ?? 'image') == 'video';
   
   bool get _isTextOnly => _mediaType == 'none';
   
@@ -2870,22 +3073,18 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
                     const SizedBox(height: 16),
                   ],
 
-                  // Compact Settings Row (Upscale)
-                  _buildSettingsRow(cs, isDark),
-                  
-                  // Video Upscale Settings (for video templates)
+                  // HD Upscale (image templates only — not video output)
+                  if (!_isVideoOutput) ...[
+                    _buildSettingsRow(cs, isDark),
+                  ],
+
+                  // Video enhancement (frame interpolation / video upscale — no extra credit line)
                   _buildVideoUpscaleSettings(cs),
                   
                   // LoRA Adapter Selector (only for qwen_image_edit_2511_rapid_aio)
                   if (_selectedModelId == 'qwen_image_edit_2511_rapid_aio') ...[
                     const SizedBox(height: 16),
                     _buildLoraAdapterSelector(cs),
-                  ],
-
-                  // Model Selection (if multiple)
-                  if (_models.length > 1) ...[
-                    const SizedBox(height: 16),
-                    _buildModelSelector(cs, isDark),
                   ],
 
                   // Prompt Input (for text-based templates)
@@ -3599,127 +3798,50 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
               color: cs.onSurface,
             ),
           ),
-          const SizedBox(height: 12),
-          
-          // Interpolate Toggle
-          Row(
-            children: [
-              Expanded(
-                child: GestureDetector(
-                  onTap: () {
-                    HapticFeedback.lightImpact();
-                    setState(() {
-                      _enableInterpolate = !_enableInterpolate;
-                    });
-                  },
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: _enableInterpolate
-                              ? KalaColors.cyan.withValues(alpha: 0.2)
-                              : cs.surfaceContainerHigh,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Icon(
-                          LucideIcons.zap,
-                          size: 18,
-                          color: _enableInterpolate ? KalaColors.cyan : cs.onSurfaceVariant,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          'Frame Interpolation',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: cs.onSurface,
-                          ),
-                        ),
-                      ),
-                      Switch(
-                        value: _enableInterpolate,
-                        onChanged: (v) {
-                          HapticFeedback.lightImpact();
-                          setState(() => _enableInterpolate = v);
-                        },
-                        activeThumbColor: KalaColors.cyan,
-                      ),
-                    ],
-                  ),
-                ),
+          if (_freeUpscale) ...[
+            const SizedBox(height: 4),
+            Text(
+              'VIP: video enhancement add-on is free.',
+              style: TextStyle(
+                fontSize: 11,
+                color: KalaColors.gold.withValues(alpha: 0.9),
               ),
-            ],
-          ),
-          
-          // Interpolate FPS (shown when enabled)
-          if (_enableInterpolate) ...[
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Text(
-                  'Target FPS: ',
-                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-                ),
-                Expanded(
-                  child: Slider(
-                    value: _interpolateFps.toDouble().clamp(16, 60),
-                    min: 16,
-                    max: 60,
-                    divisions: 44,
-                    onChanged: (v) {
-                      setState(() => _interpolateFps = v.round());
-                    },
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: cs.primary.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    '$_interpolateFps',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: cs.primary,
-                    ),
-                  ),
-                ),
-              ],
+            ),
+          ] else ...[
+            const SizedBox(height: 4),
+            Text(
+              'Non-VIP: +$_modelListedCostUpscale credits once when enhancement is on.',
+              style: TextStyle(
+                fontSize: 11,
+                color: cs.onSurfaceVariant,
+              ),
             ),
           ],
-          
           const SizedBox(height: 12),
-          
-          // Upscale Toggle
           Row(
             children: [
               Expanded(
                 child: GestureDetector(
                   onTap: () {
                     HapticFeedback.lightImpact();
-                    setState(() {
-                      _enableUpscale = !_enableUpscale;
-                    });
+                    setState(() => _videoEnhancementOn = !_videoEnhancementOn);
                   },
                   child: Row(
                     children: [
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: _enableUpscale
+                          color: _videoEnhancementOn
                               ? KalaColors.cyan.withValues(alpha: 0.2)
                               : cs.surfaceContainerHigh,
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Icon(
-                          LucideIcons.maximize2,
+                          LucideIcons.sparkles,
                           size: 18,
-                          color: _enableUpscale ? KalaColors.cyan : cs.onSurfaceVariant,
+                          color: _videoEnhancementOn
+                              ? KalaColors.cyan
+                              : cs.onSurfaceVariant,
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -3728,7 +3850,7 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Upscale Video',
+                              'Enhance output',
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600,
@@ -3736,7 +3858,18 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
                               ),
                             ),
                             Text(
-                              _freeUpscale ? 'Free (VIP)' : '+$_upscaleCost credits',
+                              _exploreTemplateIsLtx23SpatialVideo
+                                  ? '2× spatial upscale'
+                                  : '2× FPS and 2× resolution',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: cs.onSurfaceVariant,
+                              ),
+                            ),
+                            Text(
+                              _freeUpscale
+                                  ? 'Free (VIP)'
+                                  : '+$_modelListedCostUpscale credits',
                               style: TextStyle(
                                 fontSize: 11,
                                 color: _freeUpscale ? KalaColors.gold : cs.onSurfaceVariant,
@@ -3746,10 +3879,10 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
                         ),
                       ),
                       Switch(
-                        value: _enableUpscale,
+                        value: _videoEnhancementOn,
                         onChanged: (v) {
                           HapticFeedback.lightImpact();
-                          setState(() => _enableUpscale = v);
+                          setState(() => _videoEnhancementOn = v);
                         },
                         activeThumbColor: KalaColors.cyan,
                       ),
@@ -3759,48 +3892,6 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
               ),
             ],
           ),
-          
-          // Upscale Factor (shown when enabled)
-          if (_enableUpscale) ...[
-            const SizedBox(height: 12),
-            Row(
-              children: [1, 2, 4].map((factor) {
-                final isSelected = _upscaleFactor == factor;
-                return Expanded(
-                  child: Padding(
-                    padding: EdgeInsets.only(right: factor < 4 ? 8 : 0),
-                    child: GestureDetector(
-                      onTap: () {
-                        HapticFeedback.lightImpact();
-                        setState(() => _upscaleFactor = factor);
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        decoration: BoxDecoration(
-                          color: isSelected ? cs.primary : cs.surfaceContainerHigh,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: isSelected ? cs.primary : cs.outlineVariant.withOpacity(0.3),
-                            width: isSelected ? 2 : 1,
-                          ),
-                        ),
-                        child: Center(
-                          child: Text(
-                            '${factor}x',
-                            style: TextStyle(
-                              color: isSelected ? cs.onPrimary : cs.onSurface,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-          ],
         ],
       ),
     );
@@ -3844,154 +3935,6 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
     );
   }
 
-  Widget _buildModelSelector(ColorScheme cs, bool isDark) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(LucideIcons.cpu, size: 14, color: cs.primary),
-            const SizedBox(width: 6),
-            Text(
-              'AI Model',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: cs.onSurface,
-              ),
-            ),
-            if (_isVip) ...[
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(colors: KalaColors.brandGradient),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(LucideIcons.crown, size: 10, color: Colors.white),
-                    SizedBox(width: 3),
-                    Text(
-                      'VIP',
-                      style: TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ],
-        ),
-        const SizedBox(height: 10),
-        SizedBox(
-          height: 42,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: _models.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 8),
-            itemBuilder: (context, index) {
-              final model = _models[index];
-              final isSelected = model['id'] == _selectedModelId;
-              final isPreferred = model['id'] == _preferredModelId;
-              final name = model['name'] as String? ?? model['id'];
-              final cost = model['cost'] as int? ?? 10;
-
-              return GestureDetector(
-                onTap: () {
-                  HapticFeedback.lightImpact();
-                  setState(() => _selectedModelId = model['id'] as String?);
-                },
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 150),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(
-                    gradient: isSelected
-                        ? const LinearGradient(colors: KalaColors.brandGradient)
-                        : null,
-                    color: isSelected ? null : cs.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: isSelected
-                          ? Colors.transparent
-                          : isPreferred
-                              ? KalaColors.gold.withValues(alpha: 0.5)
-                              : cs.outlineVariant.withValues(alpha: 0.3),
-                      width: isPreferred && !isSelected ? 1.5 : 1,
-                    ),
-                    boxShadow: isSelected
-                        ? [
-                            BoxShadow(
-                              color: KalaColors.purple.withValues(alpha: 0.3),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ]
-                        : null,
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (isPreferred) ...[
-                        Icon(
-                          LucideIcons.star,
-                          size: 12,
-                          color: isSelected ? Colors.white : KalaColors.gold,
-                        ),
-                        const SizedBox(width: 4),
-                      ],
-                      Text(
-                        name,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: isSelected ? Colors.white : cs.onSurface,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? Colors.white.withValues(alpha: 0.2)
-                              : cs.surfaceContainerHigh,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              LucideIcons.gem,
-                              size: 10,
-                              color: isSelected ? Colors.white70 : KalaColors.cyan,
-                            ),
-                            const SizedBox(width: 2),
-                            Text(
-                              '$cost',
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                                color: isSelected ? Colors.white : cs.onSurface,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _buildBottomBar(ColorScheme cs, bool isDark, double bottomPadding) {
     final hasEnough = userCreditsNotifier.value >= _totalCost;
     final currentCredits = userCreditsNotifier.value;
@@ -4027,10 +3970,21 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
                   color: cs.onSurface,
                 ),
               ),
-              if (_upscaleEnabled) ...[
+              if (!_isVideoOutput && _upscaleEnabled) ...[
                 const SizedBox(width: 8),
                 Text(
                   _freeUpscale ? '(+FREE HD)' : '(+$_upscaleCost HD)',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: _freeUpscale ? KalaColors.gold : cs.onSurfaceVariant,
+                    fontWeight: _freeUpscale ? FontWeight.w600 : FontWeight.normal,
+                  ),
+                ),
+              ],
+              if (_isVideoOutput && _videoEnhancementOn) ...[
+                const SizedBox(width: 8),
+                Text(
+                  _freeUpscale ? '(+FREE enhancement)' : '(+$_upscaleCost enhancement)',
                   style: TextStyle(
                     fontSize: 12,
                     color: _freeUpscale ? KalaColors.gold : cs.onSurfaceVariant,
@@ -4086,10 +4040,11 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
                           selectedVideo: _selectedVideo,
                           selectedVideoPath: _selectedVideoPath,
                           readyToSubmit: true,
-                          enableInterpolate: _enableInterpolate,
-                          interpolateFps: _interpolateFps,
-                          enableUpscale: _enableUpscale,
-                          upscaleFactor: _upscaleFactor,
+                          enableInterpolate:
+                              _videoEnhancementOn && !_exploreTemplateIsLtx23SpatialVideo,
+                          interpolateFps: 2,
+                          enableUpscale: _videoEnhancementOn,
+                          upscaleFactor: 2,
                         ),
                       );
                     }
@@ -5027,11 +4982,26 @@ class _CategoryTemplatesPageState extends State<_CategoryTemplatesPage> {
         orElse: () => enabledModels.isNotEmpty ? enabledModels.first : <String, dynamic>{},
       ) as Map<String, dynamic>;
 
+      final outputType = template['output_type'] as String? ??
+          capability['outputType'] as String? ??
+          'image';
+      final imageHdUpscaleCharges = upscaleEnabled && outputType != 'video';
+
       final baseCost = modelConfig['cost'] as int? ?? 10;
-      final offer = modelConfig['offer'] as int? ?? 0;
+      final modelOffer = modelConfig['offer'] as int? ?? 0;
+      final sale = SaleService().state.value;
+      final offer = (sale.isActive && sale.discountPercent > 0)
+          ? sale.discountPercent
+          : modelOffer;
       final effectiveBaseCost = offer > 0 ? (baseCost * (1 - offer / 100)).round() : baseCost;
       final upscaleCost = isUpscaleFree() ? 0 : (modelConfig['costUpscale'] as int? ?? 5);
-      final totalCost = effectiveBaseCost + (upscaleEnabled ? upscaleCost : 0);
+      final videoEnhancementCharges = outputType == 'video' &&
+              (result.enableInterpolate || result.enableUpscale)
+          ? upscaleCost
+          : 0;
+      final totalCost = effectiveBaseCost +
+          (imageHdUpscaleCharges ? upscaleCost : 0) +
+          videoEnhancementCharges;
 
       if (!UserService().hasEnoughCredits(totalCost)) {
         dismissDialog();
@@ -5040,128 +5010,53 @@ class _CategoryTemplatesPageState extends State<_CategoryTemplatesPage> {
         return;
       }
 
+      final jobConfig = template['job_config'] as Map<String, dynamic>? ?? {};
+      final prompt = result.customPrompt ?? jobConfig['prompt'] as String? ?? '';
+
+      final prepBundle = await _runExploreHeavyTierGateWithParallelPrep(
+        context,
+        () => _buildExploreSubmitPrepBeforeUpload(
+          jobConfig: jobConfig,
+          modelConfig: modelConfig,
+          modelId: modelId.toString(),
+          outputType: outputType,
+          upscaleEnabled: upscaleEnabled,
+          scaleFactor: result.scaleFactor,
+          enableInterpolate: result.enableInterpolate,
+          interpolateFps: result.interpolateFps,
+          enableVideoEnhanceUpscale: result.enableUpscale,
+          videoEnhanceUpscaleFactor: result.upscaleFactor,
+          prompt: prompt,
+          loraAdapter: modelId == 'qwen_image_edit_2511_rapid_aio'
+              ? result.loraAdapter
+              : null,
+        ),
+      );
+      if (prepBundle == null) {
+        dismissDialog();
+        setState(() => _isSubmitting = false);
+        return;
+      }
+
+      final modelParams = prepBundle.modelParams;
+      final payload = prepBundle.payload;
+      final firebaseToken = prepBundle.firebaseToken;
+
       dialogMessage.value = 'Submitting job...';
 
-      final jobConfig = template['job_config'] as Map<String, dynamic>? ?? {};
-      final modelParams = Map<String, dynamic>.from(
-          modelConfig['params'] as Map<String, dynamic>? ?? {});
-      final rootParams = Map<String, dynamic>.from(
-          modelConfig['rootParams'] as Map<String, dynamic>? ?? {});
+      dialogMessage.value =
+          'Uploading media…\nPlease be patient if your internet connection is slow.';
 
-      for (final entry in jobConfig.entries) {
-        if (entry.key == 'prompt') continue;
-        if (entry.key == 'scale_factor') {
-          modelParams['scale_factor'] = result.scaleFactor;
-          modelParams['scale_image'] = upscaleEnabled;
-        } else {
-          modelParams[entry.key] = entry.value;
-        }
-      }
+      await applyExploreMediaR2Upload(
+        images: result.selectedImages,
+        videoBytes: result.selectedVideo,
+        modelParams: modelParams,
+        payload: payload,
+        authToken: firebaseToken,
+      );
+      stripForbiddenMediaFromParams(modelParams);
 
-      modelParams['scale_image'] = upscaleEnabled;
-      modelParams['scale_factor'] = result.scaleFactor;
-
-      final outputType = template['output_type'] as String? ??
-          capability['outputType'] as String? ??
-          'image';
-
-      // Video upscale settings (for video templates)
-      if (outputType == 'video') {
-        if (result.enableInterpolate) {
-          modelParams['enable_rife'] = true;
-          modelParams['rife_target_fps'] = result.interpolateFps;
-        } else {
-          modelParams['enable_rife'] = false;
-        }
-        
-        if (result.enableUpscale) {
-          modelParams['enable_upscaling'] = true;
-          modelParams['upscale_factor'] = result.upscaleFactor;
-        } else {
-          modelParams['enable_upscaling'] = false;
-        }
-      }
-
-      String prompt = result.customPrompt ?? jobConfig['prompt'] as String? ?? '';
-      rootParams['prompt'] = prompt;
-      
-      // LoRA adapter for qwen_image_edit_2511_rapid_aio
-      if (modelId == 'qwen_image_edit_2511_rapid_aio') {
-        modelParams['lora_adapter'] = result.loraAdapter;
-      }
-
-      // Handle media
-      if (result.selectedImages != null && result.selectedImages!.length > 1) {
-        final encodedImages = result.selectedImages!.map((b) => base64Encode(b)).toList();
-        modelParams['init_image'] = encodedImages;
-      } else if (result.selectedImages != null && result.selectedImages!.isNotEmpty) {
-        modelParams['init_image'] = base64Encode(result.selectedImages!.first);
-      }
-      if (result.selectedVideo != null) {
-        modelParams['init_video'] = base64Encode(result.selectedVideo!);
-      }
-
-      String? fcmToken;
-      try {
-        fcmToken = await FirebaseMessaging.instance.getToken();
-      } catch (_) {}
-
-      final payload = <String, dynamic>{
-        'model': modelId,
-        'params': modelParams,
-        'fcm_token': fcmToken,
-        'enhance_prompt': false,
-        'variations': 1,
-        ...rootParams,
-      };
-
-      final firebaseToken = await AuthService().getIdToken();
-      if (firebaseToken == null) {
-        throw Exception('Not authenticated. Please sign in first.');
-      }
-
-      // ── R2 presigned media upload (falls back to base64 on failure) ──
-      try {
-        dialogMessage.value = 'Uploading media…\nPlease be patient if your internet connection is slow.';
-
-        // Images
-        if (result.selectedImages != null && result.selectedImages!.isNotEmpty) {
-          final imageKeys = await MediaUploadService.uploadMediaBatch(
-            files: result.selectedImages!,
-            mediaType: 'image',
-            authToken: firebaseToken,
-          );
-          if (imageKeys != null) {
-            payload['input_image_r2_keys'] = imageKeys;
-            for (final k in ['init_image', 'images', 'image', 'ref_image',
-                             'input_image', 'source_image', 'face_image']) {
-              modelParams.remove(k);
-            }
-            debugPrint('☁️ R2 (CategoryTemplates): uploaded ${imageKeys.length} image(s)');
-          }
-        }
-
-        // Video
-        if (result.selectedVideo != null) {
-          final videoKeys = await MediaUploadService.uploadMediaBatch(
-            files: [result.selectedVideo!],
-            mediaType: 'video',
-            authToken: firebaseToken,
-          );
-          if (videoKeys != null && videoKeys.isNotEmpty) {
-            payload['input_video_r2_key'] = videoKeys.first;
-            for (final k in ['init_video', 'input_video', 'ref_video']) {
-              modelParams.remove(k);
-            }
-            debugPrint('☁️ R2 (CategoryTemplates): uploaded video');
-          }
-        }
-
-        dialogMessage.value = 'Submitting job...';
-      } catch (e) {
-        debugPrint('⚠️ R2 upload failed, falling back to base64: $e');
-      }
-      // ── End R2 upload ──
+      dialogMessage.value = 'Submitting job...';
 
       final headers = {
         'Content-Type': 'application/json',
@@ -5356,28 +5251,41 @@ class _CategoryTemplatesPageState extends State<_CategoryTemplatesPage> {
         ),
         centerTitle: true,
       ),
-      body: GridView.builder(
-        padding: const EdgeInsets.all(16),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 12,
-          childAspectRatio: 0.75,
+      body: SafeArea(
+        child: Column(
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 4, 16, 0),
+              child: SaleBanner(display: SaleBannerDisplay.highlight),
+            ),
+            Expanded(
+              child: GridView.builder(
+                padding: const EdgeInsets.all(16),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                  childAspectRatio: 0.75,
+                ),
+                itemCount: templateIds.length,
+                itemBuilder: (context, index) {
+                  final templateId = templateIds[index] as String;
+                  final template =
+                      widget.templates[templateId] as Map<String, dynamic>?;
+
+                  if (template == null) return const SizedBox.shrink();
+
+                  return _TemplateCard(
+                    template: template,
+                    capabilities: widget.capabilities,
+                    isDark: isDark,
+                    onTap: () => _showTemplateConfigSheet(template),
+                  );
+                },
+              ),
+            ),
+          ],
         ),
-        itemCount: templateIds.length,
-        itemBuilder: (context, index) {
-          final templateId = templateIds[index] as String;
-          final template = widget.templates[templateId] as Map<String, dynamic>?;
-
-          if (template == null) return const SizedBox.shrink();
-
-          return _TemplateCard(
-            template: template,
-            capabilities: widget.capabilities,
-            isDark: isDark,
-            onTap: () => _showTemplateConfigSheet(template),
-          );
-        },
       ),
     );
   }
@@ -5503,533 +5411,6 @@ IconData _resolveIconName(String iconName) {
     case 'grid':
     default:
       return LucideIcons.grid;
-  }
-}
-
-// =============================================================================
-// CATEGORY DETAIL PAGE - Shows subcategories and all templates
-// =============================================================================
-
-class _CategoryDetailPage extends StatefulWidget {
-  final Map<String, dynamic> category;
-  final Map<String, dynamic> templates;
-  final Map<String, dynamic> capabilities;
-
-  const _CategoryDetailPage({
-    required this.category,
-    required this.templates,
-    required this.capabilities,
-  });
-
-  @override
-  State<_CategoryDetailPage> createState() => _CategoryDetailPageState();
-}
-
-class _CategoryDetailPageState extends State<_CategoryDetailPage> {
-  bool _isSubmitting = false;
-  static const String controllerUrl = "https://genedit.mooo.com";
-
-  Future<void> _showTemplateConfigSheet(Map<String, dynamic> template) async {
-    HapticFeedback.mediumImpact();
-
-    final result = await showModalBottomSheet<_TemplateConfigResult>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => _TemplateConfigSheet(
-        template: template,
-        capabilities: widget.capabilities,
-      ),
-    );
-
-    if (result != null && result.readyToSubmit) {
-      await _processAndSubmit(template, result);
-    }
-  }
-
-  Future<void> _processAndSubmit(
-    Map<String, dynamic> template,
-    _TemplateConfigResult result,
-  ) async {
-    if (_isSubmitting) return;
-    setState(() => _isSubmitting = true);
-
-    final dialogMessage = ValueNotifier<String>('Preparing...');
-    bool dialogDismissed = false;
-    final upscaleEnabled = result.scaleFactor > 1;
-
-    void dismissDialog() {
-      if (!dialogDismissed && mounted) {
-        dialogDismissed = true;
-        Navigator.of(context, rootNavigator: true).pop();
-      }
-    }
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => _ProgressDialog(messageNotifier: dialogMessage),
-    );
-
-    try {
-      if (!AuthService().isSignedIn) {
-        dismissDialog();
-        final signedIn = await requireSignIn(context, feature: 'Explore');
-        if (!signedIn) {
-          setState(() => _isSubmitting = false);
-          return;
-        }
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (_) => _ProgressDialog(messageNotifier: dialogMessage),
-        );
-        dialogDismissed = false;
-      }
-
-      final capabilityId = template['capability'] as String?;
-      if (capabilityId == null) throw Exception('Template missing capability');
-
-      final capability = widget.capabilities[capabilityId] as Map<String, dynamic>?;
-      if (capability == null) throw Exception('Capability not found: $capabilityId');
-
-      final modelId = result.selectedModelId ??
-          template['model'] as String? ??
-          capability['defaultModel'];
-      final allModels = capability['models'] as List<dynamic>? ?? [];
-      // Filter to only enabled models
-      final enabledModels = allModels.where((m) {
-        final enabled = m['enabled'];
-        return enabled == null || enabled == true; // Default to enabled if not specified
-      }).toList();
-      
-      if (enabledModels.isEmpty) throw Exception('No enabled models available');
-      
-      final modelConfig = enabledModels.firstWhere(
-        (m) => m['id'] == modelId,
-        orElse: () => enabledModels.isNotEmpty ? enabledModels.first : <String, dynamic>{},
-      ) as Map<String, dynamic>;
-
-      final baseCost = modelConfig['cost'] as int? ?? 10;
-      final offer = modelConfig['offer'] as int? ?? 0;
-      final effectiveBaseCost = offer > 0 ? (baseCost * (1 - offer / 100)).round() : baseCost;
-      final upscaleCost = isUpscaleFree() ? 0 : (modelConfig['costUpscale'] as int? ?? 5);
-      final totalCost = effectiveBaseCost + (upscaleEnabled ? upscaleCost : 0);
-
-      if (!UserService().hasEnoughCredits(totalCost)) {
-        dismissDialog();
-        _showInsufficientCreditsSheet(totalCost, userCreditsNotifier.value);
-        setState(() => _isSubmitting = false);
-        return;
-      }
-
-      dialogMessage.value = 'Submitting job...';
-
-      final jobConfig = template['job_config'] as Map<String, dynamic>? ?? {};
-      final modelParams = Map<String, dynamic>.from(
-          modelConfig['params'] as Map<String, dynamic>? ?? {});
-      final rootParams = Map<String, dynamic>.from(
-          modelConfig['rootParams'] as Map<String, dynamic>? ?? {});
-
-      for (final entry in jobConfig.entries) {
-        if (entry.key == 'prompt') continue;
-        if (entry.key == 'scale_factor') {
-          modelParams['scale_factor'] = result.scaleFactor;
-          modelParams['scale_image'] = upscaleEnabled;
-        } else {
-          modelParams[entry.key] = entry.value;
-        }
-      }
-
-      modelParams['scale_image'] = upscaleEnabled;
-      modelParams['scale_factor'] = result.scaleFactor;
-
-      String prompt = result.customPrompt ?? jobConfig['prompt'] as String? ?? '';
-      rootParams['prompt'] = prompt;
-
-      if (result.selectedImages != null && result.selectedImages!.length > 1) {
-        final encodedImages = result.selectedImages!.map((b) => base64Encode(b)).toList();
-        modelParams['init_image'] = encodedImages;
-      } else if (result.selectedImages != null && result.selectedImages!.isNotEmpty) {
-        modelParams['init_image'] = base64Encode(result.selectedImages!.first);
-      }
-      if (result.selectedVideo != null) {
-        modelParams['init_video'] = base64Encode(result.selectedVideo!);
-      }
-
-      final outputType = template['output_type'] as String? ??
-          capability['outputType'] as String? ?? 'image';
-
-      String? fcmToken;
-      try {
-        fcmToken = await FirebaseMessaging.instance.getToken();
-      } catch (_) {}
-
-      final payload = <String, dynamic>{
-        'model': modelId,
-        'params': modelParams,
-        'fcm_token': fcmToken,
-        'enhance_prompt': false,
-        'variations': 1,
-        ...rootParams,
-      };
-
-      final firebaseToken = await AuthService().getIdToken();
-      if (firebaseToken == null) {
-        throw Exception('Not authenticated. Please sign in first.');
-      }
-
-      // ── R2 presigned media upload (falls back to base64 on failure) ──
-      try {
-        dialogMessage.value = 'Uploading media…\nPlease be patient if your internet connection is slow.';
-
-        // Images
-        if (result.selectedImages != null && result.selectedImages!.isNotEmpty) {
-          final imageKeys = await MediaUploadService.uploadMediaBatch(
-            files: result.selectedImages!,
-            mediaType: 'image',
-            authToken: firebaseToken,
-          );
-          if (imageKeys != null) {
-            payload['input_image_r2_keys'] = imageKeys;
-            for (final k in ['init_image', 'images', 'image', 'ref_image',
-                             'input_image', 'source_image', 'face_image']) {
-              modelParams.remove(k);
-            }
-            debugPrint('☁️ R2 (CategoryDetail): uploaded ${imageKeys.length} image(s)');
-          }
-        }
-
-        // Video
-        if (result.selectedVideo != null) {
-          final videoKeys = await MediaUploadService.uploadMediaBatch(
-            files: [result.selectedVideo!],
-            mediaType: 'video',
-            authToken: firebaseToken,
-          );
-          if (videoKeys != null && videoKeys.isNotEmpty) {
-            payload['input_video_r2_key'] = videoKeys.first;
-            for (final k in ['init_video', 'input_video', 'ref_video']) {
-              modelParams.remove(k);
-            }
-            debugPrint('☁️ R2 (CategoryDetail): uploaded video');
-          }
-        }
-
-        dialogMessage.value = 'Submitting job...';
-      } catch (e) {
-        debugPrint('⚠️ R2 upload failed, falling back to base64: $e');
-      }
-      // ── End R2 upload ──
-
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $firebaseToken',
-      };
-
-      final resp = await http
-          .post(
-            Uri.parse('$controllerUrl/submit'),
-            headers: headers,
-            body: jsonEncode(payload),
-          )
-          .timeout(const Duration(seconds: 60));
-
-      if (resp.statusCode != 200) {
-        throw Exception('Submit failed: ${resp.statusCode} ${resp.body}');
-      }
-
-      final data = jsonDecode(resp.body);
-      final jobId = data['job_id']?.toString();
-      final downloadUrl = data['download_url']?.toString();
-
-      if (jobId == null) throw Exception('No job_id returned');
-
-      final title = await generateFriendlyJobName();
-      final newJob = JobModel(
-        jobId: jobId,
-        title: title,
-        model: modelId ?? 'unknown',
-        outputType: outputType,
-        downloadUrl: downloadUrl,
-        status: 'processing',
-        inputImagePath: result.selectedImagePaths?.first ?? result.selectedVideoPath,
-        variations: 1,
-        allCompleted: false,
-        originalPrompt: prompt.isNotEmpty ? prompt : null,
-      );
-
-      await addOrUpdateJob(newJob);
-
-      final prefs = await SharedPreferences.getInstance();
-      final jobContext = {
-        'title': template['title'],
-        'model': modelId,
-        'outputType': outputType,
-      };
-      await prefs.setString('notify_job_$jobId', jsonEncode(jobContext));
-
-      await UserService().refreshCredits();
-
-      dismissDialog();
-      setState(() => _isSubmitting = false);
-
-      if (mounted) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const ResultManagerPage()),
-        );
-      }
-    } catch (e) {
-      debugPrint('❌ Job submission failed: $e');
-      dismissDialog();
-      setState(() => _isSubmitting = false);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-        );
-      }
-    }
-  }
-
-  Future<void> _showInsufficientCreditsSheet(int required, int current) async {
-    final cs = Theme.of(context).colorScheme;
-
-    await showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        decoration: BoxDecoration(
-          color: cs.surface,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 40, height: 4,
-                  decoration: BoxDecoration(
-                    color: cs.outlineVariant,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                const SizedBox(height: 28),
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: cs.errorContainer.withValues(alpha: 0.3),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(LucideIcons.coins, size: 36, color: cs.error),
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  'Not Enough Credits',
-                  style: TextStyle(
-                    fontSize: 22, fontWeight: FontWeight.w700, color: cs.onSurface,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'You need $required credits but only have $current.',
-                  style: TextStyle(fontSize: 15, color: cs.onSurfaceVariant),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 28),
-                SizedBox(
-                  width: double.infinity,
-                  child: GradientButton(
-                    icon: LucideIcons.gem,
-                    label: 'Get Credits',
-                    onPressed: () {
-                      Navigator.pop(ctx);
-                      selectedIndexNotifier.value = 2;
-                    },
-                    variant: ButtonVariant.primary,
-                    size: ButtonSize.large,
-                    expanded: true,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final title = widget.category['title'] as String? ?? 'Category';
-    
-    // Get color and icon from config (OTA-updateable)
-    final colorHex = widget.category['color'] as String? ?? '#8B5CF6';
-    final color = _parseHexColor(colorHex);
-    final iconName = widget.category['icon'] as String? ?? 'grid';
-    
-    // Get subcategories
-    final subcategories = (widget.category['subcategories'] as List<dynamic>?) ?? [];
-    final allTemplateIds = (widget.category['templates'] as List<dynamic>?) ?? [];
-
-    return Scaffold(
-      backgroundColor: cs.surface,
-      appBar: AppBar(
-        backgroundColor: cs.surface,
-        elevation: 0,
-        leading: IconButton(
-          icon: Icon(LucideIcons.arrowLeft, color: cs.onSurface),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(
-                _resolveIconName(iconName),
-                size: 16,
-                color: color,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: cs.onSurface,
-              ),
-            ),
-          ],
-        ),
-        centerTitle: true,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Subcategories
-            if (subcategories.isNotEmpty) ...[
-              ...subcategories.map((subcat) {
-                final sub = subcat as Map<String, dynamic>;
-                return _buildSubcategorySection(cs, isDark, sub, color);
-              }),
-            ] else ...[
-              // If no subcategories, show all templates
-              _buildAllTemplatesGrid(cs, isDark, allTemplateIds.cast<String>()),
-            ],
-            
-            const SizedBox(height: 80),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSubcategorySection(
-    ColorScheme cs,
-    bool isDark,
-    Map<String, dynamic> subcategory,
-    Color accentColor,
-  ) {
-    final title = subcategory['title'] as String? ?? 'Subcategory';
-    final templateIds = (subcategory['templates'] as List<dynamic>?) ?? [];
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Subcategory header
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: accentColor.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: accentColor.withValues(alpha: 0.2)),
-            ),
-            child: Text(
-              title,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: accentColor,
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          // Horizontal scrollable templates list
-          SizedBox(
-            height: 240, // Fixed height for horizontal scroll
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              itemCount: templateIds.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 12),
-              itemBuilder: (context, index) {
-                final templateId = templateIds[index] as String;
-                final template = widget.templates[templateId] as Map<String, dynamic>?;
-
-                if (template == null) return const SizedBox.shrink();
-
-                return SizedBox(
-                  width: 160, // Fixed width for each card
-                  child: _TemplateCard(
-                    template: template,
-                    capabilities: widget.capabilities,
-                    isDark: isDark,
-                    onTap: () => _showTemplateConfigSheet(template),
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAllTemplatesGrid(ColorScheme cs, bool isDark, List<String> templateIds) {
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-        childAspectRatio: 0.75,
-      ),
-      itemCount: templateIds.length,
-      itemBuilder: (context, index) {
-        final templateId = templateIds[index];
-        final template = widget.templates[templateId] as Map<String, dynamic>?;
-
-        if (template == null) return const SizedBox.shrink();
-
-        return _TemplateCard(
-          template: template,
-          capabilities: widget.capabilities,
-          isDark: isDark,
-          onTap: () => _showTemplateConfigSheet(template),
-        );
-      },
-    );
   }
 }
 

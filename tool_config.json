@@ -285,8 +285,8 @@
           "🎨 Art"
         ],
         "capability": "edit_image",
-        "model": "qwen_image_edit_2511_rapid_aio",
-        "preferred_model": "qwen_image_edit_2511_rapid_aio",
+        "model": "flux_klein",
+        "preferred_model": "flux_klein",
         "job_config": {
           "prompt": "Anime style portrait, detailed eyes, soft shading, studio ghibli inspired, vibrant colors, clean linework, beautiful anime character"        
         }
@@ -340,8 +340,8 @@
           "4K"
         ],
         "capability": "upscale",
-        "model": "realesrgan_anime",
-        "preferred_model": "realesrgan_anime",
+        "model": "aurasrv2",
+        "preferred_model": "aurasrv2",
         "job_config": {
           "scale_factor": 4
         }
@@ -378,11 +378,12 @@
           "AI Face"
         ],
         "capability": "upscale",
-        "model": "realesrgan",
-        "preferred_model": "realesrgan",
+        "model": "face_enhancer",
+        "preferred_model": "face_enhancer",
         "job_config": {
           "scale_factor": 2,
-          "face_enhance": true
+          "mode": "v1.4",
+          "enhance_faces": true
         }
       },
       "photo_restore": {
@@ -395,11 +396,11 @@
         "preview_type": "video",
         "badges": [
           "🔧 Restore",
-          "Denoise"
+          "HD"
         ],
         "capability": "upscale",
-        "model": "realesrgan_denoise",
-        "preferred_model": "realesrgan_denoise",
+        "model": "aurasrv2",
+        "preferred_model": "aurasrv2",
         "job_config": {
           "scale_factor": 4
         }
@@ -416,7 +417,7 @@
           "🎬 Pro"
         ],
         "capability": "create_video",
-        "model": "wan_22_fp8_lightx2v_i2v",
+        "model": "wan_22_fp8_lightx2v_t2v",
         "preferred_model": "wan_22_fp8_lightx2v_i2v",
         "show_prompt": true,
         "prompt_placeholder": "Describe your cinematic scene...",
@@ -436,8 +437,8 @@
           "🎨 Art"
         ],
         "capability": "edit_image",
-        "model": "qwen_image_edit_2511_rapid_aio",
-        "preferred_model": "qwen_image_edit_2511_rapid_aio",
+        "model": "flux_klein",
+        "preferred_model": "flux_klein",
         "job_config": {
           "prompt": "Oil painting style, rich brushstrokes, classical art technique, museum quality, vivid colors, canvas texture, masterpiece painting"
         }
@@ -454,8 +455,8 @@
           "🌆 Sci-Fi"
         ],
         "capability": "edit_image",
-        "model": "qwen_image_edit_2511_rapid_aio",
-        "preferred_model": "qwen_image_edit_2511_rapid_aio",
+        "model": "flux_klein",
+        "preferred_model": "flux_klein",
         "job_config": {
           "prompt": "Cyberpunk style, neon lights, futuristic cityscape background, holographic effects, rain-soaked streets, blade runner aesthetic, vibrant pink and blue lighting"
         }
@@ -472,8 +473,8 @@
           "🎭 Fun"
         ],
         "capability": "edit_image",
-        "model": "qwen_image_edit_2511_rapid_aio",
-        "preferred_model": "qwen_image_edit_2511_rapid_aio",
+        "model": "flux_klein",
+        "preferred_model": "flux_klein",
         "job_config": {
           "prompt": "3D cartoon style, Pixar animation quality, expressive features, smooth render, vibrant colors, friendly character design, CGI quality"
         }
@@ -490,8 +491,8 @@
           "📷 Retro"
         ],
         "capability": "edit_image",
-        "model": "qwen_image_edit_2511_rapid_aio",
-        "preferred_model": "qwen_image_edit_2511_rapid_aio",
+        "model": "flux_klein",
+        "preferred_model": "flux_klein",
         "job_config": {
           "prompt": "Vintage film photography, warm color grading, subtle film grain, nostalgic mood, 1970s aesthetic, soft vignette, analog camera look"
         }
@@ -527,8 +528,8 @@
           "🎨 Art"
         ],
         "capability": "edit_image",
-        "model": "qwen_image_edit_2511_rapid_aio",
-        "preferred_model": "qwen_image_edit_2511_rapid_aio",
+        "model": "flux_klein",
+        "preferred_model": "flux_klein",
         "job_config": {
           "prompt": "Watercolor painting style, soft washes, flowing colors, delicate brush strokes, artistic paper texture, dreamy atmosphere, professional watercolor art"
         }
@@ -545,8 +546,8 @@
           "✏️ Classic"
         ],
         "capability": "edit_image",
-        "model": "qwen_image_edit_2511_rapid_aio",
-        "preferred_model": "qwen_image_edit_2511_rapid_aio",
+        "model": "flux_klein",
+        "preferred_model": "flux_klein",
         "job_config": {
           "prompt": "Pencil sketch portrait, detailed shading, graphite drawing, realistic charcoal art, fine lines, artistic hatching, professional sketch"
         }
@@ -563,8 +564,8 @@
           "🎨 Retro"
         ],
         "capability": "edit_image",
-        "model": "qwen_image_edit_2511_rapid_aio",
-        "preferred_model": "qwen_image_edit_2511_rapid_aio",
+        "model": "flux_klein",
+        "preferred_model": "flux_klein",
         "job_config": {
           "prompt": "Pop art style, bold colors, high contrast, Andy Warhol inspired, comic book halftone dots, vibrant artistic poster"
         }
@@ -581,8 +582,8 @@
           "✨ Glow"
         ],
         "capability": "edit_image",
-        "model": "qwen_image_edit_2511_rapid_aio",
-        "preferred_model": "qwen_image_edit_2511_rapid_aio",
+        "model": "flux_klein",
+        "preferred_model": "flux_klein",
         "job_config": {
           "prompt": "Neon glow effect, electric light trails, vibrant pink and blue neon, dark background, glowing outlines, synthwave aesthetic, dramatic lighting"
         }
@@ -599,8 +600,8 @@
           "🎮 Retro"
         ],
         "capability": "edit_image",
-        "model": "qwen_image_edit_2511_rapid_aio",
-        "preferred_model": "qwen_image_edit_2511_rapid_aio",
+        "model": "flux_klein",
+        "preferred_model": "flux_klein",
         "job_config": {
           "prompt": "Pixel art style, 8-bit retro gaming aesthetic, blocky pixels, limited color palette, nostalgic video game character, sprite art"
         }
@@ -617,8 +618,8 @@
           "😂 Fun"
         ],
         "capability": "edit_image",
-        "model": "qwen_image_edit_2511_rapid_aio",
-        "preferred_model": "qwen_image_edit_2511_rapid_aio",
+        "model": "flux_klein",
+        "preferred_model": "flux_klein",
         "job_config": {
           "prompt": "Caricature art style, exaggerated features, humorous portrait, cartoon proportions, expressive face, professional caricature artist quality"
         }
@@ -635,8 +636,8 @@
           "💥 Hero"
         ],
         "capability": "edit_image",
-        "model": "qwen_image_edit_2511_rapid_aio",
-        "preferred_model": "qwen_image_edit_2511_rapid_aio",
+        "model": "flux_klein",
+        "preferred_model": "flux_klein",
         "job_config": {
           "prompt": "Comic book style, bold outlines, dramatic shading, superhero aesthetic, action pose, vibrant colors, Marvel DC inspired, dynamic composition"
         }
@@ -651,16 +652,16 @@
       "icon": "wand2",
       "accent": "#8B5CF6",
       "outputType": "image",
-      "defaultModel": "qwen_image",
+      "defaultModel": "z_image_turbo",
       "models": [
         {
-          "id": "qwen_image",
+          "id": "flux_klein",
           "name": "Lumora",
           "description": "Fast generation, high detail",
           "cost": 10,
           "costUpscale": 3,
           "offer": 0,
-          "enabled": true,
+          "enabled": false,
           "params": {
             "cfg_scale": 1.0,
             "num_inference_steps": 8,
@@ -693,6 +694,7 @@
           "id": "z_image_turbo",
           "name": "Klyra",
           "description": "Ultra-fast generation, Realistic images",
+          "useExternalApi": true,
           "cost": 10,
           "costUpscale": 3,
           "offer": 0,
@@ -729,7 +731,13 @@
         {
           "id": "prompt",
           "type": "text",
-          "label": "Describe the image you want"
+          "label": "Prompt",
+          "hintExamples": [
+            "Vectra & Lumora — use natural sentences: subject first, then action, then setting and light. A red fox in dewy tall grass at sunrise, mist along the ridge, 85mm lens, shallow depth of field, lifelike fur detail.",
+            "Vectra & Lumora: describe only what you want (no negative lists); skip weight syntax like (word:1.2). Cozy Scandinavian reading nook, oak shelves, one warm pendant, late sun through linen curtains.",
+            "Klyra — lead with the hero subject; stick to positive wording (negative lists are ignored). Neon diner corner, wet asphalt mirrors pink and teal signage, cinematic color grade, 35mm street photo.",
+            "Klyra + text in frame — put signage in quotes. A corner bodega with a painted sign reading \"OPEN LATE\", sodium vapor glow, drizzle, documentary mood."
+          ]
         },
         {
           "id": "scale_factor",
@@ -787,6 +795,13 @@
           "costUpscale": 3,
           "offer": 0,
           "enabled": true,
+          "inputOverrides": {
+            "init_image": {
+              "id": "images",
+              "label": "Select up to 3 Images",
+              "max": 3
+            }
+          },
           "params": {
             "num_inference_steps": 8,
             "guidance_scale": 1.0,
@@ -811,11 +826,11 @@
             "cfg_scale": 1.0,
             "init_image": "{{init_image}}",
             "scale_image": true,
-            "scale_factor": "{{scale_factor}}"
+            "scale_factor": "{{scale_factor}}",
+            "negative_prompt": " "
           },
           "rootParams": {
-            "prompt": "{{prompt}}",
-            "negative_prompt": " "
+            "prompt": "{{prompt}}"
           }
         },
         {
@@ -825,7 +840,7 @@
           "cost": 10,
           "costUpscale": 3,
           "offer": 0,
-          "enabled": true,
+          "enabled": false,
           "inputOverrides": {
             "init_image": {
               "id": "images",
@@ -838,16 +853,16 @@
             "num_inference_steps": 8,
             "init_image": "{{images}}",
             "scale_image": true,
-            "scale_factor": "{{scale_factor}}"
+            "scale_factor": "{{scale_factor}}",
+            "negative_prompt": " "
           },
           "rootParams": {
-            "prompt": "{{prompt}}",
-            "negative_prompt": " "
+            "prompt": "{{prompt}}"
           }
         },
         {
           "id": "qwen_image_edit_2511_rapid_aio",
-          "name": "Revia 2",
+          "name": "Revia",
           "description": "Ultra-realistic, Enhanced performance",
           "cost": 10,
           "costUpscale": 3,
@@ -902,7 +917,13 @@
         {
           "id": "prompt",
           "type": "text",
-          "label": "Describe the edit"
+          "label": "Edit prompt",
+          "hintExamples": [
+            "Vectra edit — state the change, then what stays: Change the jacket to deep navy wool; keep pose, face, hands, lighting, and background unchanged.",
+            "Revia — multi-image: name each reference. Person from the first image wearing the jacket palette from the second; preserve identity and skin texture.",
+            "Precise local edit: Remove the backpack strap from the left shoulder only; keep fabric folds and shadows consistent.",
+            "Text swap: Replace the headline with \"HALF OFF\" using the same font weight, color, alignment, and perspective as the original lettering."
+          ]
         },
         {
           "id": "scale_factor",
@@ -940,23 +961,27 @@
           "id": "basic_utils",
           "name": "Object Eraser",
           "description": "Fast Generation, Smart Fill",
-          "cost": 10,
-          "costUpscale": 3,
+          "onDeviceOnly": true,
+          "onDeviceModelUrl": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/lama_dilated.tflite",
+          "onDeviceModelFileName": "lama_dilated.tflite",
+          "onDeviceModelVersion": "v1",
+          "useExternalApi": false,
+          "cost": 3,
+          "costUpscale": 0,
           "offer": 0,
           "enabled": true,
           "params": {
             "mode": "lama_inpaint",
             "init_image": "{{init_image}}",
             "mask_image": "{{mask_image}}",
-            "scale_image": true,
-            "scale_factor": "{{scale_factor}}"
+            "scale_image": true
           }
         },
         {
           "id": "sdxl_inpaint",
           "name": "Imagia Inpaint",
           "description": "AI-powered content fill with prompt",
-          "cost": 6,
+          "cost": 5,
           "costUpscale": 3,
           "offer": 0,
           "enabled": false,
@@ -969,11 +994,11 @@
             "invert_mask": false,
             "mask_threshold": 127,
             "scale_image": true,
-            "scale_factor": "{{scale_factor}}"
+            "scale_factor": "{{scale_factor}}",
+            "mode": "inpaint"
           },
           "rootParams": {
-            "prompt": "{{prompt}}",
-            "mode": "inpaint"
+            "prompt": "{{prompt}}"
           }
         }
       ],
@@ -989,20 +1014,6 @@
           "id": "mask_image",
           "type": "image",
           "label": "Mask (paint area to edit)"
-        },
-        {
-          "id": "prompt",
-          "type": "text",
-          "label": "Describe what to fill (optional)",
-          "optional": true
-        },
-        {
-          "id": "scale_factor",
-          "type": "slider",
-          "label": "Upscale Factor",
-          "min": 1,
-          "max": 4,
-          "default": 2
         }
       ],
       "elements": [
@@ -1013,10 +1024,6 @@
         {
           "type": "painter",
           "input_ref": "mask_image"
-        },
-        {
-          "type": "prompt",
-          "input_ref": "prompt"
         },
         {
           "type": "generate_button"
@@ -1034,13 +1041,13 @@
       "models": [
         {
           "id": "fastwan_21_1b",
-          "name": "CineMotion",
+          "name": "Cinemotion",
           "description": "Fast generation, creative motion",
           "cost": 15,
           "baseCost5Sec": 15,
           "costUpscale": 3,
           "offer": 0,
-          "enabled": true,
+          "enabled": false,
           "maxDuration": 5,
           "params": {
             "steps": 8,
@@ -1060,14 +1067,14 @@
           }
         },
         {
-          "id": "hunyan15_480p_t2V_distilled",
+          "id": "hunyan15_480p_t2v_distilled",
           "name": "MotionFlow",
           "description": "High visual quality and motion coherence",
           "cost": 15,
           "baseCost5Sec": 15,
           "costUpscale": 3,
           "offer": 0,
-          "enabled": true,
+          "enabled": false,
           "maxDuration": 10,
           "params": {
             "num_inference_steps": 4,
@@ -1098,7 +1105,7 @@
           "enabled": true,
           "maxDuration": 10,
           "params": {
-            "num_inference_steps": 8,
+            "num_inference_steps": 4,
             "guidance_scale": 1.0,
             "guidance_scale_2": 1.0,
             "randomize_seed": true,
@@ -1115,13 +1122,50 @@
           "rootParams": {
             "prompt": "{{prompt}}"
           }
+        },
+        {
+          "id": "ltx2_3_t2v",
+          "name": "CineReal",
+          "description": "Highly realistic videos with audio support.",
+          "cost": 15,
+          "baseCost5Sec": 15,
+          "costUpscale": 3,
+          "offer": 0,
+          "enabled": true,
+          "maxDuration": 20,
+          "params": {
+            "width": 768,
+            "height": 512,
+            "num_frames": 121,
+            "frame_rate": 24,
+            "num_inference_steps": 30,
+            "guidance_scale": 3.0,
+            "stg_scale": 1.0,
+            "modality_scale": 3.0,
+            "guidance_rescale": 0.7,
+            "audio_guidance_scale": 7.0,
+            "audio_stg_scale": 1.0,
+            "audio_modality_scale": 3.0,
+            "audio_guidance_rescale": 0.7,
+            "spatio_temporal_guidance_blocks": [28],
+            "use_default_negative_prompt": true
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
         }
       ],
       "inputs": [
         {
           "id": "prompt",
           "type": "text",
-          "label": "Describe your video"
+          "label": "Video prompt",
+          "hintExamples": [
+            "CineReal & Cinemotion Pro — motion and camera first, then mood. Slow push-in on rising steam from a mug, warm practical lights, shallow depth, quiet morning ambience.",
+            "Scene beats in plain language: Coastal drone glide at sunset, waves rolling on cliffs, gulls crossing frame, light film grain, steady gimbal feel.",
+            "CineReal with guidance audio — hint actions that can follow rhythm: Gentle head nod on the downbeat, fabric sway, keep lighting and lens texture consistent.",
+            "Short clause chain: Rain-streaked window, taxi lights sliding past, silhouette turns toward camera, neo-noir teal and orange grade."
+          ]
         },
         {
           "id": "scale_factor",
@@ -1130,12 +1174,22 @@
           "min": 1,
           "max": 4,
           "default": 1
+        },
+        {
+          "id": "audio",
+          "type": "audio_upload",
+          "label": "Guidance audio (optional)",
+          "showForModels": ["ltx2_3_t2v"]
         }
       ],
       "elements": [
         {
           "type": "prompt",
           "input_ref": "prompt"
+        },
+        {
+          "type": "audio_upload",
+          "input_ref": "audio"
         },
         {
           "type": "generate_button"
@@ -1154,7 +1208,7 @@
         {
           "id": "wan_22_fp8_lightx2v_i2v",
           "name": "Cinemotion Pro",
-          "description": "High quality image-to-video.",
+          "description": "High quality image-to-video with optional end frame.",
           "cost": 15,
           "baseCost5Sec": 15,
           "costUpscale": 3,
@@ -1162,7 +1216,7 @@
           "enabled": true,
           "maxDuration": 10,
           "params": {
-            "num_inference_steps": 8,
+            "num_inference_steps": 4,
             "guidance_scale": 1.0,
             "mode": "i2v",
             "randomize_seed": true,
@@ -1180,14 +1234,67 @@
           }
         },
         {
-          "id": "hunyan15_480p_i2V_step_distilled",
+          "id": "ltx2_3_cinereal",
+          "name": "CineReal",
+          "description": "Highly realistic motion from one image, or between two keyframes (optional end frame and guidance audio from + or the attach sheet).",
+          "cost": 18,
+          "baseCost5Sec": 18,
+          "costUpscale": 3,
+          "offer": 0,
+          "enabled": true,
+          "maxDuration": 20,
+          "cinerealI2vWorkerModel": "ltx2_3_i2v_distilled",
+          "cinerealFlf2vWorkerModel": "ltx2_3_flf2v",
+          "params": {
+            "init_image": "{{init_image}}",
+            "input_video": "{{ref_video}}",
+            "width": 768,
+            "height": 512,
+            "frame_rate": 24,
+            "stage1_num_inference_steps": 8,
+            "stage2_num_inference_steps": 3
+          },
+          "paramsFlf2v": {
+            "first_frame_image": "{{init_image}}",
+            "last_frame_image": "{{last_frame_image}}",
+            "first_strength": 1.0,
+            "last_strength": 1.0,
+            "width": 768,
+            "height": 512,
+            "frame_rate": 24,
+            "num_inference_steps": 30,
+            "guidance_scale": 3.0,
+            "stg_scale": 1.0,
+            "modality_scale": 3.0,
+            "guidance_rescale": 0.7,
+            "audio_guidance_scale": 7.0,
+            "audio_stg_scale": 1.0,
+            "audio_modality_scale": 3.0,
+            "audio_guidance_rescale": 0.7,
+            "spatio_temporal_guidance_blocks": [28],
+            "use_default_negative_prompt": true
+          },
+          "inputOverridesFlf2v": {
+            "init_image": {
+              "label": "Start frame"
+            },
+            "last_frame_image": {
+              "label": "End frame"
+            }
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        },
+        {
+          "id": "hunyan15_480p_i2v_step_distilled",
           "name": "AnimateFlow",
           "description": "Smooth, high-quality motion for vivid videos",
           "cost": 15,
           "baseCost5Sec": 15,
           "costUpscale": 3,
           "offer": 0,
-          "enabled": true,
+          "enabled": false,
           "maxDuration": 10,
           "params": {
             "num_inference_steps": 12,
@@ -1214,7 +1321,7 @@
           "baseCost5Sec": 15,
           "costUpscale": 3,
           "offer": 0,
-          "enabled": true,
+          "enabled": false,
           "maxDuration": 5,
           "inputOverrides": {
             "init_image": {
@@ -1238,11 +1345,11 @@
             "scale_factor": "{{scale_factor}}",
             "sample_shift": 5.0,
             "sample_solver": "unipc",
-            "sample_guide_scale_img": 4.0
+            "sample_guide_scale_img": 4.0,
+            "mode": "DreamID-V-Wan-1.3B-Faster"
           },
           "rootParams": {
-            "prompt": "{{prompt}}",
-            "mode": "DreamID-V-Wan-1.3B-Faster"
+            "prompt": "{{prompt}}"
           }
         }
       ],
@@ -1259,19 +1366,41 @@
           "type": "image",
           "label": "Reference Image",
           "min": 1,
-          "max": 1
+          "max": 1,
+          "showForModels": ["dreamid"]
         },
         {
           "id": "ref_video",
           "type": "video",
           "label": "Reference Video",
           "min": 1,
-          "max": 1
+          "max": 1,
+          "showForModels": ["dreamid", "ltx2_3_cinereal"]
+        },
+        {
+          "id": "cinereal_audio",
+          "type": "audio_upload",
+          "label": "Guidance audio (optional)",
+          "showForModels": ["ltx2_3_cinereal"]
+        },
+        {
+          "id": "last_frame_image",
+          "type": "image",
+          "label": "Last frame",
+          "min": 1,
+          "max": 1,
+          "showForModels": ["ltx2_3_cinereal", "wan_22_fp8_lightx2v_i2v"]
         },
         {
           "id": "prompt",
           "type": "text",
-          "label": "Describe the motion"
+          "label": "Motion prompt",
+          "hintExamples": [
+            "Image-to-video — subtle motion reads best: Gentle breathing, slow blink, hair drifting slightly, soft cloth movement, same framing and focus.",
+            "Cinemotion Pro — name visible motion cues: Camera eases left while leaves flutter in backlight, dust in a sunbeam, micro handheld sway.",
+            "CineReal two-frame — bridge start and end: Smooth ease from standing into sitting, keep wardrobe, lighting, and background continuity.",
+            "Avoid huge object swaps; describe micro-motion and light: River highlights shimmer, eyelids heavy after sundown, fabric responds to a light breeze."
+          ]
         },
         {
           "id": "scale_factor",
@@ -1296,6 +1425,10 @@
           "input_ref": "ref_video"
         },
         {
+          "type": "audio_upload",
+          "input_ref": "cinereal_audio"
+        },
+        {
           "type": "prompt",
           "input_ref": "prompt"
         },
@@ -1317,6 +1450,7 @@
           "id": "diffusers_outpaint",
           "name": "Scene Expander",
           "description": "AI-powered outpainting",
+          "useExternalApi": true,
           "cost": 8,
           "costUpscale": 3,
           "offer": 10,
@@ -1350,8 +1484,14 @@
         {
           "id": "prompt",
           "type": "text",
-          "label": "Describe Expansion (optional)",
-          "optional": true
+          "label": "Scene detail (optional)",
+          "optional": true,
+          "hintExamples": [
+            "Scene Expander — ask for a seamless continuation: Extend sky and distant ridgeline with the same cloudy atmosphere and brush texture as the original.",
+            "Match perspective and palette: Continue the cobblestone street and storefronts with the same vanishing point and warm lamp tones.",
+            "Optional — leave blank for a neutral expand, or add: More foreground meadow with soft wildflowers, same golden-hour haze as the plate.",
+            "Seamless wings: Widen the theater stage with matching velvet drapes and haze; do not introduce new characters or props."
+          ]
         },
         {
           "id": "alignment",
@@ -1416,6 +1556,7 @@
           "id": "basic_utils",
           "name": "Background Remover",
           "description": "Instant cutout, clean edges",
+          "useExternalApi": true,
           "cost": 5,
           "costUpscale": 3,
           "offer": 0,
@@ -1468,8 +1609,9 @@
           "id": "aurasrv2",
           "name": "Ultra Enhance",
           "description": "Best quality, crisp details",
+          "useExternalApi": true,
           "cost": 8,
-          "costUpscale": 3,
+          "costUpscale": 0,
           "offer": 0,
           "enabled": true,
           "params": {
@@ -1482,7 +1624,7 @@
           "name": "Sharp Refine",
           "description": "Edge sharpening, clarity",
           "cost": 5,
-          "costUpscale": 3,
+          "costUpscale": 0,
           "offer": 0,
           "enabled": true,
           "params": {
@@ -1494,10 +1636,11 @@
           "id": "realesrgan",
           "name": "PhotoBoost",
           "description": "Fast, Good Quality Upscaling",
+          "useExternalApi": true,
           "cost": 5,
-          "costUpscale": 3,
+          "costUpscale": 0,
           "offer": 0,
-          "enabled": true,
+          "enabled": false,
           "params": {
             "init_image": "{{image}}",
             "outscale": "{{scale_factor}}",
@@ -1512,10 +1655,11 @@
           "id": "realesrgan_anime",
           "name": "PhotoBoost Anime",
           "description": "Optimized for anime & illustrations",
+          "useExternalApi": true,
           "cost": 5,
           "costUpscale": 3,
           "offer": 0,
-          "enabled": true,
+          "enabled": false,
           "params": {
             "init_image": "{{image}}",
             "outscale": "{{scale_factor}}",
@@ -1530,8 +1674,9 @@
           "id": "face_enhancer",
           "name": "Face Enhancer",
           "description": "Face restore + upscale, or upscale only",
+          "useExternalApi": true,
           "cost": 5,
-          "costUpscale": 3,
+          "costUpscale": 0,
           "offer": 0,
           "enabled": true,
           "params": {
@@ -1567,7 +1712,7 @@
           "label": "Face Enhance",
           "description": "Add face restoration (GFPGAN)",
           "default": false,
-          "showForModels": ["realesrgan", "realesrgan_denoise"]
+          "showForModels": ["realesrgan"]
         },
         {
           "id": "mode",
@@ -1598,11 +1743,6 @@
       ],
       "elements": [
         { "type": "image_upload", "input_ref": "image" },
-        { "type": "slider", "input_ref": "scale_factor" },
-        { "type": "toggle", "input_ref": "face_enhance" },
-        { "type": "dropdown", "input_ref": "mode" },
-        { "type": "dropdown", "input_ref": "bg_model" },
-        { "type": "toggle", "input_ref": "enhance_faces" },
         { "type": "generate_button" }
       ]
     },
@@ -1632,11 +1772,11 @@
             "target_fps": "{{target_fps}}",
             "enable_upscaling": "{{enable_upscaling}}",
             "upscale_factor": "{{upscale_factor}}",
-            "output_dir": "./outputs"
+            "output_dir": "./outputs",
+            "mode": "upscale"
           },
           "rootParams": {
-            "prompt": "Video upscaling",
-            "mode": "upscale"
+            "prompt": "Video upscaling"
           }
         }
       ],

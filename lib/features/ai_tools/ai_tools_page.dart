@@ -9,6 +9,8 @@ import 'package:kala_ai_create_images_videos_with_ai/features/result_manager/res
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/ai_tools/generic_tool_page.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/services/sale_service.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/sale_banner.dart';
 
 // -------------------- MODEL CLASSES --------------------
 
@@ -559,13 +561,15 @@ class _AiToolsPageState extends State<AiToolsPage>
               ),
             ),
           ),
+          const SaleBanner(display: SaleBannerDisplay.highlight),
+          const SizedBox(height: 12),
           Text(
             "Choose what you want to create",
             style: tt.bodyMedium?.copyWith(
               color: cs.onSurfaceVariant,
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
 
           // Capability grid
           GridView.builder(
@@ -724,6 +728,8 @@ class _CapabilityCardState extends State<_CapabilityCard> {
                       outputType: cap.outputType,
                       cost: defaultModel?.cost ?? 10,
                       costUpscale: defaultModel?.costUpscale ?? 0,
+                      offer: (defaultModel?.rawJson['offer'] as num?)?.toInt() ?? 0,
+                      capabilityId: cap.id,
                       // Pass models for model selector
                       models: cap.models
                           .map((m) => m.toJson())
@@ -854,13 +860,30 @@ class _CapabilityCardState extends State<_CapabilityCard> {
               children: [
                 Icon(LucideIcons.gem, color: accent, size: 13),
                 const SizedBox(width: 4),
-                Text(
-                  cap.costRange,
-                  style: tt.labelSmall?.copyWith(
-                    color: cs.onSurface,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 11,
-                  ),
+                ValueListenableBuilder<SaleState>(
+                  valueListenable: SaleService().state,
+                  builder: (context, sale, _) {
+                    String costText = cap.costRange;
+                    if (sale.isActive && sale.discountPercent > 0 && cap.models.isNotEmpty) {
+                      final costs = cap.models.map((m) => m.cost).toSet().toList()..sort();
+                      final discounted = costs
+                          .map((c) => sale.applyDiscount(c))
+                          .toSet()
+                          .toList()
+                        ..sort();
+                      costText = discounted.length == 1
+                          ? '${discounted.first}'
+                          : '${discounted.first}-${discounted.last}';
+                    }
+                    return Text(
+                      costText,
+                      style: tt.labelSmall?.copyWith(
+                        color: cs.onSurface,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 11,
+                      ),
+                    );
+                  },
                 ),
               ],
             ),

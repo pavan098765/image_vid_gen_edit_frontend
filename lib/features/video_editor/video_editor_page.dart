@@ -624,11 +624,11 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Row(
+            content: const Row(
               children: [
                 Icon(Icons.check_circle, color: Colors.white, size: 18),
-                const SizedBox(width: 8),
-                const Text('Export complete! Tap Save Video to save.'),
+                SizedBox(width: 8),
+                Text('Export complete! Tap Save Video to save.'),
               ],
             ),
             duration: const Duration(seconds: 3),
@@ -737,7 +737,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
 
   /// Shows a rewarded ad for export gate (preserved from original).
   Future<bool> _showExportAd() async {
-    if (!shouldShowAds()) return true;
+    if (!shouldRequireHeavyTierRewardedAd()) return true;
 
     if (!_adService.isAdReadyNotifier.value) {
       if (mounted) {
@@ -1005,7 +1005,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
   // =========================================================================
 
   Widget _buildEmptyStateWithAd() {
-    final showAds = shouldShowAds();
+    final showAds = shouldShowNativeBannerAds();
     return Column(
       children: [
         if (showAds)

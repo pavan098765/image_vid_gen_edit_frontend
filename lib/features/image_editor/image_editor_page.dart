@@ -394,9 +394,8 @@ class _EditorPageState extends State<EditorPage> {
   /// Shows a rewarded ad for export gate
   /// Returns true if ad was completed (or skipped for ad-free users), false otherwise
   Future<bool> _showExportAd() async {
-    // Skip ad entirely if user has purchased Remove Ads
-    if (!shouldShowAds()) {
-      debugPrint('✅ User is ad-free, skipping export ad');
+    if (!shouldRequireHeavyTierRewardedAd()) {
+      debugPrint('✅ User is not on heavy ad tier, skipping export ad');
       return true;
     }
     
@@ -685,7 +684,7 @@ class _EditorPageState extends State<EditorPage> {
   }
 
   Widget _buildEmptyStateWithAd(BuildContext context) {
-    final showAds = shouldShowAds();
+    final showAds = shouldShowNativeBannerAds();
     
     return Column(
       children: [

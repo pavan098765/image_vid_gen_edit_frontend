@@ -1,9 +1,7 @@
 // lib/features/video_editor/widgets/timeline/timeline_panel.dart
 
 import 'dart:io';
-import 'dart:ui' show Size;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
