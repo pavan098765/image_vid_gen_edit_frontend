@@ -22,6 +22,7 @@ import 'package:kala_ai_create_images_videos_with_ai/core/services/ad_service.da
 import 'package:kala_ai_create_images_videos_with_ai/core/services/file_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_button.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/media_source_picker_sheet.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/themed_native_ad.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:media_kit/media_kit.dart' hide Track;
@@ -31,6 +32,8 @@ import 'package:video_player/video_player.dart';
 import 'models/clip_model.dart' hide Clip;
 import 'models/project_model.dart';
 import 'services/export_service.dart';
+import 'services/thumbnail_cache_service.dart';
+import 'utils/playback_mapping.dart';
 import 'state/editor_providers.dart';
 import 'state/playback_notifier.dart';
 import 'state/tool_notifier.dart';
@@ -116,146 +119,15 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
     }
   }
 
-  Future<ImageSource?> _showSourcePickerSheet() async {
-    final cs = Theme.of(context).colorScheme;
-
-    return showModalBottomSheet<ImageSource>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (_) {
-        return Container(
-          decoration: BoxDecoration(
-            color: cs.surface,
-            borderRadius:
-                const BorderRadius.vertical(top: Radius.circular(24)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.2),
-                blurRadius: 20,
-                offset: const Offset(0, -4),
-              ),
-            ],
-          ),
-          child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: cs.outlineVariant.withOpacity(0.5),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: cs.primary.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Icon(LucideIcons.clapperboard,
-                            color: cs.primary, size: 22),
-                      ),
-                      const SizedBox(width: 14),
-                      Text(
-                        'Choose Video Source',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                          color: cs.onSurface,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildPickerOption(
-                          icon: LucideIcons.film,
-                          label: 'Gallery',
-                          sublabel: 'Choose from videos',
-                          color: cs.primary,
-                          onTap: () =>
-                              Navigator.pop(context, ImageSource.gallery),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _buildPickerOption(
-                          icon: LucideIcons.video,
-                          label: 'Camera',
-                          sublabel: 'Record a new video',
-                          color: cs.secondary,
-                          onTap: () =>
-                              Navigator.pop(context, ImageSource.camera),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildPickerOption({
-    required IconData icon,
-    required String label,
-    required String sublabel,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    final cs = Theme.of(context).colorScheme;
-    return Material(
-      color: cs.surfaceContainerHigh,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: cs.outlineVariant.withOpacity(0.3)),
-          ),
-          child: Column(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.12),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, size: 28, color: color),
-              ),
-              const SizedBox(height: 12),
-              Text(label,
-                  style: TextStyle(
-                      color: cs.onSurface,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600)),
-              const SizedBox(height: 4),
-              Text(sublabel,
-                  style: TextStyle(
-                      color: cs.onSurfaceVariant.withOpacity(0.7),
-                      fontSize: 12),
-                  textAlign: TextAlign.center),
-            ],
-          ),
-        ),
-      ),
+  Future<ImageSource?> _showSourcePickerSheet() {
+    return showMediaSourcePickerBottomSheet(
+      context,
+      title: 'Choose Video Source',
+      titleIcon: LucideIcons.clapperboard,
+      gallerySublabel: 'Choose from videos',
+      cameraSublabel: 'Record a new video',
+      galleryIcon: LucideIcons.film,
+      cameraIcon: LucideIcons.video,
     );
   }
 
@@ -366,14 +238,66 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
       final tlState = ref.read(timelineProvider);
       if (tlState.isDraggingPlayhead) return;
 
-      final pos = _videoController!.value.position;
+      final project = ref.read(projectProvider);
+      if (project == null) return;
+
       final playback = ref.read(playbackProvider);
-      if ((pos - playback.position).abs() > const Duration(milliseconds: 80)) {
+      var fp = _videoController!.value.position;
+
+      var active = activeVideoClipAt(project, playback.position);
+      if (active != null) {
+        if (fp >= active.trimEnd) {
+          final nextClip = nextVideoClipAfter(project, active);
+          if (nextClip != null) {
+            _videoController!.seekTo(nextClip.trimStart);
+            fp = nextClip.trimStart;
+            _isSyncingFromController = true;
+            ref.read(playbackProvider.notifier).setPosition(nextClip.startTime);
+            _isSyncingFromController = false;
+            active = nextClip;
+          } else if (playback.isPlaying) {
+            _videoController!.pause();
+            ref.read(playbackProvider.notifier).pause();
+            _isSyncingFromController = true;
+            ref.read(playbackProvider.notifier).setPosition(
+                  active.endTime - const Duration(microseconds: 1),
+                );
+            _isSyncingFromController = false;
+            _syncAudioPlayback();
+            return;
+          }
+        } else if (fp < active.trimStart) {
+          _videoController!.seekTo(active.trimStart);
+          fp = active.trimStart;
+        }
+      }
+
+      final timeline = timelinePositionForSource(
+        project,
+        fp,
+        playback.position,
+      );
+
+      if ((timeline - playback.position).abs() >
+          const Duration(milliseconds: 50)) {
         _isSyncingFromController = true;
-        ref.read(playbackProvider.notifier).setPosition(pos);
+        ref.read(playbackProvider.notifier).setPosition(timeline);
         _isSyncingFromController = false;
       }
+
+      final atClip = activeVideoClipAt(
+        project,
+        ref.read(playbackProvider).position,
+      );
+      if (atClip != null) {
+        final speed = atClip.speedEffect.speed.clamp(0.25, 5.0);
+        if ((_videoController!.value.playbackSpeed - speed).abs() > 0.01) {
+          _videoController!.setPlaybackSpeed(speed);
+        }
+      }
+
       // Sync audio players with current position
+      _syncAudioPlayers(project);
       _syncAudioPlayback();
     });
 
@@ -383,10 +307,19 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
     _providerSubscriptions.add(
       ref.listenManual<PlaybackState>(playbackProvider, (prev, next) {
         if (_isSyncingFromController) return;
-        if (_videoController == null || !_videoController!.value.isInitialized) return;
-        final diff = (next.position - _videoController!.value.position).abs();
+        if (_videoController == null || !_videoController!.value.isInitialized) {
+          return;
+        }
+        final project = ref.read(projectProvider);
+        if (project == null) return;
+
+        final clip = activeVideoClipAt(project, next.position);
+        if (clip == null) return;
+
+        final fpTarget = sourcePositionForTimeline(clip, next.position);
+        final diff = (fpTarget - _videoController!.value.position).abs();
         if (diff > const Duration(milliseconds: 80)) {
-          _videoController!.seekTo(next.position);
+          _videoController!.seekTo(fpTarget);
         }
       }),
     );
@@ -412,6 +345,9 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
       ref.listenManual<VideoProject?>(projectProvider, (prev, next) {
         if (next != null) {
           _syncAudioPlayers(next);
+          ref
+              .read(playbackProvider.notifier)
+              .setTotalDuration(next.computeTotalDuration());
         }
       }, fireImmediately: true),
     );
@@ -428,8 +364,9 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
   void _syncAudioPlayers(VideoProject project) {
     final audioClipIds = <String>{};
     final videoPath = _videoFile?.path;
+    final pos = ref.read(playbackProvider).position;
 
-    // Track whether we found the embedded audio clip & its effective volume.
+    // Embedded video audio: pick the clip whose timeline range contains the playhead.
     bool embeddedAudioFound = false;
     double embeddedAudioVolume = 0.0;
 
@@ -438,11 +375,13 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
         if (clip is AudioClip) {
           // Embedded video audio – handled by the video controller
           if (videoPath != null && clip.sourcePath == videoPath) {
-            if (!track.isMuted) {
+            if (!embeddedAudioFound &&
+                !track.isMuted &&
+                pos >= clip.startTime &&
+                pos < clip.endTime) {
               embeddedAudioFound = true;
               embeddedAudioVolume = clip.volume;
             }
-            // else: track muted → embedded volume stays 0
             continue;
           }
 
@@ -545,24 +484,14 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
 
   Future<void> _generateThumbnails(File file, Duration duration) async {
     try {
-      final video = EditorVideo.file(file);
-      final thumbs = await ProVideoEditor.instance.getKeyFrames(
-        KeyFramesConfigs(
-          video: video,
-          outputSize: const Size.square(48),
-          boxFit: ThumbnailBoxFit.cover,
-          maxOutputFrames: 10,
-          outputFormat: ThumbnailFormat.jpeg,
-        ),
-      );
+      final thumbs = await ThumbnailCacheService.generateKeyFramesForFile(file);
 
       if (thumbs.isNotEmpty && mounted) {
-        // Update the first video clip with thumbnails
         final project = ref.read(projectProvider);
         if (project != null) {
           for (final track in project.videoTracks) {
             for (final clip in track.clips) {
-              if (clip is VideoClip) {
+              if (clip is VideoClip && clip.sourcePath == file.path) {
                 ref.read(projectProvider.notifier).updateClip(
                       clip.id,
                       (c) => (c as VideoClip).copyWith(thumbnails: thumbs),

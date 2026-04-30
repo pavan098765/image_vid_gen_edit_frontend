@@ -14,16 +14,19 @@ import '../utils/color_matrix_presets.dart';
 
 /// Orchestrates the full export pipeline using FFmpeg Kit.
 ///
+/// **Keyframe animation** on clips is applied in the preview only; FFmpeg export
+/// does not yet evaluate [KeyframeTrack]s.
+///
 /// Pipeline:
 ///   1. Gather & sort video clips
 ///   2. Trim + speed-adjust each clip
+///   2b. Per-clip Pass A — color / filters / transition fade on each segment
 ///   3. Concatenate clips
-///   4. Pass A — color adjustments, filter presets, transitions
-///   5. Pass B — text + sticker overlays (separate so drawtext failures
+///   4. Pass B — text + sticker overlays (separate so drawtext failures
 ///      don't kill colour effects)
-///   6. PiP overlays
-///   7. Audio mixing
-///   8. Final encode (scale, bitrate, fps)
+///   5. PiP overlays
+///   6. Audio mixing
+///   7. Final encode (scale, bitrate, fps)
 class ExportService {
   static Future<String?> exportProject({
     required VideoProject project,
@@ -69,74 +72,97 @@ class ExportService {
           if (hasSpeed) {
             final sp = clip.speedEffect.speed;
             final setpts = '${(1 / sp).toStringAsFixed(4)}*PTS';
-            args.addAll([
+            final withAudio = <String>[
+              ...args,
               '-filter_complex',
               '[0:v]setpts=$setpts[v];[0:a]${_atempoChain(sp)}[a]',
               '-map', '[v]', '-map', '[a]',
-            ]);
+              out,
+            ];
+            final videoOnly = <String>[
+              ...args,
+              '-filter_complex', '[0:v]setpts=$setpts[v]',
+              '-map', '[v]', '-an',
+              out,
+            ];
+            processedPaths.add(
+              (await _run(withAudio) || await _run(videoOnly)) ? out : clip.sourcePath,
+            );
           } else {
             args.addAll(['-c', 'copy']);
+            args.add(out);
+            processedPaths.add(await _run(args) ? out : clip.sourcePath);
           }
-          args.add(out);
-          processedPaths.add(await _run(args) ? out : clip.sourcePath);
         }
         onProgress(0.10 + 0.15 * (i + 1) / videoClips.length);
       }
 
+      // ─── 2b. Per-clip colour / transition (Pass A on each segment) ───
+      final segmentPathsAfterFx = <String>[];
+      for (int i = 0; i < videoClips.length; i++) {
+        var segmentPath = processedPaths[i];
+        final clip = videoClips[i];
+        final vf = _videoFiltersPassA(clip);
+        if (vf.isNotEmpty) {
+          final vfStr = '${vf.join(',')},format=yuv420p';
+          final outFx = '${workDir.path}/clip_${i}_passA.mp4';
+          final ok = await _run([
+                '-y',
+                '-i',
+                segmentPath,
+                '-vf',
+                vfStr,
+                '-c:a',
+                'copy',
+                outFx,
+              ]) ||
+              await _run([
+                '-y',
+                '-i',
+                segmentPath,
+                '-vf',
+                vfStr,
+                '-map',
+                '0:v',
+                '-an',
+                outFx,
+              ]);
+          if (ok) segmentPath = outFx;
+        }
+        segmentPathsAfterFx.add(segmentPath);
+        onProgress(0.25 + 0.08 * (i + 1) / videoClips.length);
+      }
+
       // ─── 3. Concatenate ─────────────────────────────────────────────
       String cur;
-      if (processedPaths.length == 1) {
-        cur = processedPaths.first;
+      if (segmentPathsAfterFx.length == 1) {
+        cur = segmentPathsAfterFx.first;
       } else {
         cur = '${workDir.path}/concat.mp4';
         final listFile = File('${workDir.path}/concat_list.txt');
         await listFile.writeAsString(
-          processedPaths.map((p) => "file '${p.replaceAll("'", "'\\''")}'").join('\n'),
+          segmentPathsAfterFx
+              .map((p) => "file '${p.replaceAll("'", "'\\''")}'")
+              .join('\n'),
         );
-        if (!await _run(['-y', '-f', 'concat', '-safe', '0', '-i', listFile.path, '-c', 'copy', cur])) {
-          cur = processedPaths.first;
+        if (!await _run([
+              '-y',
+              '-f',
+              'concat',
+              '-safe',
+              '0',
+              '-i',
+              listFile.path,
+              '-c',
+              'copy',
+              cur,
+            ])) {
+          cur = segmentPathsAfterFx.first;
         }
       }
-      onProgress(0.30);
+      onProgress(0.35);
 
-      // ─── 4. Pass A — colour adjustments + filter presets + transitions
-      // These are reliable built-in filters. We add `format=yuv420p` at the
-      // end because `colorchannelmixer` outputs gbrp which libx264 rejects.
-      {
-        final vf = <String>[];
-
-        // 4a. Filter preset → colorchannelmixer + lutrgb
-        final adj = videoClips.first.colorAdjustment;
-        final preset = _presetToVf(adj.filterPresetId);
-        if (preset != null) vf.add(preset);
-
-        // 4b. Manual brightness / contrast / saturation → eq
-        if (adj.brightness != 0 || adj.contrast != 1.0 || adj.saturation != 1.0) {
-          final br = (adj.brightness / 100).toStringAsFixed(3);
-          vf.add('eq=brightness=$br:contrast=${adj.contrast}:saturation=${adj.saturation}');
-        }
-
-        // 4c. Transition fade-in
-        final tr = videoClips.first.transitionIn;
-        if (tr.type != TransitionType.none) {
-          final frames = (tr.duration.inMilliseconds / 1000.0 * 30).round().clamp(1, 300);
-          // Use fade for all transition types — zoompan changes dimensions
-          // and is too unreliable; fade is universally supported.
-          vf.add('fade=in:0:$frames');
-        }
-
-        if (vf.isNotEmpty) {
-          // CRITICAL: force pixel format back to yuv420p so libx264 can encode
-          vf.add('format=yuv420p');
-          final out = '${workDir.path}/color.mp4';
-          if (await _run(['-y', '-i', cur, '-vf', vf.join(','), '-c:a', 'copy', out])) {
-            cur = out;
-          }
-        }
-      }
-      onProgress(0.42);
-
-      // ─── 5. Pass B — text + sticker overlays (drawtext) ─────────────
+      // ─── 4. Pass B — text + sticker overlays (drawtext) ─────────────
       // Separated so that if FFmpegKit was built without freetype/fontconfig
       // the colour effects from Pass A are still preserved.
       {
@@ -150,6 +176,7 @@ class ExportService {
 
         // Text clips
         for (final track in project.textTracks) {
+          if (!track.isVisible) continue;
           for (final clip in track.clips) {
             if (clip is TextClip) {
               final txt = _escDt(clip.text);
@@ -172,6 +199,7 @@ class ExportService {
 
         // Sticker / emoji clips
         for (final track in project.stickerTracks) {
+          if (!track.isVisible) continue;
           for (final clip in track.clips) {
             if (clip is StickerClip && clip.isEmoji) {
               final txt = _escDt(clip.stickerData);
@@ -201,18 +229,99 @@ class ExportService {
           }
         }
       }
-      onProgress(0.52);
+      onProgress(0.48);
 
-      // ─── 6. PiP overlays ────────────────────────────────────────────
+      // ─── 4b. Raster sticker images (file paths) ─────────────────────
+      {
+        for (final track in project.stickerTracks) {
+          if (!track.isVisible) continue;
+          for (final clip in track.clips) {
+            if (clip is! StickerClip || clip.isEmoji) continue;
+            final path = clip.stickerData;
+            if (!await File(path).exists()) continue;
+            final out =
+                '${workDir.path}/stk_img_${clip.id.hashCode & 0x7fffffff}.mp4';
+            final s = clip.startTime.inMilliseconds / 1000.0;
+            final e = clip.endTime.inMilliseconds / 1000.0;
+            final px = clip.position.dx;
+            final py = clip.position.dy;
+            final w = (160 * clip.scale).clamp(16.0, 2048.0).round();
+            final fc = '[1:v]scale=w=$w:h=-1,format=rgba[st];'
+                '[0:v][st]overlay=W*$px-w/2:H*$py-h/2:'
+                "enable='between(t\\,$s\\,$e)':eof_action=pass,"
+                'format=yuv420p[v]';
+            if (await _run([
+                  '-y',
+                  '-i',
+                  cur,
+                  '-loop',
+                  '1',
+                  '-i',
+                  path,
+                  '-filter_complex',
+                  fc,
+                  '-map',
+                  '[v]',
+                  '-map',
+                  '0:a',
+                  '-shortest',
+                  '-c:a',
+                  'copy',
+                  out,
+                ]) ||
+                await _run([
+                  '-y',
+                  '-i',
+                  cur,
+                  '-loop',
+                  '1',
+                  '-i',
+                  path,
+                  '-filter_complex',
+                  fc,
+                  '-map',
+                  '[v]',
+                  '-an',
+                  '-shortest',
+                  out,
+                ])) {
+              cur = out;
+            }
+          }
+        }
+      }
+
+      // ─── 5. PiP overlays ────────────────────────────────────────────
       {
         final pipClips = <PipClip>[];
         for (final track in project.pipTracks) {
+          if (!track.isVisible) continue;
           for (final clip in track.clips) {
             if (clip is PipClip) pipClips.add(clip);
           }
         }
         for (int i = 0; i < pipClips.length; i++) {
           final pip = pipClips[i];
+          var pipPath = pip.sourcePath;
+          final pipNeedsTrim = pip.trimStart > Duration.zero ||
+              pip.trimEnd < pip.originalDuration;
+          if (pipNeedsTrim) {
+            final pipCut = '${workDir.path}/pip_trim_$i.mp4';
+            if (await _run([
+                  '-y',
+                  '-ss',
+                  _dur(pip.trimStart),
+                  '-to',
+                  _dur(pip.trimEnd),
+                  '-i',
+                  pip.sourcePath,
+                  '-c',
+                  'copy',
+                  pipCut,
+                ])) {
+              pipPath = pipCut;
+            }
+          }
           final out = '${workDir.path}/pip_$i.mp4';
           final sc = 'iw*${pip.scale}:ih*${pip.scale}';
           final ox = 'W*${pip.position.dx}-w/2';
@@ -230,17 +339,41 @@ class ExportService {
               'format=yuv420p[v]';
 
           if (await _run([
-            '-y', '-i', cur, '-i', pip.sourcePath,
-            '-filter_complex', fc,
-            '-map', '[v]', '-map', '0:a', '-c:a', 'copy', out,
-          ])) {
+                '-y',
+                '-i',
+                cur,
+                '-i',
+                pipPath,
+                '-filter_complex',
+                fc,
+                '-map',
+                '[v]',
+                '-map',
+                '0:a',
+                '-c:a',
+                'copy',
+                out,
+              ]) ||
+              await _run([
+                '-y',
+                '-i',
+                cur,
+                '-i',
+                pipPath,
+                '-filter_complex',
+                fc,
+                '-map',
+                '[v]',
+                '-an',
+                out,
+              ])) {
             cur = out;
           }
         }
       }
-      onProgress(0.65);
+      onProgress(0.60);
 
-      // ─── 7. Audio mixing ────────────────────────────────────────────
+      // ─── 6. Audio mixing ────────────────────────────────────────────
       {
         final extra = <AudioClip>[];
         AudioClip? embedded;
@@ -289,9 +422,9 @@ class ExportService {
           if (await _run(args)) cur = out;
         }
       }
-      onProgress(0.80);
+      onProgress(0.75);
 
-      // ─── 8. Final encode ────────────────────────────────────────────
+      // ─── 7. Final encode ────────────────────────────────────────────
       final settings = project.exportSettings;
       final ext = settings.format;
       final finalPath = '${workDir.path}/export_final.$ext';
@@ -327,6 +460,30 @@ class ExportService {
       debugPrint('Export failed: $e');
       return null;
     }
+  }
+
+  // =========================================================================
+  //  Pass A — per-clip video filters (colour + transition fade-in)
+  // =========================================================================
+
+  static List<String> _videoFiltersPassA(VideoClip clip) {
+    final vf = <String>[];
+    final adj = clip.colorAdjustment;
+    final preset = _presetToVf(adj.filterPresetId);
+    if (preset != null) vf.add(preset);
+    if (adj.brightness != 0 || adj.contrast != 1.0 || adj.saturation != 1.0) {
+      final br = (adj.brightness / 100).toStringAsFixed(3);
+      vf.add(
+        'eq=brightness=$br:contrast=${adj.contrast}:saturation=${adj.saturation}',
+      );
+    }
+    final tr = clip.transitionIn;
+    if (tr.type != TransitionType.none) {
+      final frames =
+          (tr.duration.inMilliseconds / 1000.0 * 30).round().clamp(1, 300);
+      vf.add('fade=in:0:$frames');
+    }
+    return vf;
   }
 
   // =========================================================================

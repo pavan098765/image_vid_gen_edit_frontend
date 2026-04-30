@@ -1,9 +1,12 @@
 // lib/features/video_editor/state/project_notifier.dart
 
+import 'dart:typed_data';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/clip_model.dart';
 import '../models/project_model.dart';
+import '../services/thumbnail_cache_service.dart';
 
 /// Manages the full [VideoProject] state — tracks, clips, effects, etc.
 class ProjectNotifier extends StateNotifier<VideoProject?> {
@@ -169,10 +172,29 @@ class ProjectNotifier extends StateNotifier<VideoProject?> {
 
     _pushUndo();
 
+    List<Uint8List>? tn1;
+    List<Uint8List>? tn2;
+    final tnl = clip.thumbnails;
+    if (tnl != null && tnl.isNotEmpty) {
+      tn1 = ThumbnailCacheService.sliceThumbnailsToFileRange(
+        source: tnl,
+        fileDuration: clip.originalDuration,
+        rangeStart: clip.trimStart,
+        rangeEnd: clip.trimStart + relSplit,
+      );
+      tn2 = ThumbnailCacheService.sliceThumbnailsToFileRange(
+        source: tnl,
+        fileDuration: clip.originalDuration,
+        rangeStart: clip.trimStart + relSplit,
+        rangeEnd: clip.trimEnd,
+      );
+    }
+
     // First half
     final clip1 = clip.copyWith(
       duration: relSplit,
       trimEnd: clip.trimStart + relSplit,
+      thumbnails: tn1 ?? tnl,
     );
 
     // Second half
@@ -187,8 +209,11 @@ class ProjectNotifier extends StateNotifier<VideoProject?> {
       resolution: clip.resolution,
       speedEffect: clip.speedEffect,
       colorAdjustment: clip.colorAdjustment,
+      transitionIn: clip.transitionIn,
       volume: clip.volume,
       isMuted: clip.isMuted,
+      thumbnails: tn2 ?? tnl,
+      keyframeTracks: clip.keyframeTracks,
     );
 
     final newClips = <Clip>[];
@@ -201,12 +226,71 @@ class ProjectNotifier extends StateNotifier<VideoProject?> {
       }
     }
 
-    final tracks = state!.tracks.map((t) {
+    var tracks = state!.tracks.map((t) {
       if (t.id == track.id) return t.copyWith(clips: newClips);
       return t;
     }).toList();
 
-    state = state!.copyWith(tracks: tracks);
+    tracks = tracks
+        .map((t) => _splitPairedEmbeddedAudio(t, clip, splitPoint))
+        .toList();
+
+    final proj = state!.copyWith(tracks: tracks);
+    state = proj.copyWith(
+      totalDuration: proj.computeTotalDuration(),
+    );
+  }
+
+  /// When the user splits a [VideoClip], split the matching embedded [AudioClip]
+  /// (same file + same timeline segment) so preview audio stays aligned.
+  Track _splitPairedEmbeddedAudio(
+    Track audioTrack,
+    VideoClip videoBeforeSplit,
+    Duration splitPoint,
+  ) {
+    final newClips = <Clip>[];
+    var changed = false;
+    for (final c in audioTrack.clips) {
+      if (c is! AudioClip) {
+        newClips.add(c);
+        continue;
+      }
+      final ac = c;
+      final sameSegment = ac.sourcePath == videoBeforeSplit.sourcePath &&
+          ac.startTime == videoBeforeSplit.startTime &&
+          ac.duration == videoBeforeSplit.duration;
+      if (!sameSegment) {
+        newClips.add(c);
+        continue;
+      }
+      final relSplit = splitPoint - videoBeforeSplit.startTime;
+      if (relSplit <= Duration.zero || relSplit >= ac.duration) {
+        newClips.add(c);
+        continue;
+      }
+      changed = true;
+      final ac1 = ac.copyWith(
+        duration: relSplit,
+        trimEnd: ac.trimStart + relSplit,
+      );
+      final ac2 = AudioClip(
+        id: '${ac.id}_split_${DateTime.now().microsecondsSinceEpoch}',
+        startTime: ac.startTime + relSplit,
+        duration: ac.duration - relSplit,
+        sourcePath: ac.sourcePath,
+        trimStart: ac.trimStart + relSplit,
+        trimEnd: ac.trimEnd,
+        originalDuration: ac.originalDuration,
+        volume: ac.volume,
+        fadeIn: ac.fadeIn,
+        fadeOut: ac.fadeOut,
+        name: ac.name,
+      );
+      newClips.add(ac1);
+      newClips.add(ac2);
+    }
+    if (!changed) return audioTrack;
+    return audioTrack.copyWith(clips: newClips);
   }
 
   /// Duplicate a clip (placed right after the original).
@@ -225,6 +309,39 @@ class ProjectNotifier extends StateNotifier<VideoProject?> {
     );
     // Assign new id via type-specific copy
     Clip dupeWithNewId;
+    AudioClip? pairedAudioDupe;
+    String? pairedAudioTrackId;
+
+    if (dupe is VideoClip) {
+      final v = clip as VideoClip;
+      for (final t in state!.tracks) {
+        if (t.type != TrackType.audio) continue;
+        for (final c in t.clips) {
+          if (c is AudioClip &&
+              c.sourcePath == v.sourcePath &&
+              c.startTime == v.startTime &&
+              c.endTime == v.endTime) {
+            pairedAudioTrackId = t.id;
+            pairedAudioDupe = AudioClip(
+              id: '${c.id}_dup_${DateTime.now().microsecondsSinceEpoch}',
+              startTime: dupe.startTime,
+              duration: dupe.duration,
+              sourcePath: c.sourcePath,
+              trimStart: c.trimStart,
+              trimEnd: c.trimEnd,
+              originalDuration: c.originalDuration,
+              volume: c.volume,
+              fadeIn: c.fadeIn,
+              fadeOut: c.fadeOut,
+              name: c.name,
+            );
+            break;
+          }
+        }
+        if (pairedAudioDupe != null) break;
+      }
+    }
+
     if (dupe is VideoClip) {
       dupeWithNewId = VideoClip(
         id: '${clip.id}_dup_${DateTime.now().microsecondsSinceEpoch}',
@@ -237,8 +354,11 @@ class ProjectNotifier extends StateNotifier<VideoProject?> {
         resolution: dupe.resolution,
         speedEffect: dupe.speedEffect,
         colorAdjustment: dupe.colorAdjustment,
+        transitionIn: dupe.transitionIn,
         volume: dupe.volume,
         isMuted: dupe.isMuted,
+        thumbnails: dupe.thumbnails,
+        keyframeTracks: dupe.keyframeTracks,
       );
     } else if (dupe is AudioClip) {
       dupeWithNewId = AudioClip(
@@ -296,12 +416,26 @@ class ProjectNotifier extends StateNotifier<VideoProject?> {
         opacity: dupe.opacity,
         borderRadius: dupe.borderRadius,
         volume: dupe.volume,
+        thumbnails: dupe.thumbnails,
       );
     } else {
       return; // Unknown type
     }
 
-    addClipToTrack(track.id, dupeWithNewId);
+    final newTracks = state!.tracks.map((t) {
+      if (t.id == track.id) {
+        return t.copyWith(clips: [...t.clips, dupeWithNewId]);
+      }
+      if (pairedAudioTrackId != null &&
+          pairedAudioDupe != null &&
+          t.id == pairedAudioTrackId) {
+        return t.copyWith(clips: [...t.clips, pairedAudioDupe]);
+      }
+      return t;
+    }).toList();
+
+    final proj = state!.copyWith(tracks: newTracks);
+    state = proj.copyWith(totalDuration: proj.computeTotalDuration());
   }
 
   // ─── Export settings ──────────────────────────────────────────────────────

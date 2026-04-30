@@ -22,6 +22,7 @@ import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_button.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/sign_in_prompt.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/sale_banner.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/media_source_picker_sheet.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/sale_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/utils/rife_interpolation.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/result_manager/result_manager_page.dart';
@@ -2931,79 +2932,15 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
     });
   }
 
-  Future<ImageSource?> _showMediaSourcePicker({required bool isImage}) async {
-    final cs = Theme.of(context).colorScheme;
-    
-    return showModalBottomSheet<ImageSource>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        decoration: BoxDecoration(
-          color: cs.surface,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        padding: const EdgeInsets.all(20),
-        child: SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: cs.outlineVariant,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildSourceButton(
-                      icon: LucideIcons.image,
-                      label: 'Gallery',
-                      onTap: () => Navigator.pop(ctx, ImageSource.gallery),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildSourceButton(
-                      icon: LucideIcons.camera,
-                      label: 'Camera',
-                      onTap: () => Navigator.pop(ctx, ImageSource.camera),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSourceButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-  }) {
-    final cs = Theme.of(context).colorScheme;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 20),
-        decoration: BoxDecoration(
-          color: cs.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, size: 32, color: cs.primary),
-            const SizedBox(height: 8),
-            Text(label, style: TextStyle(fontWeight: FontWeight.w600, color: cs.onSurface)),
-          ],
-        ),
-      ),
+  Future<ImageSource?> _showMediaSourcePicker({required bool isImage}) {
+    return showMediaSourcePickerBottomSheet(
+      context,
+      title: isImage ? 'Choose Image Source' : 'Choose Video Source',
+      titleIcon: isImage ? LucideIcons.imagePlus : LucideIcons.video,
+      gallerySublabel: isImage ? 'Choose from photos' : 'Choose from videos',
+      cameraSublabel: isImage ? 'Take a new photo' : 'Record a new video',
+      galleryIcon: isImage ? LucideIcons.image : LucideIcons.film,
+      cameraIcon: LucideIcons.camera,
     );
   }
 

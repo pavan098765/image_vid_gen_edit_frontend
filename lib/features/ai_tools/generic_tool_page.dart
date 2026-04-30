@@ -23,6 +23,7 @@ import 'package:kala_ai_create_images_videos_with_ai/core/services/media_upload_
 import 'package:kala_ai_create_images_videos_with_ai/core/services/user_service.dart'
     hide userCreditsNotifier, currentUserNotifier, isLoadingUserNotifier, UserData;
 import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/media_source_picker_sheet.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_button.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/sign_in_prompt.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/themed_native_ad.dart';
@@ -4990,96 +4991,13 @@ class _GenericToolPageState extends State<GenericToolPage>
     return finalImage!.buffer.asUint8List();
   }
 
-  Future<ImageSource?> _showImageSourcePickerSheet() async {
-    final cs = Theme.of(context).colorScheme;
-    return showModalBottomSheet<ImageSource>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (_) {
-        return Container(
-          decoration: BoxDecoration(
-            color: cs.surface,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.2),
-                blurRadius: 20,
-                offset: const Offset(0, -4),
-              ),
-            ],
-          ),
-          child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: cs.outlineVariant.withOpacity(0.5),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: cs.primary.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Icon(
-                          LucideIcons.imagePlus,
-                          color: cs.primary,
-                          size: 22,
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Text(
-                        'Choose Image Source',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                          color: cs.onSurface,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildPickerOption(
-                          icon: LucideIcons.image,
-                          label: 'Gallery',
-                          sublabel: 'Choose from photos',
-                          color: cs.primary,
-                          onTap: () => Navigator.pop(context, ImageSource.gallery),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _buildPickerOption(
-                          icon: LucideIcons.camera,
-                          label: 'Camera',
-                          sublabel: 'Take a new photo',
-                          color: cs.secondary,
-                          onTap: () => Navigator.pop(context, ImageSource.camera),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
+  Future<ImageSource?> _showImageSourcePickerSheet() {
+    return showMediaSourcePickerBottomSheet(
+      context,
+      title: 'Choose Image Source',
+      titleIcon: LucideIcons.imagePlus,
+      gallerySublabel: 'Choose from photos',
+      cameraSublabel: 'Take a new photo',
     );
   }
 
@@ -5757,74 +5675,6 @@ class _GenericToolPageState extends State<GenericToolPage>
         });
       }
     }
-  }
-
-  // Picker option card for bottom sheet
-  Widget _buildPickerOption({
-    required IconData icon,
-    required String label,
-    required String sublabel,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    final cs = Theme.of(context).colorScheme;
-    return Material(
-      color: cs.surfaceContainerHigh,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: cs.outlineVariant.withOpacity(0.3),
-            ),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.12),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, size: 28, color: color),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                label,
-                style: TextStyle(
-                  color: cs.onSurface,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 4),
-              SizedBox(
-                height: 38,
-                width: double.infinity,
-                child: Align(
-                  alignment: Alignment.topCenter,
-                  child: Text(
-                    sublabel,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: cs.onSurfaceVariant.withOpacity(0.7),
-                      fontSize: 12,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   // ---------- Card (uses shared AppStyles for consistency) ----------
@@ -7263,6 +7113,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                           child: _AttachBigTile(
                             icon: LucideIcons.camera,
                             label: 'Camera',
+                            subtitle: 'Take a new photo',
+                            accentColor: cs.secondary,
                             onTap: () {
                               Navigator.pop(ctx);
                               _pickImageFromCamera(_attachableImageInputResolved(
@@ -7270,7 +7122,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                             },
                           ),
                         ),
-                      if (hasImage) const SizedBox(width: 10),
+                      if (hasImage) const SizedBox(width: 12),
                       if (hasImage)
                         Expanded(
                           child: _AttachBigTile(
@@ -7279,6 +7131,11 @@ class _GenericToolPageState extends State<GenericToolPage>
                                     _supportsBulkImageEdit
                                 ? 'Photos (bulk)'
                                 : 'Photos',
+                            subtitle: _advancedSettings.bulkEditEnabled &&
+                                    _supportsBulkImageEdit
+                                ? 'Select multiple images'
+                                : 'Choose from gallery',
+                            accentColor: cs.primary,
                             onTap: () {
                               Navigator.pop(ctx);
                               if (_advancedSettings.bulkEditEnabled &&
@@ -7301,12 +7158,14 @@ class _GenericToolPageState extends State<GenericToolPage>
                             },
                           ),
                         ),
-                      if (hasFile && (hasImage)) const SizedBox(width: 10),
+                      if (hasFile && (hasImage)) const SizedBox(width: 12),
                       if (hasFile)
                         Expanded(
                           child: _AttachBigTile(
                             icon: LucideIcons.paperclip,
                             label: 'Files',
+                            subtitle: 'Documents & attachments',
+                            accentColor: cs.tertiary,
                             onTap: () {
                               Navigator.pop(ctx);
                               _pickGenericFile(
@@ -7317,7 +7176,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                         ),
                       // Tools with video (or bulk video) but no image inputs — e.g. Upscale Video.
                       if (hasVideo && !hasImage) ...[
-                        if (hasFile) const SizedBox(width: 10),
+                        if (hasFile) const SizedBox(width: 12),
                         Expanded(
                           child: _AttachBigTile(
                             icon: LucideIcons.video,
@@ -7325,6 +7184,11 @@ class _GenericToolPageState extends State<GenericToolPage>
                                     _supportsBulkVideoEdit
                                 ? 'Videos (bulk)'
                                 : 'Choose video',
+                            subtitle: _advancedSettings.bulkEditEnabled &&
+                                    _supportsBulkVideoEdit
+                                ? 'Select multiple videos'
+                                : 'From gallery or camera',
+                            accentColor: cs.primary,
                             onTap: () {
                               Navigator.pop(ctx);
                               if (_advancedSettings.bulkEditEnabled &&
@@ -10845,107 +10709,16 @@ class _GenericToolPageState extends State<GenericToolPage>
 
   /// Pick video from gallery or camera.
   /// [bulkAllowMultiSelect]: gallery flow can select several files (bulk video upscale).
-  Future<ImageSource?> _promptVideoPickSource({bool bulkAllowMultiSelect = false}) async {
-    final cs = Theme.of(context).colorScheme;
-    return showModalBottomSheet<ImageSource>(
-        context: context,
-        backgroundColor: Colors.transparent,
-        isScrollControlled: true,
-        builder: (_) {
-          return Container(
-            decoration: BoxDecoration(
-              color: cs.surface,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.2),
-                  blurRadius: 20,
-                  offset: const Offset(0, -4),
-                ),
-              ],
-            ),
-            child: SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Handle bar
-                    Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: cs.outlineVariant.withOpacity(0.5),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    
-                    // Title
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: cs.primary.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Icon(
-                            LucideIcons.video,
-                            color: cs.primary,
-                            size: 22,
-                          ),
-                        ),
-                        const SizedBox(width: 14),
-                        Text(
-                          'Choose Video Source',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                            color: cs.onSurface,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    
-                    // Options
-                    Row(
-                      children: [
-                        // Gallery option
-                        Expanded(
-                          child: _buildPickerOption(
-                            icon: LucideIcons.image,
-                            label: 'Gallery',
-                            sublabel: bulkAllowMultiSelect
-                                ? 'Select one or more videos'
-                                : 'Choose from videos',
-                            color: cs.primary,
-                            onTap: () => Navigator.pop(context, ImageSource.gallery),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        
-                        // Camera option
-                        Expanded(
-                          child: _buildPickerOption(
-                            icon: LucideIcons.camera,
-                            label: 'Camera',
-                            sublabel: 'Record a new video',
-                            color: cs.secondary,
-                            onTap: () => Navigator.pop(context, ImageSource.camera),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
-      );
+  Future<ImageSource?> _promptVideoPickSource({bool bulkAllowMultiSelect = false}) {
+    return showMediaSourcePickerBottomSheet(
+      context,
+      title: 'Choose Video Source',
+      titleIcon: LucideIcons.video,
+      gallerySublabel: bulkAllowMultiSelect
+          ? 'Select one or more videos'
+          : 'Choose from videos',
+      cameraSublabel: 'Record a new video',
+    );
   }
 
   Future<void> _pickVideo(Map<String, dynamic> input) async {
@@ -18148,46 +17921,30 @@ class _ComposerIconButton extends StatelessWidget {
   }
 }
 
-/// Large 3-per-row tile used in the attach bottom sheet (Camera / Photos / Files).
+/// Large tile in the attach sheet — same layout as [MediaSourcePickerTile].
 class _AttachBigTile extends StatelessWidget {
   final IconData icon;
   final String label;
+  final String subtitle;
+  final Color accentColor;
   final VoidCallback onTap;
 
   const _AttachBigTile({
     required this.icon,
     required this.label,
+    required this.subtitle,
+    required this.accentColor,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return InkWell(
+    return MediaSourcePickerTile(
+      icon: icon,
+      label: label,
+      sublabel: subtitle,
+      accentColor: accentColor,
       onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        decoration: BoxDecoration(
-          color: cs.surfaceContainerHigh.withOpacity(0.55),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: cs.outlineVariant.withOpacity(0.28)),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, size: 22, color: cs.onSurface),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              style: TextStyle(
-                color: cs.onSurface,
-                fontSize: 12.5,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

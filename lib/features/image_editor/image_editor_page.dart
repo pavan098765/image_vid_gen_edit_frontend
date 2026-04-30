@@ -10,6 +10,7 @@ import 'package:kala_ai_create_images_videos_with_ai/core/services/ad_service.da
 import 'package:kala_ai_create_images_videos_with_ai/core/services/file_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_button.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/media_source_picker_sheet.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/themed_native_ad.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -153,163 +154,13 @@ class _EditorPageState extends State<EditorPage> {
     }
   }
 
-  Future<ImageSource?> _showSourcePickerSheet() async {
-    final cs = Theme.of(context).colorScheme;
-
-    return showModalBottomSheet<ImageSource>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (_) {
-        return Container(
-          decoration: BoxDecoration(
-            color: cs.surface,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.2),
-                blurRadius: 20,
-                offset: const Offset(0, -4),
-              ),
-            ],
-          ),
-          child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Handle bar
-                  Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: cs.outlineVariant.withOpacity(0.5),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  
-                  // Title
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: cs.primary.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Icon(
-                          LucideIcons.imagePlus,
-                          color: cs.primary,
-                          size: 22,
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Text(
-                        'Choose Image Source',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                          color: cs.onSurface,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  
-                  // Options
-                  Row(
-                    children: [
-                      // Gallery option
-                      Expanded(
-                        child: _buildPickerOption(
-                          icon: LucideIcons.image,
-                          label: 'Gallery',
-                          sublabel: 'Choose from photos',
-                          color: cs.primary,
-                          onTap: () => Navigator.pop(context, ImageSource.gallery),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      
-                      // Camera option
-                      Expanded(
-                        child: _buildPickerOption(
-                          icon: LucideIcons.camera,
-                          label: 'Camera',
-                          sublabel: 'Take a new photo',
-                          color: cs.secondary,
-                          onTap: () => Navigator.pop(context, ImageSource.camera),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  // Picker option card for bottom sheet
-  Widget _buildPickerOption({
-    required IconData icon,
-    required String label,
-    required String sublabel,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    final cs = Theme.of(context).colorScheme;
-    return Material(
-      color: cs.surfaceContainerHigh,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: cs.outlineVariant.withOpacity(0.3),
-            ),
-          ),
-          child: Column(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.12),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, size: 28, color: color),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                label,
-                style: TextStyle(
-                  color: cs.onSurface,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                sublabel,
-                style: TextStyle(
-                  color: cs.onSurfaceVariant.withOpacity(0.7),
-                  fontSize: 12,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
-      ),
+  Future<ImageSource?> _showSourcePickerSheet() {
+    return showMediaSourcePickerBottomSheet(
+      context,
+      title: 'Choose Image Source',
+      titleIcon: LucideIcons.imagePlus,
+      gallerySublabel: 'Choose from photos',
+      cameraSublabel: 'Take a new photo',
     );
   }
 
