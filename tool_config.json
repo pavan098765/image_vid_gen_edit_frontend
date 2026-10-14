@@ -253,7 +253,8 @@
         "model": "flux_klein",
         "preferred_model": "flux_klein",
         "job_config": {
-          "prompt": "Professional photo enhancement, soft glowing skin, balanced lighting, subtle retouching, natural look, high quality"        }
+          "prompt": "Professional photo enhancement, soft glowing skin, balanced lighting, subtle retouching, natural look, high quality"
+        }
       },
       "ai_headshot": {
         "id": "ai_headshot",
@@ -288,7 +289,7 @@
         "model": "flux_klein",
         "preferred_model": "flux_klein",
         "job_config": {
-          "prompt": "Anime style portrait, detailed eyes, soft shading, studio ghibli inspired, vibrant colors, clean linework, beautiful anime character"        
+          "prompt": "Anime style portrait, detailed eyes, soft shading, studio ghibli inspired, vibrant colors, clean linework, beautiful anime character"
         }
       },
       "remove_bg_quick": {
@@ -652,75 +653,35 @@
       "icon": "wand2",
       "accent": "#8B5CF6",
       "outputType": "image",
-      "defaultModel": "z_image_turbo",
+      "defaultModel": "qwen2_1_t2i",
       "models": [
         {
-          "id": "flux_klein",
-          "name": "Lumora",
-          "description": "Fast generation, high detail",
-          "cost": 10,
-          "costUpscale": 3,
-          "offer": 0,
-          "enabled": false,
-          "params": {
-            "cfg_scale": 1.0,
-            "num_inference_steps": 8,
-            "scale_image": true,
-            "scale_factor": "{{scale_factor}}"
-          },
-          "rootParams": {
-            "prompt": "{{prompt}}"
-          }
-        },
-        {
-          "id": "flux_klein",
-          "name": "Vectra",
-          "description": "Fast generation, high detail",
-          "cost": 8,
-          "costUpscale": 3,
-          "offer": 0,
-          "enabled": true,
-          "params": {
-            "guidance_scale": 1.0,
-            "num_inference_steps": 4,
-            "scale_image": true,
-            "scale_factor": "{{scale_factor}}"
-          },
-          "rootParams": {
-            "prompt": "{{prompt}}"
-          }
-        },
-        {
-          "id": "z_image_turbo",
-          "name": "Klyra",
-          "description": "Ultra-fast generation, Realistic images",
+          "id": "qwen2_1_t2i",
+          "name": "Qwen 2.1",
+          "description": "1K text to image",
           "useExternalApi": true,
-          "cost": 10,
-          "costUpscale": 3,
+          "cost": 18,
+          "costUpscale": 0,
           "offer": 0,
           "enabled": true,
           "params": {
-            "cfg_scale": 1.0,
-            "num_inference_steps": 8,
-            "scale_image": true,
-            "scale_factor": "{{scale_factor}}"
+            "aspect_ratio": "{{aspect_ratio}}"
           },
           "rootParams": {
             "prompt": "{{prompt}}"
           }
         },
         {
-          "id": "sdxl_t2i",
-          "name": "Imagia",
-          "description": "Fast, Versatile, classic quality",
-          "cost": 6,
-          "costUpscale": 3,
+          "id": "grok_imagine_t2i",
+          "name": "Grok Imagine",
+          "description": "1K text to image",
+          "useExternalApi": true,
+          "cost": 18,
+          "costUpscale": 0,
           "offer": 0,
           "enabled": true,
           "params": {
-            "sample_steps": 8,
-            "scale_image": true,
-            "scale_factor": "{{scale_factor}}"
+            "aspect_ratio": "{{aspect_ratio}}"
           },
           "rootParams": {
             "prompt": "{{prompt}}"
@@ -740,12 +701,17 @@
           ]
         },
         {
-          "id": "scale_factor",
-          "type": "slider",
-          "label": "Upscale Factor",
-          "min": 1,
-          "max": 4,
-          "default": 2
+          "id": "aspect_ratio",
+          "type": "dropdown",
+          "label": "Aspect Ratio",
+          "options": [
+            "1:1",
+            "16:9",
+            "9:16",
+            "4:3",
+            "3:4"
+          ],
+          "default": "1:1"
         }
       ],
       "elements": [
@@ -765,145 +731,41 @@
       "icon": "sparkles",
       "accent": "#8B5CF6",
       "outputType": "image",
-      "defaultModel": "flux_klein",
+      "defaultModel": "qwen2_1_i2i",
       "models": [
         {
-          "id": "sdxl_i2i",
-          "name": "Imagia",
-          "description": "Fast Image Editing",
-          "cost": 6,
-          "costUpscale": 3,
-          "offer": 0,
-          "enabled": false,
-          "params": {
-            "sample_steps": 8,
-            "cfg_scale": 1.0,
-            "strength": 0.7,
-            "init_image": "{{init_image}}",
-            "scale_image": true,
-            "scale_factor": "{{scale_factor}}"
-          },
-          "rootParams": {
-            "prompt": "{{prompt}}"
-          }
-        },
-        {
-          "id": "flux_klein",
-          "name": "Vectra",
-          "description": "Context-aware, instant repaint",
-          "cost": 8,
-          "costUpscale": 3,
+          "id": "qwen2_1_i2i",
+          "name": "Qwen 2.1",
+          "description": "1K image edit",
+          "useExternalApi": true,
+          "cost": 18,
+          "costUpscale": 0,
           "offer": 0,
           "enabled": true,
-          "inputOverrides": {
-            "init_image": {
-              "id": "images",
-              "label": "Select up to 3 Images",
-              "max": 3
-            }
-          },
           "params": {
-            "num_inference_steps": 8,
-            "guidance_scale": 1.0,
             "init_image": "{{init_image}}",
-            "scale_image": true,
-            "scale_factor": "{{scale_factor}}"
+            "aspect_ratio": "{{aspect_ratio}}"
           },
           "rootParams": {
             "prompt": "{{prompt}}"
           }
         },
         {
-          "id": "qwen_image_edit",
-          "name": "Revia",
-          "description": "Precise retouch, style transfer",
-          "cost": 10,
-          "costUpscale": 3,
-          "offer": 0,
-          "enabled": false,
-          "params": {
-            "num_inference_steps": 8,
-            "cfg_scale": 1.0,
-            "init_image": "{{init_image}}",
-            "scale_image": true,
-            "scale_factor": "{{scale_factor}}",
-            "negative_prompt": " "
-          },
-          "rootParams": {
-            "prompt": "{{prompt}}"
-          }
-        },
-        {
-          "id": "qwen_image_edit_2509",
-          "name": "Revia",
-          "description": "Multi-image, consistent style",
-          "cost": 10,
-          "costUpscale": 3,
-          "offer": 0,
-          "enabled": false,
-          "inputOverrides": {
-            "init_image": {
-              "id": "images",
-              "label": "Select up to 3 Images",
-              "max": 3
-            }
-          },
-          "params": {
-            "cfg_scale": 1.0,
-            "num_inference_steps": 8,
-            "init_image": "{{images}}",
-            "scale_image": true,
-            "scale_factor": "{{scale_factor}}",
-            "negative_prompt": " "
-          },
-          "rootParams": {
-            "prompt": "{{prompt}}"
-          }
-        },
-        {
-          "id": "qwen_image_edit_2511_rapid_aio",
-          "name": "Revia",
-          "description": "Ultra-realistic, Enhanced performance",
-          "cost": 10,
-          "costUpscale": 3,
+          "id": "grok_imagine_edit",
+          "name": "Grok Imagine",
+          "description": "1K image edit",
+          "useExternalApi": true,
+          "cost": 18,
+          "costUpscale": 0,
           "offer": 0,
           "enabled": true,
-          "inputOverrides": {
-            "init_image": {
-              "id": "images",
-              "label": "Select up to 3 Images",
-              "max": 3
-            }
-          },
-          "loraAdapters": [
-            "None",
-            "Consistance",
-            "Semirealistic-photo-detailer",
-            "AnyPose",
-            "Any2Real_2601",
-            "Hyperrealistic-Portrait",
-            "Ultrarealistic-Portrait",
-            "BFS-Best-FaceSwap-merge",
-            "F2P",
-            "Multiple-Angles",
-            "Light-Restoration",
-            "Relight",
-            "Edit-Skin",
-            "Next-Scene",
-            "Flat-Log"
-          ],
           "params": {
-            "guidance_scale": 1.0,
-            "num_inference_steps": 8,
-            "init_image": "{{images}}",
-            "scale_image": true,
-            "scale_factor": "{{scale_factor}}",
-            "lora_adapter": "None",
-            "randomize_seed": true,
-            "output_dir": "./outputs"
+            "init_image": "{{init_image}}",
+            "aspect_ratio": "{{aspect_ratio}}"
           },
           "rootParams": {
-            "prompt": "{{prompt}}"          }
+            "prompt": "{{prompt}}"
+          }
         }
       ],
       "inputs": [
@@ -926,12 +788,17 @@
           ]
         },
         {
-          "id": "scale_factor",
-          "type": "slider",
-          "label": "Scale Factor",
-          "min": 1,
-          "max": 4,
-          "default": 1
+          "id": "aspect_ratio",
+          "type": "dropdown",
+          "label": "Aspect Ratio",
+          "options": [
+            "1:1",
+            "16:9",
+            "9:16",
+            "4:3",
+            "3:4"
+          ],
+          "default": "1:1"
         }
       ],
       "elements": [
@@ -969,7 +836,7 @@
           "cost": 3,
           "costUpscale": 0,
           "offer": 0,
-          "enabled": true,
+          "enabled": false,
           "params": {
             "mode": "lama_inpaint",
             "init_image": "{{init_image}}",
@@ -1147,7 +1014,9 @@
             "audio_stg_scale": 1.0,
             "audio_modality_scale": 3.0,
             "audio_guidance_rescale": 0.7,
-            "spatio_temporal_guidance_blocks": [28],
+            "spatio_temporal_guidance_blocks": [
+              28
+            ],
             "use_default_negative_prompt": true
           },
           "rootParams": {
@@ -1179,7 +1048,9 @@
           "id": "audio",
           "type": "audio_upload",
           "label": "Guidance audio (optional)",
-          "showForModels": ["ltx2_3_t2v"]
+          "showForModels": [
+            "ltx2_3_t2v"
+          ]
         }
       ],
       "elements": [
@@ -1271,7 +1142,9 @@
             "audio_stg_scale": 1.0,
             "audio_modality_scale": 3.0,
             "audio_guidance_rescale": 0.7,
-            "spatio_temporal_guidance_blocks": [28],
+            "spatio_temporal_guidance_blocks": [
+              28
+            ],
             "use_default_negative_prompt": true
           },
           "inputOverridesFlf2v": {
@@ -1367,7 +1240,9 @@
           "label": "Reference Image",
           "min": 1,
           "max": 1,
-          "showForModels": ["dreamid"]
+          "showForModels": [
+            "dreamid"
+          ]
         },
         {
           "id": "ref_video",
@@ -1375,13 +1250,18 @@
           "label": "Reference Video",
           "min": 1,
           "max": 1,
-          "showForModels": ["dreamid", "ltx2_3_cinereal"]
+          "showForModels": [
+            "dreamid",
+            "ltx2_3_cinereal"
+          ]
         },
         {
           "id": "cinereal_audio",
           "type": "audio_upload",
           "label": "Guidance audio (optional)",
-          "showForModels": ["ltx2_3_cinereal"]
+          "showForModels": [
+            "ltx2_3_cinereal"
+          ]
         },
         {
           "id": "last_frame_image",
@@ -1389,7 +1269,10 @@
           "label": "Last frame",
           "min": 1,
           "max": 1,
-          "showForModels": ["ltx2_3_cinereal", "wan_22_fp8_lightx2v_i2v"]
+          "showForModels": [
+            "ltx2_3_cinereal",
+            "wan_22_fp8_lightx2v_i2v"
+          ]
         },
         {
           "id": "prompt",
@@ -1444,29 +1327,37 @@
       "icon": "crop",
       "accent": "#10B981",
       "outputType": "image",
-      "defaultModel": "diffusers_outpaint",
+      "defaultModel": "qwen2_1_i2i",
       "models": [
         {
-          "id": "diffusers_outpaint",
-          "name": "Scene Expander",
-          "description": "AI-powered outpainting",
+          "id": "qwen2_1_i2i",
+          "name": "Qwen 2.1",
+          "description": "1K image edit",
           "useExternalApi": true,
-          "cost": 8,
-          "costUpscale": 3,
-          "offer": 10,
+          "cost": 18,
+          "costUpscale": 0,
+          "offer": 0,
           "enabled": true,
           "params": {
             "init_image": "{{init_image}}",
-            "alignment": "{{alignment}}",
-            "aspect_ratio": "{{aspect_ratio}}",
-            "num_inference_steps": 12,
-            "expansion_factor": 1.8,
-            "overlap_percentage": 8,
-            "resize_option": "Full",
-            "custom_resize_percentage": 100,
-            "scale_image": true,
-            "scale_factor": "{{scale_factor}}",
-            "scale_model_name": "RealESRGAN_x{{scale_factor}}plus"
+            "aspect_ratio": "{{aspect_ratio}}"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        },
+        {
+          "id": "grok_imagine_edit",
+          "name": "Grok Imagine",
+          "description": "1K image edit",
+          "useExternalApi": true,
+          "cost": 18,
+          "costUpscale": 0,
+          "offer": 0,
+          "enabled": true,
+          "params": {
+            "init_image": "{{init_image}}",
+            "aspect_ratio": "{{aspect_ratio}}"
           },
           "rootParams": {
             "prompt": "{{prompt}}"
@@ -1494,20 +1385,6 @@
           ]
         },
         {
-          "id": "alignment",
-          "type": "dropdown",
-          "label": "Expand Direction",
-          "options": [
-            "Top",
-            "Bottom",
-            "Left",
-            "Right",
-            "All Sides",
-            "Middle"
-          ],
-          "default": "Middle"
-        },
-        {
           "id": "aspect_ratio",
           "type": "dropdown",
           "label": "Aspect Ratio",
@@ -1519,14 +1396,6 @@
             "3:4"
           ],
           "default": "9:16"
-        },
-        {
-          "id": "scale_factor",
-          "type": "slider",
-          "label": "Upscale Factor",
-          "min": 1,
-          "max": 4,
-          "default": 2
         }
       ],
       "elements": [
@@ -1550,22 +1419,19 @@
       "icon": "scissors",
       "accent": "#10B981",
       "outputType": "image",
-      "defaultModel": "basic_utils",
+      "defaultModel": "recraft_remove_background",
       "models": [
         {
-          "id": "basic_utils",
+          "id": "recraft_remove_background",
           "name": "Background Remover",
-          "description": "Instant cutout, clean edges",
+          "description": "Clean cutout",
           "useExternalApi": true,
-          "cost": 5,
-          "costUpscale": 3,
+          "cost": 8,
+          "costUpscale": 0,
           "offer": 0,
           "enabled": true,
           "params": {
-            "mode": "bg_remove",
-            "init_image": "{{init_image}}",
-            "scale_image": true,
-            "scale_factor": "{{scale_factor}}"
+            "init_image": "{{init_image}}"
           }
         }
       ],
@@ -1576,14 +1442,6 @@
           "label": "Upload Image",
           "min": 1,
           "max": 1
-        },
-        {
-          "id": "scale_factor",
-          "type": "slider",
-          "label": "Upscale Factor",
-          "min": 1,
-          "max": 4,
-          "default": 2
         }
       ],
       "elements": [
@@ -1603,89 +1461,19 @@
       "icon": "maximize2",
       "accent": "#22D3EE",
       "outputType": "image",
-      "defaultModel": "aurasrv2",
+      "defaultModel": "recraft_crisp_upscale",
       "models": [
         {
-          "id": "aurasrv2",
-          "name": "Ultra Enhance",
-          "description": "Best quality, crisp details",
+          "id": "recraft_crisp_upscale",
+          "name": "Crisp Upscale",
+          "description": "Recraft 1x crisp upscale",
           "useExternalApi": true,
           "cost": 8,
           "costUpscale": 0,
           "offer": 0,
           "enabled": true,
           "params": {
-            "init_image": "{{image}}",
-            "scale": "{{scale_factor}}"
-          }
-        },
-        {
-          "id": "swin2sr",
-          "name": "Sharp Refine",
-          "description": "Edge sharpening, clarity",
-          "cost": 5,
-          "costUpscale": 0,
-          "offer": 0,
-          "enabled": true,
-          "params": {
-            "init_image": "{{image}}",
-            "scale": "{{scale_factor}}"
-          }
-        },
-        {
-          "id": "realesrgan",
-          "name": "PhotoBoost",
-          "description": "Fast, Good Quality Upscaling",
-          "useExternalApi": true,
-          "cost": 5,
-          "costUpscale": 0,
-          "offer": 0,
-          "enabled": false,
-          "params": {
-            "init_image": "{{image}}",
-            "outscale": "{{scale_factor}}",
-            "model_name": "realesr-general-x4v3",
-            "face_enhance": "{{face_enhance}}",
-            "tile": 512,
-            "tile_pad": 10,
-            "fp32": false
-          }
-        },
-        {
-          "id": "realesrgan_anime",
-          "name": "PhotoBoost Anime",
-          "description": "Optimized for anime & illustrations",
-          "useExternalApi": true,
-          "cost": 5,
-          "costUpscale": 3,
-          "offer": 0,
-          "enabled": false,
-          "params": {
-            "init_image": "{{image}}",
-            "outscale": "{{scale_factor}}",
-            "model_name": "RealESRGAN_x4plus_anime_6B",
-            "face_enhance": false,
-            "tile": 512,
-            "tile_pad": 10,
-            "fp32": false
-          }
-        },
-        {
-          "id": "face_enhancer",
-          "name": "Face Enhancer",
-          "description": "Face restore + upscale, or upscale only",
-          "useExternalApi": true,
-          "cost": 5,
-          "costUpscale": 0,
-          "offer": 0,
-          "enabled": true,
-          "params": {
-            "init_image": "{{image}}",
-            "mode": "{{mode}}",
-            "scale": "{{scale_factor}}",
-            "bg_model": "{{bg_model}}",
-            "face_enhance": "{{enhance_faces}}",
-            "output_dir": "./outputs"
+            "init_image": "{{image}}"
           }
         }
       ],
@@ -1696,54 +1484,16 @@
           "label": "Upload Image",
           "min": 1,
           "max": 1
-        },
-        {
-          "id": "scale_factor",
-          "type": "slider",
-          "label": "Upscale",
-          "min": 2,
-          "max": 4,
-          "default": 2,
-          "step": 1
-        },
-        {
-          "id": "face_enhance",
-          "type": "toggle",
-          "label": "Face Enhance",
-          "description": "Add face restoration (GFPGAN)",
-          "default": false,
-          "showForModels": ["realesrgan"]
-        },
-        {
-          "id": "mode",
-          "type": "dropdown",
-          "label": "Face model",
-          "description": "GFPGAN variant (face restore quality)",
-          "options": ["v1.4", "v1.3", "v1.2", "RestoreFormer", "CodeFormer", "RealESR-General-x4v3"],
-          "default": "v1.4",
-          "showForModels": ["face_enhancer"]
-        },
-        {
-          "id": "bg_model",
-          "type": "dropdown",
-          "label": "Upscaler",
-          "description": "General 4×, 2×, or Anime",
-          "options": ["realesr-general-x4v3", "RealESRGAN_x2plus", "RealESRGAN_x4plus_anime_6B"],
-          "default": "realesr-general-x4v3",
-          "showForModels": ["face_enhancer"]
-        },
-        {
-          "id": "enhance_faces",
-          "type": "toggle",
-          "label": "Restore faces",
-          "description": "Off = upscale only",
-          "default": true,
-          "showForModels": ["face_enhancer"]
         }
       ],
       "elements": [
-        { "type": "image_upload", "input_ref": "image" },
-        { "type": "generate_button" }
+        {
+          "type": "image_upload",
+          "input_ref": "image"
+        },
+        {
+          "type": "generate_button"
+        }
       ]
     },
     {
@@ -1763,7 +1513,7 @@
           "baseCost": 3,
           "costUpscale": 0,
           "offer": 0,
-          "enabled": true,
+          "enabled": false,
           "maxDuration": 120,
           "params": {
             "input_video": "{{input_video}}",
@@ -1861,25 +1611,19 @@
       "icon": "file-text",
       "accent": "#10B981",
       "outputType": "text",
-      "defaultModel": "glm_ocr",
+      "defaultModel": "gemini_ocr",
       "models": [
         {
-          "id": "glm_ocr",
+          "id": "gemini_ocr",
           "name": "TextScan",
-          "description": "Text recognition from images",
+          "description": "Extract text with Gemini",
+          "useExternalApi": true,
           "cost": 5,
           "costUpscale": 0,
           "offer": 0,
           "enabled": true,
           "params": {
-            "init_image": "{{input_image}}",
-            "prompt_type": "text",
-            "max_new_tokens": 8192,
-            "output_dir": "./outputs",
-            "output_format": "txt"
-          },
-          "rootParams": {
-            "prompt": "Text Recognition:"
+            "init_image": "{{input_image}}"
           }
         }
       ],

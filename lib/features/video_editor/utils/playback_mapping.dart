@@ -2,6 +2,7 @@
 
 import '../models/clip_model.dart';
 import '../models/project_model.dart';
+import 'speed_timeline_mapping.dart';
 
 /// Video clips sorted by timeline [startTime] (visible tracks only).
 List<VideoClip> sortedVideoClips(VideoProject project) {
@@ -37,6 +38,9 @@ VideoClip? activeVideoClipAt(VideoProject project, Duration timelinePos) {
 
 /// Source file time for a timeline position inside [clip].
 Duration sourcePositionForTimeline(VideoClip clip, Duration timelinePos) {
+  if (useUnifiedSpeedMapping(clip)) {
+    return filePositionForTimelineInClip(clip, timelinePos);
+  }
   return clip.trimStart + (timelinePos - clip.startTime);
 }
 
@@ -73,17 +77,26 @@ Duration timelinePositionForSource(
 
   if (candidates.length == 1) {
     final c = candidates.first;
+    if (useUnifiedSpeedMapping(c)) {
+      return timelinePositionForFileInClip(c, filePos, lastTimelinePos);
+    }
     return c.startTime + (filePos - c.trimStart);
   }
 
   for (final c in candidates) {
     if (lastTimelinePos >= c.startTime && lastTimelinePos < c.endTime) {
+      if (useUnifiedSpeedMapping(c)) {
+        return timelinePositionForFileInClip(c, filePos, lastTimelinePos);
+      }
       return c.startTime + (filePos - c.trimStart);
     }
   }
 
   candidates.sort((a, b) => a.startTime.compareTo(b.startTime));
   final c = candidates.first;
+  if (useUnifiedSpeedMapping(c)) {
+    return timelinePositionForFileInClip(c, filePos, lastTimelinePos);
+  }
   return c.startTime + (filePos - c.trimStart);
 }
 

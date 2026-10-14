@@ -1,6 +1,7 @@
 // lib/features/video_editor/state/project_notifier.dart
 
 import 'dart:typed_data';
+import 'dart:ui' show Size;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -40,6 +41,43 @@ class ProjectNotifier extends StateNotifier<VideoProject?> {
   }
 
   // ─── Project lifecycle ────────────────────────────────────────────────────
+
+  void createFromScenePaths(List<String> paths, {Size resolution = const Size(1920, 1080)}) {
+    if (paths.isEmpty) return;
+    _undoStack.clear();
+    _redoStack.clear();
+    final projectId = 'studio_${DateTime.now().microsecondsSinceEpoch}';
+    final clips = <Clip>[];
+    var cursor = Duration.zero;
+    for (var i = 0; i < paths.length; i++) {
+      const dur = Duration(seconds: 5);
+      clips.add(
+        VideoClip(
+          id: '${projectId}_clip_$i',
+          startTime: cursor,
+          duration: dur,
+          sourcePath: paths[i],
+          trimStart: Duration.zero,
+          trimEnd: dur,
+          originalDuration: dur,
+          resolution: resolution,
+        ),
+      );
+      cursor += dur;
+    }
+    final track = Track(
+      id: '${projectId}_video_0',
+      type: TrackType.video,
+      name: 'Studio scenes',
+      clips: clips,
+    );
+    state = VideoProject(
+      id: projectId,
+      name: 'Studio',
+      tracks: [track],
+      totalDuration: cursor,
+    );
+  }
 
   /// Create a new project from a picked video.
   void createProject({

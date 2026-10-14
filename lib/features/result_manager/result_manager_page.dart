@@ -14,6 +14,9 @@ import 'package:kala_ai_create_images_videos_with_ai/core/services/file_service.
 import 'package:kala_ai_create_images_videos_with_ai/core/services/polling_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/thumbnail_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_button.dart';
+import 'package:kala_ai_create_images_videos_with_ai/features/studio/studio_job_page.dart';
+import 'package:kala_ai_create_images_videos_with_ai/features/studio/studio_page.dart';
+import 'package:kala_ai_create_images_videos_with_ai/features/studio/studio_storyboard_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 bool isResultManagerOpen = false;
@@ -953,7 +956,27 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
                       },
                       onTap: _isSelectionMode
                           ? () => _toggleJobSelection(filteredJobs[i].jobId)
-                          : null,
+                          : () {
+                              final job = filteredJobs[i];
+                              if (job.outputType == 'studio_video' &&
+                                  job.status == 'reviewing') {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        StudioStoryboardPage(jobId: job.jobId),
+                                  ),
+                                );
+                              } else if (job.outputType == 'studio_video') {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => StudioJobPage(
+                                      jobId: job.jobId,
+                                      reviewMode: true,
+                                    ),
+                                  ),
+                                );
+                              }
+                            },
                     ),
                   );
                 },
@@ -1271,7 +1294,15 @@ class _JobCardState extends State<JobCard> {
     return InkWell(
       onTap: widget.isSelectionMode
           ? widget.onTap
-          : (job.status == 'completed' && !isExpired && isSaved ? () => _openPreview(context) : null),
+          : () {
+              if (job.outputType == 'studio_video') {
+                widget.onTap?.call();
+                return;
+              }
+              if (job.status == 'completed' && !isExpired && isSaved) {
+                _openPreview(context);
+              }
+            },
       onLongPress: widget.onLongPress,
       borderRadius: BorderRadius.circular(16),
       child: Opacity(
@@ -1342,6 +1373,25 @@ class _JobCardState extends State<JobCard> {
                     : Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          if (job.status == 'completed' &&
+                              (job.outputType == 'video' ||
+                                  job.outputType == 'studio_video'))
+                            IconButton(
+                              icon: Icon(Icons.movie_creation_outlined,
+                                  color: cs.primary),
+                              tooltip: 'Use this clip as scene 1 in Studio',
+                              onPressed: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => StudioPage(
+                                      initialExploreJobId: job.jobId,
+                                      initialSceneIndex: 1,
+                                      initialLocalPath: job.localFilePath,
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
                           if (job.status == 'completed')
                             IconButton(
                               icon: _isDownloading
@@ -1748,7 +1798,11 @@ class _JobCardState extends State<JobCard> {
     final output = job.outputType.toLowerCase();
     final model = job.model.toLowerCase();
     
-    if (output == 'video' || model.contains('video') || model.contains('animate')) {
+    if (output == 'video' ||
+        output == 'studio_video' ||
+        model.contains('video') ||
+        model.contains('animate') ||
+        model.contains('studio')) {
       return 'video';
     } else if (output == 'audio' || model.contains('audio') || model.contains('tts')) {
       return 'audio';
@@ -1865,7 +1919,7 @@ class _JobCardState extends State<JobCard> {
     final modelLower = model.toLowerCase();
     
     // Check output type first
-    if (output == 'video') {
+    if (output == 'video' || output == 'studio_video') {
       return Icons.videocam_rounded;
     } else if (output == 'audio') {
       return Icons.audiotrack_rounded;
@@ -1897,9 +1951,15 @@ class _JobCardState extends State<JobCard> {
   Widget _buildStatus(ColorScheme cs) {
     final job = widget.job;
 
-    if (job.status == 'processing') {
-      // Show variation progress if multiple variations
-      String statusText = "PROCESSING…";
+    if (job.status == 'processing' ||
+        job.status == 'provisioning' ||
+        job.status == 'queued' ||
+        job.status == 'running' ||
+        job.status == 'stitching' ||
+        job.status == 'uploading' ||
+        job.status == 'reviewing') {
+      String statusText = "${job.status.toUpperCase()}…";
+      if (job.status == 'reviewing') statusText = 'REVIEW SCENES';
       if (job.hasMultipleVariations && job.variationResults != null) {
         final completed = job.variationResults!.where((v) => v.status == 'completed' || v.status == 'failed').length;
         statusText = "PROCESSING… ($completed/${job.variations})";

@@ -283,8 +283,26 @@ class JobModel {
     String rawStatus =
         (json['status'] ?? 'processing').toString().toLowerCase();
     // Only allow 3 states
-    const allowed = ['processing', 'completed', 'failed'];
-    if (!allowed.contains(rawStatus)) rawStatus = 'processing';
+    const allowed = [
+      'processing',
+      'completed',
+      'failed',
+      'reviewing',
+      'provisioning',
+      'queued',
+      'running',
+      'stitching',
+      'uploading',
+    ];
+    if (!allowed.contains(rawStatus)) {
+      if (rawStatus == 'done') {
+        rawStatus = 'completed';
+      } else if (rawStatus == 'review') {
+        rawStatus = 'reviewing';
+      } else {
+        rawStatus = 'processing';
+      }
+    }
     
     // Parse variation results if present
     List<VariationResult>? variationResults;
@@ -456,7 +474,17 @@ Future<void> updateJobFields({
     );
 
     if (status != null) {
-      const allowed = ['processing', 'completed', 'failed'];
+      const allowed = [
+        'processing',
+        'completed',
+        'failed',
+        'reviewing',
+        'provisioning',
+        'queued',
+        'running',
+        'stitching',
+        'uploading',
+      ];
       if (!allowed.contains(status.toLowerCase())) {
         status = 'processing';
       }

@@ -34,6 +34,7 @@ import 'models/project_model.dart';
 import 'services/export_service.dart';
 import 'services/thumbnail_cache_service.dart';
 import 'utils/playback_mapping.dart';
+import 'utils/speed_timeline_mapping.dart';
 import 'state/editor_providers.dart';
 import 'state/playback_notifier.dart';
 import 'state/tool_notifier.dart';
@@ -290,7 +291,8 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
         ref.read(playbackProvider).position,
       );
       if (atClip != null) {
-        final speed = atClip.speedEffect.speed.clamp(0.25, 5.0);
+        final pos = ref.read(playbackProvider).position;
+        final speed = instantaneousPlaybackSpeed(atClip, pos).clamp(0.25, 5.0);
         if ((_videoController!.value.playbackSpeed - speed).abs() > 0.01) {
           _videoController!.setPlaybackSpeed(speed);
         }
@@ -330,8 +332,8 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
     _providerSubscriptions.add(
       ref.listenManual(selectedClipProvider, (prev, next) {
         if (next is VideoClip && _videoController != null && _videoController!.value.isInitialized) {
-          // Sync speed
-          final speed = next.speedEffect.speed.clamp(0.25, 5.0);
+          final pos = ref.read(playbackProvider).position;
+          final speed = instantaneousPlaybackSpeed(next, pos).clamp(0.25, 5.0);
           if ((_videoController!.value.playbackSpeed - speed).abs() > 0.01) {
             _videoController!.setPlaybackSpeed(speed);
           }
@@ -363,25 +365,61 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
   /// Also syncs the embedded audio clip's volume to [_videoController].
   void _syncAudioPlayers(VideoProject project) {
     final audioClipIds = <String>{};
-    final videoPath = _videoFile?.path;
     final pos = ref.read(playbackProvider).position;
 
-    // Embedded video audio: pick the clip whose timeline range contains the playhead.
-    bool embeddedAudioFound = false;
-    double embeddedAudioVolume = 0.0;
+    // Embedded video audio: any AudioClip whose source matches a video clip path.
+    // Sorted by startTime; overlapping intervals: last clip in sort order wins.
+    final videoSources = <String>{};
+    for (final t in project.videoTracks) {
+      for (final c in t.clips) {
+        if (c is VideoClip) videoSources.add(c.sourcePath);
+      }
+    }
+    final embeddedFamily = <AudioClip>[];
+    for (final track in project.audioTracks) {
+      if (track.isMuted) continue;
+      for (final clip in track.clips) {
+        if (clip is AudioClip && videoSources.contains(clip.sourcePath)) {
+          embeddedFamily.add(clip);
+        }
+      }
+    }
+    embeddedFamily.sort((a, b) {
+      final c = a.startTime.compareTo(b.startTime);
+      if (c != 0) return c;
+      return a.id.compareTo(b.id);
+    });
+
+    double targetVol;
+    if (embeddedFamily.isEmpty) {
+      var embeddedOnMutedTrackOnly = false;
+      for (final track in project.audioTracks) {
+        if (!track.isMuted) continue;
+        for (final clip in track.clips) {
+          if (clip is AudioClip && videoSources.contains(clip.sourcePath)) {
+            embeddedOnMutedTrackOnly = true;
+            break;
+          }
+        }
+      }
+      targetVol = embeddedOnMutedTrackOnly ? 0.0 : 1.0;
+    } else {
+      var inClip = false;
+      var v = 1.0;
+      for (final clip in embeddedFamily) {
+        if (pos >= clip.startTime && pos < clip.endTime) {
+          inClip = true;
+          v = clip.volume;
+        }
+      }
+      targetVol = inClip ? v : 1.0;
+    }
 
     for (final track in project.audioTracks) {
       for (final clip in track.clips) {
         if (clip is AudioClip) {
           // Embedded video audio – handled by the video controller
-          if (videoPath != null && clip.sourcePath == videoPath) {
-            if (!embeddedAudioFound &&
-                !track.isMuted &&
-                pos >= clip.startTime &&
-                pos < clip.endTime) {
-              embeddedAudioFound = true;
-              embeddedAudioVolume = clip.volume;
-            }
+          if (videoSources.contains(clip.sourcePath)) {
             continue;
           }
 
@@ -406,9 +444,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
     }
 
     // Sync the embedded audio volume to the video controller.
-    // If the embedded clip was removed or its track is muted, mute the video controller.
     if (_videoController != null && _videoController!.value.isInitialized) {
-      final targetVol = embeddedAudioFound ? embeddedAudioVolume : 0.0;
       if ((_videoController!.value.volume - targetVol).abs() > 0.01) {
         _videoController!.setVolume(targetVol);
       }

@@ -9,13 +9,17 @@ import 'package:path_provider/path_provider.dart';
 
 import '../models/clip_model.dart';
 import '../models/effect_model.dart';
+import '../models/keyframe_model.dart';
 import '../models/project_model.dart';
 import '../utils/color_matrix_presets.dart';
+import '../utils/keyframe_ffmpeg_expr.dart';
+import '../utils/speed_timeline_mapping.dart';
+import '../utils/transition_ffmpeg.dart';
 
 /// Orchestrates the full export pipeline using FFmpeg Kit.
 ///
-/// **Keyframe animation** on clips is applied in the preview only; FFmpeg export
-/// does not yet evaluate [KeyframeTrack]s.
+/// **Keyframe animation** for text/emoji uses piecewise-linear FFmpeg expressions;
+/// raster stickers use interval overlays. PiP keyframe motion is not exported (v1).
 ///
 /// Pipeline:
 ///   1. Gather & sort video clips
@@ -57,7 +61,21 @@ class ExportService {
       for (int i = 0; i < videoClips.length; i++) {
         final clip = videoClips[i];
         final out = '${workDir.path}/clip_$i.mp4';
-        final hasSpeed = (clip.speedEffect.speed - 1.0).abs() > 0.01;
+
+        if (_needsSegmentedSpeed(clip)) {
+          final segPath = await _exportSegmentedVariableSpeed(
+            clip: clip,
+            outPath: out,
+            workDir: workDir,
+            clipIndex: i,
+          );
+          processedPaths.add(segPath ?? clip.sourcePath);
+          onProgress(0.10 + 0.15 * (i + 1) / videoClips.length);
+          continue;
+        }
+
+        final sp = _effectiveConstantSpeed(clip);
+        final hasSpeed = (sp - 1.0).abs() > 0.01;
         final hasTrim =
             clip.trimStart > Duration.zero || clip.trimEnd < clip.originalDuration;
 
@@ -70,7 +88,6 @@ class ExportService {
           }
           args.addAll(['-i', clip.sourcePath]);
           if (hasSpeed) {
-            final sp = clip.speedEffect.speed;
             final setpts = '${(1 / sp).toStringAsFixed(4)}*PTS';
             final withAudio = <String>[
               ...args,
@@ -102,32 +119,50 @@ class ExportService {
       for (int i = 0; i < videoClips.length; i++) {
         var segmentPath = processedPaths[i];
         final clip = videoClips[i];
-        final vf = _videoFiltersPassA(clip);
+        var vf = _videoFiltersPassA(clip);
         if (vf.isNotEmpty) {
-          final vfStr = '${vf.join(',')},format=yuv420p';
-          final outFx = '${workDir.path}/clip_${i}_passA.mp4';
-          final ok = await _run([
-                '-y',
-                '-i',
-                segmentPath,
-                '-vf',
-                vfStr,
-                '-c:a',
-                'copy',
-                outFx,
-              ]) ||
-              await _run([
-                '-y',
-                '-i',
-                segmentPath,
-                '-vf',
-                vfStr,
-                '-map',
-                '0:v',
-                '-an',
-                outFx,
-              ]);
-          if (ok) segmentPath = outFx;
+          Future<bool> runPassA(List<String> filters) async {
+            final vfStr = '${filters.join(',')},format=yuv420p';
+            final outFx = '${workDir.path}/clip_${i}_passA.mp4';
+            return await _run([
+                  '-y',
+                  '-i',
+                  segmentPath,
+                  '-vf',
+                  vfStr,
+                  '-c:a',
+                  'copy',
+                  outFx,
+                ]) ||
+                await _run([
+                  '-y',
+                  '-i',
+                  segmentPath,
+                  '-vf',
+                  vfStr,
+                  '-map',
+                  '0:v',
+                  '-an',
+                  outFx,
+                ]);
+          }
+
+          var ok = await runPassA(vf);
+          if (!ok &&
+              clip.transitionIn.type != TransitionType.none &&
+              clip.transitionIn.type != TransitionType.fade &&
+              clip.transitionIn.type != TransitionType.dissolve) {
+            logTransitionFallback(clip.transitionIn.type, 'Pass A failed; using fade');
+            vf = _videoFiltersPassA(
+              clip,
+              transitionOverride: ClipTransition(
+                type: TransitionType.fade,
+                duration: clip.transitionIn.duration,
+              ),
+            );
+            ok = await runPassA(vf);
+          }
+          if (ok) segmentPath = '${workDir.path}/clip_${i}_passA.mp4';
         }
         segmentPathsAfterFx.add(segmentPath);
         onProgress(0.25 + 0.08 * (i + 1) / videoClips.length);
@@ -179,19 +214,10 @@ class ExportService {
           if (!track.isVisible) continue;
           for (final clip in track.clips) {
             if (clip is TextClip) {
-              final txt = _escDt(clip.text);
-              final s = clip.startTime.inMilliseconds / 1000.0;
-              final e = clip.endTime.inMilliseconds / 1000.0;
-              final font = hasRobot ? ':fontfile=$robotFont' : '';
-              vf.add(
-                "drawtext=text='$txt'"
-                ':fontsize=${clip.fontSize.toInt()}'
-                ':fontcolor=${_colorHex(clip.color)}'
-                '$font'
-                ':x=(W*${clip.position.dx}-tw/2)'
-                ':y=(H*${clip.position.dy}-th/2)'
-                // ← escaped commas inside between()
-                ":enable='between(t\\,$s\\,$e)'",
+              _appendTextDrawtextVf(
+                vf,
+                clip,
+                hasRobot ? robotFont : '',
               );
             }
           }
@@ -202,20 +228,13 @@ class ExportService {
           if (!track.isVisible) continue;
           for (final clip in track.clips) {
             if (clip is StickerClip && clip.isEmoji) {
-              final txt = _escDt(clip.stickerData);
-              final s = clip.startTime.inMilliseconds / 1000.0;
-              final e = clip.endTime.inMilliseconds / 1000.0;
-              final sz = (64 * clip.scale).toInt().clamp(16, 256);
-              final font = hasEmoji
-                  ? ':fontfile=$emojiFont'
-                  : (hasRobot ? ':fontfile=$robotFont' : '');
-              vf.add(
-                "drawtext=text='$txt'"
-                ':fontsize=$sz'
-                '$font'
-                ':x=(W*${clip.position.dx}-tw/2)'
-                ':y=(H*${clip.position.dy}-th/2)'
-                ":enable='between(t\\,$s\\,$e)'",
+              _appendEmojiStickerDrawtextVf(
+                vf,
+                clip,
+                hasEmoji,
+                hasRobot,
+                emojiFont,
+                robotFont,
               );
             }
           }
@@ -241,51 +260,123 @@ class ExportService {
             if (!await File(path).exists()) continue;
             final out =
                 '${workDir.path}/stk_img_${clip.id.hashCode & 0x7fffffff}.mp4';
-            final s = clip.startTime.inMilliseconds / 1000.0;
-            final e = clip.endTime.inMilliseconds / 1000.0;
-            final px = clip.position.dx;
-            final py = clip.position.dy;
-            final w = (160 * clip.scale).clamp(16.0, 2048.0).round();
-            final fc = '[1:v]scale=w=$w:h=-1,format=rgba[st];'
-                '[0:v][st]overlay=W*$px-w/2:H*$py-h/2:'
-                "enable='between(t\\,$s\\,$e)':eof_action=pass,"
-                'format=yuv420p[v]';
-            if (await _run([
-                  '-y',
-                  '-i',
-                  cur,
-                  '-loop',
-                  '1',
-                  '-i',
-                  path,
-                  '-filter_complex',
-                  fc,
-                  '-map',
-                  '[v]',
-                  '-map',
-                  '0:a',
-                  '-shortest',
-                  '-c:a',
-                  'copy',
-                  out,
-                ]) ||
-                await _run([
-                  '-y',
-                  '-i',
-                  cur,
-                  '-loop',
-                  '1',
-                  '-i',
-                  path,
-                  '-filter_complex',
-                  fc,
-                  '-map',
-                  '[v]',
-                  '-an',
-                  '-shortest',
-                  out,
-                ])) {
-              cur = out;
+            final hasKf =
+                clip.keyframeTracks.any((t) => t.keyframes.isNotEmpty);
+            if (!hasKf) {
+              final s = clip.startTime.inMilliseconds / 1000.0;
+              final e = clip.endTime.inMilliseconds / 1000.0;
+              final px = clip.position.dx;
+              final py = clip.position.dy;
+              final w = (160 * clip.scale).clamp(16.0, 2048.0).round();
+              final fc = '[1:v]scale=w=$w:h=-1,format=rgba[st];'
+                  '[0:v][st]overlay=W*$px-w/2:H*$py-h/2:'
+                  "enable='between(t\\,$s\\,$e)':eof_action=pass,"
+                  'format=yuv420p[v]';
+              if (await _run([
+                    '-y',
+                    '-i',
+                    cur,
+                    '-loop',
+                    '1',
+                    '-i',
+                    path,
+                    '-filter_complex',
+                    fc,
+                    '-map',
+                    '[v]',
+                    '-map',
+                    '0:a',
+                    '-shortest',
+                    '-c:a',
+                    'copy',
+                    out,
+                  ]) ||
+                  await _run([
+                    '-y',
+                    '-i',
+                    cur,
+                    '-loop',
+                    '1',
+                    '-i',
+                    path,
+                    '-filter_complex',
+                    fc,
+                    '-map',
+                    '[v]',
+                    '-an',
+                    '-shortest',
+                    out,
+                  ])) {
+                cur = out;
+              }
+              continue;
+            }
+
+            final bounds = _allKeyframeBoundsSec(clip);
+            for (int bi = 0; bi < bounds.length - 1; bi++) {
+              final t0 = bounds[bi];
+              final t1 = bounds[bi + 1];
+              if (t1 <= t0) continue;
+              final mid = (t0 + t1) / 2.0;
+              final midRel =
+                  Duration(microseconds: (mid * 1000000).round()) -
+                  clip.startTime;
+              final ox = trackFor(clip.keyframeTracks, KeyframeProperty.positionX)
+                      ?.valueAt(midRel) ??
+                  0.0;
+              final oy = trackFor(clip.keyframeTracks, KeyframeProperty.positionY)
+                      ?.valueAt(midRel) ??
+                  0.0;
+              final sc = trackFor(clip.keyframeTracks, KeyframeProperty.scale)
+                      ?.valueAt(midRel) ??
+                  1.0;
+              final px = (clip.position.dx + ox).clamp(0.0, 1.0);
+              final py = (clip.position.dy + oy).clamp(0.0, 1.0);
+              final w =
+                  (160 * clip.scale * sc).clamp(16.0, 2048.0).round();
+              final intervalOut =
+                  '${workDir.path}/stk_img_${clip.id.hashCode & 0x7fffffff}_$bi.mp4';
+              final fc = '[1:v]scale=w=$w:h=-1,format=rgba[st];'
+                  '[0:v][st]overlay=W*$px-w/2:H*$py-h/2:'
+                  "enable='between(t\\,$t0\\,$t1)':eof_action=pass,"
+                  'format=yuv420p[v]';
+              if (await _run([
+                    '-y',
+                    '-i',
+                    cur,
+                    '-loop',
+                    '1',
+                    '-i',
+                    path,
+                    '-filter_complex',
+                    fc,
+                    '-map',
+                    '[v]',
+                    '-map',
+                    '0:a',
+                    '-shortest',
+                    '-c:a',
+                    'copy',
+                    intervalOut,
+                  ]) ||
+                  await _run([
+                    '-y',
+                    '-i',
+                    cur,
+                    '-loop',
+                    '1',
+                    '-i',
+                    path,
+                    '-filter_complex',
+                    fc,
+                    '-map',
+                    '[v]',
+                    '-an',
+                    '-shortest',
+                    intervalOut,
+                  ])) {
+                cur = intervalOut;
+              }
             }
           }
         }
@@ -302,6 +393,9 @@ class ExportService {
         }
         for (int i = 0; i < pipClips.length; i++) {
           final pip = pipClips[i];
+          if (pip.keyframeTracks.isNotEmpty) {
+            _logPipKeyframeMotionSkipOnce();
+          }
           var pipPath = pip.sourcePath;
           final pipNeedsTrim = pip.trimStart > Duration.zero ||
               pip.trimEnd < pip.originalDuration;
@@ -375,23 +469,45 @@ class ExportService {
 
       // ─── 6. Audio mixing ────────────────────────────────────────────
       {
+        final mainSources = videoClips.map((c) => c.sourcePath).toSet();
+        final embeddedClips = <AudioClip>[];
         final extra = <AudioClip>[];
-        AudioClip? embedded;
         for (final track in project.audioTracks) {
           if (track.isMuted) continue;
           for (final clip in track.clips) {
             if (clip is AudioClip) {
-              if (clip.sourcePath == videoClips.first.sourcePath) {
-                embedded = clip;
+              if (mainSources.contains(clip.sourcePath)) {
+                embeddedClips.add(clip);
               } else {
                 extra.add(clip);
               }
             }
           }
         }
-        final mainVol = embedded?.volume ?? 0.0;
+        embeddedClips.sort((a, b) {
+          final c = a.startTime.compareTo(b.startTime);
+          if (c != 0) return c;
+          return a.id.compareTo(b.id);
+        });
 
-        if (extra.isNotEmpty || mainVol != 1.0) {
+        /// Embedded clips from the same source file can overlap; later clips in this
+        /// sort order win (stable tie-break on id).
+        String embeddedVolExpr() {
+          if (embeddedClips.isEmpty) return '1.0';
+          var expr = '1.0';
+          for (final c in embeddedClips.reversed) {
+            final s = c.startTime.inMilliseconds / 1000.0;
+            final e = c.endTime.inMilliseconds / 1000.0;
+            final v = c.volume.toStringAsFixed(6);
+            expr = 'if(between(t\\,$s\\,$e)\\,$v\\,($expr))';
+          }
+          return expr;
+        }
+
+        final embExpr = embeddedVolExpr();
+        final needsVol = extra.isNotEmpty || embExpr != '1.0';
+
+        if (needsVol) {
           final out = '${workDir.path}/audio.mp4';
           final args = <String>['-y', '-i', cur];
           for (final ac in extra) {
@@ -401,7 +517,7 @@ class ExportService {
           final filters = <String>[];
           final labels = <String>[];
 
-          filters.add('[0:a]volume=${mainVol.toStringAsFixed(2)}[ma]');
+          filters.add('[0:a]volume=eval=frame:volume=\'$embExpr\'[ma]');
           labels.add('[ma]');
 
           for (int i = 0; i < extra.length; i++) {
@@ -463,10 +579,129 @@ class ExportService {
   }
 
   // =========================================================================
+  //  Speed export — segmented ramp / curve
+  // =========================================================================
+
+  static bool _needsSegmentedSpeed(VideoClip c) {
+    if (c.speedEffect.mode == SpeedMode.ramp) return true;
+    if (c.speedEffect.mode == SpeedMode.curve &&
+        c.speedEffect.curvePoints.isNotEmpty) {
+      return true;
+    }
+    return false;
+  }
+
+  static double _effectiveConstantSpeed(VideoClip c) {
+    switch (c.speedEffect.mode) {
+      case SpeedMode.constant:
+        return c.speedEffect.speed;
+      case SpeedMode.ramp:
+        return 1.0;
+      case SpeedMode.curve:
+        if (c.speedEffect.curvePoints.isEmpty) return c.speedEffect.speed;
+        return 1.0;
+    }
+  }
+
+  static Future<String?> _exportSegmentedVariableSpeed({
+    required VideoClip clip,
+    required String outPath,
+    required Directory workDir,
+    required int clipIndex,
+  }) async {
+    final n = exportSegmentedSpeedSegments;
+    final e = clip.speedEffect;
+    final S = clip.trimEnd - clip.trimStart;
+    if (S <= Duration.zero) return null;
+
+    final parts = <String>[];
+    final base = '${workDir.path}/clip_${clipIndex}_seg';
+    for (int i = 0; i < n; i++) {
+      final u0 = i / n;
+      final u1 = (i + 1) / n;
+      final r0 = rAtNormalizedU(e, u0);
+      final r1 = rAtNormalizedU(e, u1);
+      final f0 = Duration(
+        microseconds:
+            clip.trimStart.inMicroseconds + (S.inMicroseconds * r0).round(),
+      );
+      final f1 = Duration(
+        microseconds:
+            clip.trimStart.inMicroseconds + (S.inMicroseconds * r1).round(),
+      );
+      if (f1 <= f0) continue;
+
+      final dTus = (clip.duration.inMicroseconds * (u1 - u0)).round();
+      if (dTus <= 0) continue;
+      final dFus = (f1 - f0).inMicroseconds;
+      final vEff = dFus / dTus;
+      if (vEff < 0.05 || vEff > 20.0) continue;
+
+      final segOut = '${base}_$i.mp4';
+      final setpts = '${(1 / vEff).toStringAsFixed(6)}*PTS';
+      final ok = await _run([
+            '-y',
+            '-ss',
+            _dur(f0),
+            '-to',
+            _dur(f1),
+            '-i',
+            clip.sourcePath,
+            '-filter_complex',
+            '[0:v]setpts=$setpts[v];[0:a]${_atempoChain(vEff)}[a]',
+            '-map',
+            '[v]',
+            '-map',
+            '[a]',
+            segOut,
+          ]) ||
+          await _run([
+            '-y',
+            '-ss',
+            _dur(f0),
+            '-to',
+            _dur(f1),
+            '-i',
+            clip.sourcePath,
+            '-filter_complex',
+            '[0:v]setpts=$setpts[v]',
+            '-map',
+            '[v]',
+            '-an',
+            segOut,
+          ]);
+      if (ok) parts.add(segOut);
+    }
+
+    if (parts.isEmpty) return null;
+    if (parts.length == 1) {
+      await File(parts.first).copy(outPath);
+      return outPath;
+    }
+    final listFile = File('${workDir.path}/clip_${clipIndex}_seglist.txt');
+    await listFile.writeAsString(
+      parts.map((p) => "file '${p.replaceAll("'", "'\\''")}'").join('\n'),
+    );
+    final ok = await _run([
+      '-y',
+      '-f',
+      'concat',
+      '-safe',
+      '0',
+      '-i',
+      listFile.path,
+      '-c',
+      'copy',
+      outPath,
+    ]);
+    return ok ? outPath : null;
+  }
+
+  // =========================================================================
   //  Pass A — per-clip video filters (colour + transition fade-in)
   // =========================================================================
 
-  static List<String> _videoFiltersPassA(VideoClip clip) {
+  static List<String> _videoFiltersPassA(VideoClip clip, {ClipTransition? transitionOverride}) {
     final vf = <String>[];
     final adj = clip.colorAdjustment;
     final preset = _presetToVf(adj.filterPresetId);
@@ -477,12 +712,9 @@ class ExportService {
         'eq=brightness=$br:contrast=${adj.contrast}:saturation=${adj.saturation}',
       );
     }
-    final tr = clip.transitionIn;
-    if (tr.type != TransitionType.none) {
-      final frames =
-          (tr.duration.inMilliseconds / 1000.0 * 30).round().clamp(1, 300);
-      vf.add('fade=in:0:$frames');
-    }
+    final trIn = transitionOverride ?? clip.transitionIn;
+    final trFilter = transitionInVideoFilter(trIn);
+    if (trFilter != null) vf.add(trFilter);
     return vf;
   }
 
@@ -578,6 +810,250 @@ class ExportService {
       return '0x$r$g$b';
     } catch (_) {
       return 'white';
+    }
+  }
+
+  static String _fontColorWithAlpha(dynamic color, double opacity) {
+    final o = opacity.clamp(0.0, 1.0);
+    return '${_colorHex(color)}@${o.toStringAsFixed(4)}';
+  }
+
+  static bool _pipKeyframeLogged = false;
+  static bool _rotationKeyframeLogged = false;
+
+  static void _logPipKeyframeMotionSkipOnce() {
+    if (_pipKeyframeLogged) return;
+    _pipKeyframeLogged = true;
+    debugPrint(
+      'Export: PiP keyframe motion is not applied in FFmpeg (v1); using static position/scale.',
+    );
+  }
+
+  static void _logKeyframeRotationExportOnce() {
+    if (_rotationKeyframeLogged) return;
+    _rotationKeyframeLogged = true;
+    debugPrint(
+      'Export: keyframe rotation is not applied in FFmpeg drawtext/overlay (limitation).',
+    );
+  }
+
+  static List<double> _intervalBoundsSec(
+    Duration clipStart,
+    Duration clipEnd,
+    KeyframeTrack? track,
+  ) {
+    final times = <double>{};
+    final s = clipStart.inMilliseconds / 1000.0;
+    final e = clipEnd.inMilliseconds / 1000.0;
+    times.add(s);
+    times.add(e);
+    if (track != null) {
+      for (final k in track.keyframes) {
+        final g = (clipStart + k.time).inMilliseconds / 1000.0;
+        if (g >= s && g <= e) times.add(g);
+      }
+    }
+    return times.toList()..sort();
+  }
+
+  static List<double> _allKeyframeBoundsSec(StickerClip clip) {
+    final times = <double>{};
+    final s = clip.startTime.inMilliseconds / 1000.0;
+    final e = clip.endTime.inMilliseconds / 1000.0;
+    times.add(s);
+    times.add(e);
+    for (final t in clip.keyframeTracks) {
+      for (final k in t.keyframes) {
+        final g = (clip.startTime + k.time).inMilliseconds / 1000.0;
+        if (g >= s && g <= e) times.add(g);
+      }
+    }
+    return times.toList()..sort();
+  }
+
+  static void _appendTextDrawtextVf(
+    List<String> vf,
+    TextClip clip,
+    String robotFontPath,
+  ) {
+    final txt = _escDt(clip.text);
+    final font = robotFontPath.isNotEmpty ? ':fontfile=$robotFontPath' : '';
+    final s = clip.startTime.inMilliseconds / 1000.0;
+    final e = clip.endTime.inMilliseconds / 1000.0;
+
+    if (trackFor(clip.keyframeTracks, KeyframeProperty.rotation)
+            ?.keyframes
+            .isNotEmpty ??
+        false) {
+      _logKeyframeRotationExportOnce();
+    }
+
+    final kx = trackFor(clip.keyframeTracks, KeyframeProperty.positionX);
+    final ky = trackFor(clip.keyframeTracks, KeyframeProperty.positionY);
+    final ks = trackFor(clip.keyframeTracks, KeyframeProperty.scale);
+    final kop = trackFor(clip.keyframeTracks, KeyframeProperty.opacity);
+
+    final hasMotionKf = (kx?.keyframes.isNotEmpty ?? false) ||
+        (ky?.keyframes.isNotEmpty ?? false) ||
+        (ks?.keyframes.isNotEmpty ?? false);
+    final hasOpKf = kop?.keyframes.isNotEmpty ?? false;
+
+    late final String xExpr;
+    late final String yExpr;
+    late final String fsExpr;
+    if (hasMotionKf) {
+      xExpr = drawtextXExpr(
+        baseX: clip.position.dx,
+        offsetTrack: kx,
+        clipStart: clip.startTime,
+        clipEnd: clip.endTime,
+      );
+      yExpr = drawtextYExpr(
+        baseY: clip.position.dy,
+        offsetTrack: ky,
+        clipStart: clip.startTime,
+        clipEnd: clip.endTime,
+      );
+      fsExpr = fontsizeScaleExpr(
+        baseSize: clip.fontSize,
+        scaleTrack: ks,
+        clipStart: clip.startTime,
+        clipEnd: clip.endTime,
+      );
+    } else {
+      xExpr = '(W*${clip.position.dx}-tw/2)';
+      yExpr = '(H*${clip.position.dy}-th/2)';
+      fsExpr = clip.fontSize.toString();
+    }
+
+    if (hasOpKf && kop != null) {
+      final bounds = _intervalBoundsSec(clip.startTime, clip.endTime, kop);
+      for (int i = 0; i < bounds.length - 1; i++) {
+        final t0 = bounds[i];
+        final t1 = bounds[i + 1];
+        if (t1 <= t0) continue;
+        final mid = (t0 + t1) / 2.0;
+        final midRel =
+            Duration(microseconds: (mid * 1000000).round()) -
+            clip.startTime;
+        final a = kop.valueAt(midRel).clamp(0.0, 1.0);
+        final fc = _fontColorWithAlpha(clip.color, a);
+        vf.add(
+          "drawtext=text='$txt'"
+          ':fontsize=$fsExpr'
+          ':fontcolor=$fc'
+          '$font'
+          ':x=$xExpr'
+          ':y=$yExpr'
+          ":enable='between(t\\,${t0.toStringAsFixed(4)}\\,${t1.toStringAsFixed(4)})'",
+        );
+      }
+    } else {
+      vf.add(
+        "drawtext=text='$txt'"
+        ':fontsize=$fsExpr'
+        ':fontcolor=${_colorHex(clip.color)}'
+        '$font'
+        ':x=$xExpr'
+        ':y=$yExpr'
+        ":enable='between(t\\,$s\\,$e)'",
+      );
+    }
+  }
+
+  static void _appendEmojiStickerDrawtextVf(
+    List<String> vf,
+    StickerClip clip,
+    bool hasEmoji,
+    bool hasRobot,
+    String emojiFont,
+    String robotFont,
+  ) {
+    final txt = _escDt(clip.stickerData);
+    final s = clip.startTime.inMilliseconds / 1000.0;
+    final e = clip.endTime.inMilliseconds / 1000.0;
+    final baseSz = 64 * clip.scale;
+    final font = hasEmoji
+        ? ':fontfile=$emojiFont'
+        : (hasRobot ? ':fontfile=$robotFont' : '');
+
+    if (trackFor(clip.keyframeTracks, KeyframeProperty.rotation)
+            ?.keyframes
+            .isNotEmpty ??
+        false) {
+      _logKeyframeRotationExportOnce();
+    }
+
+    final kx = trackFor(clip.keyframeTracks, KeyframeProperty.positionX);
+    final ky = trackFor(clip.keyframeTracks, KeyframeProperty.positionY);
+    final ks = trackFor(clip.keyframeTracks, KeyframeProperty.scale);
+    final kop = trackFor(clip.keyframeTracks, KeyframeProperty.opacity);
+
+    final hasMotionKf = (kx?.keyframes.isNotEmpty ?? false) ||
+        (ky?.keyframes.isNotEmpty ?? false) ||
+        (ks?.keyframes.isNotEmpty ?? false);
+    final hasOpKf = kop?.keyframes.isNotEmpty ?? false;
+
+    late final String xExpr;
+    late final String yExpr;
+    late final String fsExpr;
+    if (hasMotionKf) {
+      xExpr = drawtextXExpr(
+        baseX: clip.position.dx,
+        offsetTrack: kx,
+        clipStart: clip.startTime,
+        clipEnd: clip.endTime,
+      );
+      yExpr = drawtextYExpr(
+        baseY: clip.position.dy,
+        offsetTrack: ky,
+        clipStart: clip.startTime,
+        clipEnd: clip.endTime,
+      );
+      fsExpr = fontsizeScaleExpr(
+        baseSize: baseSz,
+        scaleTrack: ks,
+        clipStart: clip.startTime,
+        clipEnd: clip.endTime,
+      );
+    } else {
+      xExpr = '(W*${clip.position.dx}-tw/2)';
+      yExpr = '(H*${clip.position.dy}-th/2)';
+      fsExpr = baseSz.toInt().clamp(16, 256).toString();
+    }
+
+    if (hasOpKf && kop != null) {
+      final bounds = _intervalBoundsSec(clip.startTime, clip.endTime, kop);
+      for (int i = 0; i < bounds.length - 1; i++) {
+        final t0 = bounds[i];
+        final t1 = bounds[i + 1];
+        if (t1 <= t0) continue;
+        final mid = (t0 + t1) / 2.0;
+        final midRel =
+            Duration(microseconds: (mid * 1000000).round()) -
+            clip.startTime;
+        final a = kop.valueAt(midRel).clamp(0.0, 1.0);
+        final fc = 'white@${a.toStringAsFixed(4)}';
+        vf.add(
+          "drawtext=text='$txt'"
+          ':fontsize=$fsExpr'
+          ':fontcolor=$fc'
+          '$font'
+          ':x=$xExpr'
+          ':y=$yExpr'
+          ":enable='between(t\\,${t0.toStringAsFixed(4)}\\,${t1.toStringAsFixed(4)})'",
+        );
+      }
+    } else {
+      vf.add(
+        "drawtext=text='$txt'"
+        ':fontsize=$fsExpr'
+        ':fontcolor=white'
+        '$font'
+        ':x=$xExpr'
+        ':y=$yExpr'
+        ":enable='between(t\\,$s\\,$e)'",
+      );
     }
   }
 }

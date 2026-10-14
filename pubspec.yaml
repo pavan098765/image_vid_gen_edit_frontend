@@ -5,7 +5,7 @@ description: Create Images & Videos with AI
 
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 
-version: 1.0.0+2
+version: 1.0.0+3
 
 environment:
   sdk: '>=3.1.5 <4.0.0'

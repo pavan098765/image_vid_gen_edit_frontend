@@ -28,7 +28,17 @@ import 'package:kala_ai_create_images_videos_with_ai/main.dart' show navigatorKe
 class PollingService {
   PollingService._();
   static final PollingService instance = PollingService._();
-  static final allowed = ["processing", "completed", "failed"];
+  static final allowed = [
+    "processing",
+    "completed",
+    "failed",
+    "reviewing",
+    "provisioning",
+    "queued",
+    "running",
+    "stitching",
+    "uploading",
+  ];
   static const int minPollIntervalSec = 20; // per-job cooldown (for background polling only)
   static const int maxJobAgeMinutesForBackgroundPoll = 60; // background poll skips very old jobs
 
@@ -475,7 +485,17 @@ class PollingService {
         if (!success) continue;
 
         String status = (data["status"] ?? "").toString().toLowerCase();
-        const allowedStatuses = ["processing", "completed", "failed"];
+        const allowedStatuses = [
+          "processing",
+          "completed",
+          "failed",
+          "reviewing",
+          "provisioning",
+          "queued",
+          "running",
+          "stitching",
+          "uploading",
+        ];
         if (!allowedStatuses.contains(status)) {
           status = "processing";
         }
@@ -622,7 +642,13 @@ class PollingService {
       // 🧩 Only refresh 'processing' jobs (apply age filter only for background polling)
       final processingJobs = list.where((job) {
         final status = (job["status"] ?? "").toString().toLowerCase();
-        if (status != "processing") return false;
+        if (status != "processing" &&
+            status != "reviewing" &&
+            status != "provisioning" &&
+            status != "queued" &&
+            status != "running" &&
+            status != "stitching" &&
+            status != "uploading") return false;
 
         // Skip age check for manual/force refresh
         if (forceRefresh) return true;
@@ -675,18 +701,50 @@ class PollingService {
         return;
       }
 
+      final outputTypeById = <String, String>{};
+      for (final job in processingJobs) {
+        final id = job["jobId"] as String?;
+        if (id != null) {
+          outputTypeById[id] = (job["outputType"] ?? job["output_type"] ?? '').toString();
+        }
+      }
+
       debugPrint("🌐 Fetching ${jobsToFetch.length} jobs IN PARALLEL...");
 
       // 🚀 PARALLEL API CALLS - fetch all job statuses concurrently
       final statusFutures = jobsToFetch.map((jobId) async {
         try {
-          final url = "$baseUrl/job_status?job_id=$jobId";
+          final isStudio = outputTypeById[jobId] == 'studio_video';
+          final url = isStudio
+              ? "$baseUrl/studio/jobs/$jobId"
+              : "$baseUrl/job_status?job_id=$jobId";
           final resp = await http
               .get(Uri.parse(url), headers: headers)
               .timeout(const Duration(seconds: 15));
           
           if (resp.statusCode == 200) {
-            return (jobId, jsonDecode(resp.body) as Map<String, dynamic>, true);
+            final body = jsonDecode(resp.body) as Map<String, dynamic>;
+            if (isStudio) {
+              var st = (body["status"] ?? "").toString().toLowerCase();
+              if (st == "done") st = "completed";
+              if (st == "review") st = "reviewing";
+              body["status"] = st;
+              if (st == "completed") {
+                try {
+                  final resultResp = await http
+                      .get(
+                        Uri.parse("$baseUrl/studio/jobs/$jobId/result"),
+                        headers: headers,
+                      )
+                      .timeout(const Duration(seconds: 15));
+                  if (resultResp.statusCode == 200) {
+                    final result = jsonDecode(resultResp.body) as Map<String, dynamic>;
+                    body["download_url"] = result["url"];
+                  }
+                } catch (_) {}
+              }
+            }
+            return (jobId, body, true);
           }
           return (jobId, <String, dynamic>{}, false);
         } catch (e) {
@@ -706,7 +764,17 @@ class PollingService {
         if (!success) continue;
         
         String status = (data["status"] ?? "").toString().toLowerCase();
-        const allowedStatuses = ["processing", "completed", "failed"];
+        const allowedStatuses = [
+          "processing",
+          "completed",
+          "failed",
+          "reviewing",
+          "provisioning",
+          "queued",
+          "running",
+          "stitching",
+          "uploading",
+        ];
         if (!allowedStatuses.contains(status)) {
           status = "processing";
         }

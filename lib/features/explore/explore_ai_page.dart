@@ -26,6 +26,7 @@ import 'package:kala_ai_create_images_videos_with_ai/core/widgets/media_source_p
 import 'package:kala_ai_create_images_videos_with_ai/core/services/sale_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/utils/rife_interpolation.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/result_manager/result_manager_page.dart';
+import 'package:kala_ai_create_images_videos_with_ai/features/studio/studio_page.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/ai_tools/ai_tools_page.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/ai_tools/generic_tool_page.dart';
 import 'package:lucide_icons/lucide_icons.dart';
@@ -1708,6 +1709,8 @@ class _ExploreAIPageState extends State<ExploreAIPage>
               const KalaLogoWithIcon(logoHeight: 30, fontSize: 22),
               Row(
                 children: [
+                  _buildStudioButton(cs, isDark),
+                  const SizedBox(width: 8),
                   _buildCreditsChip(cs, isDark),
                   const SizedBox(width: 8),
                   _buildResultsButton(cs, isDark),
@@ -2068,6 +2071,39 @@ class _ExploreAIPageState extends State<ExploreAIPage>
           },
         );
       },
+    );
+  }
+
+  Widget _buildStudioButton(ColorScheme cs, bool isDark) {
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.lightImpact();
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const StudioPage()),
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: cs.secondaryContainer.withValues(alpha: 0.85),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: cs.secondary, width: 1.2),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(LucideIcons.video, color: cs.secondary, size: 16),
+            const SizedBox(width: 6),
+            Text(
+              'Studio',
+              style: TextStyle(
+                color: cs.onSecondaryContainer,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

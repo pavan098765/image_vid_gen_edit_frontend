@@ -303,9 +303,21 @@ Future<void> _applyFcmUpdate(Map<String, dynamic> data) async {
     final jobId = (data['job_id'] ?? data['jobId'] ?? '').toString();
     if (jobId.isEmpty) return;
 
-    final status = (data['status'] ?? '').toString();
-    const allowed = ['processing', 'completed', 'failed'];
-    final normalizedStatus = allowed.contains(status.toLowerCase()) ? status.toLowerCase() : 'processing';
+    var status = (data['status'] ?? '').toString().toLowerCase();
+    if (status == 'review') status = 'reviewing';
+    if (status == 'done') status = 'completed';
+    const allowed = [
+      'processing',
+      'completed',
+      'failed',
+      'reviewing',
+      'provisioning',
+      'queued',
+      'running',
+      'stitching',
+      'uploading',
+    ];
+    final normalizedStatus = allowed.contains(status) ? status : 'processing';
     final downloadUrl = (data['download_url'] ?? data['downloadUrl'] ?? '').toString();
     final title = (data['title'] ?? '').toString();
     final model = (data['model'] ?? '').toString();
@@ -351,7 +363,17 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   try {
     final data = message.data;
     final jobId = (data['job_id'] ?? '').toString();
-    const allowed = ['processing', 'completed', 'failed'];
+    const allowed = [
+      'processing',
+      'completed',
+      'failed',
+      'reviewing',
+      'provisioning',
+      'queued',
+      'running',
+      'stitching',
+      'uploading',
+    ];
     final status = (data['status'] ?? '').toString().toLowerCase();
     final normalizedStatus = allowed.contains(status) ? status : 'processing';
 
@@ -673,7 +695,17 @@ Future<void> initializeApp() async {
 
     final data = message.data;
     final jobId = (data['job_id'] ?? '').toString();
-    const allowed = ['processing', 'completed', 'failed'];
+    const allowed = [
+      'processing',
+      'completed',
+      'failed',
+      'reviewing',
+      'provisioning',
+      'queued',
+      'running',
+      'stitching',
+      'uploading',
+    ];
 
     final status = (data['status'] ?? '').toString().toLowerCase();
     final normalizedStatus = allowed.contains(status) ? status : 'processing';
@@ -783,7 +815,17 @@ Future<void> initializeApp() async {
     final jobId = (data['job_id'] ?? '').toString();
     if (jobId.isEmpty) return;
 
-    const allowed = ['processing', 'completed', 'failed'];
+    const allowed = [
+      'processing',
+      'completed',
+      'failed',
+      'reviewing',
+      'provisioning',
+      'queued',
+      'running',
+      'stitching',
+      'uploading',
+    ];
     final status = (data['status'] ?? '').toString().toLowerCase();
     final normalizedStatus = allowed.contains(status) ? status : 'processing';
     final downloadUrl = (data['download_url'] ?? data['downloadUrl'] ?? '').toString();
@@ -835,7 +877,17 @@ Future<void> initializeApp() async {
     final jobId = (data['job_id'] ?? '').toString();
     debugPrint("🟣 App launched from notification while killed: job=$jobId");
 
-    const allowed = ['processing', 'completed', 'failed'];
+    const allowed = [
+      'processing',
+      'completed',
+      'failed',
+      'reviewing',
+      'provisioning',
+      'queued',
+      'running',
+      'stitching',
+      'uploading',
+    ];
     final status = (data['status'] ?? '').toString().toLowerCase();
     final normalizedStatus = allowed.contains(status) ? status : 'processing';
     final downloadUrl = (data['download_url'] ?? data['downloadUrl'] ?? '').toString();
