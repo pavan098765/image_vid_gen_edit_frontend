@@ -1,7 +1,7 @@
 // lib/features/video_editor/widgets/timeline/timeline_controls.dart
 
 import 'package:flutter/material.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../utils/editor_constants.dart';
 

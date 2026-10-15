@@ -28,7 +28,7 @@ int estimatedBaseFpsForRife({
   if (mid.contains('hunyan') || mid.contains('hunyuan')) {
     return (modelParams['fps'] as num?)?.toInt() ?? 24;
   }
-  if (mid.startsWith('ltx2_3')) {
+  if (mid.startsWith('ltx2_3') || mid.startsWith('ltx25_int8')) {
     final fr = modelParams['frame_rate'] ?? modelParams['fps'];
     if (fr is num) return fr.round();
   }

@@ -1,13 +1,23 @@
 // lib/features/video_editor/state/project_notifier.dart
 
+import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' show Size;
 
+import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new/return_code.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:pro_video_editor/pro_video_editor.dart' hide ClipTransition;
 
 import '../models/clip_model.dart';
+import '../models/effect_model.dart';
 import '../models/project_model.dart';
+import '../services/audio_service.dart';
+import '../services/native_compositor.dart';
 import '../services/thumbnail_cache_service.dart';
+import '../services/waveform_service.dart';
 
 /// Manages the full [VideoProject] state — tracks, clips, effects, etc.
 class ProjectNotifier extends StateNotifier<VideoProject?> {
@@ -42,7 +52,11 @@ class ProjectNotifier extends StateNotifier<VideoProject?> {
 
   // ─── Project lifecycle ────────────────────────────────────────────────────
 
-  void createFromScenePaths(List<String> paths, {Size resolution = const Size(1920, 1080)}) {
+  void createFromScenePaths(
+    List<String> paths, {
+    Size resolution = const Size(1920, 1080),
+    List<Duration>? durations,
+  }) {
     if (paths.isEmpty) return;
     _undoStack.clear();
     _redoStack.clear();
@@ -50,7 +64,11 @@ class ProjectNotifier extends StateNotifier<VideoProject?> {
     final clips = <Clip>[];
     var cursor = Duration.zero;
     for (var i = 0; i < paths.length; i++) {
-      const dur = Duration(seconds: 5);
+      final dur = (durations != null &&
+              i < durations.length &&
+              durations[i] > Duration.zero)
+          ? durations[i]
+          : const Duration(seconds: 5);
       clips.add(
         VideoClip(
           id: '${projectId}_clip_$i',
@@ -104,14 +122,46 @@ class ProjectNotifier extends StateNotifier<VideoProject?> {
     state = null;
   }
 
+  void replaceProject(VideoProject project) {
+    _undoStack.clear();
+    _redoStack.clear();
+    state = project;
+  }
+
   // ─── Track operations ─────────────────────────────────────────────────────
+
+  void addImageSticker(
+    String path, {
+    Duration? startTime,
+    Duration duration = const Duration(seconds: 3),
+  }) {
+    if (state == null) return;
+    var stickerTrack = state!.stickerTracks.firstOrNull;
+    if (stickerTrack == null) {
+      stickerTrack = Track(
+        id: '${state!.id}_sticker_${DateTime.now().microsecondsSinceEpoch}',
+        type: TrackType.sticker,
+        name: 'Sticker 1',
+      );
+      addTrack(stickerTrack);
+    }
+    final clip = StickerClip(
+      id: '${state!.id}_stickerclip_${DateTime.now().microsecondsSinceEpoch}',
+      startTime: startTime ?? Duration.zero,
+      duration: duration,
+      stickerData: path,
+      isEmoji: false,
+    );
+    addClipToTrack(stickerTrack.id, clip);
+  }
 
   void addTrack(Track track) {
     if (state == null) return;
     _pushUndo();
     state = state!.copyWith(
       tracks: [...state!.tracks, track],
-      totalDuration: state!.copyWith(tracks: [...state!.tracks, track]).computeTotalDuration(),
+      totalDuration: state!
+          .copyWith(tracks: [...state!.tracks, track]).computeTotalDuration(),
     );
   }
 
@@ -198,7 +248,7 @@ class ProjectNotifier extends StateNotifier<VideoProject?> {
   // ─── Clip splitting ───────────────────────────────────────────────────────
 
   /// Split a video clip at the given time (relative to clip start).
-  void splitVideoClipAt(String clipId, Duration splitPoint) {
+  Future<void> splitVideoClipAt(String clipId, Duration splitPoint) async {
     if (state == null) return;
     final clip = state!.findClipById(clipId);
     if (clip == null || clip is! VideoClip) return;
@@ -207,6 +257,11 @@ class ProjectNotifier extends StateNotifier<VideoProject?> {
 
     final relSplit = splitPoint - clip.startTime;
     if (relSplit <= Duration.zero || relSplit >= clip.duration) return;
+
+    if (NativeCompositor.isSupported && clip.trimStart == Duration.zero) {
+      final ok = await _nativeSplit(clip, track, relSplit);
+      if (ok) return;
+    }
 
     _pushUndo();
 
@@ -252,6 +307,11 @@ class ProjectNotifier extends StateNotifier<VideoProject?> {
       isMuted: clip.isMuted,
       thumbnails: tn2 ?? tnl,
       keyframeTracks: clip.keyframeTracks,
+      reverse: clip.reverse,
+      rotateQuarterTurns: clip.rotateQuarterTurns,
+      cropNorm: clip.cropNorm,
+      look: clip.look,
+      chroma: clip.chroma,
     );
 
     final newClips = <Clip>[];
@@ -277,6 +337,86 @@ class ProjectNotifier extends StateNotifier<VideoProject?> {
     state = proj.copyWith(
       totalDuration: proj.computeTotalDuration(),
     );
+  }
+
+  Future<bool> _nativeSplit(
+    VideoClip clip,
+    Track track,
+    Duration relSplit,
+  ) async {
+    try {
+      final dir = await getTemporaryDirectory();
+      final stamp = DateTime.now().millisecondsSinceEpoch;
+      final startOut = '${dir.path}/split_${stamp}_a.mp4';
+      final endOut = '${dir.path}/split_${stamp}_b.mp4';
+      final paths = await ProVideoEditor.instance.splitVideo(
+        SplitVideoModel(
+          video: EditorVideo.file(File(clip.sourcePath)),
+          splitPosition: relSplit,
+          startOutputPath: startOut,
+          endOutputPath: endOut,
+        ),
+      );
+      if (paths.length < 2) return false;
+      if (!File(paths[0]).existsSync() || !File(paths[1]).existsSync()) {
+        return false;
+      }
+      _pushUndo();
+      final clip1 = clip.copyWith(
+        duration: relSplit,
+        sourcePath: paths[0],
+        trimStart: Duration.zero,
+        trimEnd: relSplit,
+        originalDuration: relSplit,
+      );
+      final clip2 = VideoClip(
+        id: '${clip.id}_split_$stamp',
+        startTime: clip.startTime + relSplit,
+        duration: clip.duration - relSplit,
+        sourcePath: paths[1],
+        trimStart: Duration.zero,
+        trimEnd: clip.duration - relSplit,
+        originalDuration: clip.duration - relSplit,
+        resolution: clip.resolution,
+        speedEffect: clip.speedEffect,
+        colorAdjustment: clip.colorAdjustment,
+        transitionIn: const ClipTransition(),
+        volume: clip.volume,
+        isMuted: clip.isMuted,
+        keyframeTracks: clip.keyframeTracks,
+        reverse: clip.reverse,
+        rotateQuarterTurns: clip.rotateQuarterTurns,
+        cropNorm: clip.cropNorm,
+        look: clip.look,
+        chroma: clip.chroma,
+      );
+      final newClips = <Clip>[];
+      for (final c in track.clips) {
+        if (c.id == clip.id) {
+          newClips.add(clip1);
+          newClips.add(clip2);
+        } else {
+          newClips.add(c);
+        }
+      }
+      var tracks = state!.tracks.map((t) {
+        if (t.id == track.id) return t.copyWith(clips: newClips);
+        return t;
+      }).toList();
+      tracks = tracks
+          .map((t) => _splitPairedEmbeddedAudio(
+                t,
+                clip,
+                clip.startTime + relSplit,
+              ))
+          .toList();
+      final proj = state!.copyWith(tracks: tracks);
+      state = proj.copyWith(totalDuration: proj.computeTotalDuration());
+      return true;
+    } catch (e) {
+      debugPrint('Native split failed: $e');
+      return false;
+    }
   }
 
   /// When the user splits a [VideoClip], split the matching embedded [AudioClip]
@@ -397,6 +537,9 @@ class ProjectNotifier extends StateNotifier<VideoProject?> {
         isMuted: dupe.isMuted,
         thumbnails: dupe.thumbnails,
         keyframeTracks: dupe.keyframeTracks,
+        reverse: dupe.reverse,
+        rotateQuarterTurns: dupe.rotateQuarterTurns,
+        cropNorm: dupe.cropNorm,
       );
     } else if (dupe is AudioClip) {
       dupeWithNewId = AudioClip(
@@ -481,5 +624,143 @@ class ProjectNotifier extends StateNotifier<VideoProject?> {
   void updateExportSettings(ExportSettings settings) {
     if (state == null) return;
     state = state!.copyWith(exportSettings: settings);
+  }
+
+  void reorderTracks(int oldIndex, int newIndex) {
+    if (state == null) return;
+    _pushUndo();
+    final tracks = [...state!.tracks];
+    if (newIndex > oldIndex) newIndex -= 1;
+    final item = tracks.removeAt(oldIndex);
+    tracks.insert(newIndex, item);
+    state = state!.copyWith(tracks: tracks);
+  }
+
+  void rippleDelete(String clipId) {
+    if (state == null) return;
+    final clip = state!.findClipById(clipId);
+    final track = state!.findTrackForClip(clipId);
+    if (clip == null || track == null) return;
+    _pushUndo();
+    final gap = clip.duration;
+    final start = clip.startTime;
+    final clips = track.clips.where((c) => c.id != clipId).map((c) {
+      if (c.startTime >= start) {
+        return c.copyWith(startTime: c.startTime - gap);
+      }
+      return c;
+    }).toList();
+    updateTrack(track.id, (t) => t.copyWith(clips: clips));
+  }
+
+  void closeGapOnTrack(String trackId) {
+    if (state == null) return;
+    final track = state!.tracks.where((t) => t.id == trackId).firstOrNull;
+    if (track == null) return;
+    _pushUndo();
+    final sorted = [...track.clips]..sort((a, b) => a.startTime.compareTo(b.startTime));
+    var cursor = Duration.zero;
+    final packed = <Clip>[];
+    for (final c in sorted) {
+      packed.add(c.copyWith(startTime: cursor));
+      cursor += c.duration;
+    }
+    final tracks = state!.tracks.map((t) {
+      if (t.id == trackId) return t.copyWith(clips: packed);
+      return t;
+    }).toList();
+    final proj = state!.copyWith(tracks: tracks);
+    state = proj.copyWith(totalDuration: proj.computeTotalDuration());
+  }
+
+  Future<void> freezeFrame(String clipId, Duration at, Duration hold) async {
+    if (state == null) return;
+    final clip = state!.findClipById(clipId);
+    if (clip is! VideoClip) return;
+    await splitVideoClipAt(clipId, at);
+    final left = state!.findClipById(clipId);
+    if (left is! VideoClip) return;
+    final track = state!.findTrackForClip(clipId);
+    if (track == null) return;
+    final freezeStart = left.endTime;
+    final shifted = track.clips.map((c) {
+      if (c.id == clipId) return c;
+      if (c.startTime >= freezeStart) {
+        return c.copyWith(startTime: c.startTime + hold);
+      }
+      return c;
+    }).toList();
+    updateTrack(track.id, (t) => t.copyWith(clips: shifted));
+    addClipToTrack(
+      track.id,
+      VideoClip(
+        id: '${clipId}_freeze_${at.inMilliseconds}',
+        startTime: freezeStart,
+        duration: hold,
+        sourcePath: left.sourcePath,
+        trimStart: left.trimEnd,
+        trimEnd: left.trimEnd + const Duration(milliseconds: 40),
+        originalDuration: left.originalDuration,
+        resolution: left.resolution,
+        volume: 0,
+        isMuted: true,
+        look: left.look,
+        chroma: left.chroma,
+      ),
+    );
+  }
+
+  Future<void> detachAudio(String clipId) async {
+    if (state == null) return;
+    final clip = state!.findClipById(clipId);
+    if (clip is! VideoClip) return;
+    final dir = await getTemporaryDirectory();
+    final out = '${dir.path}/detach_${clip.id}.m4a';
+    try {
+      if (NativeCompositor.isSupported) {
+        await ProVideoEditor.instance.extractAudioToFile(
+          out,
+          AudioExtractConfigs(video: EditorVideo.file(File(clip.sourcePath))),
+        );
+      } else {
+        final session = await FFmpegKit.executeWithArguments(
+          AudioService.extractAudioCommand(
+            videoPath: clip.sourcePath,
+            outputPath: out,
+          ),
+        );
+        final code = await session.getReturnCode();
+        if (!ReturnCode.isSuccess(code)) return;
+      }
+    } catch (e) {
+      debugPrint('Detach audio failed: $e');
+      return;
+    }
+    if (!File(out).existsSync()) return;
+    final samples = await WaveformService.samplesForPath(out);
+    updateClip(clipId, (c) => (c as VideoClip).copyWith(isMuted: true, volume: 0));
+    var audioTrack = state!.audioTracks.firstOrNull;
+    if (audioTrack == null) {
+      audioTrack = Track(
+        id: '${state!.id}_audio_detach',
+        type: TrackType.audio,
+        name: 'Audio',
+      );
+      state = state!.copyWith(tracks: [...state!.tracks, audioTrack]);
+    }
+    addClipToTrack(
+      audioTrack.id,
+      AudioClip(
+        id: '${clip.id}_audio',
+        startTime: clip.startTime,
+        duration: clip.duration,
+        sourcePath: out,
+        trimStart: clip.trimStart,
+        trimEnd: clip.trimEnd,
+        originalDuration: clip.originalDuration,
+        waveform: samples,
+        name: 'Detached',
+      ),
+    );
   }
 }

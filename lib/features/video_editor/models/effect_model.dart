@@ -253,3 +253,100 @@ class ColorAdjustment {
       saturation == 1.0 &&
       filterPresetId == null;
 }
+
+/// Named look sent to pro_video_editor [VideoEffect].
+enum VideoLook {
+  clean,
+  vhs,
+  film,
+  crt,
+  grain,
+  glitch,
+}
+
+extension VideoLookX on VideoLook {
+  String get label {
+    switch (this) {
+      case VideoLook.clean:
+        return 'Clean';
+      case VideoLook.vhs:
+        return 'VHS';
+      case VideoLook.film:
+        return 'Film';
+      case VideoLook.crt:
+        return 'CRT';
+      case VideoLook.grain:
+        return 'Grain';
+      case VideoLook.glitch:
+        return 'Glitch';
+    }
+  }
+}
+
+enum VoiceEq { none, warm, radio, voice }
+
+extension VoiceEqX on VoiceEq {
+  String get label {
+    switch (this) {
+      case VoiceEq.none:
+        return 'Flat';
+      case VoiceEq.warm:
+        return 'Warm';
+      case VoiceEq.radio:
+        return 'Radio';
+      case VoiceEq.voice:
+        return 'Voice';
+    }
+  }
+}
+
+class ChromaSettings {
+  final bool enabled;
+  final int color;
+  final double similarity;
+  final double smoothness;
+  final double spill;
+
+  const ChromaSettings({
+    this.enabled = false,
+    this.color = 0xFF00B140,
+    this.similarity = 0.20,
+    this.smoothness = 0.08,
+    this.spill = 0.5,
+  });
+
+  ChromaSettings copyWith({
+    bool? enabled,
+    int? color,
+    double? similarity,
+    double? smoothness,
+    double? spill,
+  }) {
+    return ChromaSettings(
+      enabled: enabled ?? this.enabled,
+      color: color ?? this.color,
+      similarity: similarity ?? this.similarity,
+      smoothness: smoothness ?? this.smoothness,
+      spill: spill ?? this.spill,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'enabled': enabled,
+        'color': color,
+        'similarity': similarity,
+        'smoothness': smoothness,
+        'spill': spill,
+      };
+
+  factory ChromaSettings.fromJson(Map<String, dynamic>? json) {
+    if (json == null) return const ChromaSettings();
+    return ChromaSettings(
+      enabled: json['enabled'] == true,
+      color: (json['color'] as num?)?.toInt() ?? 0xFF00B140,
+      similarity: (json['similarity'] as num?)?.toDouble() ?? 0.20,
+      smoothness: (json['smoothness'] as num?)?.toDouble() ?? 0.08,
+      spill: (json['spill'] as num?)?.toDouble() ?? 0.5,
+    );
+  }
+}

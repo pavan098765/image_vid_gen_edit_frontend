@@ -20,7 +20,7 @@ class EditorConstants {
   static const double timelineMaxHeight = 320;
 
   /// Height of the bottom toolbar icon row.
-  static const double toolbarHeight = 56;
+  static const double toolbarHeight = 64;
 
   /// Max height of a tool panel that slides up above the toolbar.
   static const double toolPanelMaxHeight = 300;

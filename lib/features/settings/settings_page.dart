@@ -11,7 +11,7 @@ import 'package:kala_ai_create_images_videos_with_ai/core/services/thumbnail_ser
 import 'package:kala_ai_create_images_videos_with_ai/core/services/user_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_button.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';

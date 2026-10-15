@@ -264,27 +264,17 @@ class PollingService {
           finalStatus = old.status;
         }
         
-        jobs[idx] = JobModel(
-          jobId: old.jobId,
-          title: old.title,
-          model: old.model,
-          outputType: old.outputType,
+        jobs[idx] = old.copyWith(
           downloadUrl: (downloadUrl != null && downloadUrl.isNotEmpty)
               ? downloadUrl
               : old.downloadUrl,
           status: finalStatus.isNotEmpty ? finalStatus : old.status,
-          createdAt: old.createdAt,
-          inputImagePath: old.inputImagePath,
-          localFilePath: old.localFilePath,
           estimatedWaitSeconds: estimatedWaitSeconds ?? old.estimatedWaitSeconds,
           queuePosition: queuePosition ?? old.queuePosition,
-          // Keep original variations (each job is a single variation in the batch)
-          variations: old.variations,
           variationResults: variationResults ?? old.variationResults,
           allCompleted: allCompleted,
           enhancedPrompt: enhancedPrompt ?? old.enhancedPrompt,
           promptEnhanced: promptEnhanced || old.promptEnhanced,
-          originalPrompt: old.originalPrompt,
         );
         jobListNotifier.value = jobs;
       }
@@ -343,23 +333,10 @@ class PollingService {
               }
 
               // ✅ Reinsert with preserved fields
-              final updatedJob = JobModel(
-                jobId: job.jobId,
-                title: job.title,
-                model: job.model,
-                outputType: job.outputType,
+              final updatedJob = job.copyWith(
                 downloadUrl: job.downloadUrl ?? downloadUrl,
-                status: job.status,
-                createdAt: job.createdAt,
-                inputImagePath: inputThumb, // 🟣 ensure preserved
+                inputImagePath: inputThumb,
                 localFilePath: job.localFilePath,
-                // NEW: Preserve variation and prompt fields
-                variations: job.variations,
-                variationResults: job.variationResults,
-                allCompleted: job.allCompleted,
-                enhancedPrompt: job.enhancedPrompt,
-                promptEnhanced: job.promptEnhanced,
-                originalPrompt: job.originalPrompt,
               );
               await addOrUpdateJob(updatedJob);
 
@@ -534,24 +511,15 @@ class PollingService {
             finalStatus = old.status;
           }
 
-          jobs[idx] = JobModel(
-            jobId: old.jobId,
-            title: old.title,
-            model: old.model,
-            outputType: old.outputType,
-            downloadUrl: old.downloadUrl, // Will update below for completed jobs
+          jobs[idx] = old.copyWith(
+            downloadUrl: old.downloadUrl,
             status: finalStatus.isNotEmpty ? finalStatus : old.status,
-            createdAt: old.createdAt,
-            inputImagePath: old.inputImagePath,
-            localFilePath: old.localFilePath,
             estimatedWaitSeconds: estimatedWaitSeconds ?? old.estimatedWaitSeconds,
             queuePosition: queuePosition ?? old.queuePosition,
-            variations: old.variations,
             variationResults: variationResults ?? old.variationResults,
             allCompleted: allCompleted,
             enhancedPrompt: enhancedPrompt ?? old.enhancedPrompt,
             promptEnhanced: promptEnhanced || old.promptEnhanced,
-            originalPrompt: old.originalPrompt,
           );
 
           debugPrint("✅ Job $jobId → $finalStatus");
@@ -583,24 +551,8 @@ class PollingService {
             final idx = jobs.indexWhere((j) => j.jobId == jobId);
             if (idx != -1) {
               final old = jobs[idx];
-              jobs[idx] = JobModel(
-                jobId: old.jobId,
-                title: old.title,
-                model: old.model,
-                outputType: old.outputType,
+              jobs[idx] = old.copyWith(
                 downloadUrl: downloadUrl,
-                status: old.status,
-                createdAt: old.createdAt,
-                inputImagePath: old.inputImagePath,
-                localFilePath: old.localFilePath,
-                estimatedWaitSeconds: old.estimatedWaitSeconds,
-                queuePosition: old.queuePosition,
-                variations: old.variations,
-                variationResults: old.variationResults,
-                allCompleted: old.allCompleted,
-                enhancedPrompt: old.enhancedPrompt,
-                promptEnhanced: old.promptEnhanced,
-                originalPrompt: old.originalPrompt,
               );
               debugPrint("✅ Got download URL for $jobId");
             }
@@ -829,24 +781,16 @@ class PollingService {
             finalStatus = old.status;
           }
 
-          jobs[idx] = JobModel(
-            jobId: old.jobId,
-            title: old.title,
-            model: old.model,
-            outputType: old.outputType,
-            downloadUrl: old.downloadUrl, // Will update below for completed jobs
+          jobs[idx] = old.copyWith(
+            downloadUrl: old.downloadUrl,
             status: finalStatus.isNotEmpty ? finalStatus : old.status,
-            createdAt: old.createdAt,
             inputImagePath: preservedInputPath,
-            localFilePath: old.localFilePath,
             estimatedWaitSeconds: estimatedWaitSeconds ?? old.estimatedWaitSeconds,
             queuePosition: queuePosition ?? old.queuePosition,
-            variations: old.variations,
             variationResults: variationResults ?? old.variationResults,
             allCompleted: allCompleted,
             enhancedPrompt: enhancedPrompt ?? old.enhancedPrompt,
             promptEnhanced: promptEnhanced || old.promptEnhanced,
-            originalPrompt: old.originalPrompt,
           );
 
           debugPrint("✅ Job $jobId → $finalStatus");
@@ -879,24 +823,8 @@ class PollingService {
             final idx = jobs.indexWhere((j) => j.jobId == jobId);
             if (idx != -1) {
               final old = jobs[idx];
-              jobs[idx] = JobModel(
-                jobId: old.jobId,
-                title: old.title,
-                model: old.model,
-                outputType: old.outputType,
+              jobs[idx] = old.copyWith(
                 downloadUrl: downloadUrl,
-                status: old.status,
-                createdAt: old.createdAt,
-                inputImagePath: old.inputImagePath,
-                localFilePath: old.localFilePath,
-                estimatedWaitSeconds: old.estimatedWaitSeconds,
-                queuePosition: old.queuePosition,
-                variations: old.variations,
-                variationResults: old.variationResults,
-                allCompleted: old.allCompleted,
-                enhancedPrompt: old.enhancedPrompt,
-                promptEnhanced: old.promptEnhanced,
-                originalPrompt: old.originalPrompt,
               );
               debugPrint("✅ Got download URL for $jobId");
             }

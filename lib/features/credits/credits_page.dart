@@ -15,7 +15,7 @@ import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_button.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/sign_in_prompt.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/credits/offerwall_screen.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 class CreditsPage extends StatefulWidget {
   const CreditsPage({super.key});

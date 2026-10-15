@@ -1,8 +1,11 @@
 // lib/features/video_editor/widgets/toolbar/panels/sticker_panel.dart
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../models/clip_model.dart';
 import '../../../models/project_model.dart';
@@ -53,6 +56,11 @@ class _StickerPanelState extends ConsumerState<StickerPanel> {
                 ),
               ),
               const Spacer(),
+              TextButton.icon(
+                onPressed: _addPhotoSticker,
+                icon: const Icon(LucideIcons.image, size: 16),
+                label: const Text('Photo'),
+              ),
               if (isEditing)
                 IconButton(
                   onPressed: () => _deleteClip(selectedClip.id),
@@ -187,6 +195,20 @@ class _StickerPanelState extends ConsumerState<StickerPanel> {
     ref.read(projectProvider.notifier).removeClip(clipId);
     ref.read(timelineProvider.notifier).clearSelection();
     Navigator.of(context).pop();
+  }
+
+  Future<void> _addPhotoSticker() async {
+    final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
+    if (picked == null) return;
+    final path = picked.path;
+    if (!File(path).existsSync()) return;
+    ref.read(projectProvider.notifier).addImageSticker(path);
+    final project = ref.read(projectProvider);
+    final track = project?.stickerTracks.firstOrNull;
+    final clip = track?.clips.lastOrNull;
+    if (clip != null && track != null) {
+      ref.read(timelineProvider.notifier).selectClip(clip.id, trackId: track.id);
+    }
   }
 
   void _addSticker(String emoji) {

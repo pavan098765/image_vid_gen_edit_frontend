@@ -17,6 +17,8 @@ import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_butto
 import 'package:kala_ai_create_images_videos_with_ai/features/studio/studio_job_page.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/studio/studio_page.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/studio/studio_storyboard_page.dart';
+import 'package:kala_ai_create_images_videos_with_ai/features/result_manager/before_after_preview.dart';
+import 'package:kala_ai_create_images_videos_with_ai/features/result_manager/job_next_actions.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 bool isResultManagerOpen = false;
@@ -31,28 +33,29 @@ bool _modelNameCacheLoaded = false;
 /// Load model name cache from tool_config.json
 Future<void> _loadModelNameCache() async {
   if (_modelNameCacheLoaded) return;
-  
+
   try {
     final prefs = await SharedPreferences.getInstance();
     final configStr = prefs.getString('cached_tool_config_v3');
     if (configStr == null || configStr.isEmpty) {
-      _modelNameCacheLoaded = true; // Mark as loaded even if empty to avoid retries
+      _modelNameCacheLoaded =
+          true; // Mark as loaded even if empty to avoid retries
       return;
     }
-    
+
     final config = jsonDecode(configStr) as Map<String, dynamic>;
     final capabilities = config['capabilities'] as List<dynamic>?;
-    
+
     if (capabilities == null) {
       _modelNameCacheLoaded = true;
       return;
     }
-    
+
     // Search through all capabilities and their models
     for (final cap in capabilities) {
       final models = cap['models'] as List<dynamic>?;
       if (models == null) continue;
-      
+
       for (final model in models) {
         final id = model['id'] as String?;
         final name = model['name'] as String?;
@@ -66,7 +69,7 @@ Future<void> _loadModelNameCache() async {
         }
       }
     }
-    
+
     _modelNameCacheLoaded = true;
     debugPrint('✅ Loaded ${_modelNameCache.length} model names from config');
   } catch (e) {
@@ -80,7 +83,7 @@ String _getFriendlyModelName(String modelId) {
   if (modelId.isEmpty || modelId == 'unknown') {
     return modelId;
   }
-  
+
   // Return cached name if available
   return _modelNameCache[modelId] ?? modelId;
 }
@@ -91,15 +94,16 @@ String _getFriendlyModelName(String modelId) {
 /// Single controller shared across all processing job previews to minimize
 /// performance overhead when many jobs are processing simultaneously
 class _ProcessingAnimationController {
-  static final _ProcessingAnimationController _instance = _ProcessingAnimationController._();
+  static final _ProcessingAnimationController _instance =
+      _ProcessingAnimationController._();
   static _ProcessingAnimationController get instance => _instance;
   _ProcessingAnimationController._();
-  
+
   AnimationController? _controller;
   int _activeListeners = 0;
-  
+
   AnimationController? get controller => _controller;
-  
+
   void initialize(TickerProvider vsync) {
     if (_controller != null) return;
     _controller = AnimationController(
@@ -107,11 +111,11 @@ class _ProcessingAnimationController {
       duration: const Duration(seconds: 2),
     )..repeat();
   }
-  
+
   void addListener() {
     _activeListeners++;
   }
-  
+
   void removeListener() {
     _activeListeners--;
     if (_activeListeners <= 0 && _controller != null) {
@@ -119,7 +123,7 @@ class _ProcessingAnimationController {
       _controller = null;
     }
   }
-  
+
   void dispose() {
     _controller?.dispose();
     _controller = null;
@@ -153,7 +157,7 @@ Future<bool> _shouldShowDownloadAd() async {
 /// Returns true if ad was shown and completed, false if skipped/failed
 Future<bool> _showDownloadRewardedAd(BuildContext context) async {
   final adService = AdService();
-  
+
   // Load ad if not ready
   if (!adService.isAdReadyNotifier.value) {
     await adService.loadRewardedAd();
@@ -163,20 +167,21 @@ Future<bool> _showDownloadRewardedAd(BuildContext context) async {
       await Future.delayed(const Duration(milliseconds: 500));
     }
   }
-  
+
   // If ad still not ready, let the download proceed
   if (!adService.isAdReadyNotifier.value) {
     debugPrint('⚠️ Ad not available for download gate - proceeding');
     return false;
   }
-  
+
   // Show the ad
   final completed = await adService.showAdForFeatureGate();
   return completed;
 }
 
 class ResultManagerPage extends StatefulWidget {
-  const ResultManagerPage({super.key});
+  final String? initialJobId;
+  const ResultManagerPage({super.key, this.initialJobId});
 
   @override
   State<ResultManagerPage> createState() => _ResultManagerPageState();
@@ -186,20 +191,34 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
   // Multi-select state
   bool _isSelectionMode = false;
   final Set<String> _selectedJobIds = <String>{};
-  
+
   // Search and filter state
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   String _sortBy = 'date'; // 'date', 'status', 'title'
   bool _sortAscending = false; // newest first by default
-  
+
   // Cloud storage banner state
   bool _isBannerExpanded = true;
+
+  final GlobalKey _initialJobKey = GlobalKey();
 
   @override
   void initState() {
     super.initState();
     isResultManagerOpen = true;
+    if (widget.initialJobId != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final ctx = _initialJobKey.currentContext;
+        if (ctx != null) {
+          Scrollable.ensureVisible(
+            ctx,
+            duration: const Duration(milliseconds: 300),
+            alignment: 0.1,
+          );
+        }
+      });
+    }
     _refreshJobs();
     _markAllCompletedAsSeen();
     _loadBannerPreference();
@@ -209,14 +228,14 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
     SharedPreferences.getInstance().then((prefs) async {
       await prefs.reload();
     });
-    
+
     _searchController.addListener(() {
       setState(() {
         _searchQuery = _searchController.text.toLowerCase();
       });
     });
   }
-  
+
   /// Pre-fetch download URLs for completed jobs in background
   /// This reduces network calls when users click download buttons
   Future<void> _prefetchDownloadUrls() async {
@@ -226,11 +245,12 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
           .where((j) => j.status == 'completed' && !j.isSavedLocally)
           .take(10) // Limit to first 10 unsaved jobs
           .toList();
-      
+
       if (completedJobs.isEmpty) return;
-      
-      debugPrint('🔄 Pre-fetching URLs for ${completedJobs.length} completed jobs...');
-      
+
+      debugPrint(
+          '🔄 Pre-fetching URLs for ${completedJobs.length} completed jobs...');
+
       // Fetch URLs in parallel with a small delay between each
       for (final job in completedJobs) {
         // Don't block - fire and forget
@@ -240,7 +260,7 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
             addOrUpdateJob(job);
           }
         }).catchError((_) {});
-        
+
         // Small delay to avoid overwhelming the server
         await Future.delayed(const Duration(milliseconds: 100));
       }
@@ -248,16 +268,17 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
       debugPrint('⚠️ Error pre-fetching URLs: $e');
     }
   }
-  
+
   Future<void> _loadBannerPreference() async {
     final prefs = await SharedPreferences.getInstance();
     if (mounted) {
       setState(() {
-        _isBannerExpanded = prefs.getBool('cloud_storage_banner_expanded') ?? true;
+        _isBannerExpanded =
+            prefs.getBool('cloud_storage_banner_expanded') ?? true;
       });
     }
   }
-  
+
   Future<void> _toggleBanner() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
@@ -272,9 +293,9 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
           .where((j) => j.status == 'completed')
           .map((j) => j.jobId)
           .toList();
-      
+
       if (completedJobs.isEmpty) return;
-      
+
       final prefs = await SharedPreferences.getInstance();
       final seenList = prefs.getStringList('seen_completed_job_ids') ?? [];
       final seenSet = seenList.toSet();
@@ -296,7 +317,7 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
     try {
       // Get SharedPreferences instance once at the start (used throughout)
       final prefs = await SharedPreferences.getInstance();
-      
+
       // 📁 FIRST: Apply any pending FCM updates from file
       // This is the most reliable cross-isolate sync mechanism
       // CRITICAL: Background FCM handler writes to this file, and SharedPreferences
@@ -307,15 +328,17 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
         final jobs = jobListNotifier.value;
         final completed = jobs.where((j) => j.status == 'completed').length;
         final processing = jobs.where((j) => j.status == 'processing').length;
-        debugPrint("📊 Status after FCM file: $completed completed, $processing processing");
-        
+        debugPrint(
+            "📊 Status after FCM file: $completed completed, $processing processing");
+
         // CRITICAL: After applying file updates, we need to ensure SharedPreferences
         // is reloaded to get the latest data (file updates were saved to SharedPreferences).
         // But we should merge, not overwrite, to preserve any local data like localFilePath.
         await prefs.reload(); // Reload to get the updates we just saved
-        await Future.delayed(const Duration(milliseconds: 100)); // Give it time to flush
+        await Future.delayed(
+            const Duration(milliseconds: 100)); // Give it time to flush
         await prefs.reload();
-        
+
         // Now merge SharedPreferences data with current notifier to preserve local fields
         final jsonStr = prefs.getString('jobs');
         if (jsonStr != null) {
@@ -325,44 +348,35 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
               final prefsJobs = decoded
                   .map((e) => JobModel.fromJson(Map<String, dynamic>.from(e)))
                   .toList();
-              
+
               // Merge: use SharedPreferences data (which has file updates) but preserve
               // any local fields from current notifier that might not be in SharedPreferences
               final currentJobs = jobListNotifier.value;
               final mergedJobs = <JobModel>[];
-              
+
               // Safety check: if SharedPreferences has fewer jobs than current notifier,
               // something went wrong - keep current notifier data
               if (prefsJobs.length < currentJobs.length) {
-                debugPrint("⚠️ [ResultManager] SharedPreferences has ${prefsJobs.length} jobs but notifier has ${currentJobs.length} - keeping notifier data");
+                debugPrint(
+                    "⚠️ [ResultManager] SharedPreferences has ${prefsJobs.length} jobs but notifier has ${currentJobs.length} - keeping notifier data");
                 for (final currentJob in currentJobs) {
                   final prefsJob = prefsJobs.firstWhere(
                     (j) => j.jobId == currentJob.jobId,
                     orElse: () => currentJob,
                   );
-                  
+
                   // Use prefsJob if it has newer status, otherwise keep currentJob
-                  final usePrefs = prefsJob.status != currentJob.status || 
-                                  (prefsJob.downloadUrl != null && prefsJob.downloadUrl != currentJob.downloadUrl);
+                  final usePrefs = prefsJob.status != currentJob.status ||
+                      (prefsJob.downloadUrl != null &&
+                          prefsJob.downloadUrl != currentJob.downloadUrl);
                   final sourceJob = usePrefs ? prefsJob : currentJob;
-                  
-                  final mergedJob = JobModel(
-                    jobId: sourceJob.jobId,
-                    title: sourceJob.title,
-                    model: sourceJob.model,
-                    outputType: sourceJob.outputType,
-                    status: sourceJob.status,
-                    downloadUrl: sourceJob.downloadUrl,
-                    createdAt: sourceJob.createdAt,
-                    localFilePath: currentJob.localFilePath ?? sourceJob.localFilePath,
-                    inputImagePath: currentJob.inputImagePath ?? sourceJob.inputImagePath,
-                    enhancedPrompt: sourceJob.enhancedPrompt,
-                    originalPrompt: sourceJob.originalPrompt,
-                    variations: sourceJob.variations,
-                    variationResults: sourceJob.variationResults,
+
+                  final mergedJob = sourceJob.copyWith(
+                    localFilePath:
+                        currentJob.localFilePath ?? sourceJob.localFilePath,
+                    inputImagePath:
+                        currentJob.inputImagePath ?? sourceJob.inputImagePath,
                   );
-                  mergedJob.promptEnhanced = sourceJob.promptEnhanced;
-                  mergedJob.allCompleted = sourceJob.allCompleted;
                   mergedJobs.add(mergedJob);
                 }
               } else {
@@ -372,36 +386,27 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
                     (j) => j.jobId == prefsJob.jobId,
                     orElse: () => prefsJob,
                   );
-                  
+
                   // Use prefsJob (has latest status/url) but preserve localFilePath if it exists
-                  final mergedJob = JobModel(
-                    jobId: prefsJob.jobId,
-                    title: prefsJob.title,
-                    model: prefsJob.model,
-                    outputType: prefsJob.outputType,
-                    status: prefsJob.status,
-                    downloadUrl: prefsJob.downloadUrl,
-                    createdAt: prefsJob.createdAt,
-                    localFilePath: currentJob.localFilePath ?? prefsJob.localFilePath,
-                    inputImagePath: currentJob.inputImagePath ?? prefsJob.inputImagePath,
-                    enhancedPrompt: prefsJob.enhancedPrompt,
-                    originalPrompt: prefsJob.originalPrompt,
-                    variations: prefsJob.variations,
-                    variationResults: prefsJob.variationResults,
+                  final mergedJob = prefsJob.copyWith(
+                    localFilePath:
+                        currentJob.localFilePath ?? prefsJob.localFilePath,
+                    inputImagePath:
+                        currentJob.inputImagePath ?? prefsJob.inputImagePath,
                   );
-                  mergedJob.promptEnhanced = prefsJob.promptEnhanced;
-                  mergedJob.allCompleted = prefsJob.allCompleted;
                   mergedJobs.add(mergedJob);
                 }
               }
-              
+
               jobListNotifier.value = mergedJobs;
-              debugPrint("✅ [ResultManager] Merged ${mergedJobs.length} jobs from file + SharedPreferences");
-              
+              debugPrint(
+                  "✅ [ResultManager] Merged ${mergedJobs.length} jobs from file + SharedPreferences");
+
               // Continue to check for stuck jobs below
             }
           } catch (e) {
-            debugPrint("⚠️ [ResultManager] Failed to merge SharedPreferences data: $e");
+            debugPrint(
+                "⚠️ [ResultManager] Failed to merge SharedPreferences data: $e");
             // Continue with current notifier value (from file updates)
           }
         }
@@ -411,11 +416,12 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
         await prefs.reload();
         await Future.delayed(const Duration(milliseconds: 50));
         await prefs.reload();
-        
+
         // Check for pending FCM updates flag (backup mechanism)
         final hasUpdate = prefs.getBool('has_fcm_update') ?? false;
         if (hasUpdate) {
-          debugPrint("📦 [ResultManager] Found FCM update flag — forcing reload");
+          debugPrint(
+              "📦 [ResultManager] Found FCM update flag — forcing reload");
           await prefs.remove('has_fcm_update');
           await prefs.reload();
         }
@@ -429,12 +435,14 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
             jobListNotifier.value = decoded
                 .map((e) => JobModel.fromJson(Map<String, dynamic>.from(e)))
                 .toList();
-            
+
             // Log status summary
             final jobs = jobListNotifier.value;
             final completed = jobs.where((j) => j.status == 'completed').length;
-            final processing = jobs.where((j) => j.status == 'processing').length;
-            debugPrint("📊 Loaded ${jobs.length} jobs: $completed completed, $processing processing");
+            final processing =
+                jobs.where((j) => j.status == 'processing').length;
+            debugPrint(
+                "📊 Loaded ${jobs.length} jobs: $completed completed, $processing processing");
           }
         }
       }
@@ -445,15 +453,15 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
       final stuckJobs = jobListNotifier.value
           .where((j) => j.status == 'processing')
           .where((j) {
-            final age = DateTime.now().difference(j.createdAt).inMinutes;
-            return age >= 5; // Changed from 10 to 5 minutes
-          })
-          .toList();
+        final age = DateTime.now().difference(j.createdAt).inMinutes;
+        return age >= 5; // Changed from 10 to 5 minutes
+      }).toList();
 
       if (stuckJobs.isNotEmpty) {
-        debugPrint("🔄 Backup: Checking ${stuckJobs.length} stuck processing jobs from server...");
+        debugPrint(
+            "🔄 Backup: Checking ${stuckJobs.length} stuck processing jobs from server...");
         await PollingService.instance.refreshProcessingJobs(forceRefresh: true);
-        
+
         // Reload after server update
         await prefs.reload();
         final updatedJson = prefs.getString('jobs');
@@ -614,10 +622,10 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
       final selectedCount = _selectedJobIds.length;
       final selectedIdsCopy = Set<String>.from(_selectedJobIds);
       final jobs = jobListNotifier.value;
-      
+
       for (final jobId in selectedIdsCopy) {
-        final job = jobs.firstWhere((j) => j.jobId == jobId,
-            orElse: () => jobs.first);
+        final job =
+            jobs.firstWhere((j) => j.jobId == jobId, orElse: () => jobs.first);
         await FileService.deleteJobFiles(job,
             deleteGalleryFile: deleteGalleryFiles);
       }
@@ -625,9 +633,8 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
       // 🛡️ Mark deleted jobs so FCM won't recreate them
       await markJobsAsDeleted(selectedIdsCopy.toList());
 
-      jobListNotifier.value = jobs
-          .where((j) => !selectedIdsCopy.contains(j.jobId))
-          .toList();
+      jobListNotifier.value =
+          jobs.where((j) => !selectedIdsCopy.contains(j.jobId)).toList();
       await saveJobsToPrefs();
 
       setState(() {
@@ -674,8 +681,8 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
         ),
         child: AnimatedCrossFade(
           duration: const Duration(milliseconds: 200),
-          crossFadeState: _isBannerExpanded 
-              ? CrossFadeState.showFirst 
+          crossFadeState: _isBannerExpanded
+              ? CrossFadeState.showFirst
               : CrossFadeState.showSecond,
           firstChild: _buildExpandedBanner(cs),
           secondChild: _buildCollapsedBanner(cs),
@@ -683,7 +690,7 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
       ),
     );
   }
-  
+
   Widget _buildExpandedBanner(ColorScheme cs) {
     return Row(
       children: [
@@ -731,7 +738,7 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
       ],
     );
   }
-  
+
   Widget _buildCollapsedBanner(ColorScheme cs) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -828,7 +835,9 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
                           const Text('Sort by Date'),
                           if (_sortBy == 'date')
                             Icon(
-                              _sortAscending ? Icons.arrow_upward : Icons.arrow_downward,
+                              _sortAscending
+                                  ? Icons.arrow_upward
+                                  : Icons.arrow_downward,
                               size: 16,
                               color: cs.primary,
                             ),
@@ -848,7 +857,9 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
                           const Text('Sort by Status'),
                           if (_sortBy == 'status')
                             Icon(
-                              _sortAscending ? Icons.arrow_upward : Icons.arrow_downward,
+                              _sortAscending
+                                  ? Icons.arrow_upward
+                                  : Icons.arrow_downward,
                               size: 16,
                               color: cs.primary,
                             ),
@@ -868,7 +879,9 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
                           const Text('Sort by Title'),
                           if (_sortBy == 'title')
                             Icon(
-                              _sortAscending ? Icons.arrow_upward : Icons.arrow_downward,
+                              _sortAscending
+                                  ? Icons.arrow_upward
+                                  : Icons.arrow_downward,
                               size: 16,
                               color: cs.primary,
                             ),
@@ -882,7 +895,8 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
                         children: [
                           const Icon(Icons.swap_vert, size: 20),
                           const SizedBox(width: 8),
-                          Text(_sortAscending ? 'Newest First' : 'Oldest First'),
+                          Text(
+                              _sortAscending ? 'Newest First' : 'Oldest First'),
                         ],
                       ),
                     ),
@@ -894,7 +908,7 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
         children: [
           // 🔔 Cloud Storage Info Banner
           _buildCloudStorageInfoBanner(cs),
-          
+
           // Search bar - uses consistent AppStyles
           Padding(
             padding: const EdgeInsets.all(AppStyles.spacing12),
@@ -906,7 +920,8 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
                 prefixIcon: Icons.search,
                 suffixIcon: _searchQuery.isNotEmpty
                     ? IconButton(
-                        icon: Icon(Icons.clear, color: cs.onSurfaceVariant, size: 20),
+                        icon: Icon(Icons.clear,
+                            color: cs.onSurfaceVariant, size: 20),
                         onPressed: () {
                           _searchController.clear();
                         },
@@ -943,41 +958,79 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
                   return ListView.builder(
                     physics: const AlwaysScrollableScrollPhysics(),
                     itemCount: filteredJobs.length,
-                    itemBuilder: (_, i) => JobCard(
-                      key: ValueKey(filteredJobs[i].jobId),
-                      job: filteredJobs[i],
-                      isSelectionMode: _isSelectionMode,
-                      isSelected: _selectedJobIds.contains(filteredJobs[i].jobId),
-                      onLongPress: () {
-                        if (!_isSelectionMode) {
-                          _toggleSelectionMode();
-                        }
-                        _toggleJobSelection(filteredJobs[i].jobId);
-                      },
-                      onTap: _isSelectionMode
-                          ? () => _toggleJobSelection(filteredJobs[i].jobId)
-                          : () {
-                              final job = filteredJobs[i];
-                              if (job.outputType == 'studio_video' &&
-                                  job.status == 'reviewing') {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (_) =>
-                                        StudioStoryboardPage(jobId: job.jobId),
-                                  ),
-                                );
-                              } else if (job.outputType == 'studio_video') {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (_) => StudioJobPage(
-                                      jobId: job.jobId,
-                                      reviewMode: true,
+                    itemBuilder: (_, i) {
+                      final job = filteredJobs[i];
+                      final batchId = job.batchId;
+                      final batchCount = batchId == null
+                          ? 0
+                          : filteredJobs
+                              .where((j) =>
+                                  j.batchId == batchId &&
+                                  j.status == 'completed')
+                              .length;
+                      final isBatchStart = batchId != null &&
+                          batchCount > 1 &&
+                          filteredJobs
+                                  .indexWhere((j) => j.batchId == batchId) ==
+                              i;
+                      final card = JobCard(
+                        key: job.jobId == widget.initialJobId
+                            ? _initialJobKey
+                            : ValueKey(job.jobId),
+                        job: job,
+                        isSelectionMode: _isSelectionMode,
+                        isSelected:
+                            _selectedJobIds.contains(filteredJobs[i].jobId),
+                        onLongPress: () {
+                          if (!_isSelectionMode) {
+                            _toggleSelectionMode();
+                          }
+                          _toggleJobSelection(filteredJobs[i].jobId);
+                        },
+                        onTap: _isSelectionMode
+                            ? () => _toggleJobSelection(filteredJobs[i].jobId)
+                            : () {
+                                final job = filteredJobs[i];
+                                if (job.outputType == 'studio_video' &&
+                                    job.status == 'reviewing') {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => StudioStoryboardPage(
+                                          jobId: job.jobId),
                                     ),
-                                  ),
-                                );
-                              }
-                            },
-                    ),
+                                  );
+                                } else if (job.outputType == 'studio_video') {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => StudioJobPage(
+                                        jobId: job.jobId,
+                                        reviewMode: true,
+                                      ),
+                                    ),
+                                  );
+                                }
+                              },
+                      );
+                      if (isBatchStart) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                              child: Text(
+                                '$batchCount from one run',
+                                style: TextStyle(
+                                  color: cs.onSurfaceVariant,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                            card,
+                          ],
+                        );
+                      }
+                      return card;
+                    },
                   );
                 },
               ),
@@ -995,7 +1048,7 @@ class JobCard extends StatefulWidget {
   final bool isSelected;
   final VoidCallback? onLongPress;
   final VoidCallback? onTap;
-  
+
   const JobCard({
     super.key,
     required this.job,
@@ -1040,7 +1093,7 @@ class _JobCardState extends State<JobCard> {
           // Start the download
           await _download(context);
         }
-        
+
         // After download, check if we now have the file
         path = widget.job.localFilePath;
         if (path == null || !File(path).existsSync()) {
@@ -1055,22 +1108,35 @@ class _JobCardState extends State<JobCard> {
         final allJobs = jobListNotifier.value;
         final downloadedPaths = <String>[];
         int currentIndex = 0;
-        
+
         for (final job in allJobs) {
-          if (job.localFilePath != null && File(job.localFilePath!).existsSync()) {
+          if (job.localFilePath != null &&
+              File(job.localFilePath!).existsSync()) {
             if (job.jobId == widget.job.jobId) {
               currentIndex = downloadedPaths.length;
             }
             downloadedPaths.add(job.localFilePath!);
           }
         }
-        
-        FileService.openLocalPreview(
-          context,
-          path,
-          allPaths: downloadedPaths.length > 1 ? downloadedPaths : null,
-          currentIndex: currentIndex,
-        );
+
+        final source = widget.job.inputImagePath;
+        if (widget.job.isImageOutput &&
+            source != null &&
+            File(source).existsSync() &&
+            File(path).existsSync()) {
+          openBeforeAfterPreview(
+            context,
+            resultFile: File(path),
+            originalFile: File(source),
+          );
+        } else {
+          FileService.openLocalPreview(
+            context,
+            path,
+            allPaths: downloadedPaths.length > 1 ? downloadedPaths : null,
+            currentIndex: currentIndex,
+          );
+        }
       }
     } finally {
       _openingPreview = false;
@@ -1102,11 +1168,11 @@ class _JobCardState extends State<JobCard> {
       );
       return;
     }
-    
+
     // Check if rewarded ad should be shown (every 5th download, unless ad-free)
     if (await _shouldShowDownloadAd()) {
       debugPrint('📺 Showing rewarded ad for 5th download');
-      
+
       // Show loading indicator while ad loads
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1117,7 +1183,7 @@ class _JobCardState extends State<JobCard> {
           ),
         );
       }
-      
+
       // Show the ad - this is just a rate limiter, doesn't block download
       await _showDownloadRewardedAd(context);
       debugPrint('📺 Ad completed or skipped - proceeding with download');
@@ -1129,40 +1195,48 @@ class _JobCardState extends State<JobCard> {
     });
 
     String? savedPath;
-    
+
     // Try downloading with URL refresh on failure (handles 1-hour URL expiry)
     for (int attempt = 1; attempt <= 2; attempt++) {
       String? downloadUrl;
-      
+
       try {
         // First, check if job already has a valid cached URL in memory (from FCM notification)
-        if (attempt == 1 && widget.job.downloadUrl != null && widget.job.downloadUrl!.isNotEmpty) {
+        if (attempt == 1 &&
+            widget.job.downloadUrl != null &&
+            widget.job.downloadUrl!.isNotEmpty) {
           // Quick check if URL looks valid (has exp parameter and not too old)
-          if (PollingService.isSignedUrlValid(widget.job.downloadUrl, minRemainingSeconds: 60)) {
+          if (PollingService.isSignedUrlValid(widget.job.downloadUrl,
+              minRemainingSeconds: 60)) {
             downloadUrl = widget.job.downloadUrl;
-            debugPrint('✅ Using job\'s cached signed URL directly (from FCM) - NO API call');
+            debugPrint(
+                '✅ Using job\'s cached signed URL directly (from FCM) - NO API call');
           } else {
             debugPrint('⏰ Job URL expired or invalid, will fetch fresh one');
           }
         }
-        
+
         // If no valid URL from job, try SharedPreferences cache
         if (downloadUrl == null || downloadUrl.isEmpty) {
           if (attempt == 1) {
             debugPrint('🔍 Checking SharedPreferences cache for URL...');
-            downloadUrl = await PollingService.getValidDownloadUrl(widget.job.jobId);
+            downloadUrl =
+                await PollingService.getValidDownloadUrl(widget.job.jobId);
             if (downloadUrl != null) {
               debugPrint('✅ Found valid URL in SharedPreferences cache');
             }
           } else {
             // Force refresh on second attempt
             debugPrint('🔄 Force refreshing download URL from server...');
-            downloadUrl = await PollingService.refreshDownloadUrl(widget.job.jobId);
+            downloadUrl =
+                await PollingService.refreshDownloadUrl(widget.job.jobId);
           }
         }
-        
+
         // Update job with new URL if we got one
-        if (downloadUrl != null && downloadUrl.isNotEmpty && downloadUrl != widget.job.downloadUrl) {
+        if (downloadUrl != null &&
+            downloadUrl.isNotEmpty &&
+            downloadUrl != widget.job.downloadUrl) {
           widget.job.downloadUrl = downloadUrl;
           await addOrUpdateJob(widget.job);
         }
@@ -1208,7 +1282,7 @@ class _JobCardState extends State<JobCard> {
       if (savedPath != null) {
         break;
       }
-      
+
       // Download failed - if this was first attempt, force refresh URL and retry
       if (attempt == 1) {
         debugPrint('⚠️ Download failed, will retry with fresh URL...');
@@ -1229,7 +1303,7 @@ class _JobCardState extends State<JobCard> {
       try {
         // Only precache images, not videos or text files
         final lp = savedPath.toLowerCase();
-        if (!lp.endsWith('.mp4') && 
+        if (!lp.endsWith('.mp4') &&
             !lp.endsWith('.mov') &&
             !lp.endsWith('.txt') &&
             !lp.endsWith('.json') &&
@@ -1261,7 +1335,7 @@ class _JobCardState extends State<JobCard> {
     final cs = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final job = widget.job;
-    
+
     // Clear stale localFilePath if file was deleted from device
     if (job.localFilePath != null &&
         job.localFilePath!.isNotEmpty &&
@@ -1275,20 +1349,20 @@ class _JobCardState extends State<JobCard> {
         }
       });
     }
-    
+
     // Check if expired (>24h old and not saved locally)
     final isExpired = job.isCloudExpired && !job.isSavedLocally;
     final isSaved = job.isSavedLocally;
 
-    final downloadColor = isSaved 
-        ? Colors.green 
-        : isExpired 
-            ? cs.outline 
+    final downloadColor = isSaved
+        ? Colors.green
+        : isExpired
+            ? cs.outline
             : cs.primary;
-    final downloadIcon = isSaved 
-        ? Icons.check_circle 
-        : isExpired 
-            ? Icons.cloud_off_rounded 
+    final downloadIcon = isSaved
+        ? Icons.check_circle
+        : isExpired
+            ? Icons.cloud_off_rounded
             : Icons.download;
 
     return InkWell(
@@ -1347,9 +1421,11 @@ class _JobCardState extends State<JobCard> {
                   style: textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w600,
                     height: 1.15,
-                    color: isExpired ? cs.onSurface.withOpacity(0.7) : cs.onSurface,
+                    color: isExpired
+                        ? cs.onSurface.withOpacity(0.7)
+                        : cs.onSurface,
+                  ),
                 ),
-              ),
 
                 // ✅ Status animated
                 subtitle: AnimatedSwitcher(
@@ -1398,20 +1474,24 @@ class _JobCardState extends State<JobCard> {
                                   ? const SizedBox(
                                       width: 20,
                                       height: 20,
-                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2),
                                     )
                                   : Icon(downloadIcon, color: downloadColor),
-                              tooltip: isExpired 
-                                  ? 'Cloud result expired' 
-                                  : isSaved 
-                                      ? 'Already saved' 
+                              tooltip: isExpired
+                                  ? 'Cloud result expired'
+                                  : isSaved
+                                      ? 'Already saved'
                                       : 'Save to device',
-                              onPressed: _isDownloading || isExpired || isSaved 
-                                  ? (isExpired ? () => _showExpiredDialog(context, cs) : null) 
+                              onPressed: _isDownloading || isExpired || isSaved
+                                  ? (isExpired
+                                      ? () => _showExpiredDialog(context, cs)
+                                      : null)
                                   : () => _download(context),
                             ),
                           IconButton(
-                            icon: Icon(Icons.delete_outline, color: cs.onSurfaceVariant),
+                            icon: Icon(Icons.delete_outline,
+                                color: cs.onSurfaceVariant),
                             tooltip: 'Delete Job',
                             onPressed: () => _confirmDelete(context, cs),
                           ),
@@ -1419,57 +1499,71 @@ class _JobCardState extends State<JobCard> {
                       ),
               ),
 
-            // ✅ Small linear progress bar
-            if (_isDownloading)
-              Padding(
-                padding: const EdgeInsets.only(
-                    left: 20, right: 20, bottom: 10, top: 0),
-                child: LinearProgressIndicator(
-                  value: _downloadProgress,
-                  minHeight: 4,
-                  color: cs.primary,
-                  backgroundColor: cs.surfaceContainerHighest,
+              // ✅ Small linear progress bar
+              if (_isDownloading)
+                Padding(
+                  padding: const EdgeInsets.only(
+                      left: 20, right: 20, bottom: 10, top: 0),
+                  child: LinearProgressIndicator(
+                    value: _downloadProgress,
+                    minHeight: 4,
+                    color: cs.primary,
+                    backgroundColor: cs.surfaceContainerHighest,
+                  ),
                 ),
-              ),
-              
-            // ✅ Variations and Enhanced Prompt badges row
-            if (job.hasMultipleVariations || job.promptEnhanced)
-              Padding(
-                padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 6,
-                  children: [
-                    // Variations badge
-                    if (job.hasMultipleVariations)
-                      _buildVariationsBadge(cs, job),
-                    // Enhanced prompt indicator (tappable)
-                    if (job.promptEnhanced && job.enhancedPrompt != null)
-                      _buildEnhancedPromptBadge(cs),
-                  ],
+
+              // ✅ Variations and Enhanced Prompt badges row
+              if (job.hasMultipleVariations || job.promptEnhanced)
+                Padding(
+                  padding:
+                      const EdgeInsets.only(left: 16, right: 16, bottom: 8),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      // Variations badge
+                      if (job.hasMultipleVariations)
+                        _buildVariationsBadge(cs, job),
+                      // Enhanced prompt indicator (tappable)
+                      if (job.promptEnhanced && job.enhancedPrompt != null)
+                        _buildEnhancedPromptBadge(cs),
+                    ],
+                  ),
                 ),
-              ),
-              
-            // ✅ Expandable Enhanced Prompt section
-            if (_isPromptExpanded && job.enhancedPrompt != null)
-              _buildEnhancedPromptSection(cs, job),
-          ],
-        ),
+
+              // ✅ Expandable Enhanced Prompt section
+              if (_isPromptExpanded && job.enhancedPrompt != null)
+                _buildEnhancedPromptSection(cs, job),
+              if (job.expiryCue != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: Text(
+                    job.expiryCue!,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color:
+                          job.expiryCueUrgent ? cs.error : cs.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              if (!widget.isSelectionMode) JobNextActions(job: job),
+            ],
+          ),
         ),
       ),
     );
   }
-  
+
   /// Badge showing variations count
   Widget _buildVariationsBadge(ColorScheme cs, JobModel job) {
     final successCount = job.successfulVariationsCount;
     final failedCount = job.failedVariationsCount;
     final totalCount = job.variations;
-    
+
     Color badgeColor = cs.primary;
     IconData badgeIcon = Icons.grid_view_rounded;
     String badgeText = '$successCount/$totalCount variations';
-    
+
     if (failedCount > 0 && successCount > 0) {
       badgeColor = Colors.orange;
       badgeText = '$successCount/$totalCount ($failedCount failed)';
@@ -1478,7 +1572,7 @@ class _JobCardState extends State<JobCard> {
       badgeIcon = Icons.error_outline;
       badgeText = 'All variations failed';
     }
-    
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
@@ -1503,7 +1597,7 @@ class _JobCardState extends State<JobCard> {
       ),
     );
   }
-  
+
   /// Badge for enhanced prompt (tappable to expand)
   Widget _buildEnhancedPromptBadge(ColorScheme cs) {
     return GestureDetector(
@@ -1543,7 +1637,7 @@ class _JobCardState extends State<JobCard> {
       ),
     );
   }
-  
+
   /// Expandable section showing the enhanced prompt
   Widget _buildEnhancedPromptSection(ColorScheme cs, JobModel job) {
     return AnimatedSize(
@@ -1582,7 +1676,8 @@ class _JobCardState extends State<JobCard> {
                 height: 1.4,
               ),
             ),
-            if (job.originalPrompt != null && job.originalPrompt!.isNotEmpty) ...[
+            if (job.originalPrompt != null &&
+                job.originalPrompt!.isNotEmpty) ...[
               const SizedBox(height: 10),
               Container(
                 padding: const EdgeInsets.all(8),
@@ -1636,19 +1731,19 @@ class _JobCardState extends State<JobCard> {
         File(widget.job.localFilePath!).existsSync();
     final isProcessing = widget.job.status == 'processing';
     final jobCategory = _getJobCategory(widget.job);
-    
+
     // Check if file is a text file (text output type or text file extension)
-    final isTextFile = jobCategory == 'text' || 
-                       (isDownloaded && _isTextFile(widget.job.localFilePath!));
-    
+    final isTextFile = jobCategory == 'text' ||
+        (isDownloaded && _isTextFile(widget.job.localFilePath!));
+
     // Decide which content to render inside the thumbnail box
     Widget thumbnailContent;
     // Check if the saved file is a video by extension
-    final isVideoFile = isDownloaded && 
+    final isVideoFile = isDownloaded &&
         (widget.job.localFilePath!.toLowerCase().endsWith('.mp4') ||
-         widget.job.localFilePath!.toLowerCase().endsWith('.mov') ||
-         widget.job.localFilePath!.toLowerCase().endsWith('.avi'));
-    
+            widget.job.localFilePath!.toLowerCase().endsWith('.mov') ||
+            widget.job.localFilePath!.toLowerCase().endsWith('.avi'));
+
     if (isDownloaded && !isTextFile) {
       if (!isVideoFile) {
         // Image file on disk → use Flutter's native Image.file for reliable decoding
@@ -1661,7 +1756,8 @@ class _JobCardState extends State<JobCard> {
               width: 58,
               height: 58,
               fit: BoxFit.cover,
-              cacheWidth: 174, // 58 * 3 for high-DPI; only set width to preserve aspect ratio
+              cacheWidth:
+                  174, // 58 * 3 for high-DPI; only set width to preserve aspect ratio
               gaplessPlayback: true,
               filterQuality: FilterQuality.medium,
               errorBuilder: (context, error, stackTrace) {
@@ -1758,7 +1854,8 @@ class _JobCardState extends State<JobCard> {
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 350),
       child: _AnimatedProcessingBorder(
-        key: ValueKey('thumb_${widget.job.localFilePath ?? 'pending_${widget.job.status}'}'),
+        key: ValueKey(
+            'thumb_${widget.job.localFilePath ?? 'pending_${widget.job.status}'}'),
         isProcessing: isProcessing,
         jobCategory: jobCategory,
         child: Container(
@@ -1766,10 +1863,12 @@ class _JobCardState extends State<JobCard> {
           height: 58,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            border: isProcessing ? null : Border.all(
-              color: cs.outline.withOpacity(0.15),
-              width: 1,
-            ),
+            border: isProcessing
+                ? null
+                : Border.all(
+                    color: cs.outline.withOpacity(0.15),
+                    width: 1,
+                  ),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withOpacity(0.08),
@@ -1786,43 +1885,46 @@ class _JobCardState extends State<JobCard> {
       ),
     );
   }
-  
+
   /// Check if file is a text file by extension
   bool _isTextFile(String filePath) {
     final ext = filePath.toLowerCase().split('.').last;
     return ext == 'txt' || ext == 'json' || ext == 'text';
   }
-  
+
   /// Get job category for visual styling
   String _getJobCategory(JobModel job) {
     final output = job.outputType.toLowerCase();
     final model = job.model.toLowerCase();
-    
+
     if (output == 'video' ||
         output == 'studio_video' ||
         model.contains('video') ||
         model.contains('animate') ||
         model.contains('studio')) {
       return 'video';
-    } else if (output == 'audio' || model.contains('audio') || model.contains('tts')) {
+    } else if (output == 'audio' ||
+        model.contains('audio') ||
+        model.contains('tts')) {
       return 'audio';
     } else if (output == 'text' || model.contains('ocr')) {
       return 'text';
     } else if (model.contains('upscale') || model.contains('enhance')) {
       return 'enhance';
-    } else if (model.contains('remove') || model.contains('erase') || model.contains('inpaint')) {
+    } else if (model.contains('remove') ||
+        model.contains('erase') ||
+        model.contains('inpaint')) {
       return 'edit';
     }
     return 'image';
   }
-  
 
   Widget _buildBlurOrPlaceholder(ColorScheme cs) {
     final job = widget.job;
     final inputExists =
         job.inputImagePath != null && File(job.inputImagePath!).existsSync();
     final isProcessing = job.status == 'processing';
-    
+
     // Determine job category for appropriate visual treatment
     final jobCategory = _getJobCategory(job);
 
@@ -1896,28 +1998,29 @@ class _JobCardState extends State<JobCard> {
         Center(
           child: Icon(
             _getPlaceholderIcon(job.outputType, job.model),
-            color: isProcessing 
+            color: isProcessing
                 ? Colors.white.withOpacity(0.95)
                 : Colors.white.withOpacity(0.7),
             size: 24,
-            shadows: isProcessing ? [
-              Shadow(
-                color: Colors.black.withOpacity(0.3),
-                blurRadius: 8,
-              ),
-            ] : null,
+            shadows: isProcessing
+                ? [
+                    Shadow(
+                      color: Colors.black.withOpacity(0.3),
+                      blurRadius: 8,
+                    ),
+                  ]
+                : null,
           ),
         ),
       ],
     );
   }
-  
-  
+
   /// Get appropriate icon based on output type and model
   IconData _getPlaceholderIcon(String outputType, String model) {
     final output = outputType.toLowerCase();
     final modelLower = model.toLowerCase();
-    
+
     // Check output type first
     if (output == 'video' || output == 'studio_video') {
       return Icons.videocam_rounded;
@@ -1926,7 +2029,7 @@ class _JobCardState extends State<JobCard> {
     } else if (output == 'text') {
       return Icons.text_snippet_rounded;
     }
-    
+
     // Then check model name for more specific icons
     if (modelLower.contains('video') || modelLower.contains('animate')) {
       return Icons.videocam_rounded;
@@ -1934,16 +2037,18 @@ class _JobCardState extends State<JobCard> {
       return Icons.audiotrack_rounded;
     } else if (modelLower.contains('ocr') || modelLower.contains('text')) {
       return Icons.text_snippet_rounded;
-    } else if (modelLower.contains('upscale') || modelLower.contains('enhance')) {
+    } else if (modelLower.contains('upscale') ||
+        modelLower.contains('enhance')) {
       return Icons.auto_awesome;
     } else if (modelLower.contains('remove') || modelLower.contains('erase')) {
       return Icons.auto_fix_high;
-    } else if (modelLower.contains('inpaint') || modelLower.contains('outpaint')) {
+    } else if (modelLower.contains('inpaint') ||
+        modelLower.contains('outpaint')) {
       return Icons.brush_rounded;
     } else if (modelLower.contains('bg') || modelLower.contains('background')) {
       return Icons.content_cut_rounded;
     }
-    
+
     return Icons.image_rounded;
   }
 
@@ -1961,7 +2066,9 @@ class _JobCardState extends State<JobCard> {
       String statusText = "${job.status.toUpperCase()}…";
       if (job.status == 'reviewing') statusText = 'REVIEW SCENES';
       if (job.hasMultipleVariations && job.variationResults != null) {
-        final completed = job.variationResults!.where((v) => v.status == 'completed' || v.status == 'failed').length;
+        final completed = job.variationResults!
+            .where((v) => v.status == 'completed' || v.status == 'failed')
+            .length;
         statusText = "PROCESSING… ($completed/${job.variations})";
       }
       String? etaText;
@@ -1996,8 +2103,10 @@ class _JobCardState extends State<JobCard> {
             Padding(
               padding: const EdgeInsets.only(top: 2),
               child: Text(
-                [if (queueText != null) queueText, if (etaText != null) 'ETA $etaText']
-                    .join(' • '),
+                [
+                  if (queueText != null) queueText,
+                  if (etaText != null) 'ETA $etaText'
+                ].join(' • '),
                 style: TextStyle(
                   color: cs.onSurfaceVariant,
                   fontSize: 11,
@@ -2086,16 +2195,15 @@ class _JobCardState extends State<JobCard> {
           Icon(
             Icons.schedule_rounded,
             size: 16,
-            color: job.timeUntilExpiry.inHours < 2 
-                ? Colors.orange 
-                : cs.secondary,
+            color:
+                job.timeUntilExpiry.inHours < 2 ? Colors.orange : cs.secondary,
           ),
           const SizedBox(width: 8),
           Text(
             timeLeft,
             style: TextStyle(
-              color: job.timeUntilExpiry.inHours < 2 
-                  ? Colors.orange 
+              color: job.timeUntilExpiry.inHours < 2
+                  ? Colors.orange
                   : cs.secondary,
               fontSize: 13,
               fontWeight: FontWeight.w600,
@@ -2124,14 +2232,14 @@ class _JobCardState extends State<JobCard> {
         const SizedBox(width: 8),
         Text(
           isFailed
-          ? job.status.toUpperCase()
-          : (isDownloaded ? "SAVED" : "COMPLETED").toUpperCase(),
+              ? job.status.toUpperCase()
+              : (isDownloaded ? "SAVED" : "COMPLETED").toUpperCase(),
           style: TextStyle(
             color: isFailed
-            ? cs.error
-            : isDownloaded
-                ? Colors.green
-                : cs.secondary,
+                ? cs.error
+                : isDownloaded
+                    ? Colors.green
+                    : cs.secondary,
             fontSize: 13,
             fontWeight: FontWeight.w600,
           ),
@@ -2319,16 +2427,17 @@ class _AnimatedProcessingBorder extends StatefulWidget {
   final bool isProcessing;
   final String jobCategory;
   final Widget child;
-  
+
   const _AnimatedProcessingBorder({
     super.key,
     required this.isProcessing,
     required this.jobCategory,
     required this.child,
   });
-  
+
   @override
-  State<_AnimatedProcessingBorder> createState() => _AnimatedProcessingBorderState();
+  State<_AnimatedProcessingBorder> createState() =>
+      _AnimatedProcessingBorderState();
 }
 
 class _AnimatedProcessingBorderState extends State<_AnimatedProcessingBorder>
@@ -2341,7 +2450,7 @@ class _AnimatedProcessingBorderState extends State<_AnimatedProcessingBorder>
       _ProcessingAnimationController.instance.addListener();
     }
   }
-  
+
   @override
   void didUpdateWidget(_AnimatedProcessingBorder oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -2352,7 +2461,7 @@ class _AnimatedProcessingBorderState extends State<_AnimatedProcessingBorder>
       _ProcessingAnimationController.instance.removeListener();
     }
   }
-  
+
   @override
   void dispose() {
     if (widget.isProcessing) {
@@ -2360,7 +2469,7 @@ class _AnimatedProcessingBorderState extends State<_AnimatedProcessingBorder>
     }
     super.dispose();
   }
-  
+
   List<Color> _getBorderColors() {
     // Professional, muted colors that work in light/dark modes
     switch (widget.jobCategory) {
@@ -2408,18 +2517,18 @@ class _AnimatedProcessingBorderState extends State<_AnimatedProcessingBorder>
         ];
     }
   }
-  
+
   @override
   Widget build(BuildContext context) {
     if (!widget.isProcessing) {
       return widget.child;
     }
-    
+
     final controller = _ProcessingAnimationController.instance.controller;
     if (controller == null) {
       return widget.child;
     }
-    
+
     return RepaintBoundary(
       child: AnimatedBuilder(
         animation: controller,
@@ -2441,31 +2550,33 @@ class _AnimatedProcessingBorderState extends State<_AnimatedProcessingBorder>
 class _RotatingBorderPainter extends CustomPainter {
   final double progress;
   final List<Color> colors;
-  
+
   _RotatingBorderPainter({
     required this.progress,
     required this.colors,
   });
-  
+
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Rect.fromLTWH(0, 0, size.width, size.height);
     const radius = 12.0;
-    
+
     // Create rotating gradient with smooth rotation
     final angle = progress * 2 * math.pi;
-    
+
     // Pulsing effect: oscillates between 0.6 and 1.0
     final pulseValue = 0.8 + 0.2 * math.sin(progress * 4 * math.pi);
-    
+
     // Subtle brightness modulation for professional look
     final enhancedColors = colors.map((c) {
       final hsl = HSLColor.fromColor(c);
       // Keep saturation moderate and lightness balanced for light/dark modes
-      return hsl.withLightness((hsl.lightness * (0.9 + 0.1 * pulseValue)).clamp(0.35, 0.65))
-                .toColor();
+      return hsl
+          .withLightness(
+              (hsl.lightness * (0.9 + 0.1 * pulseValue)).clamp(0.35, 0.65))
+          .toColor();
     }).toList();
-    
+
     final gradient = SweepGradient(
       center: Alignment.center,
       startAngle: angle,
@@ -2473,11 +2584,11 @@ class _RotatingBorderPainter extends CustomPainter {
       colors: enhancedColors,
       stops: const [0.0, 0.33, 0.66, 1.0],
     );
-    
+
     // Draw rounded rectangle path
     final path = Path()
       ..addRRect(RRect.fromRectAndRadius(rect, const Radius.circular(radius)));
-    
+
     // Layer 1: Outer glow (soft, wide)
     final outerGlowPaint = Paint()
       ..shader = gradient.createShader(rect)
@@ -2485,7 +2596,7 @@ class _RotatingBorderPainter extends CustomPainter {
       ..strokeWidth = 6.0 * pulseValue
       ..maskFilter = MaskFilter.blur(BlurStyle.normal, 6 * pulseValue);
     canvas.drawPath(path, outerGlowPaint);
-    
+
     // Layer 2: Mid glow (medium intensity)
     final midGlowPaint = Paint()
       ..shader = gradient.createShader(rect)
@@ -2493,7 +2604,7 @@ class _RotatingBorderPainter extends CustomPainter {
       ..strokeWidth = 4.0 * pulseValue
       ..maskFilter = MaskFilter.blur(BlurStyle.normal, 3 * pulseValue);
     canvas.drawPath(path, midGlowPaint);
-    
+
     // Layer 3: Core border (sharp, bright)
     final borderPaint = Paint()
       ..shader = gradient.createShader(rect)
@@ -2501,7 +2612,7 @@ class _RotatingBorderPainter extends CustomPainter {
       ..strokeWidth = 2.0
       ..strokeCap = StrokeCap.round;
     canvas.drawPath(path, borderPaint);
-    
+
     // Layer 4: Inner highlight (bright center line)
     final highlightPaint = Paint()
       ..shader = gradient.createShader(rect)
@@ -2510,7 +2621,7 @@ class _RotatingBorderPainter extends CustomPainter {
       ..color = Colors.white.withOpacity(0.5 * pulseValue);
     canvas.drawPath(path, highlightPaint);
   }
-  
+
   @override
   bool shouldRepaint(_RotatingBorderPainter oldDelegate) {
     return oldDelegate.progress != progress;
@@ -2524,20 +2635,22 @@ class _RotatingBorderPainter extends CustomPainter {
 class _AnimatedGradientBackground extends StatefulWidget {
   final String category;
   final bool isProcessing;
-  
+
   const _AnimatedGradientBackground({
     required this.category,
     required this.isProcessing,
   });
-  
+
   @override
-  State<_AnimatedGradientBackground> createState() => _AnimatedGradientBackgroundState();
+  State<_AnimatedGradientBackground> createState() =>
+      _AnimatedGradientBackgroundState();
 }
 
-class _AnimatedGradientBackgroundState extends State<_AnimatedGradientBackground>
+class _AnimatedGradientBackgroundState
+    extends State<_AnimatedGradientBackground>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
-  
+
   @override
   void initState() {
     super.initState();
@@ -2549,7 +2662,7 @@ class _AnimatedGradientBackgroundState extends State<_AnimatedGradientBackground
       _controller.repeat();
     }
   }
-  
+
   @override
   void didUpdateWidget(_AnimatedGradientBackground oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -2560,13 +2673,13 @@ class _AnimatedGradientBackgroundState extends State<_AnimatedGradientBackground
       _controller.reset();
     }
   }
-  
+
   @override
   void dispose() {
     _controller.dispose();
     super.dispose();
   }
-  
+
   List<Color> _getColors() {
     // Professional, muted colors that work in light/dark modes
     switch (widget.category) {
@@ -2614,11 +2727,11 @@ class _AnimatedGradientBackgroundState extends State<_AnimatedGradientBackground
         ];
     }
   }
-  
+
   @override
   Widget build(BuildContext context) {
     final colors = _getColors();
-    
+
     return RepaintBoundary(
       child: AnimatedBuilder(
         animation: _controller,
@@ -2626,16 +2739,18 @@ class _AnimatedGradientBackgroundState extends State<_AnimatedGradientBackground
           // Smooth rotating gradient with easing
           final progress = _controller.value;
           final angle = progress * 2 * math.pi;
-          
+
           // Subtle pulsing brightness for professional look
           final pulse = 0.92 + 0.08 * math.sin(progress * 3 * math.pi);
-          
+
           // Balanced colors that work in light/dark modes
           final pulsedColors = colors.map((c) {
             final hsl = HSLColor.fromColor(c);
-            return hsl.withLightness((hsl.lightness * pulse).clamp(0.4, 0.6)).toColor();
+            return hsl
+                .withLightness((hsl.lightness * pulse).clamp(0.4, 0.6))
+                .toColor();
           }).toList();
-          
+
           return CustomPaint(
             painter: _GradientBackgroundPainter(
               angle: angle,
@@ -2653,16 +2768,16 @@ class _AnimatedGradientBackgroundState extends State<_AnimatedGradientBackground
 class _GradientBackgroundPainter extends CustomPainter {
   final double angle;
   final List<Color> colors;
-  
+
   _GradientBackgroundPainter({
     required this.angle,
     required this.colors,
   });
-  
+
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Rect.fromLTWH(0, 0, size.width, size.height);
-    
+
     // Create sweep gradient for smooth rotation
     final gradient = SweepGradient(
       center: Alignment.center,
@@ -2671,13 +2786,12 @@ class _GradientBackgroundPainter extends CustomPainter {
       colors: colors,
       stops: const [0.0, 0.33, 0.66, 1.0],
     );
-    
-    final paint = Paint()
-      ..shader = gradient.createShader(rect);
-    
+
+    final paint = Paint()..shader = gradient.createShader(rect);
+
     canvas.drawRect(rect, paint);
   }
-  
+
   @override
   bool shouldRepaint(_GradientBackgroundPainter oldDelegate) {
     return oldDelegate.angle != angle;

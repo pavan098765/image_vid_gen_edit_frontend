@@ -7,6 +7,8 @@ import 'package:kala_ai_create_images_videos_with_ai/core/studio/studio_api.dart
 import 'package:kala_ai_create_images_videos_with_ai/features/video_editor/state/editor_providers.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/video_editor/video_editor_page.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:pro_video_editor/pro_video_editor.dart';
+import 'package:video_player/video_player.dart';
 
 Future<void> openStudioInEditor(BuildContext context, String jobId) async {
   final board = await StudioApi.instance.getStoryboard(jobId);
@@ -41,10 +43,51 @@ Future<void> openStudioInEditor(BuildContext context, String jobId) async {
     return;
   }
 
+  final usable = <String>[];
+  final durations = <Duration>[];
+  for (final path in paths) {
+    Duration? duration;
+    try {
+      final metadata = await ProVideoEditor.instance.getMetadata(
+        EditorVideo.file(File(path)),
+      );
+      duration = metadata.duration;
+    } catch (_) {
+      try {
+        final controller = VideoPlayerController.file(File(path));
+        await controller.initialize();
+        duration = controller.value.duration;
+        await controller.dispose();
+      } catch (_) {
+        duration = null;
+      }
+    }
+    if (duration == null || duration <= Duration.zero) continue;
+    usable.add(path);
+    durations.add(duration);
+  }
+
+  if (!context.mounted) return;
+  if (usable.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('No scene files to open in Editor')),
+    );
+    return;
+  }
+
   final container = ProviderScope.containerOf(context);
-  container.read(projectProvider.notifier).createFromScenePaths(paths);
+  container.read(projectProvider.notifier).createFromScenePaths(
+        usable,
+        durations: durations,
+      );
 
   await Navigator.of(context).push(
-    MaterialPageRoute(builder: (_) => const VideoEditorPage()),
+    MaterialPageRoute(
+      builder: (_) => VideoEditorPage(
+        initialVideoPath: usable.first,
+        useExistingProject: true,
+        jobId: jobId,
+      ),
+    ),
   );
 }

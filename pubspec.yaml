@@ -8,7 +8,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 version: 1.0.0+3
 
 environment:
-  sdk: '>=3.1.5 <4.0.0'
+  sdk: '>=3.12.0 <4.0.0'
 
 dependencies:
   flutter:
@@ -17,7 +17,7 @@ dependencies:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.2
-  pro_image_editor: ^11.10.1
+  pro_image_editor: ^14.11.0
   flutter_riverpod: ^2.0.0
   flutter_local_notifications: ^19.5.0
 
@@ -56,7 +56,7 @@ dependencies:
   hive_flutter: ^1.1.0
 
   google_fonts: ^6.3.0
-  lucide_icons: ^0.257.0
+  lucide_icons_flutter: ^3.1.25
   shared_preferences: ^2.3.0
   fluttertoast: ^8.2.5
   file_saver: ^0.3.1
@@ -72,7 +72,7 @@ dependencies:
   vibration: ^3.1.1
 
   # Video-Editing
-  pro_video_editor: ^0.3.0
+  pro_video_editor: ^2.0.0
   ffmpeg_kit_flutter_new: ^4.1.0
   animated_text_kit: ^4.3.0
   video_thumbnail: ^0.5.3  # For extracting thumbnails from videos
@@ -124,3 +124,21 @@ flutter:
     - assets/kala_ai_logo.png
     - assets/kala_ai_logo_monochrome.png
     - assets/models/
+    - assets/fonts/
+
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Regular.ttf
+    - family: Roboto
+      fonts:
+        - asset: assets/fonts/Roboto-Regular.ttf
+    - family: Poppins
+      fonts:
+        - asset: assets/fonts/Poppins-Regular.ttf
+    - family: Montserrat
+      fonts:
+        - asset: assets/fonts/Montserrat-Regular.ttf
+    - family: Oswald
+      fonts:
+        - asset: assets/fonts/Oswald-Regular.ttf

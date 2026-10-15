@@ -2,7 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../models/clip_model.dart';
 import '../../../models/effect_model.dart';
@@ -29,15 +29,31 @@ class _TextPanelState extends ConsumerState<TextPanel> {
   String? _editingClipId;
 
   final _fontOptions = [
-    'Inter', 'Roboto', 'Poppins', 'Montserrat', 'Oswald',
-    'Playfair Display', 'Lobster', 'Pacifico', 'Dancing Script', 'Bebas Neue',
+    'Inter',
+    'Roboto',
+    'Poppins',
+    'Montserrat',
+    'Oswald',
+    'Playfair Display',
+    'Lobster',
+    'Pacifico',
+    'Dancing Script',
+    'Bebas Neue',
   ];
 
   final _colorOptions = [
-    Colors.white, Colors.black, Colors.red, Colors.orange,
-    Colors.yellow, Colors.green, Colors.cyan, Colors.blue,
-    Colors.purple, Colors.pink,
-    const Color(0xFF7B5EFF), const Color(0xFF00D4FF),
+    Colors.white,
+    Colors.black,
+    Colors.red,
+    Colors.orange,
+    Colors.yellow,
+    Colors.green,
+    Colors.cyan,
+    Colors.blue,
+    Colors.purple,
+    Colors.pink,
+    const Color(0xFF7B5EFF),
+    const Color(0xFF00D4FF),
   ];
 
   @override
@@ -113,7 +129,8 @@ class _TextPanelState extends ConsumerState<TextPanel> {
                   color: Colors.redAccent,
                   tooltip: 'Delete Text',
                   padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                  constraints:
+                      const BoxConstraints(minWidth: 36, minHeight: 36),
                 ),
                 const SizedBox(width: 4),
               ],
@@ -122,7 +139,8 @@ class _TextPanelState extends ConsumerState<TextPanel> {
                 icon: const Icon(Icons.add, size: 16),
                 label: const Text('Add New', style: TextStyle(fontSize: 13)),
                 style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   minimumSize: Size.zero,
                   backgroundColor: cs.primary,
                   foregroundColor: cs.onPrimary,
@@ -140,7 +158,8 @@ class _TextPanelState extends ConsumerState<TextPanel> {
             decoration: InputDecoration(
               hintText: 'Enter text...',
               hintStyle: TextStyle(color: cs.onSurface.withOpacity(0.4)),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               isDense: true,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
@@ -173,9 +192,13 @@ class _TextPanelState extends ConsumerState<TextPanel> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10),
                     decoration: BoxDecoration(
-                      color: selected ? cs.primary.withOpacity(0.15) : cs.surfaceContainerHigh,
+                      color: selected
+                          ? cs.primary.withOpacity(0.15)
+                          : cs.surfaceContainerHigh,
                       borderRadius: BorderRadius.circular(6),
-                      border: selected ? Border.all(color: cs.primary.withOpacity(0.4)) : null,
+                      border: selected
+                          ? Border.all(color: cs.primary.withOpacity(0.4))
+                          : null,
                     ),
                     alignment: Alignment.center,
                     child: Text(
@@ -183,8 +206,11 @@ class _TextPanelState extends ConsumerState<TextPanel> {
                       style: TextStyle(
                         fontFamily: font,
                         fontSize: 12,
-                        color: selected ? cs.primary : cs.onSurface.withOpacity(0.7),
-                        fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+                        color: selected
+                            ? cs.primary
+                            : cs.onSurface.withOpacity(0.7),
+                        fontWeight:
+                            selected ? FontWeight.w600 : FontWeight.normal,
                       ),
                     ),
                   ),
@@ -197,7 +223,9 @@ class _TextPanelState extends ConsumerState<TextPanel> {
           // Size slider + Bold/Italic
           Row(
             children: [
-              Text('Size', style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(0.6))),
+              Text('Size',
+                  style: TextStyle(
+                      fontSize: 12, color: cs.onSurface.withOpacity(0.6))),
               Expanded(
                 child: Slider(
                   value: _fontSize,
@@ -211,7 +239,8 @@ class _TextPanelState extends ConsumerState<TextPanel> {
               ),
               Text(
                 _fontSize.round().toString(),
-                style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(0.7)),
+                style: TextStyle(
+                    fontSize: 12, color: cs.onSurface.withOpacity(0.7)),
               ),
               const SizedBox(width: 8),
               _toggleChip('B', _isBold, () {
@@ -252,7 +281,10 @@ class _TextPanelState extends ConsumerState<TextPanel> {
                         width: selected ? 2.5 : 1,
                       ),
                       boxShadow: selected
-                          ? [BoxShadow(color: c.withOpacity(0.4), blurRadius: 6)]
+                          ? [
+                              BoxShadow(
+                                  color: c.withOpacity(0.4), blurRadius: 6)
+                            ]
                           : null,
                     ),
                   ),
@@ -263,7 +295,9 @@ class _TextPanelState extends ConsumerState<TextPanel> {
           const SizedBox(height: 12),
 
           // Animation picker
-          Text('Animation', style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(0.6))),
+          Text('Animation',
+              style: TextStyle(
+                  fontSize: 12, color: cs.onSurface.withOpacity(0.6))),
           const SizedBox(height: 6),
           SizedBox(
             height: 32,
@@ -283,22 +317,37 @@ class _TextPanelState extends ConsumerState<TextPanel> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10),
                     decoration: BoxDecoration(
-                      color: selected ? cs.primary.withOpacity(0.15) : cs.surfaceContainerHigh,
+                      color: selected
+                          ? cs.primary.withOpacity(0.15)
+                          : cs.surfaceContainerHigh,
                       borderRadius: BorderRadius.circular(6),
-                      border: selected ? Border.all(color: cs.primary.withOpacity(0.4)) : null,
+                      border: selected
+                          ? Border.all(color: cs.primary.withOpacity(0.4))
+                          : null,
                     ),
                     alignment: Alignment.center,
                     child: Text(
                       anim.label,
                       style: TextStyle(
                         fontSize: 11,
-                        color: selected ? cs.primary : cs.onSurface.withOpacity(0.6),
-                        fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+                        color: selected
+                            ? cs.primary
+                            : cs.onSurface.withOpacity(0.6),
+                        fontWeight:
+                            selected ? FontWeight.w600 : FontWeight.normal,
                       ),
                     ),
                   ),
                 );
               },
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Animation plays in preview. The export uses still text.',
+            style: TextStyle(
+              fontSize: 12,
+              color: cs.onSurface.withOpacity(0.6),
             ),
           ),
         ],
@@ -315,9 +364,11 @@ class _TextPanelState extends ConsumerState<TextPanel> {
         height: 28,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: active ? cs.primary.withOpacity(0.15) : cs.surfaceContainerHigh,
+          color:
+              active ? cs.primary.withOpacity(0.15) : cs.surfaceContainerHigh,
           borderRadius: BorderRadius.circular(6),
-          border: active ? Border.all(color: cs.primary.withOpacity(0.4)) : null,
+          border:
+              active ? Border.all(color: cs.primary.withOpacity(0.4)) : null,
         ),
         child: Text(
           label,
@@ -335,17 +386,17 @@ class _TextPanelState extends ConsumerState<TextPanel> {
   void _updateClip() {
     if (_editingClipId == null) return;
     ref.read(projectProvider.notifier).updateClip(
-      _editingClipId!,
-      (c) => (c as TextClip).copyWith(
-        text: _textController.text,
-        fontFamily: _fontFamily,
-        fontSize: _fontSize,
-        color: _textColor,
-        isBold: _isBold,
-        isItalic: _isItalic,
-        animation: _animation,
-      ),
-    );
+          _editingClipId!,
+          (c) => (c as TextClip).copyWith(
+            text: _textController.text,
+            fontFamily: _fontFamily,
+            fontSize: _fontSize,
+            color: _textColor,
+            isBold: _isBold,
+            isItalic: _isItalic,
+            animation: _animation,
+          ),
+        );
   }
 
   void _deleteClip(String clipId) {
@@ -362,12 +413,12 @@ class _TextPanelState extends ConsumerState<TextPanel> {
     final playback = ref.read(playbackProvider);
 
     // Find or create a text track
-    var textTrack = project.tracks
-        .where((t) => t.type == TrackType.text)
-        .firstOrNull;
+    var textTrack =
+        project.tracks.where((t) => t.type == TrackType.text).firstOrNull;
 
     if (textTrack == null) {
-      final trackId = '${project.id}_text_${DateTime.now().microsecondsSinceEpoch}';
+      final trackId =
+          '${project.id}_text_${DateTime.now().microsecondsSinceEpoch}';
       textTrack = Track(
         id: trackId,
         type: TrackType.text,
@@ -376,7 +427,8 @@ class _TextPanelState extends ConsumerState<TextPanel> {
       ref.read(projectProvider.notifier).addTrack(textTrack);
     }
 
-    final clipId = '${project.id}_textclip_${DateTime.now().microsecondsSinceEpoch}';
+    final clipId =
+        '${project.id}_textclip_${DateTime.now().microsecondsSinceEpoch}';
     final clip = TextClip(
       id: clipId,
       startTime: playback.position,
@@ -391,6 +443,8 @@ class _TextPanelState extends ConsumerState<TextPanel> {
     );
 
     ref.read(projectProvider.notifier).addClipToTrack(textTrack.id, clip);
-    ref.read(timelineProvider.notifier).selectClip(clipId, trackId: textTrack.id);
+    ref
+        .read(timelineProvider.notifier)
+        .selectClip(clipId, trackId: textTrack.id);
   }
 }

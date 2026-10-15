@@ -2,7 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../models/clip_model.dart';
 import '../../../models/effect_model.dart';
@@ -67,6 +67,35 @@ class _FilterPanelState extends ConsumerState<FilterPanel> {
             ],
           ),
           const SizedBox(height: 12),
+          if (selectedClip is VideoClip) ...[
+            Text('Looks',
+                style: TextStyle(
+                    fontSize: 12, color: cs.onSurface.withOpacity(0.6))),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 40,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                children: [
+                  for (final look in VideoLook.values)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ChoiceChip(
+                        label: Text(look.label),
+                        selected: selectedClip.look == look,
+                        onSelected: (_) {
+                          ref.read(projectProvider.notifier).updateClip(
+                                selectedClip.id,
+                                (c) => (c as VideoClip).copyWith(look: look),
+                              );
+                        },
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
 
           // Filter presets grid
           SizedBox(

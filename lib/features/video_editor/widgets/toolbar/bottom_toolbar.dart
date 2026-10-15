@@ -2,12 +2,14 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../models/clip_model.dart';
 import '../../state/editor_providers.dart';
 import '../../state/tool_notifier.dart';
 import '../../utils/editor_constants.dart';
 import 'panels/audio_panel.dart';
+import 'panels/chroma_panel.dart';
 import 'panels/export_panel.dart';
 import 'panels/filter_panel.dart';
 import 'panels/keyframe_panel.dart';
@@ -49,13 +51,10 @@ class BottomToolbar extends ConsumerWidget {
           children: [
             _toolButton(context, ref, EditorTool.trim, LucideIcons.scissors, toolState),
             _toolButton(context, ref, EditorTool.text, LucideIcons.type, toolState),
-            _toolButton(context, ref, EditorTool.audio, LucideIcons.music, toolState),
-            _toolButton(context, ref, EditorTool.filter, LucideIcons.palette, toolState),
-            _toolButton(context, ref, EditorTool.transition, LucideIcons.layers, toolState),
-            _toolButton(context, ref, EditorTool.speed, LucideIcons.gauge, toolState),
             _toolButton(context, ref, EditorTool.sticker, LucideIcons.smile, toolState),
-            _toolButton(context, ref, EditorTool.pip, LucideIcons.pictureInPicture2, toolState),
-            _toolButton(context, ref, EditorTool.keyframe, LucideIcons.diamond, toolState),
+            _toolButton(context, ref, EditorTool.audio, LucideIcons.music, toolState),
+            _toolButton(context, ref, EditorTool.export, LucideIcons.download, toolState),
+            _toolButton(context, ref, EditorTool.more, LucideIcons.moreHorizontal, toolState),
           ],
         ),
       ),
@@ -96,13 +95,13 @@ class BottomToolbar extends ConsumerWidget {
                 size: 20,
                 color: isActive ? cs.primary : cs.onSurface.withOpacity(0.6),
               ),
-              const SizedBox(height: 2),
+              const SizedBox(height: 4),
               Text(
                 tool.label,
                 style: TextStyle(
-                  fontSize: 9,
-                  fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
-                  color: isActive ? cs.primary : cs.onSurface.withOpacity(0.5),
+                  fontSize: 12,
+                  fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
+                  color: isActive ? cs.primary : cs.onSurface.withOpacity(0.72),
                 ),
               ),
             ],
@@ -200,8 +199,62 @@ class BottomToolbar extends ConsumerWidget {
         return const ExportPanel();
       case EditorTool.keyframe:
         return const KeyframePanel();
+      case EditorTool.chroma:
+        return const ChromaPanel();
+      case EditorTool.more:
+        return const _MoreToolsSheet();
       case EditorTool.none:
         return null;
     }
+  }
+}
+
+class _MoreToolsSheet extends ConsumerWidget {
+  const _MoreToolsSheet();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    Widget chip(EditorTool tool, IconData icon) {
+      return ActionChip(
+        avatar: Icon(icon, size: 16),
+        label: Text(tool.label),
+        onPressed: () {
+          Navigator.pop(context);
+          BottomToolbar.openToolSheet(context, ref, tool);
+        },
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          chip(EditorTool.filter, LucideIcons.palette),
+          chip(EditorTool.speed, LucideIcons.gauge),
+          chip(EditorTool.keyframe, LucideIcons.diamond),
+          chip(EditorTool.pip, LucideIcons.pictureInPicture2),
+          chip(EditorTool.chroma, LucideIcons.aperture),
+          ActionChip(
+            avatar: const Icon(LucideIcons.snowflake, size: 16),
+            label: const Text('Freeze'),
+            onPressed: () {
+              Navigator.pop(context);
+              final clip = ref.read(selectedClipProvider);
+              final pos = ref.read(playbackProvider).position;
+              if (clip is VideoClip) {
+                ref.read(projectProvider.notifier).freezeFrame(
+                      clip.id,
+                      pos,
+                      const Duration(seconds: 1),
+                    );
+              }
+            },
+          ),
+          chip(EditorTool.transition, LucideIcons.layers),
+        ],
+      ),
+    );
   }
 }

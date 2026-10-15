@@ -9,7 +9,7 @@ import 'package:kala_ai_create_images_videos_with_ai/core/studio/studio_api.dart
 import 'package:kala_ai_create_images_videos_with_ai/core/studio/studio_models.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/sign_in_prompt.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/studio/studio_job_page.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class StudioPage extends StatefulWidget {

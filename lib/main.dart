@@ -3,10 +3,11 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:material_ui/material_ui.dart' as material_ui;
 import 'package:kala_ai_create_images_videos_with_ai/core/services/file_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/polling_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/thumbnail_service.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // Firebase imports
@@ -169,23 +170,10 @@ Future<void> _reloadJobsToNotifier({bool retryOnEmpty = true}) async {
                                 (prefsJob.downloadUrl != null && prefsJob.downloadUrl != currentJob.downloadUrl);
                 final sourceJob = usePrefs ? prefsJob : currentJob;
                 
-                final mergedJob = JobModel(
-                  jobId: sourceJob.jobId,
-                  title: sourceJob.title,
-                  model: sourceJob.model,
-                  outputType: sourceJob.outputType,
-                  status: sourceJob.status,
-                  downloadUrl: sourceJob.downloadUrl,
-                  createdAt: sourceJob.createdAt,
+                final mergedJob = sourceJob.copyWith(
                   localFilePath: currentJob.localFilePath ?? sourceJob.localFilePath,
                   inputImagePath: currentJob.inputImagePath ?? sourceJob.inputImagePath,
-                  enhancedPrompt: sourceJob.enhancedPrompt,
-                  originalPrompt: sourceJob.originalPrompt,
-                  variations: sourceJob.variations,
-                  variationResults: sourceJob.variationResults,
                 );
-                mergedJob.promptEnhanced = sourceJob.promptEnhanced;
-                mergedJob.allCompleted = sourceJob.allCompleted;
                 mergedJobs.add(mergedJob);
               }
             } else {
@@ -197,23 +185,10 @@ Future<void> _reloadJobsToNotifier({bool retryOnEmpty = true}) async {
                 );
                 
                 // Use prefsJob (has latest status/url) but preserve localFilePath if it exists
-                final mergedJob = JobModel(
-                  jobId: prefsJob.jobId,
-                  title: prefsJob.title,
-                  model: prefsJob.model,
-                  outputType: prefsJob.outputType,
-                  status: prefsJob.status,
-                  downloadUrl: prefsJob.downloadUrl,
-                  createdAt: prefsJob.createdAt,
+                final mergedJob = prefsJob.copyWith(
                   localFilePath: currentJob.localFilePath ?? prefsJob.localFilePath,
                   inputImagePath: currentJob.inputImagePath ?? prefsJob.inputImagePath,
-                  enhancedPrompt: prefsJob.enhancedPrompt,
-                  originalPrompt: prefsJob.originalPrompt,
-                  variations: prefsJob.variations,
-                  variationResults: prefsJob.variationResults,
                 );
-                mergedJob.promptEnhanced = prefsJob.promptEnhanced;
-                mergedJob.allCompleted = prefsJob.allCompleted;
                 mergedJobs.add(mergedJob);
               }
             }
@@ -1051,6 +1026,9 @@ class _KalaAIAppState extends State<KalaAIApp> {
       builder: (context, themeMode, _) {
         return MaterialApp(
           title: 'Kala AI',
+          localizationsDelegates: [
+            ...material_ui.GlobalMaterialLocalizations.delegates,
+          ],
 
           // Light + Dark theme pair
           theme: AppTheme.modernLight,

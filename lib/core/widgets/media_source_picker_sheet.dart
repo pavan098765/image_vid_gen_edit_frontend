@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 /// Standard card for Gallery / Camera selection (shared layout across tools).
 class MediaSourcePickerTile extends StatelessWidget {

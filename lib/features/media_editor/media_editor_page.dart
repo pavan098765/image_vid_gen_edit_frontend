@@ -1,7 +1,7 @@
 // lib/features/media_editor/media_editor_page.dart
 
 import 'package:flutter/material.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
 import '../image_editor/image_editor_page.dart';
 import '../video_editor/video_editor_page.dart';

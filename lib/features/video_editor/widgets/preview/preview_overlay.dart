@@ -6,10 +6,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
 
-import '../../models/clip_model.dart';
+import '../../models/clip_model.dart' hide Clip;
 import '../../models/effect_model.dart';
 import '../../models/keyframe_model.dart';
 import '../../state/editor_providers.dart';
+import '../../state/tool_notifier.dart';
 
 /// Renders text, sticker, and PiP overlay layers on top of the video preview.
 /// Overlays are draggable to reposition them. Keyframe values are applied.
@@ -113,6 +114,63 @@ class _PreviewOverlayState extends ConsumerState<PreviewOverlay> {
 
   // ─── Drag ────────────────────────────────────────────────────────────────
 
+  void _writeOverlay(
+    String clipId, {
+    Offset? position,
+    double? scale,
+    double? rotation,
+  }) {
+    final playback = ref.read(playbackProvider);
+    final clip = ref.read(projectProvider)?.findClipById(clipId);
+    final recording = ref.read(toolProvider).activeTool == EditorTool.keyframe;
+    if (recording && clip != null) {
+      final rel = playback.position - clip.startTime;
+      var tracks = List<KeyframeTrack>.from(clip.keyframeTracks);
+      void setProp(KeyframeProperty p, double v) {
+        final existing = tracks.where((t) => t.property == p).firstOrNull;
+        if (existing == null) {
+          tracks.add(KeyframeTrack(clipId: clipId, property: p)
+              .setKeyframe(rel, v));
+        } else {
+          tracks = [
+            for (final t in tracks)
+              if (t.property == p) t.setKeyframe(rel, v) else t
+          ];
+        }
+      }
+
+      if (position != null) {
+        setProp(KeyframeProperty.positionX, position.dx);
+        setProp(KeyframeProperty.positionY, position.dy);
+      }
+      if (scale != null) setProp(KeyframeProperty.scale, scale);
+      if (rotation != null) setProp(KeyframeProperty.rotation, rotation);
+      ref.read(projectProvider.notifier).updateClip(
+            clipId,
+            (c) => c.copyWith(keyframeTracks: tracks),
+          );
+      return;
+    }
+
+    ref.read(projectProvider.notifier).updateClip(clipId, (c) {
+      if (c is TextClip) {
+        return c.copyWith(position: position ?? c.position);
+      } else if (c is StickerClip) {
+        return c.copyWith(
+          position: position ?? c.position,
+          scale: scale ?? c.scale,
+          rotation: rotation ?? c.rotation,
+        );
+      } else if (c is PipClip) {
+        return c.copyWith(
+          position: position ?? c.position,
+          scale: scale ?? c.scale,
+        );
+      }
+      return c;
+    });
+  }
+
   void _onOverlayPanUpdate(String clipId, DragUpdateDetails details) {
     final renderBox = context.findRenderObject() as RenderBox?;
     if (renderBox == null) return;
@@ -120,31 +178,82 @@ class _PreviewOverlayState extends ConsumerState<PreviewOverlay> {
     final dx = details.delta.dx / size.width;
     final dy = details.delta.dy / size.height;
 
-    ref.read(projectProvider.notifier).updateClip(clipId, (c) {
-      if (c is TextClip) {
-        return c.copyWith(
-          position: Offset(
-            (c.position.dx + dx).clamp(0.0, 1.0),
-            (c.position.dy + dy).clamp(0.0, 1.0),
-          ),
+    Offset pos;
+    final project = ref.read(projectProvider);
+    final clip = project?.findClipById(clipId);
+    if (clip is TextClip) {
+      pos = clip.position;
+    } else if (clip is StickerClip) {
+      pos = clip.position;
+    } else if (clip is PipClip) {
+      pos = clip.position;
+    } else {
+      return;
+    }
+    var next = Offset((pos.dx + dx).clamp(0.0, 1.0), (pos.dy + dy).clamp(0.0, 1.0));
+    if ((next.dx - 0.5).abs() < 0.02) next = Offset(0.5, next.dy);
+    if ((next.dy - 0.5).abs() < 0.02) next = Offset(next.dx, 0.5);
+    _writeOverlay(clipId, position: next);
+  }
+
+  Widget _withHandles({
+    required String clipId,
+    required Widget child,
+    required double scale,
+    required double rotation,
+    required bool selected,
+  }) {
+    if (!selected) return child;
+    return GestureDetector(
+      onScaleUpdate: (details) {
+        if (details.pointerCount < 2) return;
+        var rot = rotation + details.rotation;
+        const step = 0.785398; // 45 deg
+        final snapped = (rot / step).round() * step;
+        if ((rot - snapped).abs() < 0.12) rot = snapped;
+        _writeOverlay(
+          clipId,
+          scale: (scale * details.scale).clamp(0.2, 4.0),
+          rotation: rot,
         );
-      } else if (c is StickerClip) {
-        return c.copyWith(
-          position: Offset(
-            (c.position.dx + dx).clamp(0.0, 1.0),
-            (c.position.dy + dy).clamp(0.0, 1.0),
+      },
+      child: Stack(
+        alignment: Alignment.center,
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.white70, width: 1),
+            ),
+            child: child,
           ),
-        );
-      } else if (c is PipClip) {
-        return c.copyWith(
-          position: Offset(
-            (c.position.dx + dx).clamp(0.0, 1.0),
-            (c.position.dy + dy).clamp(0.0, 1.0),
+          Positioned(
+            right: -8,
+            bottom: -8,
+            child: GestureDetector(
+              onPanUpdate: (d) {
+                final next = (scale + d.delta.dx / 120).clamp(0.2, 4.0);
+                _writeOverlay(clipId, scale: next);
+              },
+              child: const CircleAvatar(radius: 7, backgroundColor: Colors.white),
+            ),
           ),
-        );
-      }
-      return c;
-    });
+          Positioned(
+            top: -22,
+            child: GestureDetector(
+              onPanUpdate: (d) {
+                var rot = rotation + d.delta.dx / 40;
+                const step = 0.785398;
+                final snapped = (rot / step).round() * step;
+                if ((rot - snapped).abs() < 0.12) rot = snapped;
+                _writeOverlay(clipId, rotation: rot);
+              },
+              child: const Icon(Icons.refresh, color: Colors.white, size: 16),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   // ─── Text overlay ────────────────────────────────────────────────────────
@@ -242,7 +351,12 @@ class _PreviewOverlayState extends ConsumerState<PreviewOverlay> {
         alignment: Alignment(posX * 2 - 1, posY * 2 - 1),
         child: GestureDetector(
           onPanUpdate: (details) => _onOverlayPanUpdate(clip.id, details),
-          child: Transform.translate(
+          child: _withHandles(
+            clipId: clip.id,
+            selected: clip.isSelected,
+            scale: finalScale,
+            rotation: kfRotation,
+            child: Transform.translate(
             offset: Offset(translateX, translateY),
             child: Transform.rotate(
               angle: kfRotation,
@@ -279,6 +393,7 @@ class _PreviewOverlayState extends ConsumerState<PreviewOverlay> {
                   ),
                 ),
               ),
+            ),
             ),
           ),
         ),
@@ -319,7 +434,12 @@ class _PreviewOverlayState extends ConsumerState<PreviewOverlay> {
         alignment: Alignment(posX * 2 - 1, posY * 2 - 1),
         child: GestureDetector(
           onPanUpdate: (details) => _onOverlayPanUpdate(clip.id, details),
-          child: Transform.rotate(
+          child: _withHandles(
+            clipId: clip.id,
+            selected: clip.isSelected,
+            scale: kfScale,
+            rotation: kfRotation,
+            child: Transform.rotate(
             angle: kfRotation,
             child: Transform.scale(
               scale: kfScale,
@@ -327,9 +447,16 @@ class _PreviewOverlayState extends ConsumerState<PreviewOverlay> {
                 opacity: kfOpacity.clamp(0.0, 1.0),
                 child: clip.isEmoji
                     ? Text(clip.stickerData, style: const TextStyle(fontSize: 48))
-                    : const Icon(Icons.image, size: 48),
+                    : Image.file(
+                        File(clip.stickerData),
+                        width: 48,
+                        height: 48,
+                        errorBuilder: (_, __, ___) =>
+                            const Icon(Icons.image, size: 48),
+                      ),
               ),
             ),
+          ),
           ),
         ),
       ),
@@ -372,7 +499,12 @@ class _PreviewOverlayState extends ConsumerState<PreviewOverlay> {
         alignment: Alignment(posX * 2 - 1, posY * 2 - 1),
         child: GestureDetector(
           onPanUpdate: (details) => _onOverlayPanUpdate(clip.id, details),
-          child: Opacity(
+          child: _withHandles(
+            clipId: clip.id,
+            selected: clip.isSelected,
+            scale: kfScale,
+            rotation: 0,
+            child: Opacity(
             opacity: kfOpacity.clamp(0.0, 1.0),
             child: FractionallySizedBox(
               widthFactor: kfScale.clamp(0.1, 1.0),
@@ -405,6 +537,7 @@ class _PreviewOverlayState extends ConsumerState<PreviewOverlay> {
                 ),
               ),
             ),
+          ),
           ),
         ),
       ),

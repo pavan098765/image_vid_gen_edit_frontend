@@ -6,7 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/result_manager/result_manager_page.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/ai_tools/generic_tool_page.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/sale_service.dart';

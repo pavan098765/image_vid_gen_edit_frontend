@@ -24,7 +24,7 @@ import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_button.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/media_source_picker_sheet.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/themed_native_ad.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:media_kit/media_kit.dart' hide Track;
 import 'package:pro_video_editor/pro_video_editor.dart';
 import 'package:video_player/video_player.dart';
@@ -33,6 +33,7 @@ import 'models/clip_model.dart' hide Clip;
 import 'models/project_model.dart';
 import 'services/export_service.dart';
 import 'services/thumbnail_cache_service.dart';
+import 'services/video_project_store.dart';
 import 'utils/playback_mapping.dart';
 import 'utils/speed_timeline_mapping.dart';
 import 'state/editor_providers.dart';
@@ -42,17 +43,35 @@ import 'widgets/preview/preview_player.dart';
 import 'widgets/timeline/timeline_panel.dart';
 import 'widgets/toolbar/bottom_toolbar.dart';
 
+enum VideoEditorInitialTool { none, text, export }
+
 class VideoEditorPage extends ConsumerStatefulWidget {
   /// Whether to show the AppBar. Set to false when nested in MediaEditorPage.
   final bool showAppBar;
+  final String? initialVideoPath;
+  final String? initialStickerPath;
+  final VideoEditorInitialTool initialTool;
+  final ExportSettings? initialExport;
+  final bool useExistingProject;
+  final String? jobId;
 
-  const VideoEditorPage({super.key, this.showAppBar = true});
+  const VideoEditorPage({
+    super.key,
+    this.showAppBar = true,
+    this.initialVideoPath,
+    this.initialStickerPath,
+    this.initialTool = VideoEditorInitialTool.none,
+    this.initialExport,
+    this.useExistingProject = false,
+    this.jobId,
+  });
 
   @override
   ConsumerState<VideoEditorPage> createState() => _VideoEditorPageState();
 }
 
-class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
+class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
+    with WidgetsBindingObserver {
   // ─── Services ──────────────────────────────────────────────────────────────
   final AdService _adService = AdService();
 
@@ -61,6 +80,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
   VideoPlayerController? _videoController;
   bool _isInitializing = false;
   bool _editorOpen = false;
+  bool _openedInitialTool = false;
 
   // ─── Export state ──────────────────────────────────────────────────────────
   String? _outputPath;
@@ -80,8 +100,78 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     MediaKit.ensureInitialized();
     isAdFreeNotifier.addListener(_onAdFreeStatusChanged);
+    final path = widget.initialVideoPath;
+    if (path != null && path.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _openInitialVideo(path);
+      });
+    }
+  }
+
+  Future<void> _openInitialVideo(String path) async {
+    final file = File(path);
+    if (!file.existsSync()) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Couldn't open that video.")),
+        );
+      }
+      return;
+    }
+    setState(() {
+      _videoFile = file;
+      _outputPath = null;
+      _isInitializing = true;
+      _editorOpen = true;
+    });
+    await _initializeEditor(skipCreateProject: widget.useExistingProject);
+    _applyInitialExportAndTool();
+  }
+
+  void _applyInitialExportAndTool() {
+    if (!mounted) return;
+    if (widget.initialExport != null) {
+      ref
+          .read(projectProvider.notifier)
+          .updateExportSettings(widget.initialExport!);
+    }
+    if (_openedInitialTool) return;
+    _openedInitialTool = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      switch (widget.initialTool) {
+        case VideoEditorInitialTool.text:
+          BottomToolbar.openToolSheet(context, ref, EditorTool.text);
+          break;
+        case VideoEditorInitialTool.export:
+          BottomToolbar.openToolSheet(context, ref, EditorTool.export);
+          break;
+        case VideoEditorInitialTool.none:
+          break;
+      }
+      _placeInitialSticker();
+    });
+  }
+
+  void _placeInitialSticker() {
+    final path = widget.initialStickerPath;
+    if (path == null || path.isEmpty) return;
+    if (!File(path).existsSync()) return;
+    final project = ref.read(projectProvider);
+    if (project == null) return;
+    final already = project.stickerTracks.any(
+      (t) => t.clips.any((c) => c is StickerClip && c.stickerData == path),
+    );
+    if (already) return;
+    ref.read(projectProvider.notifier).addImageSticker(
+          path,
+          duration: project.totalDuration > Duration.zero
+              ? project.totalDuration
+              : const Duration(seconds: 3),
+        );
   }
 
   void _onAdFreeStatusChanged() {
@@ -136,7 +226,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
   //  EDITOR INITIALIZATION
   // =========================================================================
 
-  Future<void> _initializeEditor() async {
+  Future<void> _initializeEditor({bool skipCreateProject = false}) async {
     if (_videoFile == null) return;
 
     try {
@@ -150,51 +240,66 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
       await _videoController!.setLooping(false);
       await _videoController!.setVolume(1.0); // start with full volume
 
-      // Create the project in state
-      final projectId = 'proj_${DateTime.now().microsecondsSinceEpoch}';
-      ref.read(projectProvider.notifier).createProject(
-            projectId: projectId,
-            videoPath: _videoFile!.path,
-            videoDuration: metadata.duration,
-            width: metadata.resolution.width,
-            height: metadata.resolution.height,
-          );
+      if (!skipCreateProject) {
+        final jobId = widget.jobId;
+        VideoProject? restored;
+        if (jobId != null && jobId.isNotEmpty) {
+          restored = await VideoProjectStore.loadForJob(jobId);
+        }
+        if (restored != null) {
+          ref.read(projectProvider.notifier).replaceProject(restored);
+          ref
+              .read(playbackProvider.notifier)
+              .setTotalDuration(restored.totalDuration);
+        } else {
+        // Create the project in state
+        final projectId = jobId ?? 'proj_${DateTime.now().microsecondsSinceEpoch}';
+        ref.read(projectProvider.notifier).createProject(
+              projectId: projectId,
+              videoPath: _videoFile!.path,
+              videoDuration: metadata.duration,
+              width: metadata.resolution.width,
+              height: metadata.resolution.height,
+            );
 
-      // Set playback duration
-      ref
-          .read(playbackProvider.notifier)
-          .setTotalDuration(metadata.duration);
+        ref.read(playbackProvider.notifier).setTotalDuration(metadata.duration);
 
-      // Auto-add an audio track representing the video's embedded audio
-      final audioTrackId = '${projectId}_audio_embedded';
-      ref.read(projectProvider.notifier).addTrack(
-            Track(
-              id: audioTrackId,
-              type: TrackType.audio,
-              name: 'Original Audio',
-            ),
-          );
-      // Add a clip representing the embedded audio
-      ref.read(projectProvider.notifier).addClipToTrack(
-            audioTrackId,
-            AudioClip(
-              id: '${projectId}_audio_embedded_clip',
-              startTime: Duration.zero,
-              duration: metadata.duration,
-              sourcePath: _videoFile!.path,
-              trimStart: Duration.zero,
-              trimEnd: metadata.duration,
-              originalDuration: metadata.duration,
-              volume: 1.0,
-              name: 'Video Audio',
-            ),
-          );
+        final audioTrackId = '${projectId}_audio_embedded';
+        ref.read(projectProvider.notifier).addTrack(
+              Track(
+                id: audioTrackId,
+                type: TrackType.audio,
+                name: 'Original Audio',
+              ),
+            );
+        ref.read(projectProvider.notifier).addClipToTrack(
+              audioTrackId,
+              AudioClip(
+                id: '${projectId}_audio_embedded_clip',
+                startTime: Duration.zero,
+                duration: metadata.duration,
+                sourcePath: _videoFile!.path,
+                trimStart: Duration.zero,
+                trimEnd: metadata.duration,
+                originalDuration: metadata.duration,
+                volume: 1.0,
+                name: 'Video Audio',
+              ),
+            );
 
-      // Auto-select the first video clip so tools work immediately
-      final firstClipId = '${projectId}_clip_0';
-      final firstTrackId = '${projectId}_video_0';
-      ref.read(timelineProvider.notifier).selectClip(firstClipId, trackId: firstTrackId);
-      ref.read(projectProvider.notifier).selectClip(firstClipId);
+        final firstClipId = '${projectId}_clip_0';
+        final firstTrackId = '${projectId}_video_0';
+        ref
+            .read(timelineProvider.notifier)
+            .selectClip(firstClipId, trackId: firstTrackId);
+        ref.read(projectProvider.notifier).selectClip(firstClipId);
+        }
+      } else {
+        final project = ref.read(projectProvider);
+        ref
+            .read(playbackProvider.notifier)
+            .setTotalDuration(project?.totalDuration ?? metadata.duration);
+      }
 
       // Generate thumbnails asynchronously (don't block initialization)
       _generateThumbnails(_videoFile!, metadata.duration);
@@ -210,6 +315,8 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
           }
         }),
       );
+
+      _placeInitialSticker();
 
       if (mounted) setState(() => _isInitializing = false);
     } catch (e) {
@@ -309,7 +416,8 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
     _providerSubscriptions.add(
       ref.listenManual<PlaybackState>(playbackProvider, (prev, next) {
         if (_isSyncingFromController) return;
-        if (_videoController == null || !_videoController!.value.isInitialized) {
+        if (_videoController == null ||
+            !_videoController!.value.isInitialized) {
           return;
         }
         final project = ref.read(projectProvider);
@@ -331,7 +439,9 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
     // embedded AudioClip, handled in _syncEmbeddedAudioVolume().
     _providerSubscriptions.add(
       ref.listenManual(selectedClipProvider, (prev, next) {
-        if (next is VideoClip && _videoController != null && _videoController!.value.isInitialized) {
+        if (next is VideoClip &&
+            _videoController != null &&
+            _videoController!.value.isInitialized) {
           final pos = ref.read(playbackProvider).position;
           final speed = instantaneousPlaybackSpeed(next, pos).clamp(0.25, 5.0);
           if ((_videoController!.value.playbackSpeed - speed).abs() > 0.01) {
@@ -451,7 +561,8 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
     }
 
     // Remove players for clips that no longer exist
-    final toRemove = _audioPlayers.keys.where((id) => !audioClipIds.contains(id)).toList();
+    final toRemove =
+        _audioPlayers.keys.where((id) => !audioClipIds.contains(id)).toList();
     for (final id in toRemove) {
       _audioPlayers[id]?.dispose();
       _audioPlayers.remove(id);
@@ -600,7 +711,8 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
             backgroundColor: Colors.green.shade700,
             behavior: SnackBarBehavior.floating,
             margin: const EdgeInsets.all(16),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
         );
       }
@@ -613,7 +725,8 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
             backgroundColor: Colors.red.shade700,
             behavior: SnackBarBehavior.floating,
             margin: const EdgeInsets.all(16),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
         );
       }
@@ -644,9 +757,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
                 children: [
                   Icon(LucideIcons.alertCircle, color: Colors.white, size: 20),
                   SizedBox(width: 12),
-                  Expanded(
-                      child:
-                          Text('Saving video...')),
+                  Expanded(child: Text('Saving video...')),
                 ],
               ),
               backgroundColor: Colors.orange.shade700,
@@ -686,8 +797,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
         context,
         bytes,
         extension: "mp4",
-        customFileName:
-            FileService.generateTimestampFilename("video", "mp4"),
+        customFileName: FileService.generateTimestampFilename("video", "mp4"),
         previewBytes: thumbBytes,
       );
     } catch (e) {
@@ -756,9 +866,20 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
       child: Scaffold(
         appBar: widget.showAppBar
             ? AppBar(
-                title:
-                    const KalaLogoWithIcon(logoHeight: 30, fontSize: 22),
+                title: const KalaLogoWithIcon(logoHeight: 30, fontSize: 22),
                 actions: [
+                  if (_editorOpen)
+                    IconButton(
+                      icon: const Icon(Icons.folder_open),
+                      tooltip: 'Open',
+                      onPressed: _openProject,
+                    ),
+                  if (_editorOpen)
+                    IconButton(
+                      icon: const Icon(Icons.save),
+                      tooltip: 'Save',
+                      onPressed: () => _autosave(notify: true),
+                    ),
                   if (_videoFile != null && !_editorOpen)
                     IconButton(
                       icon: const Icon(Icons.edit),
@@ -774,8 +895,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
                             child: SizedBox(
                               width: 24,
                               height: 24,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2),
+                              child: CircularProgressIndicator(strokeWidth: 2),
                             ),
                           )
                         : IconButton(
@@ -791,9 +911,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
             _buildBody(),
 
             // Floating action buttons when AppBar hidden (nested in MediaEditorPage)
-            if (!widget.showAppBar &&
-                _videoFile != null &&
-                !_editorOpen)
+            if (!widget.showAppBar && _videoFile != null && !_editorOpen)
               Positioned(
                 top: 8,
                 right: 8,
@@ -826,15 +944,14 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
         ),
         floatingActionButton: _videoFile == null
             ? GradientButton(
-                label: 'Pick Video',
+                label: 'Add a video',
                 icon: Icons.video_library_outlined,
                 onPressed: _pickVideo,
                 variant: ButtonVariant.primary,
                 size: ButtonSize.large,
               )
             : null,
-        floatingActionButtonLocation:
-            FloatingActionButtonLocation.centerFloat,
+        floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       ),
     );
   }
@@ -864,6 +981,19 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
           flex: 42,
           child: PreviewPlayer(controller: _videoController),
         ),
+        if (ref.watch(projectProvider)?.videoTracks.every((t) => t.clips.isEmpty) ??
+            true)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 6, 16, 2),
+            child: Text(
+              'Add a video to start.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
+                fontSize: 13,
+              ),
+            ),
+          ),
 
         // ─── Timeline ─────────────────────────────────────────────
         const Expanded(
@@ -914,12 +1044,12 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
           FilledButton.icon(
             onPressed: _isExporting
                 ? null
-                : () => BottomToolbar.openToolSheet(context, ref, EditorTool.export),
+                : () => BottomToolbar.openToolSheet(
+                    context, ref, EditorTool.export),
             icon: const Icon(LucideIcons.download, size: 16),
             label: const Text('Export', style: TextStyle(fontSize: 13)),
             style: FilledButton.styleFrom(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 14, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
               minimumSize: Size.zero,
               backgroundColor: cs.primary,
               foregroundColor: cs.onPrimary,
@@ -973,8 +1103,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
     final showAds = shouldShowNativeBannerAds();
     return Column(
       children: [
-        if (showAds)
-          const ThemedNativeAd(height: 260, useSmallTemplate: false),
+        if (showAds) const ThemedNativeAd(height: 260, useSmallTemplate: false),
         Expanded(
           child: Padding(
             padding: const EdgeInsets.only(bottom: 80),
@@ -992,23 +1121,15 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
     return Center(
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 20),
-        padding:
-            const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
           gradient: LinearGradient(
             colors: isDark
-                ? [
-                    cs.surface.withOpacity(0.65),
-                    cs.surface.withOpacity(0.50)
-                  ]
-                : [
-                    cs.surface.withOpacity(0.85),
-                    cs.surface.withOpacity(0.70)
-                  ],
+                ? [cs.surface.withOpacity(0.65), cs.surface.withOpacity(0.50)]
+                : [cs.surface.withOpacity(0.85), cs.surface.withOpacity(0.70)],
           ),
-          border:
-              Border.all(color: cs.outlineVariant.withOpacity(0.25)),
+          border: Border.all(color: cs.outlineVariant.withOpacity(0.25)),
           boxShadow: [
             BoxShadow(
               color: cs.shadow.withOpacity(0.12),
@@ -1024,7 +1145,9 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
                 size: 56, color: cs.onSurface.withOpacity(0.38)),
             const SizedBox(height: 12),
             Text(
-              'No video selected.\nTap the button below to choose one to start editing.',
+              widget.initialStickerPath != null
+                  ? 'Add a video. This sticker goes on it.'
+                  : 'Add a video to start.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: cs.onSurface.withOpacity(0.70),
@@ -1160,10 +1283,8 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
                         allowScrubbing: true,
                         colors: VideoProgressColors(
                           playedColor: cs.primary,
-                          bufferedColor:
-                              cs.onSurface.withOpacity(0.30),
-                          backgroundColor:
-                              cs.onSurface.withOpacity(0.15),
+                          bufferedColor: cs.onSurface.withOpacity(0.30),
+                          backgroundColor: cs.onSurface.withOpacity(0.15),
                         ),
                       ),
                     ),
@@ -1182,12 +1303,14 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.video_file, size: 48, color: cs.onSurface.withOpacity(0.4)),
+                      Icon(Icons.video_file,
+                          size: 48, color: cs.onSurface.withOpacity(0.4)),
                       const SizedBox(height: 8),
                       Text(
                         'Video exported successfully.\nPreview not available.',
                         textAlign: TextAlign.center,
-                        style: TextStyle(color: cs.onSurface.withOpacity(0.5), fontSize: 13),
+                        style: TextStyle(
+                            color: cs.onSurface.withOpacity(0.5), fontSize: 13),
                       ),
                     ],
                   ),
@@ -1300,8 +1423,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
           height: 40,
           alignment: Alignment.center,
           child: Icon(icon,
-              size: 22,
-              color: isPrimary ? cs.onPrimary : cs.onSurface),
+              size: 22, color: isPrimary ? cs.onPrimary : cs.onSurface),
         ),
       ),
     );
@@ -1370,7 +1492,62 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      _autosave();
+    }
+  }
+
+  Future<void> _autosave({bool notify = false}) async {
+    final project = ref.read(projectProvider);
+    if (project == null) return;
+    final id = widget.jobId ?? project.id;
+    try {
+      await VideoProjectStore.save(project.copyWith(id: id));
+      if (notify && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Project saved')),
+        );
+      }
+    } catch (e) {
+      debugPrint('Video project save failed: $e');
+    }
+  }
+
+  Future<void> _openProject() async {
+    final ids = await VideoProjectStore.listIds();
+    if (!mounted) return;
+    if (ids.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No saved projects yet.')),
+      );
+      return;
+    }
+    final picked = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Open project'),
+        children: [
+          for (final id in ids)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, id),
+              child: Text(id),
+            ),
+        ],
+      ),
+    );
+    if (picked == null) return;
+    final loaded = await VideoProjectStore.load(picked);
+    if (loaded == null || !mounted) return;
+    ref.read(projectProvider.notifier).replaceProject(loaded);
+    ref.read(playbackProvider.notifier).setTotalDuration(loaded.totalDuration);
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _autosave();
     isAdFreeNotifier.removeListener(_onAdFreeStatusChanged);
     _positionTimer?.cancel();
     // Close all Riverpod subscriptions created via listenManual
@@ -1422,8 +1599,7 @@ class _ConfirmExitAppDialog extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     return AlertDialog(
       backgroundColor: cs.surface,
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -1501,14 +1677,8 @@ class _VideoInitializingWidget extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: isDark
-              ? [
-                  cs.surface.withOpacity(0.95),
-                  cs.surface.withOpacity(0.80)
-                ]
-              : [
-                  cs.surface.withOpacity(0.98),
-                  cs.surface.withOpacity(0.92)
-                ],
+              ? [cs.surface.withOpacity(0.95), cs.surface.withOpacity(0.80)]
+              : [cs.surface.withOpacity(0.98), cs.surface.withOpacity(0.92)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),

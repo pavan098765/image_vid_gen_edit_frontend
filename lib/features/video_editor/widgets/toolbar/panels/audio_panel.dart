@@ -1,15 +1,15 @@
 // lib/features/video_editor/widgets/toolbar/panels/audio_panel.dart
 
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../models/clip_model.dart';
+import '../../../models/effect_model.dart';
 import '../../../models/project_model.dart';
 import '../../../state/editor_providers.dart';
+import '../../../services/waveform_service.dart';
 
 /// Panel for adding/managing audio tracks.
 class AudioPanel extends ConsumerStatefulWidget {
@@ -149,6 +149,25 @@ class _AudioPanelState extends ConsumerState<AudioPanel> {
               }
             },
           ),
+          if (isAudioSelected) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              children: [
+                for (final eq in VoiceEq.values)
+                  ChoiceChip(
+                    label: Text(eq.label),
+                    selected: selectedClip.voiceEq == eq,
+                    onSelected: (_) {
+                      ref.read(projectProvider.notifier).updateClip(
+                            selectedClip.id,
+                            (c) => (c as AudioClip).copyWith(voiceEq: eq),
+                          );
+                    },
+                  ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -235,12 +254,8 @@ class _AudioPanelState extends ConsumerState<AudioPanel> {
         ? project.totalDuration
         : const Duration(seconds: 30);
 
-    // Generate placeholder waveform data (randomised for visual feedback)
-    final rng = math.Random(file.name.hashCode);
-    final waveformSamples = List<double>.generate(
-      80,
-      (_) => 0.2 + rng.nextDouble() * 0.7,
-    );
+    final waveformSamples =
+        await WaveformService.samplesForPath(file.path!, count: 80);
 
     final clip = AudioClip(
       id: clipId,

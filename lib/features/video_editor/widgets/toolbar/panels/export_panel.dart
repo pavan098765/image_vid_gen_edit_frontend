@@ -2,7 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../models/project_model.dart';
 import '../../../state/editor_providers.dart';
@@ -40,9 +40,56 @@ class ExportPanel extends ConsumerWidget {
           ),
           const SizedBox(height: 16),
 
+          Text('Shape',
+              style: TextStyle(
+                  fontSize: 12, color: cs.onSurface.withOpacity(0.6))),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              _shapePreset(
+                ref,
+                settings,
+                cs,
+                label: 'Story',
+                next: const ExportSettings(
+                  quality: ExportQuality.high1080p,
+                  aspectRatio: AspectRatioPreset.portrait9x16,
+                  fps: 30,
+                  format: 'mp4',
+                ),
+              ),
+              _shapePreset(
+                ref,
+                settings,
+                cs,
+                label: 'YouTube',
+                next: const ExportSettings(
+                  quality: ExportQuality.high1080p,
+                  aspectRatio: AspectRatioPreset.landscape16x9,
+                  fps: 30,
+                  format: 'mp4',
+                ),
+              ),
+              _shapePreset(
+                ref,
+                settings,
+                cs,
+                label: 'Square',
+                next: const ExportSettings(
+                  quality: ExportQuality.high1080p,
+                  aspectRatio: AspectRatioPreset.square1x1,
+                  fps: 30,
+                  format: 'mp4',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
           // Quality presets
           Text('Quality',
-              style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(0.6))),
+              style: TextStyle(
+                  fontSize: 12, color: cs.onSurface.withOpacity(0.6))),
           const SizedBox(height: 8),
           Row(
             children: ExportQuality.values.map((q) {
@@ -61,7 +108,9 @@ class ExportPanel extends ConsumerWidget {
                           : cs.surfaceContainerHigh,
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                        color: selected ? cs.primary : cs.onSurface.withOpacity(0.08),
+                        color: selected
+                            ? cs.primary
+                            : cs.onSurface.withOpacity(0.08),
                         width: selected ? 2 : 1,
                       ),
                     ),
@@ -70,8 +119,11 @@ class ExportPanel extends ConsumerWidget {
                       q.label,
                       style: TextStyle(
                         fontSize: 13,
-                        fontWeight: selected ? FontWeight.w700 : FontWeight.normal,
-                        color: selected ? cs.primary : cs.onSurface.withOpacity(0.6),
+                        fontWeight:
+                            selected ? FontWeight.w700 : FontWeight.normal,
+                        color: selected
+                            ? cs.primary
+                            : cs.onSurface.withOpacity(0.6),
                       ),
                     ),
                   ),
@@ -83,7 +135,8 @@ class ExportPanel extends ConsumerWidget {
 
           // Aspect ratio
           Text('Aspect Ratio',
-              style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(0.6))),
+              style: TextStyle(
+                  fontSize: 12, color: cs.onSurface.withOpacity(0.6))),
           const SizedBox(height: 8),
           SizedBox(
             height: 58,
@@ -106,7 +159,9 @@ class ExportPanel extends ConsumerWidget {
                           : cs.surfaceContainerHigh,
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                        color: selected ? cs.primary : cs.onSurface.withOpacity(0.08),
+                        color: selected
+                            ? cs.primary
+                            : cs.onSurface.withOpacity(0.08),
                         width: selected ? 2 : 1,
                       ),
                     ),
@@ -117,8 +172,11 @@ class ExportPanel extends ConsumerWidget {
                           ar.label,
                           style: TextStyle(
                             fontSize: 13,
-                            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                            color: selected ? cs.primary : cs.onSurface.withOpacity(0.7),
+                            fontWeight:
+                                selected ? FontWeight.w700 : FontWeight.w500,
+                            color: selected
+                                ? cs.primary
+                                : cs.onSurface.withOpacity(0.7),
                           ),
                         ),
                         const SizedBox(height: 2),
@@ -160,7 +218,8 @@ class ExportPanel extends ConsumerWidget {
                           child: GestureDetector(
                             onTap: () => ref
                                 .read(projectProvider.notifier)
-                                .updateExportSettings(settings.copyWith(format: f)),
+                                .updateExportSettings(
+                                    settings.copyWith(format: f)),
                             child: Container(
                               margin: const EdgeInsets.symmetric(horizontal: 3),
                               padding: const EdgeInsets.symmetric(vertical: 8),
@@ -180,8 +239,9 @@ class ExportPanel extends ConsumerWidget {
                                 f.toUpperCase(),
                                 style: TextStyle(
                                   fontSize: 13,
-                                  fontWeight:
-                                      selected ? FontWeight.w600 : FontWeight.normal,
+                                  fontWeight: selected
+                                      ? FontWeight.w600
+                                      : FontWeight.normal,
                                   color: selected
                                       ? cs.primary
                                       : cs.onSurface.withOpacity(0.6),
@@ -213,7 +273,8 @@ class ExportPanel extends ConsumerWidget {
                           child: GestureDetector(
                             onTap: () => ref
                                 .read(projectProvider.notifier)
-                                .updateExportSettings(settings.copyWith(fps: fps)),
+                                .updateExportSettings(
+                                    settings.copyWith(fps: fps)),
                             child: Container(
                               margin: const EdgeInsets.symmetric(horizontal: 2),
                               padding: const EdgeInsets.symmetric(vertical: 8),
@@ -233,8 +294,9 @@ class ExportPanel extends ConsumerWidget {
                                 '$fps',
                                 style: TextStyle(
                                   fontSize: 13,
-                                  fontWeight:
-                                      selected ? FontWeight.w600 : FontWeight.normal,
+                                  fontWeight: selected
+                                      ? FontWeight.w600
+                                      : FontWeight.normal,
                                   color: selected
                                       ? cs.primary
                                       : cs.onSurface.withOpacity(0.6),
@@ -273,6 +335,53 @@ class ExportPanel extends ConsumerWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _shapePreset(
+    WidgetRef ref,
+    ExportSettings settings,
+    ColorScheme cs, {
+    required String label,
+    required ExportSettings next,
+  }) {
+    final selected = settings.quality == next.quality &&
+        settings.aspectRatio == next.aspectRatio &&
+        settings.fps == next.fps &&
+        settings.format == next.format;
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: Material(
+          color:
+              selected ? cs.primary.withOpacity(0.15) : cs.surfaceContainerHigh,
+          borderRadius: BorderRadius.circular(10),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: () =>
+                ref.read(projectProvider.notifier).updateExportSettings(next),
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 44),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: selected ? cs.primary : cs.onSurface.withOpacity(0.08),
+                  width: selected ? 2 : 1,
+                ),
+              ),
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  color: selected ? cs.primary : cs.onSurface.withOpacity(0.7),
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

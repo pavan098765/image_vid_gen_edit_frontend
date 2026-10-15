@@ -17,11 +17,17 @@ import 'package:image/image.dart' as imglib;
 import 'package:image_picker/image_picker.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/api/submit_payload_helpers.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/explore_favorites.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/tool_launch.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/auth_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/file_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/media_upload_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/user_service.dart'
-    hide userCreditsNotifier, currentUserNotifier, isLoadingUserNotifier, UserData;
+    hide
+        userCreditsNotifier,
+        currentUserNotifier,
+        isLoadingUserNotifier,
+        UserData;
 import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/media_source_picker_sheet.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_button.dart';
@@ -37,7 +43,7 @@ import 'package:kala_ai_create_images_videos_with_ai/core/widgets/rife_multiplie
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/streaming_composer_hint.dart';
 import 'package:crypto/crypto.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
@@ -62,6 +68,7 @@ class GenericToolConfig {
   final int cost;
   final int costUpscale;
   final int offer;
+
   /// Capability id from tool_config (e.g. create_image, create_video).
   final String? capabilityId;
   // New fields for model selection
@@ -119,7 +126,7 @@ class PromptChip {
   final String snippet;
   final String icon;
   final String? previewUrl;
-  
+
   const PromptChip({
     this.id = '',
     required this.label,
@@ -127,7 +134,7 @@ class PromptChip {
     required this.icon,
     this.previewUrl,
   });
-  
+
   factory PromptChip.fromJson(Map<String, dynamic> json) {
     return PromptChip(
       id: json['id'] ?? '',
@@ -141,18 +148,66 @@ class PromptChip {
 
 /// Fallback chips used if config loading fails
 const List<PromptChip> promptHelperChips = [
-  PromptChip(id: 'cinematic', label: 'Cinematic', snippet: 'cinematic lighting, film grain', icon: '🎬'),
-  PromptChip(id: 'anime', label: 'Anime', snippet: 'anime style, vibrant colors', icon: '🎌'),
-  PromptChip(id: 'portrait', label: 'Portrait', snippet: 'portrait photography, sharp focus', icon: '👤'),
-  PromptChip(id: 'soft_light', label: 'Soft Light', snippet: 'soft diffused lighting, gentle shadows', icon: '💡'),
-  PromptChip(id: 'high_detail', label: 'High Detail', snippet: '8K, ultra detailed, intricate details', icon: '🔍'),
-  PromptChip(id: 'studio', label: 'Studio', snippet: 'professional studio lighting, clean background', icon: '📸'),
-  PromptChip(id: 'dramatic', label: 'Dramatic', snippet: 'dramatic lighting, high contrast', icon: '🌟'),
-  PromptChip(id: 'dreamy', label: 'Dreamy', snippet: 'dreamy atmosphere, ethereal glow', icon: '✨'),
-  PromptChip(id: 'vintage', label: 'Vintage', snippet: 'vintage aesthetic, retro film look', icon: '📼'),
-  PromptChip(id: 'neon', label: 'Neon', snippet: 'neon lights, cyberpunk vibes', icon: '🌃'),
-  PromptChip(id: 'nature', label: 'Nature', snippet: 'natural lighting, outdoor setting', icon: '🌿'),
-  PromptChip(id: 'minimal', label: 'Minimal', snippet: 'minimalist, clean composition', icon: '⬜'),
+  PromptChip(
+      id: 'cinematic',
+      label: 'Cinematic',
+      snippet: 'cinematic lighting, film grain',
+      icon: '🎬'),
+  PromptChip(
+      id: 'anime',
+      label: 'Anime',
+      snippet: 'anime style, vibrant colors',
+      icon: '🎌'),
+  PromptChip(
+      id: 'portrait',
+      label: 'Portrait',
+      snippet: 'portrait photography, sharp focus',
+      icon: '👤'),
+  PromptChip(
+      id: 'soft_light',
+      label: 'Soft Light',
+      snippet: 'soft diffused lighting, gentle shadows',
+      icon: '💡'),
+  PromptChip(
+      id: 'high_detail',
+      label: 'High Detail',
+      snippet: '8K, ultra detailed, intricate details',
+      icon: '🔍'),
+  PromptChip(
+      id: 'studio',
+      label: 'Studio',
+      snippet: 'professional studio lighting, clean background',
+      icon: '📸'),
+  PromptChip(
+      id: 'dramatic',
+      label: 'Dramatic',
+      snippet: 'dramatic lighting, high contrast',
+      icon: '🌟'),
+  PromptChip(
+      id: 'dreamy',
+      label: 'Dreamy',
+      snippet: 'dreamy atmosphere, ethereal glow',
+      icon: '✨'),
+  PromptChip(
+      id: 'vintage',
+      label: 'Vintage',
+      snippet: 'vintage aesthetic, retro film look',
+      icon: '📼'),
+  PromptChip(
+      id: 'neon',
+      label: 'Neon',
+      snippet: 'neon lights, cyberpunk vibes',
+      icon: '🌃'),
+  PromptChip(
+      id: 'nature',
+      label: 'Nature',
+      snippet: 'natural lighting, outdoor setting',
+      icon: '🌿'),
+  PromptChip(
+      id: 'minimal',
+      label: 'Minimal',
+      snippet: 'minimalist, clean composition',
+      icon: '⬜'),
 ];
 
 /// --------------------------------------
@@ -170,7 +225,7 @@ class StylePreset {
   final String? previewUrl; // preview image/video URL
   final String? previewType; // 'image' or 'video' (auto-detected from URL)
   final bool isFeatured;
-  
+
   const StylePreset({
     required this.id,
     required this.name,
@@ -181,7 +236,7 @@ class StylePreset {
     this.previewType,
     this.isFeatured = false,
   });
-  
+
   factory StylePreset.fromJson(Map<String, dynamic> json) {
     final url = json['preview_url'] as String?;
     String? pType;
@@ -202,7 +257,15 @@ class StylePreset {
 }
 
 /// Fallback categories used if config loading fails
-const List<String> styleCategories = ['All', 'Favorites', 'Fun', 'Realistic', 'Artistic', 'Anime', 'Cinematic'];
+const List<String> styleCategories = [
+  'All',
+  'Favorites',
+  'Fun',
+  'Realistic',
+  'Artistic',
+  'Anime',
+  'Cinematic'
+];
 
 /// --------------------------------------
 ///  USER TEMPLATE (Saved Settings)
@@ -213,26 +276,32 @@ class UserTemplate {
   final String name;
   final String prompt;
   final String? modelId;
+  final String? capabilityId;
+  final String? toolTitle;
   final AdvancedSettings settings;
   final DateTime createdAt;
   final DateTime? lastUsed;
-  
+
   UserTemplate({
     required this.id,
     required this.name,
     required this.prompt,
     this.modelId,
+    this.capabilityId,
+    this.toolTitle,
     required this.settings,
     required this.createdAt,
     this.lastUsed,
   });
-  
+
   Map<String, dynamic> toJson() {
     return {
       'id': id,
       'name': name,
       'prompt': prompt,
       'modelId': modelId,
+      'capabilityId': capabilityId,
+      'toolTitle': toolTitle,
       'settings': {
         'enhancePrompt': settings.enhancePrompt,
         'upscaleOutput': settings.upscaleOutput,
@@ -253,7 +322,7 @@ class UserTemplate {
       'lastUsed': lastUsed?.toIso8601String(),
     };
   }
-  
+
   factory UserTemplate.fromJson(Map<String, dynamic> json) {
     final settingsJson = json['settings'] as Map<String, dynamic>;
     return UserTemplate(
@@ -261,6 +330,8 @@ class UserTemplate {
       name: json['name'] as String,
       prompt: json['prompt'] as String,
       modelId: json['modelId'] as String?,
+      capabilityId: json['capabilityId'] as String?,
+      toolTitle: json['toolTitle'] as String?,
       settings: AdvancedSettings(
         enhancePrompt: settingsJson['enhancePrompt'] as bool? ?? false,
         upscaleOutput: settingsJson['upscaleOutput'] as bool? ?? false,
@@ -283,14 +354,18 @@ class UserTemplate {
             settingsJson['cineRealMotionMode'] as String? ?? 'i2v',
       ),
       createdAt: DateTime.parse(json['createdAt'] as String),
-      lastUsed: json['lastUsed'] != null ? DateTime.parse(json['lastUsed'] as String) : null,
+      lastUsed: json['lastUsed'] != null
+          ? DateTime.parse(json['lastUsed'] as String)
+          : null,
     );
   }
-  
+
   UserTemplate copyWith({
     String? name,
     String? prompt,
     String? modelId,
+    String? capabilityId,
+    String? toolTitle,
     AdvancedSettings? settings,
     DateTime? lastUsed,
   }) {
@@ -299,6 +374,8 @@ class UserTemplate {
       name: name ?? this.name,
       prompt: prompt ?? this.prompt,
       modelId: modelId ?? this.modelId,
+      capabilityId: capabilityId ?? this.capabilityId,
+      toolTitle: toolTitle ?? this.toolTitle,
       settings: settings ?? this.settings,
       createdAt: createdAt,
       lastUsed: lastUsed ?? this.lastUsed,
@@ -309,111 +386,176 @@ class UserTemplate {
 const List<StylePreset> allStylePresets = [
   // Fun
   StylePreset(
-    id: 'cartoon_3d', name: '3D Cartoon', category: 'Fun',
-    promptSnippet: 'Pixar 3D animation style, colorful, rounded shapes, playful lighting',
-    icon: '🎪', isFeatured: true,
+    id: 'cartoon_3d',
+    name: '3D Cartoon',
+    category: 'Fun',
+    promptSnippet:
+        'Pixar 3D animation style, colorful, rounded shapes, playful lighting',
+    icon: '🎪',
+    isFeatured: true,
   ),
   StylePreset(
-    id: 'comic_book', name: 'Comic Book', category: 'Fun',
-    promptSnippet: 'comic book style, bold outlines, halftone dots, speech bubbles aesthetic',
+    id: 'comic_book',
+    name: 'Comic Book',
+    category: 'Fun',
+    promptSnippet:
+        'comic book style, bold outlines, halftone dots, speech bubbles aesthetic',
     icon: '💥',
   ),
   StylePreset(
-    id: 'clay_render', name: 'Clay Render', category: 'Fun',
-    promptSnippet: 'claymation style, soft clay texture, stop motion aesthetic, handcrafted look',
+    id: 'clay_render',
+    name: 'Clay Render',
+    category: 'Fun',
+    promptSnippet:
+        'claymation style, soft clay texture, stop motion aesthetic, handcrafted look',
     icon: '🎨',
   ),
   StylePreset(
-    id: 'sticker', name: 'Sticker Style', category: 'Fun',
-    promptSnippet: 'cute sticker design, white outline, kawaii aesthetic, glossy finish',
+    id: 'sticker',
+    name: 'Sticker Style',
+    category: 'Fun',
+    promptSnippet:
+        'cute sticker design, white outline, kawaii aesthetic, glossy finish',
     icon: '🏷️',
   ),
-  
+
   // Realistic
   StylePreset(
-    id: 'photo_real', name: 'Photorealistic', category: 'Realistic',
-    promptSnippet: 'photorealistic, DSLR quality, natural lighting, 8K resolution, sharp details',
-    icon: '📷', isFeatured: true,
+    id: 'photo_real',
+    name: 'Photorealistic',
+    category: 'Realistic',
+    promptSnippet:
+        'photorealistic, DSLR quality, natural lighting, 8K resolution, sharp details',
+    icon: '📷',
+    isFeatured: true,
   ),
   StylePreset(
-    id: 'product_shot', name: 'Product Shot', category: 'Realistic',
-    promptSnippet: 'professional product photography, studio lighting, clean white background',
+    id: 'product_shot',
+    name: 'Product Shot',
+    category: 'Realistic',
+    promptSnippet:
+        'professional product photography, studio lighting, clean white background',
     icon: '🛍️',
   ),
   StylePreset(
-    id: 'fashion', name: 'Fashion Editorial', category: 'Realistic',
-    promptSnippet: 'high fashion editorial, Vogue magazine quality, dramatic pose, designer aesthetic',
+    id: 'fashion',
+    name: 'Fashion Editorial',
+    category: 'Realistic',
+    promptSnippet:
+        'high fashion editorial, Vogue magazine quality, dramatic pose, designer aesthetic',
     icon: '👗',
   ),
   StylePreset(
-    id: 'documentary', name: 'Documentary', category: 'Realistic',
-    promptSnippet: 'documentary photography style, candid moment, natural light, authentic',
+    id: 'documentary',
+    name: 'Documentary',
+    category: 'Realistic',
+    promptSnippet:
+        'documentary photography style, candid moment, natural light, authentic',
     icon: '🎞️',
   ),
-  
+
   // Painting
   StylePreset(
-    id: 'oil_classic', name: 'Oil Painting', category: 'Painting',
-    promptSnippet: 'classical oil painting, rich brush strokes, Renaissance masters style, museum quality',
-    icon: '🖼️', isFeatured: true,
+    id: 'oil_classic',
+    name: 'Oil Painting',
+    category: 'Painting',
+    promptSnippet:
+        'classical oil painting, rich brush strokes, Renaissance masters style, museum quality',
+    icon: '🖼️',
+    isFeatured: true,
   ),
   StylePreset(
-    id: 'watercolor', name: 'Watercolor', category: 'Painting',
-    promptSnippet: 'watercolor painting, soft color blends, paper texture, artistic drips',
+    id: 'watercolor',
+    name: 'Watercolor',
+    category: 'Painting',
+    promptSnippet:
+        'watercolor painting, soft color blends, paper texture, artistic drips',
     icon: '🎨',
   ),
   StylePreset(
-    id: 'impressionist', name: 'Impressionist', category: 'Painting',
-    promptSnippet: 'impressionist painting, visible brush strokes, light and color emphasis, Monet style',
+    id: 'impressionist',
+    name: 'Impressionist',
+    category: 'Painting',
+    promptSnippet:
+        'impressionist painting, visible brush strokes, light and color emphasis, Monet style',
     icon: '🌸',
   ),
   StylePreset(
-    id: 'digital_art', name: 'Digital Art', category: 'Painting',
-    promptSnippet: 'professional digital art, trending on ArtStation, concept art quality',
+    id: 'digital_art',
+    name: 'Digital Art',
+    category: 'Painting',
+    promptSnippet:
+        'professional digital art, trending on ArtStation, concept art quality',
     icon: '💻',
   ),
-  
+
   // Anime
   StylePreset(
-    id: 'anime_modern', name: 'Modern Anime', category: 'Anime',
-    promptSnippet: 'modern anime style, detailed shading, vibrant colors, high quality animation',
-    icon: '🎌', isFeatured: true,
+    id: 'anime_modern',
+    name: 'Modern Anime',
+    category: 'Anime',
+    promptSnippet:
+        'modern anime style, detailed shading, vibrant colors, high quality animation',
+    icon: '🎌',
+    isFeatured: true,
   ),
   StylePreset(
-    id: 'ghibli', name: 'Studio Ghibli', category: 'Anime',
-    promptSnippet: 'Studio Ghibli style, Hayao Miyazaki aesthetic, magical realism, detailed backgrounds',
+    id: 'ghibli',
+    name: 'Studio Ghibli',
+    category: 'Anime',
+    promptSnippet:
+        'Studio Ghibli style, Hayao Miyazaki aesthetic, magical realism, detailed backgrounds',
     icon: '🏯',
   ),
   StylePreset(
-    id: 'manga', name: 'Manga Panel', category: 'Anime',
-    promptSnippet: 'manga illustration style, black and white, screentones, dynamic composition',
+    id: 'manga',
+    name: 'Manga Panel',
+    category: 'Anime',
+    promptSnippet:
+        'manga illustration style, black and white, screentones, dynamic composition',
     icon: '📖',
   ),
   StylePreset(
-    id: 'chibi', name: 'Chibi', category: 'Anime',
-    promptSnippet: 'chibi style, cute proportions, big head small body, kawaii expressions',
+    id: 'chibi',
+    name: 'Chibi',
+    category: 'Anime',
+    promptSnippet:
+        'chibi style, cute proportions, big head small body, kawaii expressions',
     icon: '🥰',
   ),
-  
+
   // Cinematic
   StylePreset(
-    id: 'film_noir', name: 'Film Noir', category: 'Cinematic',
-    promptSnippet: 'film noir style, black and white, dramatic shadows, 1940s detective aesthetic',
-    icon: '🎬', isFeatured: true,
+    id: 'film_noir',
+    name: 'Film Noir',
+    category: 'Cinematic',
+    promptSnippet:
+        'film noir style, black and white, dramatic shadows, 1940s detective aesthetic',
+    icon: '🎬',
+    isFeatured: true,
   ),
   StylePreset(
-    id: 'blockbuster', name: 'Blockbuster', category: 'Cinematic',
-    promptSnippet: 'Hollywood blockbuster look, epic scale, cinematic color grading, anamorphic lens',
+    id: 'blockbuster',
+    name: 'Blockbuster',
+    category: 'Cinematic',
+    promptSnippet:
+        'Hollywood blockbuster look, epic scale, cinematic color grading, anamorphic lens',
     icon: '🎥',
   ),
   StylePreset(
-    id: 'scifi', name: 'Sci-Fi Epic', category: 'Cinematic',
-    promptSnippet: 'science fiction aesthetic, futuristic technology, epic space opera, blade runner vibes',
+    id: 'scifi',
+    name: 'Sci-Fi Epic',
+    category: 'Cinematic',
+    promptSnippet:
+        'science fiction aesthetic, futuristic technology, epic space opera, blade runner vibes',
     icon: '🚀',
   ),
   StylePreset(
-    id: 'horror', name: 'Horror', category: 'Cinematic',
-    promptSnippet: 'horror movie aesthetic, unsettling atmosphere, dark shadows, eerie lighting',
+    id: 'horror',
+    name: 'Horror',
+    category: 'Cinematic',
+    promptSnippet:
+        'horror movie aesthetic, unsettling atmosphere, dark shadows, eerie lighting',
     icon: '👻',
   ),
 ];
@@ -429,12 +571,12 @@ class StylePreviewManager {
   StylePreviewManager._();
 
   Directory? _cacheDir;
-  
+
   // In-memory cache for quick access
   final Map<String, Uint8List> _imageCache = {};
   final Map<String, VideoPlayerController> _videoControllers = {};
   final Map<String, Future<Uint8List?>> _pendingDownloads = {};
-  
+
   static const int maxVideoControllers = 2;
   final List<String> _videoPlayOrder = [];
 
@@ -457,23 +599,23 @@ class StylePreviewManager {
   /// Get cached image bytes for a URL (downloads if not cached)
   Future<Uint8List?> getImagePreview(String imageUrl) async {
     final hash = _getUrlHash(imageUrl);
-    
+
     // Check in-memory cache
     if (_imageCache.containsKey(hash)) {
       return _imageCache[hash];
     }
-    
+
     // Check for pending download
     if (_pendingDownloads.containsKey(hash)) {
       return _pendingDownloads[hash];
     }
-    
+
     // Check disk cache
     try {
       final cacheDir = await _getCacheDir();
       final ext = imageUrl.endsWith('.png') ? 'png' : 'jpg';
       final cachedFile = File('${cacheDir.path}/$hash.$ext');
-      
+
       if (await cachedFile.exists()) {
         final bytes = await cachedFile.readAsBytes();
         _imageCache[hash] = bytes;
@@ -483,11 +625,11 @@ class StylePreviewManager {
     } catch (e) {
       debugPrint('⚠️ Error reading cached preview: $e');
     }
-    
+
     // Download and cache
     final future = _downloadImage(imageUrl);
     _pendingDownloads[hash] = future;
-    
+
     final result = await future;
     _pendingDownloads.remove(hash);
     return result;
@@ -496,17 +638,17 @@ class StylePreviewManager {
   /// Download image and cache to disk
   Future<Uint8List?> _downloadImage(String imageUrl) async {
     final hash = _getUrlHash(imageUrl);
-    
+
     try {
       debugPrint('⬇️ Downloading style preview: $imageUrl');
       final response = await http.get(Uri.parse(imageUrl));
-      
+
       if (response.statusCode == 200) {
         final bytes = response.bodyBytes;
-        
+
         // Cache to memory
         _imageCache[hash] = bytes;
-        
+
         // Cache to disk
         try {
           final cacheDir = await _getCacheDir();
@@ -517,7 +659,7 @@ class StylePreviewManager {
         } catch (e) {
           debugPrint('⚠️ Failed to cache preview to disk: $e');
         }
-        
+
         return bytes;
       }
     } catch (e) {
@@ -527,7 +669,8 @@ class StylePreviewManager {
   }
 
   /// Get or create video controller for a style preview
-  Future<VideoPlayerController?> getVideoController(String styleId, String videoUrl) async {
+  Future<VideoPlayerController?> getVideoController(
+      String styleId, String videoUrl) async {
     // Return existing controller
     if (_videoControllers.containsKey(styleId)) {
       _videoPlayOrder.remove(styleId);
@@ -536,7 +679,8 @@ class StylePreviewManager {
     }
 
     // Evict oldest if at max
-    while (_videoControllers.length >= maxVideoControllers && _videoPlayOrder.isNotEmpty) {
+    while (_videoControllers.length >= maxVideoControllers &&
+        _videoPlayOrder.isNotEmpty) {
       final oldestId = _videoPlayOrder.removeAt(0);
       final oldController = _videoControllers.remove(oldestId);
       await oldController?.pause();
@@ -548,9 +692,9 @@ class StylePreviewManager {
       final hash = _getUrlHash(videoUrl);
       final cacheDir = await _getCacheDir();
       final cachedFile = File('${cacheDir.path}/$hash.mp4');
-      
+
       VideoPlayerController controller;
-      
+
       if (await cachedFile.exists()) {
         controller = VideoPlayerController.file(cachedFile);
         debugPrint('📦 Using cached style video: $hash.mp4');
@@ -570,14 +714,14 @@ class StylePreviewManager {
           controller = VideoPlayerController.networkUrl(Uri.parse(videoUrl));
         }
       }
-      
+
       await controller.initialize();
       controller.setLooping(true);
       controller.setVolume(0);
-      
+
       _videoControllers[styleId] = controller;
       _videoPlayOrder.add(styleId);
-      
+
       return controller;
     } catch (e) {
       debugPrint('⚠️ Failed to create video controller for $styleId: $e');
@@ -617,7 +761,8 @@ class AdvancedSettings {
   bool enhancePrompt;
   bool upscaleOutput;
   String quality; // 'Low', 'Medium', 'High'
-  String aspectRatio; // '1:1', '9:16', '16:9', '4:3', '3:4' (legacy `Default` → 1:1)
+  String
+      aspectRatio; // '1:1', '9:16', '16:9', '4:3', '3:4' (legacy `Default` → 1:1)
   int variations; // 1-4 (VIP: max 4, non-VIP: max 2)
   int videoDuration; // Create/animate video: min 5s when model allows; max from model
   double cfgScale; // 0.1 - 15.0
@@ -706,10 +851,24 @@ class AdvancedSettings {
 class GenericToolPage extends StatefulWidget {
   final GenericToolConfig config;
   final String? restoreJobId;
+  final List<String> initialLocalPaths;
+  final String? initialPrompt;
+  final Map<String, dynamic>? initialSettings;
+  final String? sourceJobId;
+  final String? launchTemplateId;
+  final String? launchTemplateTitle;
+  final bool focusPrompt;
   const GenericToolPage({
     super.key,
     required this.config,
     this.restoreJobId,
+    this.initialLocalPaths = const [],
+    this.initialPrompt,
+    this.initialSettings,
+    this.sourceJobId,
+    this.launchTemplateId,
+    this.launchTemplateTitle,
+    this.focusPrompt = false,
   });
 
   static Widget restoreFromJob({
@@ -725,7 +884,6 @@ class GenericToolPage extends StatefulWidget {
 
 class _GenericToolPageState extends State<GenericToolPage>
     with TickerProviderStateMixin, WidgetsBindingObserver {
-
   // ── Friendly display names for LoRA adapters ──
   // Key = raw adapter value sent to backend, Value = user-friendly label
   static const Map<String, String> _loraFriendlyNames = {
@@ -772,13 +930,14 @@ class _GenericToolPageState extends State<GenericToolPage>
   // Fallback LoRA adapter metadata loaded from local tool_config.json
   final Map<String, List<String>> _loraAdaptersByModel = {};
   bool _loading = false;
+
   /// True while R2 upload + `/describe_asset_for_prompt` runs from the composer.
   bool _composerAutoPromptLoading = false;
   bool _autoOpenMaskAfterPick = false;
   String? _selectedModeKey;
   String? _activeJobId;
   final bool _fetchingResult = false;
-  
+
   // Track image processing state to prevent race conditions
   bool _isProcessingImage = false;
   int _imageProcessingVersion = 0; // Increment to invalidate stale operations
@@ -802,15 +961,15 @@ class _GenericToolPageState extends State<GenericToolPage>
   String _selectedStyleCategory = 'All';
   StylePreset? _selectedStyle;
   final Set<String> _favoriteStyles = {};
-  
+
   // Config-loaded styles and tags (null = use hardcoded fallbacks)
   List<StylePreset>? _configStyles;
   List<String>? _configStyleCategories;
   List<PromptChip>? _configQuickTags;
-  
+
   // -------- User Templates (local storage) --------
   List<UserTemplate> _userTemplates = [];
-  
+
   // -------- Prompt Enhancer Section --------
   /// Outer visibility for the Style & Tags block (composer palette button).
   bool _promptStylesVisible = true;
@@ -854,33 +1013,39 @@ class _GenericToolPageState extends State<GenericToolPage>
   // -------- Upscale (2x/4x switch) --------
   int _scaleFactor = 2;
   bool _upscaleEnabled = false;
-  
+  int? _priorVariationCount;
+
   // -------- Bulk Edit --------
   // Each inner list is one bulk task: one image (default) or several for multi-init models
   // (e.g. Vectra / Revia up to 3 reference images per task).
   final List<List<Uint8List>> _bulkImageJobs = [];
   // Stores masks for each bulk task (for inpaint/erase tools; one mask per task)
   final List<Uint8List?> _bulkMasks = [];
-  
+
   // Video controllers for user-uploaded videos (e.g., ref_video for dreamid)
   final Map<String, VideoPlayerController> _userVideoControllers = {};
   // Stores outpaint configurations for each bulk image (for expand scene)
   final List<Map<String, String>?> _bulkOutpaintConfigs = [];
+
   /// Video upscaler bulk: local file paths (aligned with [_bulkVideoDurations]).
   final List<String> _bulkVideoPaths = [];
   final List<Duration?> _bulkVideoDurations = [];
+
   /// CineReal bulk: optional reference video per task (same index as [_bulkImageJobs]).
   /// Mutually exclusive with a second (end) frame on that task.
   final List<Uint8List?> _bulkCineRealRefVideoBytes = [];
   final List<String?> _bulkCineRealRefVideoPaths = [];
   final List<Duration?> _bulkCineRealRefVideoDurations = [];
+
   /// True while dispatching sequential [_runJob] calls for bulk video upscale.
   bool _videoBulkSequentialActive = false;
+
   /// Set when [completeHeavyTierRewardedAdIfNeeded] runs in parallel with media base64 encoding.
   Map<String, dynamic>? _prefetchedEncodedInputsForSubmit;
   static const int _maxBulkImagesVip = 15;
   static const int _maxBulkImagesNonVip = 5;
-  int get _maxBulkImages => isVipUser() ? _maxBulkImagesVip : _maxBulkImagesNonVip;
+  int get _maxBulkImages =>
+      isVipUser() ? _maxBulkImagesVip : _maxBulkImagesNonVip;
   // Max total jobs per submission (images × variations) to prevent server overload
   static const int _maxTotalJobs = 15;
 
@@ -918,22 +1083,23 @@ class _GenericToolPageState extends State<GenericToolPage>
     if (_supportsBulkVideoEdit) return _bulkVideoPaths.length;
     return _bulkImageJobs.length;
   }
-  
+
   /// Check if tool requires mask for each image (inpaint/erase tools)
   bool get _requiresMask {
     final model = widget.config.model.toLowerCase();
     final mode = _selectedModeKey?.toLowerCase() ?? "";
-    final paramMode = (widget.config.params?["mode"]?.toString().toLowerCase() ?? "");
+    final paramMode =
+        (widget.config.params?["mode"]?.toString().toLowerCase() ?? "");
     return model.contains("inpaint") ||
-           model.contains("lama") ||
-           mode.contains("inpaint") ||
-           paramMode.contains("inpaint") ||
-           paramMode.contains("lama");
+        model.contains("lama") ||
+        mode.contains("inpaint") ||
+        paramMode.contains("inpaint") ||
+        paramMode.contains("lama");
   }
-  
+
   /// Check if tool is outpaint (expand scene)
   bool get _isOutpaint => widget.config.model == "diffusers_outpaint";
-  
+
   /// Check if this is an upscaler tool (e.g., "Upscale Image")
   /// Upscalers have upscale always enabled by default
   bool get _isUpscalerTool {
@@ -942,9 +1108,9 @@ class _GenericToolPageState extends State<GenericToolPage>
     // Check by title or model name
     // Upscale models: realesrgan, realesrgan_anime, realesrgan_denoise, face_enhancer
     return title.contains('upscale') ||
-           model == 'aurasrv2' ||
-           model == 'swin2sr' ||
-           model.startsWith('realesrgan');
+        model == 'aurasrv2' ||
+        model == 'swin2sr' ||
+        model.startsWith('realesrgan');
   }
 
   /// Face Enhancer sub-model under Upscale Image (fixed backend params; not shown in settings UI).
@@ -967,21 +1133,27 @@ class _GenericToolPageState extends State<GenericToolPage>
         scale >= 3 ? _kFaceEnhancerBgModel4x : _kFaceEnhancerBgModel2x;
     _inputs['enhance_faces'] = true;
   }
-  
+
   /// Check if this is an edit_image category tool
   /// Edit image tools: have init_image input and outputType is 'image'
   bool get _isEditImageTool {
-    final hasInitImage = widget.config.inputs.any((i) => i['id'] == 'init_image');
+    final hasInitImage =
+        widget.config.inputs.any((i) => i['id'] == 'init_image');
     return hasInitImage && widget.config.outputType == 'image';
   }
-  
-  /// Unified CineReal model on Animate Image (worker id chosen by motion mode).
-  static const String _kCineRealAnimateModelId = 'ltx2_3_cinereal';
-  /// Cinemotion Pro image-to-video (optional end frame, same R2 contract as CineReal FLF2V).
-  static const String _kWanLightx2vI2vModelId = 'wan_22_fp8_lightx2v_i2v';
 
-  /// Keys the mobile app must not forward to the LTX 2.3 worker (legacy / other stacks).
-  static const Set<String> _kLtx23WorkerOmitParams = {
+  /// Unified CineReal model on Animate Image (worker id chosen by motion mode).
+  static const String _kCineRealAnimateModelId = 'ltx25_int8';
+
+  /// Cinemotion Pro (MiniMax H3) — one id for text-to-video and image-to-video.
+  static const String _kCinemotionProModelId = 'minimax_h3';
+
+  /// Legacy ids remapped onto the live workers.
+  static const String _kLegacyWanI2vModelId = 'wan_22_fp8_lightx2v_i2v';
+  static const String _kLegacyCineRealAnimateModelId = 'ltx2_3_cinereal';
+
+  /// Keys the mobile app must not forward to LTX 2.5 Comfy (or leftover LTX 2.3).
+  static const Set<String> _kLtx25WorkerOmitParams = {
     'duration',
     'enable_rife',
     'rife_target_fps',
@@ -989,13 +1161,50 @@ class _GenericToolPageState extends State<GenericToolPage>
     'upscale_factor',
     'postprocess_interpolate_first',
     'randomize_seed',
-    'mode',
     'resize_image',
     'fps',
+    'frame_rate',
+    'num_frames',
     'output_dir',
-    // v3 worker uses use_spatial_upsampler*, not latent_upsampler
     'use_latent_upsampler',
+    'use_spatial_upsampler',
+    'scale_image',
+    'scale_factor',
+    'cfg_scale',
   };
+
+  static const Set<String> _kH3WorkerOmitParams = {
+    'duration',
+    'duration_seconds',
+    'width',
+    'height',
+    'enable_rife',
+    'rife_target_fps',
+    'enable_upscaling',
+    'upscale_factor',
+    'postprocess_interpolate_first',
+    'scale_image',
+    'scale_factor',
+    'cfg_scale',
+    'output_dir',
+    'num_frames',
+    'frame_rate',
+    'fps',
+  };
+
+  /// MiniMax H3 ResolutionSelector combo labels (ComfyUI AspectRatio).
+  static const Map<String, String> _kH3AspectSelectorLabels = {
+    '1:1': '1:1 (Square)',
+    '2:3': '2:3 (Portrait Photo)',
+    '3:2': '3:2 (Photo)',
+    '3:4': '3:4 (Portrait Standard)',
+    '4:3': '4:3 (Standard)',
+    '9:16': '9:16 (Portrait Widescreen)',
+    '16:9': '16:9 (Widescreen)',
+    '21:9': '21:9 (Ultrawide)',
+  };
+
+  static const List<String> _kVideoShapeOptions = ['9:16', '1:1', '16:9'];
 
   /// Aligns frame count to worker rule: ≥9 and 8k+1 (9, 17, 25, …).
   static int _alignLtx23NumFrames(int raw) {
@@ -1004,12 +1213,17 @@ class _GenericToolPageState extends State<GenericToolPage>
     return (8 * k + 1).clamp(9, 262144);
   }
 
+  /// LTX 2.5 canvas: 720p-class, multiples of 64 (LTX25AllModesControlsV2).
+  static const int _kLtx25MaxLongEdge = 1280;
+  static const int _kLtx25MaxShortEdge = 704;
+
   /// LTX 2.3 T2V: max “720p-class” frame — 1280×720 landscape box, 720×1280 portrait.
   static const int _kLtx23T2vMaxLongEdge = 1280;
   static const int _kLtx23T2vMaxShortEdge = 720;
 
   /// Largest integer size for [selectedRatio] that fits inside the 720p bounds (before ÷32 floor).
-  static (int width, int height) _ltx23T2vPixelsForAspectRatio(String selectedRatio) {
+  static (int width, int height) _ltx23T2vPixelsForAspectRatio(
+      String selectedRatio) {
     final ratioParts = selectedRatio.split(':');
     if (ratioParts.length != 2) return (768, 512);
     final ratioW = double.tryParse(ratioParts[0]) ?? 1.0;
@@ -1048,6 +1262,52 @@ class _GenericToolPageState extends State<GenericToolPage>
     resolvedParams['height'] = floorTo32(h);
   }
 
+  /// LTX 2.5 stage-1 latent is half the canvas, so both edges must be multiples of 64.
+  static void _applyLtx25CanvasToParams(
+    Map<String, dynamic> resolvedParams,
+    int w,
+    int h,
+  ) {
+    int floorTo64(int x) => ((x / 64).floor() * 64).clamp(256, 2048);
+    resolvedParams['width'] = floorTo64(w);
+    resolvedParams['height'] = floorTo64(h);
+  }
+
+  static (int width, int height) _ltx25PixelsForAspectRatio(
+      String selectedRatio) {
+    switch (AdvancedSettings.normalizeAspectRatio(selectedRatio)) {
+      case '9:16':
+        return (_kLtx25MaxShortEdge, _kLtx25MaxLongEdge);
+      case '1:1':
+        return (768, 768);
+      default:
+        return (_kLtx25MaxLongEdge, _kLtx25MaxShortEdge);
+    }
+  }
+
+  String get _selectedShapeRatio {
+    final fromInput = _inputs['aspect_ratio']?.toString();
+    if (fromInput != null && fromInput.trim().isNotEmpty) {
+      final n = AdvancedSettings.normalizeAspectRatio(fromInput);
+      if (_kVideoShapeOptions.contains(n) ||
+          AdvancedSettings.kAdvancedAspectRatioOptions.contains(n)) {
+        return n;
+      }
+    }
+    return AdvancedSettings.normalizeAspectRatio(
+        _advancedSettings.aspectRatio);
+  }
+
+  bool get _isLtx25Model {
+    final id = _selectedVideoGenModelId.toLowerCase();
+    return id.startsWith('ltx25_int8');
+  }
+
+  bool get _isMinimaxH3Model =>
+      _selectedVideoGenModelId == _kCinemotionProModelId;
+
+  bool get _isComfyVideoWorker => _isLtx25Model || _isMinimaxH3Model;
+
   /// Backend model id when config uses per-mode UI ids (`submitModelId`).
   String get _submitModelIdForRequest {
     final raw = _selectedModelData?['submitModelId'];
@@ -1059,16 +1319,22 @@ class _GenericToolPageState extends State<GenericToolPage>
   String get _workerModelIdForSubmit {
     if (_isCineRealAnimateModel) {
       final i2v = _selectedModelData?['cinerealI2vWorkerModel'] as String? ??
-          'ltx2_3_i2v_distilled';
-      final flf2v = _selectedModelData?['cinerealFlf2vWorkerModel'] as String? ??
-          'ltx2_3_flf2v';
+          'ltx25_int8_i2v';
+      final flf2v =
+          _selectedModelData?['cinerealFlf2vWorkerModel'] as String? ??
+              'ltx25_int8_flf2v';
       return _isCineRealFlf2vMode ? flf2v : i2v;
     }
     return _submitModelIdForRequest;
   }
 
-  bool get _isCineRealAnimateModel =>
-      (_selectedModelId ?? widget.config.model) == _kCineRealAnimateModelId;
+  bool get _isCineRealAnimateModel {
+    final id = _selectedModelId ?? widget.config.model;
+    return id == _kCineRealAnimateModelId ||
+        id == _kLegacyCineRealAnimateModelId;
+  }
+
+  bool get _requiresEndFrame => widget.launchTemplateId == 'photo_to_photo';
 
   /// True when CineReal should use the FLF2V pipeline (two keyframes).
   ///
@@ -1078,15 +1344,13 @@ class _GenericToolPageState extends State<GenericToolPage>
     if (!_isCineRealAnimateModel) return false;
     // Reference video and two-keyframe FLF2V are mutually exclusive.
     if (_cineRealHasRefVideoBytesSingleOrBulk()) return false;
-    final bulkOn =
-        _advancedSettings.bulkEditEnabled && _supportsBulkImageEdit;
+    final bulkOn = _advancedSettings.bulkEditEnabled && _supportsBulkImageEdit;
     if (bulkOn) {
       final tasks =
           _bulkImageJobs.where((job) => job.isNotEmpty).toList(growable: false);
       if (tasks.isEmpty) return false;
       return tasks.every(
-        (job) =>
-            job.length == 2 && job[0].isNotEmpty && job[1].isNotEmpty,
+        (job) => job.length == 2 && job[0].isNotEmpty && job[1].isNotEmpty,
       );
     }
     final lastBytes = _bytesForInputKey('last_frame_image');
@@ -1335,14 +1599,13 @@ class _GenericToolPageState extends State<GenericToolPage>
 
       final gk = groupedKeys[ti];
       final job = _bulkImageJobs[ti];
-      final rowFlf2v = job.length >= 2 &&
-          job[0].isNotEmpty &&
-          job[1].isNotEmpty;
+      final rowFlf2v =
+          job.length >= 2 && job[0].isNotEmpty && job[1].isNotEmpty;
       final worker = rowFlf2v
           ? (_selectedModelData?['cinerealFlf2vWorkerModel'] as String? ??
-              'ltx2_3_flf2v')
+              'ltx25_int8_flf2v')
           : (_selectedModelData?['cinerealI2vWorkerModel'] as String? ??
-              'ltx2_3_i2v_distilled');
+              'ltx25_int8_i2v');
 
       if (rowFlf2v) {
         final lst = (gk is List)
@@ -1389,13 +1652,15 @@ class _GenericToolPageState extends State<GenericToolPage>
           rowData = jsonDecode(resp.body);
           break;
         }
-        debugPrint("❌ CineReal bulk row $ti submit failed: ${resp.statusCode} ${resp.body}");
+        debugPrint(
+            "❌ CineReal bulk row $ti submit failed: ${resp.statusCode} ${resp.body}");
         if (attempt < maxRetries) {
           await Future.delayed(const Duration(seconds: 2));
         }
       }
       if (rowData == null) {
-        throw Exception("Failed to submit clip ${ti + 1} after $maxRetries retries");
+        throw Exception(
+            "Failed to submit clip ${ti + 1} after $maxRetries retries");
       }
       promptEnhanced = promptEnhanced || (rowData["prompt_enhanced"] == true);
       enhancedPrompt ??= rowData["enhanced_prompt"] as String?;
@@ -1416,19 +1681,20 @@ class _GenericToolPageState extends State<GenericToolPage>
   /// Check if this is an animate_image category tool
   /// Animate image tools: have init_image input and outputType is 'video'
   bool get _isAnimateImageTool {
-    final hasInitImage = widget.config.inputs.any((i) => i['id'] == 'init_image');
+    final hasInitImage =
+        widget.config.inputs.any((i) => i['id'] == 'init_image');
     return hasInitImage && widget.config.outputType == 'video';
   }
-  
+
   /// Check if this is a video upscaler tool
   bool get _isVideoUpscalerTool {
     final model = widget.config.model.toLowerCase();
     final title = widget.config.title.toLowerCase();
     // Check if model is video_upscaler or title contains both "upscale" and "video"
-    return model == 'video_upscaler' || 
-           (title.contains('upscale') && title.contains('video'));
+    return model == 'video_upscaler' ||
+        (title.contains('upscale') && title.contains('video'));
   }
-  
+
   /// Check if this is a video category tool (text to video, image to video, video to video)
   bool get _isVideoTool => widget.config.outputType == 'video';
   bool get _isTextTool => widget.config.outputType == 'text';
@@ -1438,50 +1704,53 @@ class _GenericToolPageState extends State<GenericToolPage>
     final id = widget.config.capabilityId;
     return id == 'create_image' || id == 'create_video';
   }
-  
+
   /// Check if this is an expand scene (outpaint) category tool
   bool get _isExpandSceneTool => _isOutpaint;
-  
+
   /// Check if this is an inpaint & erase category tool
   /// Includes inpaint, lama, and erase tools
   bool get _isInpaintEraseTool {
     final model = widget.config.model.toLowerCase();
     final title = widget.config.title.toLowerCase();
     final mode = _selectedModeKey?.toLowerCase() ?? "";
-    final paramMode = (widget.config.params?["mode"]?.toString().toLowerCase() ?? "");
+    final paramMode =
+        (widget.config.params?["mode"]?.toString().toLowerCase() ?? "");
     return model.contains("inpaint") ||
-           model.contains("lama") ||
-           model.contains("erase") ||
-           title.contains("erase") ||
-           mode.contains("inpaint") ||
-           paramMode.contains("inpaint") ||
-           paramMode.contains("lama") ||
-           paramMode.contains("erase");
+        model.contains("lama") ||
+        model.contains("erase") ||
+        title.contains("erase") ||
+        mode.contains("inpaint") ||
+        paramMode.contains("inpaint") ||
+        paramMode.contains("lama") ||
+        paramMode.contains("erase");
   }
 
   /// On-device-only path for Inpaint & Erase.
   /// We currently scope this to the inpaint capability + basic_utils model.
   bool get _isOnDeviceInpaintTool {
     if (!_isInpaintEraseTool) return false;
-    final selectedModel = (_selectedModelId ?? widget.config.model).toLowerCase();
+    final selectedModel =
+        (_selectedModelId ?? widget.config.model).toLowerCase();
     final toolId = (widget.config.title).toLowerCase();
     final explicit = _selectedModelData?['onDeviceOnly'] == true;
-    return explicit || (selectedModel == 'basic_utils' && toolId.contains('erase'));
+    return explicit ||
+        (selectedModel == 'basic_utils' && toolId.contains('erase'));
   }
 
   bool get _showAdvancedControls =>
       !_isOnDeviceInpaintTool && !_isInpaintEraseTool;
-  
+
   /// Check if this is a remove background category tool
   bool get _isRemoveBackgroundTool {
     final model = widget.config.model.toLowerCase();
     final title = widget.config.title.toLowerCase();
     return model.contains("remove") && model.contains("background") ||
-           title.contains("remove") && title.contains("background") ||
-           model.contains("rembg") ||
-           title.contains("rembg");
+        title.contains("remove") && title.contains("background") ||
+        model.contains("rembg") ||
+        title.contains("rembg");
   }
-  
+
   /// Primary image input id for Single/Bulk tabs (prefer common ids, else first `type: image`).
   String? get _bulkPrimaryImageInputRef {
     const preferredOrder = ['init_image', 'image', 'input_image'];
@@ -1522,10 +1791,15 @@ class _GenericToolPageState extends State<GenericToolPage>
     return (_selectedModelData?['maxDuration'] as num?)?.toInt() ?? 8;
   }
 
-  /// When max duration ≥ [min], options are 5, 10, 15, … ≤ max; else every second 1…max.
+  /// Cinemotion Pro snaps seconds up onto the 17k+5 frame grid (1s through 5s).
+  /// LTX and other models stay on 5s steps when max duration is at least 5s.
   List<int> _allowedVideoGenDurationSeconds() {
     final maxD = _maxVideoGenDurationSeconds();
     if (maxD < 1) return const [1];
+    if (_isMinimaxH3Model) {
+      final cap = maxD.clamp(1, 5);
+      return List<int>.generate(cap, (i) => i + 1);
+    }
     if (maxD < _kMinVideoGenDurationSeconds) {
       return List<int>.generate(maxD, (i) => i + 1);
     }
@@ -1562,6 +1836,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   /// LTX 2.3 family uses spatial upsampling only (no RIFE) in submit path.
   bool get _isLtx23SpatialOnlyVideoEnhancement {
     if (_isVideoUpscalerTool) return false;
+    if (_isComfyVideoWorker) return false;
     return _selectedVideoGenModelId.toLowerCase().startsWith('ltx2_3');
   }
 
@@ -1608,12 +1883,14 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   /// Tool supports Single/Bulk tabs (image batch and/or video upscaler batch).
-  bool get _supportsBulkEdit => _supportsBulkImageEdit || _supportsBulkVideoEdit;
+  bool get _supportsBulkEdit =>
+      _supportsBulkImageEdit || _supportsBulkVideoEdit;
 
   /// Duration-based cost for animate_image and create_video: 5s=15, 8s=24, 10s=30.
   /// Formula: duration<=5 ? 3*duration : 15+(duration-5)*3, capped by model maxDuration.
   int _getDurationBasedCost() {
-    final maxDuration = (_selectedModelData?['maxDuration'] as num?)?.toInt() ?? 10;
+    final maxDuration =
+        (_selectedModelData?['maxDuration'] as num?)?.toInt() ?? 10;
     final d = _clampVideoGenDurationSeconds(_advancedSettings.videoDuration)
         .clamp(1, maxDuration);
     if (d <= 5) {
@@ -1630,9 +1907,13 @@ class _GenericToolPageState extends State<GenericToolPage>
       // Dedicated video upscaler always performs upscaling.
       return v;
     }
-    final isVideoGenTool = widget.config.outputType == 'video' && !_isVideoUpscalerTool;
+    final isVideoGenTool =
+        widget.config.outputType == 'video' && !_isVideoUpscalerTool;
     if (isVideoGenTool) {
-      return (_advancedSettings.enableInterpolate || _advancedSettings.enableUpscale) ? v : 0;
+      return (_advancedSettings.enableInterpolate ||
+              _advancedSettings.enableUpscale)
+          ? v
+          : 0;
     }
     // Main-card scale slider (e.g. Remove Background) bills via [_inputScaleUpscaleCreditsPerVariation].
     if (_hasScaleFactor) {
@@ -1656,6 +1937,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   bool get _videoGenEnhancementEnabled =>
       widget.config.outputType == 'video' &&
       !_isVideoUpscalerTool &&
+      !_isComfyVideoWorker &&
       (_advancedSettings.enableInterpolate || _advancedSettings.enableUpscale);
 
   int _offerPercentForModelMap(Map<String, dynamic> model) {
@@ -1723,10 +2005,13 @@ class _GenericToolPageState extends State<GenericToolPage>
     }
 
     // Animate image / create video: duration-based cost (5s=15, 8s=24, 10s=30)
-    final bool isVideoGenTool = widget.config.outputType == 'video' && !_isVideoUpscalerTool;
-    final baseCost = isVideoGenTool ? _getDurationBasedCost() : _currentModelCost;
+    final bool isVideoGenTool =
+        widget.config.outputType == 'video' && !_isVideoUpscalerTool;
+    final baseCost =
+        isVideoGenTool ? _getDurationBasedCost() : _currentModelCost;
     final offer = _currentModelOffer;
-    final variations = _advancedSettings.variations.clamp(1, getMaxVariations());
+    final variations =
+        _advancedSettings.variations.clamp(1, getMaxVariations());
 
     // Base cost per variation (includes enhancement/upscale add-on unless VIP)
     final int basePerVariation = baseCost +
@@ -1738,17 +2023,17 @@ class _GenericToolPageState extends State<GenericToolPage>
     if (offer > 0) {
       costPerVariation = _applyOfferDiscount(basePerVariation, offer);
     }
-    
+
     // Calculate total bulk tasks (1 for normal, N for bulk edit)
     final int imageCount = _advancedSettings.bulkEditEnabled && _hasBulkInput
         ? _bulkActiveMediaCount
         : 1;
-    
+
     // Total = cost per variation × variations × number of images
     // For bulk edit: each image gets processed with N variations
     return costPerVariation * variations * imageCount;
   }
-  
+
   /// Format duration as MM:SS
   String _formatDuration(Duration duration) {
     final minutes = duration.inMinutes;
@@ -1765,9 +2050,10 @@ class _GenericToolPageState extends State<GenericToolPage>
       allElements = List<Map<String, dynamic>>.from(
           widget.config.modes![_selectedModeKey]!["elements"] ?? []);
     } else {
-      allElements = List<Map<String, dynamic>>.from(widget.config.elements ?? []);
+      allElements =
+          List<Map<String, dynamic>>.from(widget.config.elements ?? []);
     }
-    
+
     // Filter elements based on selected model for animate_image
     // ref_image / ref_video are DreamID reference media; audio is model-gated via input showForModels.
     if (_isAnimateImageTool) {
@@ -1828,7 +2114,7 @@ class _GenericToolPageState extends State<GenericToolPage>
         return inputRef == null || !hiddenMainRefs.contains(inputRef);
       }).toList();
     }
-    
+
     return allElements;
   }
 
@@ -1844,16 +2130,17 @@ class _GenericToolPageState extends State<GenericToolPage>
   /// `input_ref: "init_image"` keep working).
   Map<String, dynamic> _effectiveInputConfig(String baseId) {
     final base = Map<String, dynamic>.from(
-      widget.config.inputs.firstWhere((i) => i["id"] == baseId, orElse: () => {}),
+      widget.config.inputs
+          .firstWhere((i) => i["id"] == baseId, orElse: () => {}),
     );
 
     try {
-      final Map<String, dynamic>? overridesRoot =
-          (_isCineRealAnimateModel && _isCineRealFlf2vMode)
-              ? (_selectedModelData?['inputOverridesFlf2v']
-                      as Map<String, dynamic>? ??
-                  _selectedModelData?['inputOverrides'] as Map<String, dynamic>?)
-              : _selectedModelData?['inputOverrides'] as Map<String, dynamic>?;
+      final Map<String, dynamic>? overridesRoot = (_isCineRealAnimateModel &&
+              _isCineRealFlf2vMode)
+          ? (_selectedModelData?['inputOverridesFlf2v']
+                  as Map<String, dynamic>? ??
+              _selectedModelData?['inputOverrides'] as Map<String, dynamic>?)
+          : _selectedModelData?['inputOverrides'] as Map<String, dynamic>?;
       final o = overridesRoot != null ? overridesRoot[baseId] : null;
       if (o is Map) {
         // Apply only UI/selection behavior overrides; keep the actual id stable.
@@ -1964,7 +2251,7 @@ class _GenericToolPageState extends State<GenericToolPage>
 
     // Initialize advanced settings with defaults
     _advancedSettings = AdvancedSettings();
-    
+
     // Auto-enable upscale for upscaler tools (always on, can't be toggled off)
     if (_isUpscalerTool) {
       _advancedSettings = _advancedSettings.copyWith(upscaleOutput: true);
@@ -2007,19 +2294,26 @@ class _GenericToolPageState extends State<GenericToolPage>
 
     // Listen for ad-free status changes to hide/show native ads
     isAdFreeNotifier.addListener(_onAdFreeStatusChanged);
-    
+
     // Listen for job list changes to update rate limit status in real-time
     jobListNotifier.addListener(_onJobListChanged);
 
     SaleService().state.addListener(_onSaleStateChanged);
-    
+
     // Load styles and quick tags from config for OTA updates
     _loadStylesFromConfig();
     // Load LoRA adapters from local config as fallback for selector metadata
     _loadLoraAdaptersFromConfig();
-    
+
     // Load user templates from local storage
     _loadUserTemplates();
+    _loadFavoriteStyles();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _applyLaunchPrefill();
+      if (widget.focusPrompt && mounted) {
+        _promptFocusNode.requestFocus();
+      }
+    });
 
     debugPrint("🔧 Config for ${widget.config.model}");
     debugPrint("  title=${widget.config.title}");
@@ -2035,7 +2329,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     // Rebuild to hide/show native ads when ad-free status changes
     if (mounted) setState(() {});
   }
-  
+
   void _onJobListChanged() {
     // Rebuild to update rate limit status when jobs complete
     // This makes the "X slots free" hint update in real-time
@@ -2056,9 +2350,12 @@ class _GenericToolPageState extends State<GenericToolPage>
         return;
       }
       final config = jsonDecode(configStr) as Map<String, dynamic>;
-      final capabilities = (config['capabilities'] as List<dynamic>?) ?? const [];
+      final capabilities =
+          (config['capabilities'] as List<dynamic>?) ?? const [];
       for (final cap in capabilities) {
-        final models = (cap as Map<String, dynamic>)['models'] as List<dynamic>? ?? const [];
+        final models =
+            (cap as Map<String, dynamic>)['models'] as List<dynamic>? ??
+                const [];
         for (final model in models) {
           final modelMap = model as Map<String, dynamic>;
           final modelId = modelMap['id']?.toString();
@@ -2075,7 +2372,7 @@ class _GenericToolPageState extends State<GenericToolPage>
       debugPrint('⚠️ Failed to load LoRA adapters fallback: $e');
     }
   }
-  
+
   /// Load styles and quick tags from cached tool_config for OTA updates
   Future<void> _loadStylesFromConfig() async {
     try {
@@ -2087,9 +2384,10 @@ class _GenericToolPageState extends State<GenericToolPage>
         return;
       }
       final config = jsonDecode(configStr) as Map<String, dynamic>;
-      
+
       // Load style presets
-      final stylePresetsConfig = config['stylePresets'] as Map<String, dynamic>?;
+      final stylePresetsConfig =
+          config['stylePresets'] as Map<String, dynamic>?;
       if (stylePresetsConfig != null) {
         final categories = (stylePresetsConfig['categories'] as List<dynamic>?)
             ?.map((e) => e.toString())
@@ -2097,7 +2395,7 @@ class _GenericToolPageState extends State<GenericToolPage>
         final presets = (stylePresetsConfig['presets'] as List<dynamic>?)
             ?.map((e) => StylePreset.fromJson(e as Map<String, dynamic>))
             .toList();
-        
+
         if (categories != null && categories.isNotEmpty) {
           _configStyleCategories = categories;
         }
@@ -2105,7 +2403,7 @@ class _GenericToolPageState extends State<GenericToolPage>
           _configStyles = presets;
         }
       }
-      
+
       // Load quick tags
       final quickTagsConfig = config['quickTags'] as List<dynamic>?;
       if (quickTagsConfig != null && quickTagsConfig.isNotEmpty) {
@@ -2113,22 +2411,24 @@ class _GenericToolPageState extends State<GenericToolPage>
             .map((e) => PromptChip.fromJson(e as Map<String, dynamic>))
             .toList();
       }
-      
+
       if (mounted) setState(() {});
-      
-      debugPrint('✅ Loaded ${_configStyles?.length ?? 0} styles, ${_configQuickTags?.length ?? 0} quick tags from config');
+
+      debugPrint(
+          '✅ Loaded ${_configStyles?.length ?? 0} styles, ${_configQuickTags?.length ?? 0} quick tags from config');
     } catch (e) {
       debugPrint('⚠️ Failed to load styles from config, using fallbacks: $e');
       // Fallbacks are already set as the hardcoded constants
     }
   }
-  
+
   /// Get the current styles list (config-loaded or fallback)
   List<StylePreset> get _currentStyles => _configStyles ?? allStylePresets;
-  
+
   /// Get the current style categories (config-loaded or fallback)
-  List<String> get _currentStyleCategories => _configStyleCategories ?? styleCategories;
-  
+  List<String> get _currentStyleCategories =>
+      _configStyleCategories ?? styleCategories;
+
   /// Load user templates from SharedPreferences
   Future<void> _loadUserTemplates() async {
     try {
@@ -2154,24 +2454,25 @@ class _GenericToolPageState extends State<GenericToolPage>
       debugPrint('⚠️ Failed to load user templates: $e');
     }
   }
-  
+
   /// Save user templates to SharedPreferences
   Future<void> _saveUserTemplates() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final templatesJson = jsonEncode(_userTemplates.map((t) => t.toJson()).toList());
+      final templatesJson =
+          jsonEncode(_userTemplates.map((t) => t.toJson()).toList());
       await prefs.setString('user_templates', templatesJson);
     } catch (e) {
       debugPrint('⚠️ Failed to save user templates: $e');
     }
   }
-  
+
   /// Save current settings as a template
   Future<void> _saveCurrentAsTemplate() async {
     final cs = Theme.of(context).colorScheme;
     final nameController = TextEditingController();
     bool confirmed = false;
-    
+
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -2214,26 +2515,30 @@ class _GenericToolPageState extends State<GenericToolPage>
                 Navigator.pop(context);
               }
             },
-            child: Text('Save', style: TextStyle(color: cs.primary, fontWeight: FontWeight.w600)),
+            child: Text('Save',
+                style:
+                    TextStyle(color: cs.primary, fontWeight: FontWeight.w600)),
           ),
         ],
       ),
     );
-    
+
     if (!confirmed || nameController.text.trim().isEmpty) return;
-    
+
     final template = UserTemplate(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       name: nameController.text.trim(),
       prompt: _promptController.text,
       modelId: _selectedModelId,
+      capabilityId: widget.config.capabilityId,
+      toolTitle: widget.config.title,
       settings: _advancedSettings,
       createdAt: DateTime.now(),
     );
-    
+
     _userTemplates.insert(0, template);
     await _saveUserTemplates();
-    
+
     if (mounted) {
       setState(() {});
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2245,48 +2550,50 @@ class _GenericToolPageState extends State<GenericToolPage>
       );
     }
   }
-  
+
   /// Filter template settings to only include compatible settings for current tool category
-  AdvancedSettings _filterCompatibleSettings(AdvancedSettings templateSettings) {
+  AdvancedSettings _filterCompatibleSettings(
+      AdvancedSettings templateSettings) {
     // Start with current settings as base
     AdvancedSettings filtered = _advancedSettings.copyWith();
-    
+
     // Always apply these (universal settings)
     filtered = filtered.copyWith(
       enhancePrompt: templateSettings.enhancePrompt,
       quality: templateSettings.quality,
     );
-    
+
     // Upscale: Only apply if not a video tool (upscale is hidden for video tools)
     if (!_isVideoTool) {
-      filtered = filtered.copyWith(upscaleOutput: templateSettings.upscaleOutput);
+      filtered =
+          filtered.copyWith(upscaleOutput: templateSettings.upscaleOutput);
     } else {
       // For video tools, disable upscale (not available)
       filtered = filtered.copyWith(upscaleOutput: false);
     }
-    
+
     // Aspect Ratio: Only apply if not hidden for this tool category
-    if (!_isEditImageTool && 
-        !_isAnimateImageTool && 
-        !_isExpandSceneTool && 
-        !_isUpscalerTool && 
-        !_isInpaintEraseTool && 
+    if (!_isEditImageTool &&
+        !_isAnimateImageTool &&
+        !_isExpandSceneTool &&
+        !_isUpscalerTool &&
+        !_isInpaintEraseTool &&
         !_isRemoveBackgroundTool) {
       filtered = filtered.copyWith(
         aspectRatio:
             AdvancedSettings.normalizeAspectRatio(templateSettings.aspectRatio),
       );
     }
-    
+
     // Variations: Apply for both image and video tools
-    if (widget.config.outputType == 'image' || widget.config.outputType == 'video') {
+    if (widget.config.outputType == 'image' ||
+        widget.config.outputType == 'video') {
       filtered = filtered.copyWith(variations: templateSettings.variations);
     }
-    
+
     // Video Duration: Only apply for video tools (5s steps when model allows)
     if (widget.config.outputType == 'video') {
-      final td =
-          _clampVideoGenDurationSeconds(templateSettings.videoDuration);
+      final td = _clampVideoGenDurationSeconds(templateSettings.videoDuration);
       filtered = filtered.copyWith(videoDuration: td);
       // Video enhancement settings (I2V/T2V vs dedicated video upscaler tool).
       // Only the AI Tools "video upscaler" forces enableUpscale on; other video
@@ -2301,7 +2608,7 @@ class _GenericToolPageState extends State<GenericToolPage>
         upscaleFactor: templateSettings.upscaleFactor,
       );
     }
-    
+
     // LoRA adapter: Only apply for qwen_image_edit_2511_rapid_aio
     final currentModel = _selectedModelId ?? widget.config.model;
     if (currentModel == 'qwen_image_edit_2511_rapid_aio') {
@@ -2316,22 +2623,34 @@ class _GenericToolPageState extends State<GenericToolPage>
 
     // Bulk Edit: Only apply when the current tool supports it.
     if (_supportsBulkEdit) {
-      filtered = filtered.copyWith(bulkEditEnabled: templateSettings.bulkEditEnabled);
+      filtered =
+          filtered.copyWith(bulkEditEnabled: templateSettings.bulkEditEnabled);
     } else {
       filtered = filtered.copyWith(bulkEditEnabled: false);
     }
-    
+
     return filtered;
   }
-  
+
   /// Apply a template to current settings (only compatible settings are applied)
   void _applyTemplate(UserTemplate template) {
     setState(() {
       _promptController.text = template.prompt;
       if (template.modelId != null && widget.config.hasMultipleModels) {
         var mid = template.modelId!;
-        if (mid == 'ltx2_3_flf2v' || mid == 'ltx2_3_i2v_distilled') {
+        if (mid == 'ltx2_3_flf2v' ||
+            mid == 'ltx2_3_i2v_distilled' ||
+            mid == _kLegacyCineRealAnimateModelId ||
+            mid == 'ltx25_int8_i2v' ||
+            mid == 'ltx25_int8_flf2v') {
           mid = _kCineRealAnimateModelId;
+        }
+        if (mid == _kLegacyWanI2vModelId ||
+            mid == 'wan_22_fp8_lightx2v_t2v') {
+          mid = _kCinemotionProModelId;
+        }
+        if (mid == 'ltx2_3_t2v') {
+          mid = 'ltx25_int8_t2v';
         }
         _selectedModelId = mid;
         _selectedModelData = widget.config.models?.firstWhere(
@@ -2342,17 +2661,19 @@ class _GenericToolPageState extends State<GenericToolPage>
 
       // Filter template settings to only apply compatible settings
       var filteredSettings = _filterCompatibleSettings(template.settings);
-      if (template.modelId == 'ltx2_3_flf2v') {
+      if (template.modelId == 'ltx2_3_flf2v' ||
+          template.modelId == 'ltx25_int8_flf2v') {
         filteredSettings =
             filteredSettings.copyWith(cineRealMotionMode: 'flf2v');
       }
       _advancedSettings = filteredSettings;
-      
+
       // Update upscale-related state (only if upscale is compatible)
       if (!_isVideoTool) {
         _upscaleEnabled = filteredSettings.upscaleOutput;
         _scaleFactor = filteredSettings.upscaleOutput ? 2 : 1;
-        _inputs["scale_factor"] = filteredSettings.upscaleOutput ? _scaleFactor : 1.0;
+        _inputs["scale_factor"] =
+            filteredSettings.upscaleOutput ? _scaleFactor : 1.0;
         _syncFaceEnhancerFixedParams();
       } else {
         // For video tools, ensure upscale is disabled
@@ -2361,7 +2682,7 @@ class _GenericToolPageState extends State<GenericToolPage>
         _inputs["scale_factor"] = 1.0;
       }
     });
-    
+
     // Update last used
     final index = _userTemplates.indexWhere((t) => t.id == template.id);
     if (index != -1) {
@@ -2369,7 +2690,7 @@ class _GenericToolPageState extends State<GenericToolPage>
       _saveUserTemplates();
     }
   }
-  
+
   /// Delete a template
   Future<void> _deleteTemplate(UserTemplate template) async {
     final cs = Theme.of(context).colorScheme;
@@ -2393,24 +2714,25 @@ class _GenericToolPageState extends State<GenericToolPage>
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: Text('Delete', style: TextStyle(color: cs.error, fontWeight: FontWeight.w600)),
+            child: Text('Delete',
+                style: TextStyle(color: cs.error, fontWeight: FontWeight.w600)),
           ),
         ],
       ),
     );
-    
+
     if (confirmed == true) {
       _userTemplates.removeWhere((t) => t.id == template.id);
       await _saveUserTemplates();
       if (mounted) setState(() {});
     }
   }
-  
+
   /// Format template date
   String _formatTemplateDate(DateTime date) {
     final now = DateTime.now();
     final diff = now.difference(date);
-    
+
     if (diff.inDays == 0) {
       if (diff.inHours == 0) {
         return '${diff.inMinutes}m ago';
@@ -2429,19 +2751,22 @@ class _GenericToolPageState extends State<GenericToolPage>
       // Filter to only enabled models
       final enabledModels = widget.config.models!.where((m) {
         final enabled = m['enabled'];
-        return enabled == null || enabled == true; // Default to enabled if not specified
+        return enabled == null ||
+            enabled == true; // Default to enabled if not specified
       }).toList();
-      
+
       if (enabledModels.isEmpty) return;
-      
+
       // Use default model if specified, otherwise first enabled model
       final defaultId = widget.config.defaultModel ?? widget.config.model;
       _selectedModelId = defaultId;
       _selectedModelData = enabledModels.firstWhere(
-        (m) => m['id'] == defaultId && (m['enabled'] == null || m['enabled'] == true),
+        (m) =>
+            m['id'] == defaultId &&
+            (m['enabled'] == null || m['enabled'] == true),
         orElse: () => enabledModels.first,
       );
-      
+
       // Clamp video duration (min 5s when model allows) for video generation tools
       if (widget.config.outputType == 'video' &&
           _selectedModelData != null &&
@@ -2464,7 +2789,8 @@ class _GenericToolPageState extends State<GenericToolPage>
       _selectedModelId = nextId;
       _selectedModelData = model;
 
-      if (prevId == _kCineRealAnimateModelId && nextId != _kCineRealAnimateModelId) {
+      if (prevId == _kCineRealAnimateModelId &&
+          nextId != _kCineRealAnimateModelId) {
         _advancedSettings =
             _advancedSettings.copyWith(cineRealMotionMode: 'i2v');
       }
@@ -2472,7 +2798,9 @@ class _GenericToolPageState extends State<GenericToolPage>
       if (_isAnimateImageTool) {
         const endFrameModels = {
           _kCineRealAnimateModelId,
-          _kWanLightx2vI2vModelId,
+          _kLegacyCineRealAnimateModelId,
+          _kCinemotionProModelId,
+          _kLegacyWanI2vModelId,
         };
         if (!endFrameModels.contains(nextId)) {
           _inputs.remove('last_frame_image');
@@ -2506,7 +2834,7 @@ class _GenericToolPageState extends State<GenericToolPage>
           _inputVideoDuration = null;
         }
       }
-      
+
       // Clamp video duration when switching models (5s steps when model allows)
       if (widget.config.outputType == 'video' && !_isVideoUpscalerTool) {
         final clamped =
@@ -2526,13 +2854,13 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   /// Get the current model's cost
-  int get _currentModelCost => 
+  int get _currentModelCost =>
       _selectedModelData?['baseCost'] as int? ??
       _selectedModelData?['cost'] as int? ??
       widget.config.cost;
 
   /// Get the current model's upscale cost
-  int get _currentModelUpscaleCost => 
+  int get _currentModelUpscaleCost =>
       _selectedModelData?['costUpscale'] as int? ?? widget.config.costUpscale;
 
   /// Get the current model's effective discount (sale overrides per-model offer)
@@ -2547,7 +2875,8 @@ class _GenericToolPageState extends State<GenericToolPage>
   /// Optional per-model route flag for backend external API path.
   /// If null, backend decides using its model route policy/defaults.
   bool? get _currentModelUseExternalApi {
-    final dynamic raw = _selectedModelData?['useExternalApi'] ?? _selectedModelData?['use_external_api'];
+    final dynamic raw = _selectedModelData?['useExternalApi'] ??
+        _selectedModelData?['use_external_api'];
     if (raw is bool) return raw;
     return null;
   }
@@ -2556,7 +2885,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   // Note: _appendChipToPrompt removed - quickTags feature deprecated
 
   // -------- Style Library --------
-  
+
   /// Get styles filtered by category
   List<StylePreset> _getStylesByCategory(String category) {
     final styles = _currentStyles;
@@ -2578,12 +2907,12 @@ class _GenericToolPageState extends State<GenericToolPage>
         _selectedStyle = null;
         return;
       }
-      
+
       // Remove previous style snippet if any
       if (_selectedStyle != null) {
         _removeStyleFromPrompt(_selectedStyle!);
       }
-      
+
       // Apply new style
       _selectedStyle = style;
       _appendStyleToPrompt(style);
@@ -2594,7 +2923,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   void _appendStyleToPrompt(StylePreset style) {
     final currentText = _promptController.text.trim();
     String newText;
-    
+
     if (currentText.isEmpty) {
       newText = style.promptSnippet;
     } else if (currentText.endsWith(',')) {
@@ -2602,7 +2931,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     } else {
       newText = '$currentText, ${style.promptSnippet}';
     }
-    
+
     _promptController.text = newText;
     _inputs['prompt'] = newText;
   }
@@ -2611,17 +2940,17 @@ class _GenericToolPageState extends State<GenericToolPage>
   void _removeStyleFromPrompt(StylePreset style) {
     final currentText = _promptController.text;
     final snippet = style.promptSnippet;
-    
+
     // Try to remove the snippet with various separators
     String newText = currentText
         .replaceAll(', $snippet', '')
         .replaceAll('$snippet, ', '')
         .replaceAll(snippet, '')
         .trim();
-    
+
     // Clean up any double commas or trailing commas
     newText = newText.replaceAll(', ,', ',').replaceAll(RegExp(r',\s*$'), '');
-    
+
     _promptController.text = newText;
     _inputs['prompt'] = newText;
   }
@@ -2636,6 +2965,140 @@ class _GenericToolPageState extends State<GenericToolPage>
       }
     });
     HapticFeedback.lightImpact();
+    unawaited(saveFavoriteStyleIds(_favoriteStyles));
+  }
+
+  Future<void> _loadFavoriteStyles() async {
+    final ids = await loadFavoriteStyleIds();
+    if (!mounted) return;
+    final known = _currentStyles.map((s) => s.id).toSet();
+    setState(() {
+      _favoriteStyles
+        ..clear()
+        ..addAll(ids.where(known.contains));
+    });
+  }
+
+  Map<String, dynamic> _buildSettingsSnapshot() {
+    return sanitizeSettingsSnapshot({
+      'prompt': _promptController.text,
+      'modelId': _selectedModelId ?? widget.config.model,
+      'aspectRatio': _advancedSettings.aspectRatio,
+      'scaleFactor': _inputs['scale_factor'] ?? _advancedSettings.upscaleFactor,
+      'variations': _advancedSettings.variations.clamp(1, getMaxVariations()),
+      'upscaleEnabled': _upscaleEnabled ||
+          _advancedSettings.upscaleOutput ||
+          _advancedSettings.enableUpscale,
+      'interpolateEnabled': _advancedSettings.enableInterpolate,
+      'quality': _advancedSettings.quality,
+      'videoDuration': _advancedSettings.videoDuration,
+    });
+  }
+
+  Future<void> _applyLaunchPrefill() async {
+    if (!mounted) return;
+    final snapshot = widget.initialSettings;
+    if (snapshot != null) {
+      final aspect = snapshot['aspectRatio'] as String?;
+      final quality = snapshot['quality'] as String?;
+      final duration = snapshot['videoDuration'];
+      final upscale = snapshot['upscaleEnabled'] == true;
+      final interpolate = snapshot['interpolateEnabled'] == true;
+      final modelId = snapshot['modelId'] as String?;
+      setState(() {
+        if (aspect != null) {
+          _advancedSettings = _advancedSettings.copyWith(
+            aspectRatio: AdvancedSettings.normalizeAspectRatio(aspect),
+          );
+        }
+        if (quality is String) {
+          _advancedSettings = _advancedSettings.copyWith(quality: quality);
+        }
+        if (duration is num) {
+          _advancedSettings = _advancedSettings.copyWith(
+            videoDuration: duration.toInt(),
+          );
+        }
+        if (upscale) {
+          _upscaleEnabled = true;
+          _advancedSettings = _advancedSettings.copyWith(
+            upscaleOutput: true,
+            enableUpscale: _isVideoUpscalerTool,
+          );
+        }
+        if (interpolate) {
+          _advancedSettings =
+              _advancedSettings.copyWith(enableInterpolate: true);
+        }
+        if (modelId != null && widget.config.models != null) {
+          final match = widget.config.models!.where((m) => m['id'] == modelId);
+          if (match.isNotEmpty &&
+              (match.first['enabled'] == null ||
+                  match.first['enabled'] == true)) {
+            _selectedModelId = modelId;
+            _selectedModelData = match.first;
+          }
+        }
+        final prior = snapshot['variations'];
+        if (prior is int && prior > 1) {
+          _priorVariationCount = prior;
+        }
+      });
+    }
+
+    if (widget.initialPrompt != null) {
+      _promptController.text = widget.initialPrompt!;
+      _inputs['prompt'] = widget.initialPrompt;
+    }
+
+    final wantsImage = _bulkPrimaryImageInputRef != null;
+    final wantsVideo = widget.config.inputs
+        .whereType<Map<String, dynamic>>()
+        .any((i) => i['type'] == 'video');
+    final matching = existingMatchingPaths(
+      paths: widget.initialLocalPaths,
+      wantImages: wantsImage || !wantsVideo,
+    );
+    if (widget.initialLocalPaths.isNotEmpty && matching.isEmpty && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("This file can't be used for this tool")),
+      );
+      return;
+    }
+    if (matching.isEmpty) return;
+
+    if (wantsImage) {
+      final id = _bulkPrimaryImageInputRef;
+      if (id == null) return;
+      try {
+        final bytes =
+            await _resizeImageSafe(await File(matching.first).readAsBytes());
+        if (!mounted) return;
+        setState(() {
+          _inputs[id] = [bytes];
+          _inputs['${id}_path'] = matching.first;
+        });
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text("This file can't be used for this tool")),
+          );
+        }
+      }
+    } else if (wantsVideo) {
+      final videoInputs = widget.config.inputs
+          .whereType<Map<String, dynamic>>()
+          .where((i) => i['type'] == 'video')
+          .toList();
+      final id =
+          videoInputs.isNotEmpty ? videoInputs.first['id'] as String? : null;
+      if (id == null) return;
+      if (!mounted) return;
+      setState(() {
+        _inputs['${id}_path'] = matching.first;
+      });
+    }
   }
 
   /// Apply random style
@@ -2644,7 +3107,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     final random = Random();
     final randomStyle = styles[random.nextInt(styles.length)];
     _selectStyle(randomStyle);
-    
+
     ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -2663,16 +3126,16 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   // -------- Advanced Settings --------
-  
+
   /// Show advanced settings bottom sheet
   Future<void> _showAdvancedSettings() async {
     // ✅ Unfocus any text field to prevent keyboard from re-opening
     FocusScope.of(context).unfocus();
-    
+
     final cs = Theme.of(context).colorScheme;
     // Use viewPadding (device safe area), not padding, for a tighter footer.
     final safeBottom = MediaQuery.of(context).viewPadding.bottom;
-    
+
     await showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -2685,7 +3148,8 @@ class _GenericToolPageState extends State<GenericToolPage>
           return Container(
             decoration: BoxDecoration(
               color: cs.surface,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(24)),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -2702,7 +3166,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                     ),
                   ),
                 ),
-                
+
                 // Scrollable content
                 Flexible(
                   child: SingleChildScrollView(
@@ -2719,7 +3183,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                                 color: cs.primary.withOpacity(0.1),
                                 borderRadius: BorderRadius.circular(12),
                               ),
-                              child: Icon(LucideIcons.settings, color: cs.primary, size: 22),
+                              child: Icon(LucideIcons.settings,
+                                  color: cs.primary, size: 22),
                             ),
                             const SizedBox(width: 14),
                             Text(
@@ -2733,7 +3198,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                           ],
                         ),
                         const SizedBox(height: 24),
-                        
+
                         // Hide all advanced settings for text output tools
                         if (_isTextTool) ...[
                           Padding(
@@ -2748,113 +3213,127 @@ class _GenericToolPageState extends State<GenericToolPage>
                             ),
                           ),
                         ] else ...[
-                        // Model Selector (only if multiple models available)
-                        if (widget.config.hasMultipleModels) ...[
-                          _buildModelSelector(cs, setSheetState),
-                          const SizedBox(height: 20),
-                        ],
-                        
-                        // Enhance Prompt Toggle (only for models with prompt)
-                        if (_hasPrompt) ...[
-                          _buildSettingToggle(
-                            cs: cs,
-                            icon: LucideIcons.sparkles,
-                            title: 'Enhance Prompt',
-                            subtitle: 'AI improves your prompt automatically',
-                            value: _advancedSettings.enhancePrompt,
-                            onChanged: (v) {
-                              setSheetState(() {
-                                setState(() {
-                                  _advancedSettings = _advancedSettings.copyWith(enhancePrompt: v);
-                                });
-                              });
-                            },
-                          ),
-                          const SizedBox(height: 12),
-                        ],
-                        
-                        // Upscale Toggle (locked for upscaler tools, hidden for video tools)
-                        if (!_isVideoTool) ...[
-                          _buildSettingToggle(
-                            cs: cs,
-                            icon: LucideIcons.maximize2,
-                            title: 'Upscale Output',
-                            subtitle: _isUpscalerTool
-                                ? 'Always enabled for upscaler tools'
-                                : (() {
-                                    final extraCost = _currentModelUpscaleCost;
-                                    if (isVipUser()) return 'Higher resolution result (FREE for VIP)';
-                                    if (extraCost > 0) {
-                                      return 'Higher resolution result (+$extraCost credits) - Free for VIP users';
-                                    }
-                                    return 'Higher resolution result';
-                                  })(),
-                            value: _advancedSettings.upscaleOutput,
-                            locked: _isUpscalerTool, // Lock for upscaler tools
-                            onChanged: _isUpscalerTool ? null : (v) {
-                              setSheetState(() {
-                                setState(() {
-                                  _advancedSettings = _advancedSettings.copyWith(upscaleOutput: v);
-                                  _upscaleEnabled = v;
-                                  _inputs["scale_factor"] = v ? _scaleFactor : 1.0;
-                                });
-                              });
-                            },
-                          ),
-                          
-                          // Upscale Factor Selector (2x/4x) - shown when upscale is enabled
-                          AnimatedSize(
-                            duration: const Duration(milliseconds: 200),
-                            child: _advancedSettings.upscaleOutput
-                                ? Padding(
-                                    padding: const EdgeInsets.only(top: 12, left: 8, right: 8),
-                                    child: _buildUpscaleFactorSelector(cs, setSheetState),
-                                  )
-                                : const SizedBox.shrink(),
-                          ),
-                          const SizedBox(height: 16),
-                        ],
-                        
-                        // Aspect Ratio Selector (hidden for edit_image, animate_image, expand scene, upscale, inpaint/erase, remove background tools)
-                        if (!_isEditImageTool && 
-                            !_isAnimateImageTool && 
-                            !_isExpandSceneTool && 
-                            !_isUpscalerTool && 
-                            !_isInpaintEraseTool && 
-                            !_isRemoveBackgroundTool) ...[
-                          _buildAdvancedAspectRatioChipSelector(cs, setSheetState),
-                          const SizedBox(height: 16),
-                        ],
-                        
-                        // Variations chips (image + video tools; max from VIP tier)
-                        if (widget.config.outputType == 'image' || widget.config.outputType == 'video') ...[
-                          _buildVariationsChipSelector(cs, setSheetState),
-                          const SizedBox(height: 16),
-                        ],
-                        
-                        // Duration chips (create / animate video; min 5s when model allows)
-                        if (widget.config.outputType == 'video' && !_isVideoUpscalerTool) ...[
-                          _buildDurationChipSelector(cs, setSheetState),
-                          const SizedBox(height: 16),
-                        ],
-                        
-                        // Video enhancement settings (for all video tools, in Additional Settings)
-                        if (widget.config.outputType == 'video') ...[
-                          _buildVideoUpscaleSettings(cs, setSheetState),
-                          const SizedBox(height: 16),
-                        ],
+                          // Model Selector (only if multiple models available)
+                          if (widget.config.hasMultipleModels) ...[
+                            _buildModelSelector(cs, setSheetState),
+                            const SizedBox(height: 20),
+                          ],
 
-                        // LoRA Adapter Selector (only for qwen_image_edit_2511_rapid_aio)
-                        if ((_selectedModelId ?? widget.config.model) == 'qwen_image_edit_2511_rapid_aio') ...[
-                          _buildLoraAdapterSelector(cs, setSheetState),
-                          const SizedBox(height: 16),
-                        ],
+                          // Enhance Prompt Toggle (only for models with prompt)
+                          if (_hasPrompt) ...[
+                            _buildSettingToggle(
+                              cs: cs,
+                              icon: LucideIcons.sparkles,
+                              title: 'Enhance Prompt',
+                              subtitle: 'AI improves your prompt automatically',
+                              value: _advancedSettings.enhancePrompt,
+                              onChanged: (v) {
+                                setSheetState(() {
+                                  setState(() {
+                                    _advancedSettings = _advancedSettings
+                                        .copyWith(enhancePrompt: v);
+                                  });
+                                });
+                              },
+                            ),
+                            const SizedBox(height: 12),
+                          ],
+
+                          // Upscale Toggle (locked for upscaler tools, hidden for video tools)
+                          if (!_isVideoTool) ...[
+                            _buildSettingToggle(
+                              cs: cs,
+                              icon: LucideIcons.maximize2,
+                              title: 'Upscale Output',
+                              subtitle: _isUpscalerTool
+                                  ? 'Always enabled for upscaler tools'
+                                  : (() {
+                                      final extraCost =
+                                          _currentModelUpscaleCost;
+                                      if (isVipUser())
+                                        return 'Higher resolution result (FREE for VIP)';
+                                      if (extraCost > 0) {
+                                        return 'Higher resolution result (+$extraCost credits) - Free for VIP users';
+                                      }
+                                      return 'Higher resolution result';
+                                    })(),
+                              value: _advancedSettings.upscaleOutput,
+                              locked:
+                                  _isUpscalerTool, // Lock for upscaler tools
+                              onChanged: _isUpscalerTool
+                                  ? null
+                                  : (v) {
+                                      setSheetState(() {
+                                        setState(() {
+                                          _advancedSettings = _advancedSettings
+                                              .copyWith(upscaleOutput: v);
+                                          _upscaleEnabled = v;
+                                          _inputs["scale_factor"] =
+                                              v ? _scaleFactor : 1.0;
+                                        });
+                                      });
+                                    },
+                            ),
+
+                            // Upscale Factor Selector (2x/4x) - shown when upscale is enabled
+                            AnimatedSize(
+                              duration: const Duration(milliseconds: 200),
+                              child: _advancedSettings.upscaleOutput
+                                  ? Padding(
+                                      padding: const EdgeInsets.only(
+                                          top: 12, left: 8, right: 8),
+                                      child: _buildUpscaleFactorSelector(
+                                          cs, setSheetState),
+                                    )
+                                  : const SizedBox.shrink(),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+
+                          // Aspect Ratio Selector (hidden for edit_image, expand scene, upscale, inpaint/erase, remove background tools)
+                          if (!_isEditImageTool &&
+                              !_isExpandSceneTool &&
+                              !_isUpscalerTool &&
+                              !_isInpaintEraseTool &&
+                              !_isRemoveBackgroundTool) ...[
+                            _buildAdvancedAspectRatioChipSelector(
+                                cs, setSheetState),
+                            const SizedBox(height: 16),
+                          ],
+
+                          // Variations chips (image + video tools; max from VIP tier)
+                          if (widget.config.outputType == 'image' ||
+                              widget.config.outputType == 'video') ...[
+                            _buildVariationsChipSelector(cs, setSheetState),
+                            const SizedBox(height: 16),
+                          ],
+
+                          // Duration chips (create / animate video; min 5s when model allows)
+                          if (widget.config.outputType == 'video' &&
+                              !_isVideoUpscalerTool) ...[
+                            _buildDurationChipSelector(cs, setSheetState),
+                            const SizedBox(height: 16),
+                          ],
+
+                          // Video enhancement settings (not used by CineReal / Cinemotion Pro Comfy workers)
+                          if (widget.config.outputType == 'video' &&
+                              !_isComfyVideoWorker) ...[
+                            _buildVideoUpscaleSettings(cs, setSheetState),
+                            const SizedBox(height: 16),
+                          ],
+
+                          // LoRA Adapter Selector (only for qwen_image_edit_2511_rapid_aio)
+                          if ((_selectedModelId ?? widget.config.model) ==
+                              'qwen_image_edit_2511_rapid_aio') ...[
+                            _buildLoraAdapterSelector(cs, setSheetState),
+                            const SizedBox(height: 16),
+                          ],
                         ],
                       ],
                     ),
                   ),
                 ),
-                
+
                 // Done button (fixed at bottom with safe area)
                 Divider(height: 1, color: cs.outlineVariant.withOpacity(0.35)),
                 SafeArea(
@@ -2877,7 +3356,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                       ),
                       child: const Text(
                         'Done',
-                        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                        style: TextStyle(
+                            fontWeight: FontWeight.w600, fontSize: 15),
                       ),
                     ),
                   ),
@@ -2908,10 +3388,14 @@ class _GenericToolPageState extends State<GenericToolPage>
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: value ? cs.primaryContainer.withOpacity(0.3) : cs.surfaceContainerHigh,
+        color: value
+            ? cs.primaryContainer.withOpacity(0.3)
+            : cs.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: value ? cs.primary.withOpacity(0.3) : cs.outlineVariant.withOpacity(0.2),
+          color: value
+              ? cs.primary.withOpacity(0.3)
+              : cs.outlineVariant.withOpacity(0.2),
         ),
       ),
       child: Row(
@@ -2919,10 +3403,13 @@ class _GenericToolPageState extends State<GenericToolPage>
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: value ? cs.primary.withOpacity(0.15) : cs.surfaceContainerHighest,
+              color: value
+                  ? cs.primary.withOpacity(0.15)
+                  : cs.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(icon, size: 20, color: value ? cs.primary : cs.onSurfaceVariant),
+            child: Icon(icon,
+                size: 20, color: value ? cs.primary : cs.onSurfaceVariant),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -2970,10 +3457,11 @@ class _GenericToolPageState extends State<GenericToolPage>
     ColorScheme cs,
     StateSetter setSheetState,
   ) {
-    final currentStr =
-        AdvancedSettings.normalizeAspectRatio(_advancedSettings.aspectRatio);
-    final currentIndex =
-        AdvancedSettings.kAdvancedAspectRatioOptions.indexOf(currentStr);
+    final options = _isVideoTool
+        ? _kVideoShapeOptions
+        : AdvancedSettings.kAdvancedAspectRatioOptions;
+    final currentStr = _selectedShapeRatio;
+    final currentIndex = options.indexOf(currentStr);
     final current = currentIndex < 0 ? 0 : currentIndex;
 
     return Column(
@@ -3009,7 +3497,7 @@ class _GenericToolPageState extends State<GenericToolPage>
         ),
         const SizedBox(height: 10),
         SegmentedButton<int>(
-          segments: AdvancedSettings.kAdvancedAspectRatioOptions
+          segments: options
               .asMap()
               .entries
               .map(
@@ -3024,10 +3512,10 @@ class _GenericToolPageState extends State<GenericToolPage>
             if (s.isEmpty) return;
             setSheetState(() {
               setState(() {
-                _advancedSettings = _advancedSettings.copyWith(
-                  aspectRatio:
-                      AdvancedSettings.kAdvancedAspectRatioOptions[s.first],
-                );
+                final next = options[s.first];
+                _advancedSettings =
+                    _advancedSettings.copyWith(aspectRatio: next);
+                _inputs['aspect_ratio'] = next;
               });
             });
           },
@@ -3038,7 +3526,8 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   /// Variations as segmented chips (same pattern as interpolation strength).
-  Widget _buildVariationsChipSelector(ColorScheme cs, StateSetter setSheetState) {
+  Widget _buildVariationsChipSelector(
+      ColorScheme cs, StateSetter setSheetState) {
     final maxV = getMaxVariations();
     final values = List<int>.generate(maxV, (i) => i + 1);
     final current = _advancedSettings.variations.clamp(1, maxV);
@@ -3063,9 +3552,11 @@ class _GenericToolPageState extends State<GenericToolPage>
                     ),
                   ),
                   Text(
-                    isVipUser()
-                        ? 'VIP: up to 4 variations'
-                        : 'Up to 2 variations (VIP: 4)',
+                    _priorVariationCount != null
+                        ? 'Last run used $_priorVariationCount. This run starts at 1.'
+                        : isVipUser()
+                            ? 'VIP: up to 4 variations'
+                            : 'Up to 2 variations (VIP: 4)',
                     style: TextStyle(
                       color: cs.onSurfaceVariant.withOpacity(0.7),
                       fontSize: 12,
@@ -3103,7 +3594,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     );
   }
 
-  /// Duration as segmented chips: 5s, 10s, … up to model [maxDuration] when max ≥ 5.
+  /// Duration chips. Cinemotion Pro uses 1–5s; other models use 5s steps.
   Widget _buildDurationChipSelector(ColorScheme cs, StateSetter setSheetState) {
     final maxDuration = _maxVideoGenDurationSeconds();
     final values = _allowedVideoGenDurationSeconds();
@@ -3147,8 +3638,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             setSheetState(() {
               setState(() {
                 _advancedSettings = _advancedSettings.copyWith(
-                  videoDuration:
-                      _clampVideoGenDurationSeconds(s.first),
+                  videoDuration: _clampVideoGenDurationSeconds(s.first),
                 );
               });
             });
@@ -3180,18 +3670,20 @@ class _GenericToolPageState extends State<GenericToolPage>
     // Get LoRA adapter options from model config
     final modelId = _selectedModelId ?? widget.config.model;
     Map<String, dynamic> modelData = _selectedModelData ?? <String, dynamic>{};
-    
+
     // If _selectedModelData is null, try to find model from config
     if (modelData.isEmpty) {
       modelData = widget.config.models?.firstWhere(
-        (m) => m['id'] == modelId,
-        orElse: () => <String, dynamic>{},
-      ) ?? <String, dynamic>{};
+            (m) => m['id'] == modelId,
+            orElse: () => <String, dynamic>{},
+          ) ??
+          <String, dynamic>{};
     }
-    
+
     var loraAdapters = (modelData['loraAdapters'] as List<dynamic>?)
-        ?.map((e) => e.toString())
-        .toList() ?? ['None'];
+            ?.map((e) => e.toString())
+            .toList() ??
+        ['None'];
     // Fallback from local tool_config metadata if model map misses loraAdapters
     if (loraAdapters.length <= 1) {
       loraAdapters = _loraAdaptersByModel[modelId] ?? loraAdapters;
@@ -3266,13 +3758,15 @@ class _GenericToolPageState extends State<GenericToolPage>
                     HapticFeedback.lightImpact();
                     setSheetState(() {
                       setState(() {
-                        _advancedSettings = _advancedSettings.copyWith(loraAdapter: option);
+                        _advancedSettings =
+                            _advancedSettings.copyWith(loraAdapter: option);
                       });
                     });
                   },
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
                     decoration: BoxDecoration(
                       color: isSelected
                           ? cs.primary.withOpacity(0.12)
@@ -3296,12 +3790,15 @@ class _GenericToolPageState extends State<GenericToolPage>
                             shape: BoxShape.circle,
                             color: isSelected ? cs.primary : Colors.transparent,
                             border: Border.all(
-                              color: isSelected ? cs.primary : cs.outlineVariant.withOpacity(0.4),
+                              color: isSelected
+                                  ? cs.primary
+                                  : cs.outlineVariant.withOpacity(0.4),
                               width: 2,
                             ),
                           ),
                           child: isSelected
-                              ? const Icon(Icons.check, size: 12, color: Colors.white)
+                              ? const Icon(Icons.check,
+                                  size: 12, color: Colors.white)
                               : null,
                         ),
                         const SizedBox(width: 12),
@@ -3314,7 +3811,9 @@ class _GenericToolPageState extends State<GenericToolPage>
                                 friendlyName,
                                 style: TextStyle(
                                   fontSize: 13,
-                                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                                  fontWeight: isSelected
+                                      ? FontWeight.w600
+                                      : FontWeight.w500,
                                   color: isSelected ? cs.primary : cs.onSurface,
                                 ),
                               ),
@@ -3344,7 +3843,7 @@ class _GenericToolPageState extends State<GenericToolPage>
       ),
     );
   }
-  
+
   Widget _buildVideoUpscaleSettings(ColorScheme cs, StateSetter setSheetState) {
     // Dedicated video upscaler: keep full interpolation + upscale controls.
     if (_isVideoUpscalerTool) {
@@ -3467,10 +3966,11 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   /// Build Video Upscale Factor Selector (2x, 4x)
-  Widget _buildVideoUpscaleFactorSelector(ColorScheme cs, StateSetter setSheetState) {
+  Widget _buildVideoUpscaleFactorSelector(
+      ColorScheme cs, StateSetter setSheetState) {
     final factors = [2, 4];
     final currentFactor = _advancedSettings.upscaleFactor.clamp(2, 4);
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -3492,7 +3992,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                   onTap: () {
                     setSheetState(() {
                       setState(() {
-                        _advancedSettings = _advancedSettings.copyWith(upscaleFactor: factor);
+                        _advancedSettings =
+                            _advancedSettings.copyWith(upscaleFactor: factor);
                       });
                     });
                   },
@@ -3502,7 +4003,9 @@ class _GenericToolPageState extends State<GenericToolPage>
                       color: isSelected ? cs.primary : cs.surfaceContainerHigh,
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                        color: isSelected ? cs.primary : cs.outlineVariant.withOpacity(0.3),
+                        color: isSelected
+                            ? cs.primary
+                            : cs.outlineVariant.withOpacity(0.3),
                         width: isSelected ? 2 : 1,
                       ),
                     ),
@@ -3527,7 +4030,8 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   /// Build upscale factor selector (2x/4x) for advanced settings
-  Widget _buildUpscaleFactorSelector(ColorScheme cs, StateSetter setSheetState) {
+  Widget _buildUpscaleFactorSelector(
+      ColorScheme cs, StateSetter setSheetState) {
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
@@ -3578,8 +4082,10 @@ class _GenericToolPageState extends State<GenericToolPage>
                       Text(
                         '${scale}x',
                         style: TextStyle(
-                          color: isSelected ? cs.onPrimary : cs.onSurfaceVariant,
-                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                          color:
+                              isSelected ? cs.onPrimary : cs.onSurfaceVariant,
+                          fontWeight:
+                              isSelected ? FontWeight.w600 : FontWeight.w500,
                           fontSize: 14,
                         ),
                       ),
@@ -3600,7 +4106,8 @@ class _GenericToolPageState extends State<GenericToolPage>
     // Filter to only enabled models
     final models = allModels.where((m) {
       final enabled = m['enabled'];
-      return enabled == null || enabled == true; // Default to enabled if not specified
+      return enabled == null ||
+          enabled == true; // Default to enabled if not specified
     }).toList();
     if (models.isEmpty) return const SizedBox.shrink();
 
@@ -3631,7 +4138,7 @@ class _GenericToolPageState extends State<GenericToolPage>
           ),
         ),
         const SizedBox(height: 12),
-        
+
         // Model cards - horizontal scrollable
         SizedBox(
           height: 122,
@@ -3642,7 +4149,7 @@ class _GenericToolPageState extends State<GenericToolPage>
               final model = models[index];
               final isSelected = model['id'] == _selectedModelId;
               final isDefault = model['id'] == widget.config.defaultModel;
-              
+
               return Padding(
                 padding: EdgeInsets.only(
                   right: index < models.length - 1 ? 10 : 0,
@@ -3678,8 +4185,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     final description = model['description'] as String? ?? '';
     final cost = _baseGemCostForModelMap(model);
     final offer = _offerPercentForModelMap(model);
-    final discountedCost =
-        offer > 0 ? _applyOfferDiscount(cost, offer) : cost;
+    final discountedCost = offer > 0 ? _applyOfferDiscount(cost, offer) : cost;
 
     return GestureDetector(
       onTap: onTap,
@@ -3752,13 +4258,14 @@ class _GenericToolPageState extends State<GenericToolPage>
                       color: cs.primary,
                       shape: BoxShape.circle,
                     ),
-                    child: Icon(LucideIcons.check, size: 10, color: cs.onPrimary),
+                    child:
+                        Icon(LucideIcons.check, size: 10, color: cs.onPrimary),
                   ),
               ],
             ),
-            
+
             const SizedBox(height: 4),
-            
+
             // Description - 2 lines
             Text(
               description,
@@ -3770,9 +4277,9 @@ class _GenericToolPageState extends State<GenericToolPage>
                 height: 1.2,
               ),
             ),
-            
+
             const Spacer(),
-            
+
             // Cost row - at bottom
             Row(
               children: [
@@ -3799,7 +4306,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                   ),
                   const SizedBox(width: 4),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                     decoration: BoxDecoration(
                       color: Colors.green.withOpacity(0.15),
                       borderRadius: BorderRadius.circular(4),
@@ -3863,25 +4371,26 @@ class _GenericToolPageState extends State<GenericToolPage>
   bool _areRequiredInputsFilled() {
     // Don't allow generation while an image is being processed
     if (_isProcessingImage) return false;
-    
+
     // Check if bulk edit mode is enabled
     final isBulkMode = _advancedSettings.bulkEditEnabled && _supportsBulkEdit;
-    
+
     // Calculate total jobs for rate limit check
-    final variations = _advancedSettings.variations.clamp(1, getMaxVariations());
+    final variations =
+        _advancedSettings.variations.clamp(1, getMaxVariations());
     final int imageCount =
         isBulkMode && _hasBulkInput ? _bulkActiveMediaCount : 1;
     final int totalJobsToSubmit = imageCount * variations;
-    
+
     // Check rate limit - don't allow if it would exceed concurrent job limit
     final rateLimitError = checkRateLimitForSubmission(totalJobsToSubmit);
     if (rateLimitError != null) return false;
-    
+
     // Check total job limit for bulk edit
     if (isBulkMode && _hasBulkInput) {
       final totalJobs = _bulkActiveMediaCount * variations;
       if (totalJobs > _maxTotalJobs) return false;
-      
+
       if (_supportsBulkVideoEdit) {
         if (_bulkVideoDurations.length != _bulkVideoPaths.length) {
           return false;
@@ -3925,7 +4434,7 @@ class _GenericToolPageState extends State<GenericToolPage>
       }
     }
 
-    if (_isCineRealFlf2vMode) {
+    if (_isCineRealFlf2vMode || _requiresEndFrame) {
       final bool flf2vBulk =
           isBulkMode && _supportsBulkImageEdit && _hasBulkInput;
       if (!flf2vBulk) {
@@ -3943,16 +4452,16 @@ class _GenericToolPageState extends State<GenericToolPage>
         }
       }
     }
-    
+
     final elements = _currentElements;
-    
+
     for (final element in elements) {
       final type = element["type"];
       final inputRef = element["input_ref"];
-      
+
       // Skip elements without input_ref (like upscale_toggle, generate_button)
       if (inputRef == null) continue;
-      
+
       // Skip optional inputs like sliders, dropdowns (they have defaults)
       if (type == "slider" || type == "dropdown") continue;
       // Scaffolds with built-in defaults / no required semantics → skip.
@@ -4041,7 +4550,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             }
           }
           break;
-          
+
         case "painter":
           // Mask is required for inpainting modes (in single mode)
           // In bulk mode, masks are checked separately above
@@ -4052,46 +4561,49 @@ class _GenericToolPageState extends State<GenericToolPage>
           break;
       }
     }
-    
+
     return true;
   }
-  
+
   // Get list of missing required inputs for user feedback
   List<String> _getMissingInputs() {
     final missing = <String>[];
-    
+
     // Show processing message while image is being loaded
     if (_isProcessingImage) {
       return ["Image loading..."]; // Special message for processing state
     }
-    
+
     // Check if bulk edit mode is enabled
     final isBulkMode = _advancedSettings.bulkEditEnabled && _supportsBulkEdit;
-    
+
     // Calculate total jobs for rate limit check
-    final variations = _advancedSettings.variations.clamp(1, getMaxVariations());
+    final variations =
+        _advancedSettings.variations.clamp(1, getMaxVariations());
     final int imageCount =
         isBulkMode && _hasBulkInput ? _bulkActiveMediaCount : 1;
     final int totalJobsToSubmit = imageCount * variations;
-    
+
     // Check rate limit - provide helpful context instead of blocking message
     final rateLimitError = checkRateLimitForSubmission(totalJobsToSubmit);
     if (rateLimitError != null) {
       final status = getRateLimitStatus();
       final current = status['currentProcessing'] as int;
       final available = status['available'] as int;
-      
+
       // Different messages based on context
       if (available == 0) {
         // No slots available - show friendly waiting message
         return ["⏳ $current jobs running • Wait for completion"];
       } else if (totalJobsToSubmit > available) {
         // Some slots available but not enough
-        return ["⏳ $available slot${available > 1 ? 's' : ''} free • Need $totalJobsToSubmit"];
+        return [
+          "⏳ $available slot${available > 1 ? 's' : ''} free • Need $totalJobsToSubmit"
+        ];
       }
       return ["⏳ Processing $current jobs..."];
     }
-    
+
     // Check total job limit for bulk edit
     if (isBulkMode && _hasBulkInput) {
       final totalJobs = _bulkActiveMediaCount * variations;
@@ -4163,7 +4675,7 @@ class _GenericToolPageState extends State<GenericToolPage>
       }
     }
 
-    if (_isCineRealFlf2vMode) {
+    if (_isCineRealFlf2vMode || _requiresEndFrame) {
       final bool flf2vBulk =
           isBulkMode && _supportsBulkImageEdit && _hasBulkInput;
       if (!flf2vBulk) {
@@ -4179,16 +4691,16 @@ class _GenericToolPageState extends State<GenericToolPage>
         if (missing0('last_frame_image')) missing.add('End frame');
       }
     }
-    
+
     final elements = _currentElements;
-    
+
     for (final element in elements) {
       final type = element["type"];
       final inputRef = element["input_ref"];
-      
+
       // Skip elements without input_ref
       if (inputRef == null) continue;
-      
+
       // Skip optional inputs
       if (type == "slider" || type == "dropdown") continue;
       if (type == "number_input" ||
@@ -4286,7 +4798,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             }
           }
           break;
-          
+
         case "painter":
           // Mask is required for inpainting modes (in single mode)
           // In bulk mode, masks are checked separately above
@@ -4299,7 +4811,7 @@ class _GenericToolPageState extends State<GenericToolPage>
           break;
       }
     }
-    
+
     return missing;
   }
 
@@ -4315,16 +4827,20 @@ class _GenericToolPageState extends State<GenericToolPage>
     if (_isVideoUpscalerTool) {
       baseTotal = _videoUpscalerUndiscountedCreditsTotal();
     } else if (widget.config.outputType == 'video' && !_isVideoUpscalerTool) {
-      final variations = _advancedSettings.variations.clamp(1, getMaxVariations());
-      final imageCount =
-          _advancedSettings.bulkEditEnabled && _hasBulkInput ? _bulkActiveMediaCount : 1;
+      final variations =
+          _advancedSettings.variations.clamp(1, getMaxVariations());
+      final imageCount = _advancedSettings.bulkEditEnabled && _hasBulkInput
+          ? _bulkActiveMediaCount
+          : 1;
       final baseCostPerVariation =
           _getDurationBasedCost() + _enhancementUpscaleCreditsPerVariation();
       baseTotal = baseCostPerVariation * variations * imageCount;
     } else {
-      final variations = _advancedSettings.variations.clamp(1, getMaxVariations());
-      final imageCount =
-          _advancedSettings.bulkEditEnabled && _hasBulkInput ? _bulkActiveMediaCount : 1;
+      final variations =
+          _advancedSettings.variations.clamp(1, getMaxVariations());
+      final imageCount = _advancedSettings.bulkEditEnabled && _hasBulkInput
+          ? _bulkActiveMediaCount
+          : 1;
       final baseCostPerVariation = _currentModelCost +
           _enhancementUpscaleCreditsPerVariation() +
           _inputScaleUpscaleCreditsPerVariation();
@@ -4345,9 +4861,10 @@ class _GenericToolPageState extends State<GenericToolPage>
             child: !isEnabled && missingInputs.isNotEmpty
                 ? Container(
                     margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 10),
                     decoration: BoxDecoration(
-                      color: _isProcessingImage 
+                      color: _isProcessingImage
                           ? cs.primaryContainer.withOpacity(0.3)
                           : cs.errorContainer.withOpacity(0.3),
                       borderRadius: BorderRadius.circular(12),
@@ -4357,9 +4874,9 @@ class _GenericToolPageState extends State<GenericToolPage>
                             : cs.error.withOpacity(0.2),
                       ),
                     ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
                         if (_isProcessingImage)
                           SizedBox(
                             width: 16,
@@ -4370,18 +4887,18 @@ class _GenericToolPageState extends State<GenericToolPage>
                             ),
                           )
                         else
-                Icon(
+                          Icon(
                             LucideIcons.alertCircle,
                             size: 16,
                             color: cs.error.withOpacity(0.8),
-                ),
-                const SizedBox(width: 8),
+                          ),
+                        const SizedBox(width: 8),
                         Flexible(
                           child: Text(
-                            _isProcessingImage 
+                            _isProcessingImage
                                 ? "Processing image..."
                                 : "Add ${missingInputs.join(' & ')} to continue",
-                              style: TextStyle(
+                            style: TextStyle(
                               color: _isProcessingImage
                                   ? cs.primary.withOpacity(0.9)
                                   : cs.error.withOpacity(0.9),
@@ -4395,7 +4912,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                   )
                 : const SizedBox.shrink(),
           ),
-          
+
           // Main generate button with integrated cost (Kala AI brand gradient)
           Opacity(
             opacity: isEnabled ? 1.0 : 0.6,
@@ -4406,7 +4923,10 @@ class _GenericToolPageState extends State<GenericToolPage>
                 gradient: LinearGradient(
                   colors: isEnabled
                       ? KalaColors.brandGradient
-                      : [cs.onSurfaceVariant.withOpacity(0.4), cs.onSurfaceVariant.withOpacity(0.3)],
+                      : [
+                          cs.onSurfaceVariant.withOpacity(0.4),
+                          cs.onSurfaceVariant.withOpacity(0.3)
+                        ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -4431,7 +4951,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                   onTap: isEnabled ? _runJob : null,
                   borderRadius: BorderRadius.circular(18),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 16, horizontal: 20),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -4440,18 +4961,18 @@ class _GenericToolPageState extends State<GenericToolPage>
                           LucideIcons.sparkles,
                           color: Colors.white,
                           size: 22,
-                              ),
+                        ),
                         const SizedBox(width: 10),
                         const Text(
                           "Generate",
-                              style: TextStyle(
-                                color: Colors.white,
+                          style: TextStyle(
+                            color: Colors.white,
                             fontSize: 17,
                             fontWeight: FontWeight.w700,
                             letterSpacing: 0.3,
-                              ),
-                            ),
-                        
+                          ),
+                        ),
+
                         // Divider
                         Container(
                           margin: const EdgeInsets.symmetric(horizontal: 14),
@@ -4459,10 +4980,11 @@ class _GenericToolPageState extends State<GenericToolPage>
                           width: 1,
                           color: Colors.white.withOpacity(0.3),
                         ),
-                        
+
                         // Right: Cost display
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
                             color: Colors.white.withOpacity(0.2),
                             borderRadius: BorderRadius.circular(10),
@@ -4479,11 +5001,12 @@ class _GenericToolPageState extends State<GenericToolPage>
                               if (offer > 0) ...[
                                 Text(
                                   "$baseTotal",
-                              style: TextStyle(
+                                  style: TextStyle(
                                     color: Colors.white.withOpacity(0.6),
                                     fontSize: 14,
-                                decoration: TextDecoration.lineThrough,
-                                    decorationColor: Colors.white.withOpacity(0.6),
+                                    decoration: TextDecoration.lineThrough,
+                                    decorationColor:
+                                        Colors.white.withOpacity(0.6),
                                   ),
                                 ),
                                 const SizedBox(width: 4),
@@ -4494,8 +5017,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                                   color: Colors.white,
                                   fontSize: 15,
                                   fontWeight: FontWeight.w700,
+                                ),
                               ),
-                            ),
                               if (offer > 0) ...[
                                 const SizedBox(width: 6),
                                 Container(
@@ -4509,25 +5032,25 @@ class _GenericToolPageState extends State<GenericToolPage>
                                   ),
                                   child: Text(
                                     "-$offer%",
-                              style: const TextStyle(
+                                    style: const TextStyle(
                                       color: Colors.greenAccent,
                                       fontSize: 11,
-                                fontWeight: FontWeight.w600,
+                                      fontWeight: FontWeight.w600,
                                     ),
-                              ),
-                            ),
-                          ],
+                                  ),
+                                ),
+                              ],
                             ],
+                          ),
                         ),
-                      ),
-              ],
-            ),
-          ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),
           ),
-          
+
           // Upscale info badge (when image upscale is enabled)
           if (_upscaleEnabled &&
               _currentModelUpscaleCost > 0 &&
@@ -4545,10 +5068,10 @@ class _GenericToolPageState extends State<GenericToolPage>
                   const SizedBox(width: 6),
                   Text(
                     "${_scaleFactor}x upscale (+$_currentModelUpscaleCost credits)",
-                      style: TextStyle(
+                    style: TextStyle(
                       color: cs.onSurfaceVariant.withOpacity(0.7),
                       fontSize: 12,
-                        fontWeight: FontWeight.w500,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 ],
@@ -4610,7 +5133,8 @@ class _GenericToolPageState extends State<GenericToolPage>
             builder: (_, credits, __) {
               return Container(
                 margin: const EdgeInsets.only(right: 10),
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(
                   color: cs.primaryContainer.withOpacity(0.28),
                   borderRadius: BorderRadius.circular(AppStyles.radiusFull),
@@ -4687,18 +5211,18 @@ class _GenericToolPageState extends State<GenericToolPage>
           return;
         }
 
-          setState(() {
-            if (_isAnimateImageTool &&
-                _isCineRealAnimateModel &&
-                id == 'last_frame_image') {
-              _clearCineRealSingleRefVideo();
-            }
-            _inputs[id] = bytesList;
-            _inputs["${id}_path"] = limited.first.path;
-            // Clear old mask when new image is selected
-            _inputs["mask_image"] = null;
+        setState(() {
+          if (_isAnimateImageTool &&
+              _isCineRealAnimateModel &&
+              id == 'last_frame_image') {
+            _clearCineRealSingleRefVideo();
+          }
+          _inputs[id] = bytesList;
+          _inputs["${id}_path"] = limited.first.path;
+          // Clear old mask when new image is selected
+          _inputs["mask_image"] = null;
           _isProcessingImage = false;
-          });
+        });
       } else {
         final file = await picker.pickImage(
             source: ImageSource.gallery, imageQuality: 85);
@@ -4721,18 +5245,18 @@ class _GenericToolPageState extends State<GenericToolPage>
           return;
         }
 
-          setState(() {
-            if (_isAnimateImageTool &&
-                _isCineRealAnimateModel &&
-                id == 'last_frame_image') {
-              _clearCineRealSingleRefVideo();
-            }
-            _inputs[id] = [bytes];
-            _inputs["${id}_path"] = file.path;
-            // Clear old mask when new image is selected
-            _inputs["mask_image"] = null;
+        setState(() {
+          if (_isAnimateImageTool &&
+              _isCineRealAnimateModel &&
+              id == 'last_frame_image') {
+            _clearCineRealSingleRefVideo();
+          }
+          _inputs[id] = [bytes];
+          _inputs["${id}_path"] = file.path;
+          // Clear old mask when new image is selected
+          _inputs["mask_image"] = null;
           _isProcessingImage = false;
-          });
+        });
 
         if (widget.config.model == "diffusers_outpaint") {
           final result = await Navigator.push<Map<String, String>>(
@@ -4798,8 +5322,8 @@ class _GenericToolPageState extends State<GenericToolPage>
       debugPrint("Gallery picker failed: $e");
       if (mounted) {
         setState(() => _isProcessingImage = false);
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text("Failed to load image: $e")));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text("Failed to load image: $e")));
       }
     }
   }
@@ -4818,11 +5342,11 @@ class _GenericToolPageState extends State<GenericToolPage>
 
   Future<void> _pickImageFromCamera(Map<String, dynamic> input) async {
     final id = input['id'];
-    
+
     // Increment version and start processing
     final currentVersion = ++_imageProcessingVersion;
     setState(() => _isProcessingImage = true);
-    
+
     try {
       final file =
           await picker.pickImage(source: ImageSource.camera, imageQuality: 85);
@@ -4845,18 +5369,18 @@ class _GenericToolPageState extends State<GenericToolPage>
         return;
       }
 
-        setState(() {
-          if (_isAnimateImageTool &&
-              _isCineRealAnimateModel &&
-              id == 'last_frame_image') {
-            _clearCineRealSingleRefVideo();
-          }
-          _inputs[id] = [bytes];
-          _inputs["${id}_path"] = file.path;
-          // Clear old mask when new image is captured
-          _inputs["mask_image"] = null;
+      setState(() {
+        if (_isAnimateImageTool &&
+            _isCineRealAnimateModel &&
+            id == 'last_frame_image') {
+          _clearCineRealSingleRefVideo();
+        }
+        _inputs[id] = [bytes];
+        _inputs["${id}_path"] = file.path;
+        // Clear old mask when new image is captured
+        _inputs["mask_image"] = null;
         _isProcessingImage = false;
-        });
+      });
 
       if (widget.config.model == "diffusers_outpaint") {
         final result = await Navigator.push<Map<String, String>>(
@@ -4938,7 +5462,8 @@ class _GenericToolPageState extends State<GenericToolPage>
     // HARD CAPS: limit both max dimension AND total pixel area.
     // This avoids OOM spikes for tall images even when one side is within maxDim.
     const int maxDim = 1280;
-    const int maxPixels = 700000; // ~576x1184 = 681k (safe), 800x1184 = 947k (too big)
+    const int maxPixels =
+        700000; // ~576x1184 = 681k (safe), 800x1184 = 947k (too big)
 
     // 1) Cap by max dimension
     if (width > maxDim || height > maxDim) {
@@ -5029,7 +5554,8 @@ class _GenericToolPageState extends State<GenericToolPage>
     for (final j in _bulkImageJobs) {
       n += (_bulkMaxInitPerJob - j.length).clamp(0, _bulkMaxInitPerJob);
     }
-    final extraTasks = (_maxBulkImages - _bulkImageJobs.length).clamp(0, _maxBulkImages);
+    final extraTasks =
+        (_maxBulkImages - _bulkImageJobs.length).clamp(0, _maxBulkImages);
     n += extraTasks * _bulkMaxInitPerJob;
     return n;
   }
@@ -5217,11 +5743,14 @@ class _GenericToolPageState extends State<GenericToolPage>
         scrollDirection: Axis.horizontal,
         itemCount: _bulkImageJobs.length,
         itemBuilder: (context, index) {
-          final hasMask = index < _bulkMasks.length && _bulkMasks[index] != null;
-          final hasOutpaintConfig = index < _bulkOutpaintConfigs.length && _bulkOutpaintConfigs[index] != null;
+          final hasMask =
+              index < _bulkMasks.length && _bulkMasks[index] != null;
+          final hasOutpaintConfig = index < _bulkOutpaintConfigs.length &&
+              _bulkOutpaintConfigs[index] != null;
 
           return Padding(
-            padding: EdgeInsets.only(right: index < _bulkImageJobs.length - 1 ? 8 : 0),
+            padding: EdgeInsets.only(
+                right: index < _bulkImageJobs.length - 1 ? 8 : 0),
             child: Column(
               children: [
                 GestureDetector(
@@ -5270,68 +5799,70 @@ class _GenericToolPageState extends State<GenericToolPage>
                           ),
                         ),
                       ),
-                    // Remove button
-                    Positioned(
-                      top: 4,
-                      right: 4,
-                      child: GestureDetector(
-                        onTap: () => _removeBulkImageAt(index),
-                        child: Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: BoxDecoration(
-                            color: cs.error,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            LucideIcons.x,
-                            size: 12,
-                            color: cs.onError,
-                          ),
-                        ),
-                      ),
-                    ),
-                    // Index badge
-                    Positioned(
-                      bottom: 4,
-                      left: 4,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: cs.surface.withOpacity(0.9),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          '${index + 1}',
-                          style: TextStyle(
-                            color: cs.onSurface,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
+                      // Remove button
+                      Positioned(
+                        top: 4,
+                        right: 4,
+                        child: GestureDetector(
+                          onTap: () => _removeBulkImageAt(index),
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: cs.error,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              LucideIcons.x,
+                              size: 12,
+                              color: cs.onError,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    // Mask/Outpaint status badge
-                    if (_requiresMask || _isOutpaint)
+                      // Index badge
                       Positioned(
                         bottom: 4,
-                        right: 4,
+                        left: 4,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
-                            color: (hasMask || hasOutpaintConfig)
-                                ? Colors.green.withOpacity(0.9)
-                                : cs.error.withOpacity(0.9),
+                            color: cs.surface.withOpacity(0.9),
                             borderRadius: BorderRadius.circular(4),
                           ),
-                          child: Icon(
-                            (hasMask || hasOutpaintConfig)
-                                ? LucideIcons.check
-                                : LucideIcons.alertCircle,
-                            size: 10,
-                            color: Colors.white,
+                          child: Text(
+                            '${index + 1}',
+                            style: TextStyle(
+                              color: cs.onSurface,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
                       ),
+                      // Mask/Outpaint status badge
+                      if (_requiresMask || _isOutpaint)
+                        Positioned(
+                          bottom: 4,
+                          right: 4,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 4, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: (hasMask || hasOutpaintConfig)
+                                  ? Colors.green.withOpacity(0.9)
+                                  : cs.error.withOpacity(0.9),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Icon(
+                              (hasMask || hasOutpaintConfig)
+                                  ? LucideIcons.check
+                                  : LucideIcons.alertCircle,
+                              size: 10,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -5353,18 +5884,24 @@ class _GenericToolPageState extends State<GenericToolPage>
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(
-                            _requiresMask ? LucideIcons.paintbrush : LucideIcons.move,
+                            _requiresMask
+                                ? LucideIcons.paintbrush
+                                : LucideIcons.move,
                             size: 12,
-                            color: (hasMask || hasOutpaintConfig) ? cs.primary : cs.error,
+                            color: (hasMask || hasOutpaintConfig)
+                                ? cs.primary
+                                : cs.error,
                           ),
                           const SizedBox(width: 4),
                           Text(
-                            _requiresMask 
+                            _requiresMask
                                 ? (hasMask ? 'Edit' : 'Mask')
                                 : (hasOutpaintConfig ? 'Edit' : 'Place'),
                             style: TextStyle(
                               fontSize: 10,
-                              color: (hasMask || hasOutpaintConfig) ? cs.primary : cs.error,
+                              color: (hasMask || hasOutpaintConfig)
+                                  ? cs.primary
+                                  : cs.error,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -5380,7 +5917,7 @@ class _GenericToolPageState extends State<GenericToolPage>
       ),
     );
   }
-  
+
   /// Remove bulk task at index along with its mask and outpaint config
   void _removeBulkImageAt(int index) {
     setState(() {
@@ -5432,7 +5969,8 @@ class _GenericToolPageState extends State<GenericToolPage>
         final job = _bulkImageJobs[taskIdx];
         final canAdd = job.length < _bulkMaxInitPerJob;
         return Padding(
-          padding: EdgeInsets.only(bottom: taskIdx < _bulkImageJobs.length - 1 ? 10 : 0),
+          padding: EdgeInsets.only(
+              bottom: taskIdx < _bulkImageJobs.length - 1 ? 10 : 0),
           child: Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
@@ -5468,7 +6006,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                 const SizedBox(height: 8),
                 Text(
                   'Image 1 = primary. Add 2–3 for multi-reference edits (e.g. person + object).',
-                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant, height: 1.25),
+                  style: TextStyle(
+                      fontSize: 11, color: cs.onSurfaceVariant, height: 1.25),
                 ),
                 const SizedBox(height: 8),
                 SizedBox(
@@ -5483,20 +6022,25 @@ class _GenericToolPageState extends State<GenericToolPage>
                           clipBehavior: Clip.none,
                           children: [
                             GestureDetector(
-                              onLongPressStart: (_) => _showBulkSlotPreview(taskIdx, slotIdx),
+                              onLongPressStart: (_) =>
+                                  _showBulkSlotPreview(taskIdx, slotIdx),
                               onLongPressEnd: (_) {
-                                Navigator.of(context, rootNavigator: true).pop();
+                                Navigator.of(context, rootNavigator: true)
+                                    .pop();
                               },
                               child: Container(
                                 width: 88,
                                 height: 88,
                                 decoration: BoxDecoration(
                                   borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(color: cs.primary.withOpacity(0.35), width: 1.5),
+                                  border: Border.all(
+                                      color: cs.primary.withOpacity(0.35),
+                                      width: 1.5),
                                 ),
                                 child: ClipRRect(
                                   borderRadius: BorderRadius.circular(10),
-                                  child: Image.memory(job[slotIdx], fit: BoxFit.cover),
+                                  child: Image.memory(job[slotIdx],
+                                      fit: BoxFit.cover),
                                 ),
                               ),
                             ),
@@ -5504,7 +6048,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                               top: 2,
                               left: 2,
                               child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 5, vertical: 2),
                                 decoration: BoxDecoration(
                                   color: cs.surface.withOpacity(0.92),
                                   borderRadius: BorderRadius.circular(4),
@@ -5523,14 +6068,16 @@ class _GenericToolPageState extends State<GenericToolPage>
                               top: 2,
                               right: 2,
                               child: GestureDetector(
-                                onTap: () => _removeBulkTaskSlot(taskIdx, slotIdx),
+                                onTap: () =>
+                                    _removeBulkTaskSlot(taskIdx, slotIdx),
                                 child: Container(
                                   padding: const EdgeInsets.all(4),
                                   decoration: BoxDecoration(
                                     color: cs.error,
                                     shape: BoxShape.circle,
                                   ),
-                                  child: Icon(LucideIcons.x, size: 11, color: cs.onError),
+                                  child: Icon(LucideIcons.x,
+                                      size: 11, color: cs.onError),
                                 ),
                               ),
                             ),
@@ -5549,7 +6096,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(LucideIcons.plus, color: cs.primary, size: 22),
+                                Icon(LucideIcons.plus,
+                                    color: cs.primary, size: 22),
                                 const SizedBox(height: 4),
                                 Text(
                                   'Add',
@@ -5601,13 +6149,13 @@ class _GenericToolPageState extends State<GenericToolPage>
       ),
     );
   }
-  
+
   /// Show full-screen preview for bulk image (called on long press)
   void _showBulkImagePreview(int index) {
     if (index >= _bulkImageJobs.length) return;
     final job = _bulkImageJobs[index];
     if (job.isEmpty) return;
-    
+
     showDialog(
       context: context,
       barrierColor: Colors.black.withOpacity(0.9),
@@ -5630,21 +6178,22 @@ class _GenericToolPageState extends State<GenericToolPage>
       ),
     );
   }
-  
+
   /// Edit mask or outpaint config for a bulk image
   Future<void> _editBulkImageConfig(int index) async {
     if (index >= _bulkImageJobs.length) return;
     final primary = _bulkImageJobs[index].first;
-    
+
     if (_requiresMask) {
       // Open mask editor for this specific bulk image
       // CRITICAL: Pass the existing mask for THIS bulk image only
       // Set isBulkMode=true to prevent fallback to single image mask
-      final existingMask = (index < _bulkMasks.length) ? _bulkMasks[index] : null;
+      final existingMask =
+          (index < _bulkMasks.length) ? _bulkMasks[index] : null;
       final mask = await _openMaskEditor(
         primary,
         existingMask: existingMask,
-        isBulkMode: true,  // CRITICAL: Never use single image mask in bulk mode
+        isBulkMode: true, // CRITICAL: Never use single image mask in bulk mode
       );
       if (mask != null && mounted) {
         setState(() {
@@ -5653,7 +6202,8 @@ class _GenericToolPageState extends State<GenericToolPage>
             _bulkMasks.add(null);
           }
           _bulkMasks[index] = mask;
-          debugPrint("✅ Saved mask for bulk image $index (total masks: ${_bulkMasks.length})");
+          debugPrint(
+              "✅ Saved mask for bulk image $index (total masks: ${_bulkMasks.length})");
         });
       }
     } else if (_isOutpaint) {
@@ -5686,7 +6236,8 @@ class _GenericToolPageState extends State<GenericToolPage>
   }) {
     final cs = Theme.of(context).colorScheme;
     return Container(
-      margin: margin ?? const EdgeInsets.symmetric(vertical: AppStyles.spacing8),
+      margin:
+          margin ?? const EdgeInsets.symmetric(vertical: AppStyles.spacing8),
       padding: padding ?? const EdgeInsets.all(AppStyles.spacing16),
       decoration: AppStyles.cardDecoration(cs, elevated: elevated),
       child: child,
@@ -5758,9 +6309,8 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   List<String> _composerHintExamplesFor(dynamic input, String ref) {
-    final Map<String, dynamic> m = input is Map
-        ? Map<String, dynamic>.from(input)
-        : <String, dynamic>{};
+    final Map<String, dynamic> m =
+        input is Map ? Map<String, dynamic>.from(input) : <String, dynamic>{};
     final key =
         '${widget.config.capabilityId}|$ref|${m['label']}|${m['hintExamples']}';
     if (key != _composerHintExamplesKey) {
@@ -5787,16 +6337,15 @@ class _GenericToolPageState extends State<GenericToolPage>
 
     final modelName = _selectedModelData?['name'] as String? ??
         widget.config.models?.firstWhere(
-              (m) => m['id'] == (_selectedModelId ?? widget.config.model),
-              orElse: () => {'name': widget.config.model},
-            )['name'] as String? ??
+          (m) => m['id'] == (_selectedModelId ?? widget.config.model),
+          orElse: () => {'name': widget.config.model},
+        )['name'] as String? ??
         widget.config.model;
 
     final attachments = _collectComposerAttachments();
     final attachInputs = _attachableInputs();
     final canAttach = attachInputs.isNotEmpty;
-    final isBulkMode =
-        _advancedSettings.bulkEditEnabled && _supportsBulkEdit;
+    final isBulkMode = _advancedSettings.bulkEditEnabled && _supportsBulkEdit;
     final showComposerAttachRow =
         attachments.isNotEmpty || (isBulkMode && canAttach);
     final canAutoPrompt = _composerCanAutoPrompt(attachments);
@@ -5851,8 +6400,24 @@ class _GenericToolPageState extends State<GenericToolPage>
               // Inline attachment thumbnails (image/video/audio/file) — mirrors
               // _inputs state; tap a chip for actions, × removes it.
               // In bulk mode, keep the row visible (add-task tile) even when empty.
+              if (_requiresEndFrame) ...[
+                Text(
+                  attachments.any((a) => a.ref == 'init_image') &&
+                          attachments.any((a) => a.ref == 'last_frame_image')
+                      ? 'Start frame and end frame are set.'
+                      : 'Pick the start frame, then the end frame.',
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
               if (showComposerAttachRow) ...[
                 _buildComposerAttachmentsRow(cs, attachments),
+                const SizedBox(height: 10),
+              ] else if (canAttach) ...[
+                _buildMediaComposerEmptyHint(cs, attachInputs),
                 const SizedBox(height: 10),
               ],
 
@@ -6040,7 +6605,9 @@ class _GenericToolPageState extends State<GenericToolPage>
       case 'image':
       case 'image_upload':
         icon = LucideIcons.image;
-        line = 'Tap + to add an image';
+        line = _requiresEndFrame
+            ? 'Pick the start frame, then the end frame.'
+            : 'Tap + to add an image';
         break;
       case 'video':
       case 'video_upload':
@@ -6096,9 +6663,9 @@ class _GenericToolPageState extends State<GenericToolPage>
 
     final modelName = _selectedModelData?['name'] as String? ??
         widget.config.models?.firstWhere(
-              (m) => m['id'] == (_selectedModelId ?? widget.config.model),
-              orElse: () => {'name': widget.config.model},
-            )['name'] as String? ??
+          (m) => m['id'] == (_selectedModelId ?? widget.config.model),
+          orElse: () => {'name': widget.config.model},
+        )['name'] as String? ??
         widget.config.model;
 
     final attachments = _collectComposerAttachments();
@@ -6153,6 +6720,19 @@ class _GenericToolPageState extends State<GenericToolPage>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (_requiresEndFrame) ...[
+                Text(
+                  attachments.any((a) => a.ref == 'init_image') &&
+                          attachments.any((a) => a.ref == 'last_frame_image')
+                      ? 'Start frame and end frame are set.'
+                      : 'Pick the start frame, then the end frame.',
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
               if (showComposerAttachRow) ...[
                 _buildComposerAttachmentsRow(cs, attachments),
                 const SizedBox(height: 10),
@@ -6513,28 +7093,29 @@ class _GenericToolPageState extends State<GenericToolPage>
 
   /// Inputs on this tool that can be attached through the composer's + sheet.
   List<Map<String, dynamic>> _attachableInputs() {
-    return widget.config.inputs.where((i) {
-      final t = i['type'];
-      final ok = t == 'image' ||
-          t == 'image_upload' ||
-          t == 'video' ||
-          t == 'video_upload' ||
-          t == 'audio_upload' ||
-          t == 'file_upload';
-      if (!ok) return false;
-      return _elementShouldRender(Map<String, dynamic>.from(i as Map));
-    }).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    return widget.config.inputs
+        .where((i) {
+          final t = i['type'];
+          final ok = t == 'image' ||
+              t == 'image_upload' ||
+              t == 'video' ||
+              t == 'video_upload' ||
+              t == 'audio_upload' ||
+              t == 'file_upload';
+          if (!ok) return false;
+          return _elementShouldRender(Map<String, dynamic>.from(i as Map));
+        })
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
   }
 
   Widget _buildComposerAttachmentsRow(
       ColorScheme cs, List<_ComposerAttachment> items) {
-    final isBulkMode =
-        _advancedSettings.bulkEditEnabled && _supportsBulkEdit;
+    final isBulkMode = _advancedSettings.bulkEditEnabled && _supportsBulkEdit;
     // In bulk mode, show an "Add task" tile at the end so the whole bulk flow
     // lives inside the composer without an external upload card.
     final bool showAddTaskTile = isBulkMode &&
-        ((_supportsBulkImageEdit &&
-                _bulkImageJobs.length < _maxBulkImages) ||
+        ((_supportsBulkImageEdit && _bulkImageJobs.length < _maxBulkImages) ||
             (_supportsBulkVideoEdit &&
                 _bulkVideoPaths.length < _maxBulkImages));
 
@@ -6561,9 +7142,7 @@ class _GenericToolPageState extends State<GenericToolPage>
       onTap: () {
         if (_supportsBulkVideoEdit) {
           final vi = widget.config.inputs.firstWhere(
-            (i) =>
-                i['type'] == 'video' ||
-                i['type'] == 'video_upload',
+            (i) => i['type'] == 'video' || i['type'] == 'video_upload',
             orElse: () => <String, dynamic>{},
           );
           if (vi.isNotEmpty) _pickVideosForBulk(Map<String, dynamic>.from(vi));
@@ -6647,10 +7226,8 @@ class _GenericToolPageState extends State<GenericToolPage>
         final customScale = isCustomMode
             ? (double.tryParse(cfg['custom_scale'] ?? '0.7') ?? 0.7)
             : 1.0;
-        final normOffsetX =
-            double.tryParse(cfg['norm_offset_x'] ?? '0') ?? 0.0;
-        final normOffsetY =
-            double.tryParse(cfg['norm_offset_y'] ?? '0') ?? 0.0;
+        final normOffsetX = double.tryParse(cfg['norm_offset_x'] ?? '0') ?? 0.0;
+        final normOffsetY = double.tryParse(cfg['norm_offset_y'] ?? '0') ?? 0.0;
         return Stack(
           fit: StackFit.expand,
           children: [
@@ -6726,8 +7303,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     );
   }
 
-  Widget _buildComposerAttachmentTile(
-      ColorScheme cs, _ComposerAttachment a) {
+  Widget _buildComposerAttachmentTile(ColorScheme cs, _ComposerAttachment a) {
     IconData fallbackIcon;
     switch (a.kind) {
       case _ComposerAttachmentKind.video:
@@ -6827,8 +7403,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                   borderRadius: BorderRadius.circular(AppStyles.radiusMd),
                 ),
                 alignment: Alignment.center,
-                child: const Icon(LucideIcons.play,
-                    color: Colors.white, size: 16),
+                child:
+                    const Icon(LucideIcons.play, color: Colors.white, size: 16),
               ),
             ),
           // Stacked extra references (for multi-init-per-job bulk tasks).
@@ -6885,8 +7461,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                     ),
                   ],
                 ),
-                child: Icon(LucideIcons.x,
-                    size: 12, color: cs.onSurfaceVariant),
+                child:
+                    Icon(LucideIcons.x, size: 12, color: cs.onSurfaceVariant),
               ),
             ),
           ),
@@ -7117,8 +7693,9 @@ class _GenericToolPageState extends State<GenericToolPage>
                             accentColor: cs.secondary,
                             onTap: () {
                               Navigator.pop(ctx);
-                              _pickImageFromCamera(_attachableImageInputResolved(
-                                  _rawPrimaryImageAttachRow(imageInputs)));
+                              _pickImageFromCamera(
+                                  _attachableImageInputResolved(
+                                      _rawPrimaryImageAttachRow(imageInputs)));
                             },
                           ),
                         ),
@@ -7168,8 +7745,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                             accentColor: cs.tertiary,
                             onTap: () {
                               Navigator.pop(ctx);
-                              _pickGenericFile(
-                                  fileInputs.first['id'] as String,
+                              _pickGenericFile(fileInputs.first['id'] as String,
                                   fileInputs.first);
                             },
                           ),
@@ -7213,7 +7789,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                 if (hasVideo &&
                     hasImage &&
                     (!_isAnimateImageTool ||
-                        (_selectedModelId ?? widget.config.model) == 'dreamid' ||
+                        (_selectedModelId ?? widget.config.model) ==
+                            'dreamid' ||
                         (_isCineRealAnimateModel &&
                             !_advancedSettings.bulkEditEnabled &&
                             !_cineRealSingleHasEndFrameBytes() &&
@@ -7236,12 +7813,15 @@ class _GenericToolPageState extends State<GenericToolPage>
                       }
                     },
                   ),
-                if (_isAnimateImageTool && !_advancedSettings.bulkEditEnabled) ...[
+                if (_isAnimateImageTool &&
+                    !_advancedSettings.bulkEditEnabled) ...[
                   Builder(
                     builder: (_) {
                       final mid = _selectedModelId ?? widget.config.model;
                       final showEndRow = mid == _kCineRealAnimateModelId ||
-                          mid == _kWanLightx2vI2vModelId;
+                          mid == _kLegacyCineRealAnimateModelId ||
+                          mid == _kCinemotionProModelId ||
+                          mid == _kLegacyWanI2vModelId;
                       if (!showEndRow) return const SizedBox.shrink();
                       Map<String, dynamic>? lastSpec;
                       for (final i in attachInputs) {
@@ -7253,16 +7833,19 @@ class _GenericToolPageState extends State<GenericToolPage>
                       if (lastSpec == null || lastSpec.isEmpty) {
                         return const SizedBox.shrink();
                       }
-                      final hasLast = _bytesForInputKey('last_frame_image') != null;
+                      final hasLast =
+                          _bytesForInputKey('last_frame_image') != null;
                       if (hasLast) return const SizedBox.shrink();
                       final cinerealBlockedByRef =
-                          mid == _kCineRealAnimateModelId &&
+                          _isCineRealAnimateModel &&
                               _cineRealSingleHasRefVideoBytes();
-                      final subtitle = cinerealBlockedByRef
-                          ? 'Remove reference video first (CineReal)'
-                          : (mid == _kCineRealAnimateModelId
-                              ? 'Optional second keyframe (CineReal)'
-                              : 'Optional end frame (Cinemotion Pro)');
+                      final subtitle = _requiresEndFrame
+                          ? 'Required. Pick the start frame, then this end frame.'
+                          : (cinerealBlockedByRef
+                              ? 'Remove the motion clip before adding an end frame'
+                              : (_isCineRealAnimateModel
+                                  ? 'Optional second photo (CineReal)'
+                                  : 'Optional end frame (Cinemotion Pro)'));
                       return Opacity(
                         opacity: cinerealBlockedByRef ? 0.45 : 1,
                         child: _AttachListRow(
@@ -7282,7 +7865,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                               return;
                             }
                             Navigator.pop(ctx);
-                            _pickImage(_attachableImageInputResolved(lastSpec!));
+                            _pickImage(
+                                _attachableImageInputResolved(lastSpec!));
                           },
                         ),
                       );
@@ -7293,7 +7877,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                   _AttachListRow(
                     icon: LucideIcons.music,
                     label: 'Audio',
-                    subtitle: (audioInputs.first['label'] as String?) ?? 'Pick audio file',
+                    subtitle: (audioInputs.first['label'] as String?) ??
+                        'Pick audio file',
                     onTap: () {
                       Navigator.pop(ctx);
                       _pickAudioForInput(
@@ -7464,8 +8049,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     setState(() {
       if (on) {
         _leaveBulkModeCleanup();
-        _advancedSettings =
-            _advancedSettings.copyWith(bulkEditEnabled: false);
+        _advancedSettings = _advancedSettings.copyWith(bulkEditEnabled: false);
       } else {
         _advancedSettings = _advancedSettings.copyWith(bulkEditEnabled: true);
         _enterBulkModeSetup();
@@ -7496,8 +8080,7 @@ class _GenericToolPageState extends State<GenericToolPage>
         child: Container(
           decoration: BoxDecoration(
             color: cs.surface,
-            borderRadius:
-                const BorderRadius.vertical(top: Radius.circular(24)),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           ),
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
           child: Column(
@@ -7692,7 +8275,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                 Builder(
                   builder: (_) {
                     final inputDef = widget.config.inputs.firstWhere(
-                        (i) => i['id'] == a.ref, orElse: () => <String, dynamic>{});
+                        (i) => i['id'] == a.ref,
+                        orElse: () => <String, dynamic>{});
                     if (inputDef.isEmpty) return const SizedBox.shrink();
                     final eff = _attachableImageInputResolved(
                         Map<String, dynamic>.from(inputDef));
@@ -7929,8 +8513,8 @@ class _GenericToolPageState extends State<GenericToolPage>
     switch (a.kind) {
       case _ComposerAttachmentKind.image:
       case _ComposerAttachmentKind.bulkImage:
-        _pickImage(_attachableImageInputResolved(
-            Map<String, dynamic>.from(inputDef)));
+        _pickImage(
+            _attachableImageInputResolved(Map<String, dynamic>.from(inputDef)));
         break;
       case _ComposerAttachmentKind.video:
       case _ComposerAttachmentKind.bulkVideo:
@@ -8156,7 +8740,8 @@ class _GenericToolPageState extends State<GenericToolPage>
           child: Icon(
             entry.icon,
             size: 16,
-            color: isActive ? Colors.white : cs.onSurfaceVariant.withOpacity(0.85),
+            color:
+                isActive ? Colors.white : cs.onSurfaceVariant.withOpacity(0.85),
           ),
         ),
       ),
@@ -8190,9 +8775,8 @@ class _GenericToolPageState extends State<GenericToolPage>
   // ======================================================================
 
   /// Returns the input spec for [ref] from tool_config, or an empty map.
-  Map<String, dynamic> _inputSpec(String ref) =>
-      Map<String, dynamic>.from(widget.config.inputs
-          .firstWhere((i) => i['id'] == ref, orElse: () => {}));
+  Map<String, dynamic> _inputSpec(String ref) => Map<String, dynamic>.from(
+      widget.config.inputs.firstWhere((i) => i['id'] == ref, orElse: () => {}));
 
   /// Shared gate that every dynamic element honors: hides the widget if the
   /// input config declares `showWhen` or `showForModels` and the condition
@@ -8230,8 +8814,8 @@ class _GenericToolPageState extends State<GenericToolPage>
         children: [
           Row(
             children: [
-              Icon(LucideIcons.mic, size: 14,
-                  color: cs.onSurfaceVariant.withOpacity(0.8)),
+              Icon(LucideIcons.mic,
+                  size: 14, color: cs.onSurfaceVariant.withOpacity(0.8)),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
@@ -8402,8 +8986,8 @@ class _GenericToolPageState extends State<GenericToolPage>
         children: [
           Row(
             children: [
-              Icon(LucideIcons.fileUp, size: 14,
-                  color: cs.onSurfaceVariant.withOpacity(0.8)),
+              Icon(LucideIcons.fileUp,
+                  size: 14, color: cs.onSurfaceVariant.withOpacity(0.8)),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
@@ -8503,8 +9087,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     );
   }
 
-  Future<void> _pickGenericFile(
-      String ref, Map<String, dynamic> input) async {
+  Future<void> _pickGenericFile(String ref, Map<String, dynamic> input) async {
     try {
       final accept = (input['accept'] as List<dynamic>?)
           ?.map((e) => e.toString())
@@ -8627,8 +9210,8 @@ class _GenericToolPageState extends State<GenericToolPage>
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(AppStyles.radiusMd),
-                borderSide: BorderSide(
-                    color: cs.primary.withOpacity(0.5), width: 1.5),
+                borderSide:
+                    BorderSide(color: cs.primary.withOpacity(0.5), width: 1.5),
               ),
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -8747,8 +9330,8 @@ class _GenericToolPageState extends State<GenericToolPage>
       padding: const EdgeInsets.fromLTRB(14, 12, 10, 10),
       child: Row(
         children: [
-          Icon(LucideIcons.sprout, size: 14,
-              color: cs.onSurfaceVariant.withOpacity(0.8)),
+          Icon(LucideIcons.sprout,
+              size: 14, color: cs.onSurfaceVariant.withOpacity(0.8)),
           const SizedBox(width: 6),
           Expanded(
             child: Text(
@@ -8825,9 +9408,8 @@ class _GenericToolPageState extends State<GenericToolPage>
             ?.map((e) => e.toString())
             .toList() ??
         const ['1:1', '16:9', '9:16', '4:3', '3:4', '2:3', '21:9'];
-    final presets = rawPresets
-        .where((p) => p.trim().toLowerCase() != 'default')
-        .toList();
+    final presets =
+        rawPresets.where((p) => p.trim().toLowerCase() != 'default').toList();
     final presetsEffective = presets.isNotEmpty
         ? presets
         : (rawPresets.isNotEmpty ? rawPresets : const ['1:1']);
@@ -9196,9 +9778,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                               ? cs.primary
                               : cs.onSurfaceVariant.withOpacity(0.9),
                           fontSize: 12.5,
-                          fontWeight: isOn
-                              ? FontWeight.w600
-                              : FontWeight.w500,
+                          fontWeight: isOn ? FontWeight.w600 : FontWeight.w500,
                         ),
                       ),
                     ],
@@ -9270,7 +9850,8 @@ class _GenericToolPageState extends State<GenericToolPage>
             child: RangeSlider(
               min: minV,
               max: maxV,
-              values: RangeValues(start.clamp(minV, maxV), end.clamp(minV, maxV)),
+              values:
+                  RangeValues(start.clamp(minV, maxV), end.clamp(minV, maxV)),
               onChanged: (v) {
                 setState(() {
                   _inputs[ref] = {'start': v.start, 'end': v.end};
@@ -9406,7 +9987,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     final cs = Theme.of(context).colorScheme;
     final promptLength = _promptController.text.length;
     final showCharCounter = promptLength > 0;
-    
+
     return _buildCard(
       padding: const EdgeInsets.all(12),
       child: Column(
@@ -9433,7 +10014,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                   selectedIndexNotifier.value = AppTabs.explore;
                 },
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [
@@ -9449,7 +10031,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                   child: const Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(LucideIcons.sparkles, size: 12, color: KalaColors.purple),
+                      Icon(LucideIcons.sparkles,
+                          size: 12, color: KalaColors.purple),
                       SizedBox(width: 4),
                       Text(
                         'Browse Templates',
@@ -9460,7 +10043,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                         ),
                       ),
                       SizedBox(width: 2),
-                      Icon(LucideIcons.arrowRight, size: 10, color: KalaColors.purple),
+                      Icon(LucideIcons.arrowRight,
+                          size: 10, color: KalaColors.purple),
                     ],
                   ),
                 ),
@@ -9468,7 +10052,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             ],
           ),
           const SizedBox(height: 12),
-          
+
           // Applied style indicator (only for styles now)
           if (_selectedStyle != null) ...[
             Container(
@@ -9517,7 +10101,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             ),
             const SizedBox(height: 10),
           ],
-          
+
           // Prompt text field with guided placeholder
           TextField(
             controller: _promptController,
@@ -9581,9 +10165,9 @@ class _GenericToolPageState extends State<GenericToolPage>
               height: 1.5,
             ),
           ),
-          
+
           const SizedBox(height: 8),
-          
+
           // Example text and character counter row
           Row(
             children: [
@@ -9603,7 +10187,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                 opacity: showCharCounter ? 1.0 : 0.0,
                 duration: const Duration(milliseconds: 200),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   decoration: BoxDecoration(
                     color: cs.surfaceContainerHigh,
                     borderRadius: BorderRadius.circular(8),
@@ -9620,21 +10205,21 @@ class _GenericToolPageState extends State<GenericToolPage>
               ),
             ],
           ),
-          
+
           const SizedBox(height: 14),
-          
+
           // Style & Tags section (Quick style presets + helper tags)
           _buildPromptEnhancerSection(cs),
         ],
       ),
     );
   }
-  
+
   /// Build unified Style & Tags section (Visual styles + Quick helper tags)
   Widget _buildPromptEnhancerSection(ColorScheme cs) {
     final bool showAds = shouldShowNativeBannerAds();
     final styles = _getStylesByCategory(_selectedStyleCategory);
-    
+
     return Container(
       decoration: BoxDecoration(
         color: cs.surfaceContainerHigh.withOpacity(0.3),
@@ -9661,7 +10246,8 @@ class _GenericToolPageState extends State<GenericToolPage>
             ),
             child: Row(
               children: [
-                const Icon(LucideIcons.sparkle, size: 16, color: KalaColors.purple),
+                const Icon(LucideIcons.sparkle,
+                    size: 16, color: KalaColors.purple),
                 const SizedBox(width: 6),
                 Text(
                   'Style & Tags',
@@ -9675,7 +10261,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                   const SizedBox(width: 6),
                   Flexible(
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
                         color: cs.primary.withOpacity(0.15),
                         borderRadius: BorderRadius.circular(8),
@@ -9683,7 +10270,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(_selectedStyle!.icon, style: const TextStyle(fontSize: 10)),
+                          Text(_selectedStyle!.icon,
+                              style: const TextStyle(fontSize: 10)),
                           const SizedBox(width: 3),
                           Flexible(
                             child: Text(
@@ -9706,7 +10294,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                 GestureDetector(
                   onTap: _applyRandomStyle,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
@@ -9722,7 +10311,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                     child: const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(LucideIcons.shuffle, size: 12, color: KalaColors.purple),
+                        Icon(LucideIcons.shuffle,
+                            size: 12, color: KalaColors.purple),
                         SizedBox(width: 4),
                         Text(
                           'Random',
@@ -9742,12 +10332,15 @@ class _GenericToolPageState extends State<GenericToolPage>
           Column(
             children: [
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 child: Row(
                   children: [
-                    _buildEnhancerTab(cs, 0, 'Styles', LucideIcons.palette, styles.length),
+                    _buildEnhancerTab(
+                        cs, 0, 'Styles', LucideIcons.palette, styles.length),
                     const SizedBox(width: 8),
-                    _buildEnhancerTab(cs, 1, 'My Templates', LucideIcons.bookmark, _userTemplates.length),
+                    _buildEnhancerTab(cs, 1, 'My Templates',
+                        LucideIcons.bookmark, _userTemplates.length),
                   ],
                 ),
               ),
@@ -9777,9 +10370,10 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   /// Build enhancer tab button
-  Widget _buildEnhancerTab(ColorScheme cs, int index, String label, IconData icon, int count) {
+  Widget _buildEnhancerTab(
+      ColorScheme cs, int index, String label, IconData icon, int count) {
     final isSelected = _enhancerTabIndex == index;
-    
+
     return Expanded(
       child: GestureDetector(
         onTap: () => setState(() => _enhancerTabIndex = index),
@@ -9787,12 +10381,12 @@ class _GenericToolPageState extends State<GenericToolPage>
           duration: const Duration(milliseconds: 200),
           padding: const EdgeInsets.symmetric(vertical: 10),
           decoration: BoxDecoration(
-            color: isSelected 
+            color: isSelected
                 ? cs.primary.withOpacity(0.12)
                 : cs.surfaceContainerHigh.withOpacity(0.5),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: isSelected 
+              color: isSelected
                   ? cs.primary.withOpacity(0.4)
                   : cs.outlineVariant.withOpacity(0.15),
               width: isSelected ? 1.5 : 1,
@@ -9804,13 +10398,17 @@ class _GenericToolPageState extends State<GenericToolPage>
               Icon(
                 icon,
                 size: 14,
-                color: isSelected ? cs.primary : cs.onSurfaceVariant.withOpacity(0.7),
+                color: isSelected
+                    ? cs.primary
+                    : cs.onSurfaceVariant.withOpacity(0.7),
               ),
               const SizedBox(width: 6),
               Text(
                 label,
                 style: TextStyle(
-                  color: isSelected ? cs.primary : cs.onSurfaceVariant.withOpacity(0.8),
+                  color: isSelected
+                      ? cs.primary
+                      : cs.onSurfaceVariant.withOpacity(0.8),
                   fontSize: 12,
                   fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                 ),
@@ -9819,7 +10417,7 @@ class _GenericToolPageState extends State<GenericToolPage>
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                 decoration: BoxDecoration(
-                  color: isSelected 
+                  color: isSelected
                       ? cs.primary.withOpacity(0.2)
                       : cs.onSurfaceVariant.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
@@ -9827,7 +10425,9 @@ class _GenericToolPageState extends State<GenericToolPage>
                 child: Text(
                   '$count',
                   style: TextStyle(
-                    color: isSelected ? cs.primary : cs.onSurfaceVariant.withOpacity(0.6),
+                    color: isSelected
+                        ? cs.primary
+                        : cs.onSurfaceVariant.withOpacity(0.6),
                     fontSize: 10,
                     fontWeight: FontWeight.w600,
                   ),
@@ -9859,22 +10459,28 @@ class _GenericToolPageState extends State<GenericToolPage>
                 final isSelected = _selectedStyleCategory == category;
                 final isFavorites = category == 'Favorites';
                 final favCount = _favoriteStyles.length;
-                
+
                 return Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: GestureDetector(
-                    onTap: () => setState(() => _selectedStyleCategory = category),
+                    onTap: () =>
+                        setState(() => _selectedStyleCategory = category),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 200),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
-                        color: isSelected 
-                            ? (isFavorites ? Colors.red.withOpacity(0.15) : cs.secondary.withOpacity(0.15))
+                        color: isSelected
+                            ? (isFavorites
+                                ? Colors.red.withOpacity(0.15)
+                                : cs.secondary.withOpacity(0.15))
                             : cs.surfaceContainerHigh,
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
-                          color: isSelected 
-                              ? (isFavorites ? Colors.red.withOpacity(0.4) : cs.secondary.withOpacity(0.4))
+                          color: isSelected
+                              ? (isFavorites
+                                  ? Colors.red.withOpacity(0.4)
+                                  : cs.secondary.withOpacity(0.4))
                               : cs.outlineVariant.withOpacity(0.2),
                         ),
                       ),
@@ -9885,18 +10491,22 @@ class _GenericToolPageState extends State<GenericToolPage>
                             Icon(
                               Icons.favorite,
                               size: 12,
-                              color: isSelected ? Colors.red : cs.onSurfaceVariant.withOpacity(0.6),
+                              color: isSelected
+                                  ? Colors.red
+                                  : cs.onSurfaceVariant.withOpacity(0.6),
                             ),
                             const SizedBox(width: 4),
                           ],
                           Text(
                             isFavorites ? 'Favorites ($favCount)' : category,
                             style: TextStyle(
-                              color: isSelected 
+                              color: isSelected
                                   ? (isFavorites ? Colors.red : cs.secondary)
                                   : cs.onSurfaceVariant.withOpacity(0.8),
                               fontSize: 12,
-                              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                              fontWeight: isSelected
+                                  ? FontWeight.w600
+                                  : FontWeight.w500,
                             ),
                           ),
                         ],
@@ -9908,7 +10518,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             ),
           ),
           const SizedBox(height: 10),
-          
+
           // Empty state for favorites
           if (styles.isEmpty && _selectedStyleCategory == 'Favorites')
             Container(
@@ -9952,7 +10562,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                   final style = styles[index];
                   final isSelected = _selectedStyle?.id == style.id;
                   final isFavorite = _favoriteStyles.contains(style.id);
-                  
+
                   return _buildStyleChip(cs, style, isSelected, isFavorite);
                 },
               ),
@@ -9963,7 +10573,8 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   /// Build individual style chip with favorite support
-  Widget _buildStyleChip(ColorScheme cs, StylePreset style, bool isSelected, bool isFavorite) {
+  Widget _buildStyleChip(
+      ColorScheme cs, StylePreset style, bool isSelected, bool isFavorite) {
     // Get category color
     final categoryColors = {
       'Fun': const Color(0xFFFF6B6B),
@@ -9974,7 +10585,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     };
     final accentColor = categoryColors[style.category] ?? cs.secondary;
     final hasPreview = style.previewUrl != null && style.previewUrl!.isNotEmpty;
-    
+
     return Padding(
       padding: const EdgeInsets.only(right: 10),
       child: GestureDetector(
@@ -9987,7 +10598,9 @@ class _GenericToolPageState extends State<GenericToolPage>
               content: Row(
                 children: [
                   Icon(
-                    _favoriteStyles.contains(style.id) ? Icons.favorite : LucideIcons.heart,
+                    _favoriteStyles.contains(style.id)
+                        ? Icons.favorite
+                        : LucideIcons.heart,
                     color: Colors.white,
                     size: 16,
                   ),
@@ -10000,9 +10613,12 @@ class _GenericToolPageState extends State<GenericToolPage>
                 ],
               ),
               behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
               duration: const Duration(seconds: 2),
-              backgroundColor: _favoriteStyles.contains(style.id) ? Colors.red : cs.inverseSurface,
+              backgroundColor: _favoriteStyles.contains(style.id)
+                  ? Colors.red
+                  : cs.inverseSurface,
             ),
           );
         },
@@ -10024,7 +10640,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             color: (isSelected || hasPreview) ? null : cs.surfaceContainerHigh,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: isSelected 
+              color: isSelected
                   ? accentColor.withOpacity(0.6)
                   : cs.outlineVariant.withOpacity(0.2),
               width: isSelected ? 2 : 1,
@@ -10097,7 +10713,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                                 color: accentColor.withOpacity(0.2),
                                 borderRadius: BorderRadius.circular(6),
                               ),
-                              child: Text(style.icon, style: const TextStyle(fontSize: 12)),
+                              child: Text(style.icon,
+                                  style: const TextStyle(fontSize: 12)),
                             )
                           else
                             const SizedBox(width: 20),
@@ -10108,7 +10725,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                                 color: accentColor,
                                 shape: BoxShape.circle,
                               ),
-                              child: const Icon(LucideIcons.check, size: 10, color: Colors.white),
+                              child: const Icon(LucideIcons.check,
+                                  size: 10, color: Colors.white),
                             )
                           else if (isFavorite)
                             Container(
@@ -10117,7 +10735,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                                 color: Colors.black.withOpacity(0.3),
                                 shape: BoxShape.circle,
                               ),
-                              child: const Icon(Icons.favorite, size: 12, color: Colors.red),
+                              child: const Icon(Icons.favorite,
+                                  size: 12, color: Colors.red),
                             ),
                         ],
                       ),
@@ -10128,20 +10747,28 @@ class _GenericToolPageState extends State<GenericToolPage>
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: hasPreview ? Colors.white : (isSelected ? accentColor : cs.onSurface),
+                          color: hasPreview
+                              ? Colors.white
+                              : (isSelected ? accentColor : cs.onSurface),
                           fontSize: 11,
-                          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
-                          shadows: hasPreview ? [
-                            Shadow(color: Colors.black.withOpacity(0.5), blurRadius: 2),
-                          ] : null,
+                          fontWeight:
+                              isSelected ? FontWeight.w700 : FontWeight.w600,
+                          shadows: hasPreview
+                              ? [
+                                  Shadow(
+                                      color: Colors.black.withOpacity(0.5),
+                                      blurRadius: 2),
+                                ]
+                              : null,
                         ),
                       ),
                       // Category badge
                       const SizedBox(height: 2),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 4, vertical: 1),
                         decoration: BoxDecoration(
-                          color: hasPreview 
+                          color: hasPreview
                               ? Colors.black.withOpacity(0.4)
                               : accentColor.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(4),
@@ -10149,7 +10776,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                         child: Text(
                           style.category,
                           style: TextStyle(
-                            color: hasPreview 
+                            color: hasPreview
                                 ? Colors.white.withOpacity(0.9)
                                 : accentColor.withOpacity(0.8),
                             fontSize: 8,
@@ -10207,7 +10834,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             ),
           ),
           const SizedBox(height: 12),
-          
+
           // Templates list
           if (_userTemplates.isEmpty)
             Padding(
@@ -10255,7 +10882,7 @@ class _GenericToolPageState extends State<GenericToolPage>
       ),
     );
   }
-  
+
   /// Build template card
   Widget _buildTemplateCard(ColorScheme cs, UserTemplate template) {
     return Padding(
@@ -10304,10 +10931,10 @@ class _GenericToolPageState extends State<GenericToolPage>
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      template.prompt.isEmpty 
-                          ? 'No prompt' 
-                          : template.prompt.length > 40 
-                              ? '${template.prompt.substring(0, 40)}...' 
+                      template.prompt.isEmpty
+                          ? 'No prompt'
+                          : template.prompt.length > 40
+                              ? '${template.prompt.substring(0, 40)}...'
                               : template.prompt,
                       style: TextStyle(
                         color: cs.onSurfaceVariant.withOpacity(0.7),
@@ -10351,7 +10978,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   Widget _buildImageUpload(String ref) {
     final cs = Theme.of(context).colorScheme;
     final input = _effectiveInputConfig(ref);
-    final hasImage = _inputs[ref] != null && 
+    final hasImage = _inputs[ref] != null &&
         (_inputs[ref] is List && (_inputs[ref] as List).isNotEmpty);
     final isVip = isVipUser();
     final isBulkMode =
@@ -10369,8 +10996,8 @@ class _GenericToolPageState extends State<GenericToolPage>
             padding: const EdgeInsets.fromLTRB(4, 8, 4, 4),
             child: Row(
               children: [
-                Icon(LucideIcons.image, size: 12,
-                    color: cs.onSurfaceVariant.withOpacity(0.7)),
+                Icon(LucideIcons.image,
+                    size: 12, color: cs.onSurfaceVariant.withOpacity(0.7)),
                 const SizedBox(width: 6),
                 Text(
                   label,
@@ -10633,7 +11260,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     }
 
     final controller = _userVideoControllers[videoPath];
-    
+
     return Container(
       height: 200,
       decoration: BoxDecoration(
@@ -10671,7 +11298,9 @@ class _GenericToolPageState extends State<GenericToolPage>
                             color: Colors.black.withOpacity(0.3),
                             child: Center(
                               child: Icon(
-                                value.isPlaying ? LucideIcons.pause : LucideIcons.play,
+                                value.isPlaying
+                                    ? LucideIcons.pause
+                                    : LucideIcons.play,
                                 size: 48,
                                 color: Colors.white,
                               ),
@@ -10687,8 +11316,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                 fit: StackFit.expand,
                 children: [
                   // Video player
-                  if (controller != null)
-                    VideoPlayer(controller),
+                  if (controller != null) VideoPlayer(controller),
                   // For non-upscaler tools, show static play icon (existing behavior)
                   if (controller != null && !_isVideoUpscalerTool)
                     Container(
@@ -10709,7 +11337,8 @@ class _GenericToolPageState extends State<GenericToolPage>
 
   /// Pick video from gallery or camera.
   /// [bulkAllowMultiSelect]: gallery flow can select several files (bulk video upscale).
-  Future<ImageSource?> _promptVideoPickSource({bool bulkAllowMultiSelect = false}) {
+  Future<ImageSource?> _promptVideoPickSource(
+      {bool bulkAllowMultiSelect = false}) {
     return showMediaSourcePickerBottomSheet(
       context,
       title: 'Choose Video Source',
@@ -10735,18 +11364,19 @@ class _GenericToolPageState extends State<GenericToolPage>
       final controller = VideoPlayerController.file(File(videoPath));
       await controller.initialize();
       final originalDuration = controller.value.duration;
-      
+
       // For video upscaler: check maxDuration cap from tool_config.json (default 2 minutes = 120 seconds)
       if (_isVideoUpscalerTool) {
         // Get maxDuration from tool_config.json
         final modelId = _selectedModelId ?? widget.config.model;
         final modelData = widget.config.models?.firstWhere(
-          (m) => m['id'] == modelId,
-          orElse: () => <String, dynamic>{},
-        ) ?? <String, dynamic>{};
+              (m) => m['id'] == modelId,
+              orElse: () => <String, dynamic>{},
+            ) ??
+            <String, dynamic>{};
         final maxDurationSeconds = (modelData['maxDuration'] as int?) ?? 120;
         final maxDuration = Duration(seconds: maxDurationSeconds);
-        
+
         if (originalDuration > maxDuration) {
           // Warn user and ask to proceed with trimmed video
           final shouldProceed = await showDialog<bool>(
@@ -10770,12 +11400,12 @@ class _GenericToolPageState extends State<GenericToolPage>
               ],
             ),
           );
-          
+
           if (shouldProceed != true) {
             await controller.dispose();
             return;
           }
-          
+
           // Store the trimmed duration
           _inputVideoDuration = maxDuration;
         } else {
@@ -10784,7 +11414,7 @@ class _GenericToolPageState extends State<GenericToolPage>
       } else {
         _inputVideoDuration = originalDuration;
       }
-      
+
       // Read video bytes (for video upscaler, we'll use the full file path)
       // The backend will handle trimming if needed
       final videoBytes = await file.readAsBytes();
@@ -10821,15 +11451,17 @@ class _GenericToolPageState extends State<GenericToolPage>
             // Get maxDuration from tool_config.json (default 2 minutes = 120 seconds)
             final modelId = _selectedModelId ?? widget.config.model;
             final modelData = widget.config.models?.firstWhere(
-              (m) => m['id'] == modelId,
-              orElse: () => <String, dynamic>{},
-            ) ?? <String, dynamic>{};
-            final maxDurationSeconds = (modelData['maxDuration'] as int?) ?? 120;
+                  (m) => m['id'] == modelId,
+                  orElse: () => <String, dynamic>{},
+                ) ??
+                <String, dynamic>{};
+            final maxDurationSeconds =
+                (modelData['maxDuration'] as int?) ?? 120;
             final maxDuration = Duration(seconds: maxDurationSeconds);
-            
+
             // Cap at maxDuration for backend
-            final actualDuration = _inputVideoDuration! > maxDuration 
-                ? maxDuration.inSeconds 
+            final actualDuration = _inputVideoDuration! > maxDuration
+                ? maxDuration.inSeconds
                 : durationSeconds;
             _inputs["video_duration"] = actualDuration;
           }
@@ -11124,7 +11756,8 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   Widget _buildBulkVideosContent(ColorScheme cs, Map<String, dynamic> input) {
-    final variations = _advancedSettings.variations.clamp(1, getMaxVariations());
+    final variations =
+        _advancedSettings.variations.clamp(1, getMaxVariations());
     final totalJobs = !_hasBulkInput ? 0 : _bulkVideoPaths.length * variations;
     final exceedsLimit = totalJobs > _maxTotalJobs;
     final maxVideosForVariations =
@@ -11246,7 +11879,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                               color: cs.errorContainer,
                               shape: BoxShape.circle,
                             ),
-                            child: Icon(LucideIcons.x, size: 14, color: cs.error),
+                            child:
+                                Icon(LucideIcons.x, size: 14, color: cs.error),
                           ),
                         ),
                       ),
@@ -11305,8 +11939,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                   if (isBulkMode) {
                     setState(() {
                       beforeLeaveBulk?.call();
-                      _advancedSettings = _advancedSettings.copyWith(
-                          bulkEditEnabled: false);
+                      _advancedSettings =
+                          _advancedSettings.copyWith(bulkEditEnabled: false);
                     });
                   }
                 },
@@ -11335,8 +11969,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                   if (!isBulkMode) {
                     setState(() {
                       onEnterBulk?.call();
-                      _advancedSettings = _advancedSettings.copyWith(
-                          bulkEditEnabled: true);
+                      _advancedSettings =
+                          _advancedSettings.copyWith(bulkEditEnabled: true);
                     });
                   }
                 },
@@ -11456,7 +12090,9 @@ class _GenericToolPageState extends State<GenericToolPage>
                     Text(
                       '(${isVip ? _maxBulkImagesVip : _maxBulkImagesNonVip})',
                       style: TextStyle(
-                        color: isBulkMode ? cs.onPrimary.withOpacity(0.9) : cs.onSurfaceVariant,
+                        color: isBulkMode
+                            ? cs.onPrimary.withOpacity(0.9)
+                            : cs.onSurfaceVariant,
                         fontWeight: FontWeight.w600,
                         fontSize: capSize,
                       ),
@@ -11473,14 +12109,16 @@ class _GenericToolPageState extends State<GenericToolPage>
 
   /// Build the bulk images content (replaces single image upload when bulk mode enabled)
   Widget _buildBulkImagesContent(ColorScheme cs) {
-    final variations = _advancedSettings.variations.clamp(1, getMaxVariations());
+    final variations =
+        _advancedSettings.variations.clamp(1, getMaxVariations());
     final totalJobs = !_hasBulkInput ? 0 : _bulkImageJobs.length * variations;
     final bool exceedsLimit = totalJobs > _maxTotalJobs;
-    
+
     // Calculate max images allowed based on current variations
     final int maxImagesForVariations = (_maxTotalJobs / variations).floor();
-    final int effectiveMaxImages = maxImagesForVariations.clamp(1, _maxBulkImages);
-    
+    final int effectiveMaxImages =
+        maxImagesForVariations.clamp(1, _maxBulkImages);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -11489,12 +12127,12 @@ class _GenericToolPageState extends State<GenericToolPage>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: exceedsLimit 
-                  ? cs.errorContainer.withOpacity(0.3) 
+              color: exceedsLimit
+                  ? cs.errorContainer.withOpacity(0.3)
                   : cs.primaryContainer.withOpacity(0.3),
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
-                color: exceedsLimit 
+                color: exceedsLimit
                     ? cs.error.withOpacity(0.3)
                     : cs.primary.withOpacity(0.2),
               ),
@@ -11502,8 +12140,8 @@ class _GenericToolPageState extends State<GenericToolPage>
             child: Row(
               children: [
                 Icon(
-                  exceedsLimit ? LucideIcons.alertTriangle : LucideIcons.info, 
-                  size: 16, 
+                  exceedsLimit ? LucideIcons.alertTriangle : LucideIcons.info,
+                  size: 16,
                   color: exceedsLimit ? cs.error : cs.primary,
                 ),
                 const SizedBox(width: 8),
@@ -11548,15 +12186,15 @@ class _GenericToolPageState extends State<GenericToolPage>
           ),
           const SizedBox(height: 12),
         ],
-        
+
         // Images grid or empty state
         if (!_hasBulkInput)
           _buildBulkEmptyState(cs)
         else
           _buildBulkImagesGrid(cs),
-        
+
         const SizedBox(height: 12),
-        
+
         // Add images button (limit based on variations)
         GradientButton(
           icon: !_hasBulkInput ? LucideIcons.imagePlus : LucideIcons.plus,
@@ -11572,7 +12210,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                   : _bulkImageJobs.length >= effectiveMaxImages)
               ? null
               : _pickBulkImages,
-          variant: !_hasBulkInput ? ButtonVariant.primary : ButtonVariant.secondary,
+          variant:
+              !_hasBulkInput ? ButtonVariant.primary : ButtonVariant.secondary,
           size: ButtonSize.medium,
           expanded: true,
         ),
@@ -11582,10 +12221,12 @@ class _GenericToolPageState extends State<GenericToolPage>
 
   /// Build empty state for bulk images
   Widget _buildBulkEmptyState(ColorScheme cs) {
-    final variations = _advancedSettings.variations.clamp(1, getMaxVariations());
+    final variations =
+        _advancedSettings.variations.clamp(1, getMaxVariations());
     final int maxImagesForVariations = (_maxTotalJobs / variations).floor();
-    final int effectiveMaxImages = maxImagesForVariations.clamp(1, _maxBulkImages);
-    
+    final int effectiveMaxImages =
+        maxImagesForVariations.clamp(1, _maxBulkImages);
+
     // Hint for tools that need per-image configuration
     String? extraHint;
     if (_requiresMask) {
@@ -11593,7 +12234,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     } else if (_isOutpaint) {
       extraHint = 'You\'ll set placement for each image';
     }
-    
+
     return Container(
       height: extraHint != null ? 200 : 180,
       decoration: BoxDecoration(
@@ -11617,7 +12258,10 @@ class _GenericToolPageState extends State<GenericToolPage>
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              gradient: LinearGradient(colors: [cs.primary.withOpacity(0.2), cs.tertiary.withOpacity(0.1)]),
+              gradient: LinearGradient(colors: [
+                cs.primary.withOpacity(0.2),
+                cs.tertiary.withOpacity(0.1)
+              ]),
               shape: BoxShape.circle,
             ),
             child: Icon(LucideIcons.layers, size: 32, color: cs.primary),
@@ -11756,22 +12400,22 @@ class _GenericToolPageState extends State<GenericToolPage>
               ),
             ),
             const SizedBox(height: 16),
-              Text(
+            Text(
               "Tap to upload an image",
               style: TextStyle(
                 color: cs.onSurfaceVariant.withOpacity(0.7),
                 fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                ),
+                fontWeight: FontWeight.w500,
               ),
-              const SizedBox(height: 4),
-              Text(
+            ),
+            const SizedBox(height: 4),
+            Text(
               "Supports PNG, JPG, WEBP",
               style: TextStyle(
                 color: cs.onSurfaceVariant.withOpacity(0.5),
                 fontSize: 12,
-                ),
               ),
+            ),
           ],
         ),
       );
@@ -11789,13 +12433,13 @@ class _GenericToolPageState extends State<GenericToolPage>
         isOutpaint ? (_inputs["alignment"] ?? "Middle") : "Middle";
     final String ratioStr =
         isOutpaint ? (_inputs["aspect_ratio"] ?? "1:1") : "1:1";
-    final bool isCustomMode = 
-        isOutpaint && (_inputs["is_custom"] == "true");
-    final double customScale = 
-        isCustomMode ? (double.tryParse(_inputs["custom_scale"] ?? "0.7") ?? 0.7) : 1.0;
-    final double normOffsetX = 
+    final bool isCustomMode = isOutpaint && (_inputs["is_custom"] == "true");
+    final double customScale = isCustomMode
+        ? (double.tryParse(_inputs["custom_scale"] ?? "0.7") ?? 0.7)
+        : 1.0;
+    final double normOffsetX =
         double.tryParse(_inputs["norm_offset_x"] ?? "0") ?? 0.0;
-    final double normOffsetY = 
+    final double normOffsetY =
         double.tryParse(_inputs["norm_offset_y"] ?? "0") ?? 0.0;
 
     final ratioParts = ratioStr.split(":");
@@ -11839,7 +12483,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                 ),
                 const Spacer(),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: Colors.green.withOpacity(0.15),
                     borderRadius: BorderRadius.circular(6),
@@ -11847,7 +12492,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(LucideIcons.check, size: 12, color: Colors.green.shade600),
+                      Icon(LucideIcons.check,
+                          size: 12, color: Colors.green.shade600),
                       const SizedBox(width: 4),
                       Text(
                         'Ready',
@@ -11871,7 +12517,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                 itemCount: list.length,
                 itemBuilder: (context, index) {
                   return Padding(
-                    padding: EdgeInsets.only(right: index < list.length - 1 ? 10 : 0),
+                    padding: EdgeInsets.only(
+                        right: index < list.length - 1 ? 10 : 0),
                     child: Stack(
                       children: [
                         Container(
@@ -11897,7 +12544,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                           left: 6,
                           top: 6,
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 3),
                             decoration: BoxDecoration(
                               color: Colors.black.withOpacity(0.6),
                               borderRadius: BorderRadius.circular(6),
@@ -11927,12 +12575,12 @@ class _GenericToolPageState extends State<GenericToolPage>
     // Check if this tool requires a mask (inpaint/erase)
     final bool requiresMaskForTool = _requiresMask;
     final bool hasMask = mask != null;
-    
+
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: hasMask 
+          color: hasMask
               ? Colors.green.withOpacity(0.5)
               : cs.primary.withOpacity(0.3),
           width: 2,
@@ -11979,7 +12627,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                           ),
                           child: Opacity(
                             opacity: 0.6,
-                            child: Image.memory(mask as Uint8List, fit: BoxFit.contain),
+                            child: Image.memory(mask as Uint8List,
+                                fit: BoxFit.contain),
                           ),
                         ),
                       ),
@@ -11988,7 +12637,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                       right: 8,
                       top: 8,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 6),
                         decoration: BoxDecoration(
                           color: Colors.black.withOpacity(0.6),
                           borderRadius: BorderRadius.circular(8),
@@ -11997,9 +12647,13 @@ class _GenericToolPageState extends State<GenericToolPage>
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(
-                              hasMask ? LucideIcons.paintbrush : LucideIcons.check,
+                              hasMask
+                                  ? LucideIcons.paintbrush
+                                  : LucideIcons.check,
                               size: 14,
-                              color: hasMask ? Colors.red.shade300 : Colors.green.shade300,
+                              color: hasMask
+                                  ? Colors.red.shade300
+                                  : Colors.green.shade300,
                             ),
                             const SizedBox(width: 6),
                             Text(
@@ -12030,14 +12684,15 @@ class _GenericToolPageState extends State<GenericToolPage>
                             }
                           },
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 8),
                             decoration: BoxDecoration(
-                              color: hasMask 
-                                  ? cs.surfaceContainerHigh 
+                              color: hasMask
+                                  ? cs.surfaceContainerHigh
                                   : cs.primary,
                               borderRadius: BorderRadius.circular(10),
                               border: Border.all(
-                                color: hasMask 
+                                color: hasMask
                                     ? cs.outline.withOpacity(0.3)
                                     : cs.primary,
                               ),
@@ -12053,7 +12708,9 @@ class _GenericToolPageState extends State<GenericToolPage>
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Icon(
-                                  hasMask ? LucideIcons.edit3 : LucideIcons.paintbrush,
+                                  hasMask
+                                      ? LucideIcons.edit3
+                                      : LucideIcons.paintbrush,
                                   size: 16,
                                   color: hasMask ? cs.onSurface : cs.onPrimary,
                                 ),
@@ -12061,7 +12718,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                                 Text(
                                   hasMask ? "Edit Mask" : "Draw Mask",
                                   style: TextStyle(
-                                    color: hasMask ? cs.onSurface : cs.onPrimary,
+                                    color:
+                                        hasMask ? cs.onSurface : cs.onPrimary,
                                     fontSize: 13,
                                     fontWeight: FontWeight.w600,
                                   ),
@@ -12077,7 +12735,7 @@ class _GenericToolPageState extends State<GenericToolPage>
       ),
     );
   }
-  
+
   /// Build outpaint preview with accurate positioning
   Widget _buildOutpaintPreview(
     Uint8List imageBytes,
@@ -12092,13 +12750,13 @@ class _GenericToolPageState extends State<GenericToolPage>
     return LayoutBuilder(
       builder: (context, constraints) {
         final boxSize = constraints.biggest;
-        
+
         return Stack(
           fit: StackFit.expand,
           children: [
             // Checker background
             const CustomPaint(painter: _CheckerPainter()),
-            
+
             // Image with accurate positioning
             if (isCustomMode)
               // Custom mode: use scale and offset
@@ -12134,17 +12792,18 @@ class _GenericToolPageState extends State<GenericToolPage>
                   ),
                 ),
               ),
-            
+
             // Expansion direction indicator
             if (!compact) _buildExpansionIndicator(alignment, cs),
-            
+
             // Image ready indicator
             if (!compact)
               Positioned(
                 right: 8,
                 top: 8,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
                     color: Colors.black.withOpacity(0.6),
                     borderRadius: BorderRadius.circular(8),
@@ -12188,7 +12847,7 @@ class _GenericToolPageState extends State<GenericToolPage>
       },
     );
   }
-  
+
   EdgeInsets _getOutpaintPadding(String alignment) {
     const double pad = 40;
     switch (alignment) {
@@ -12206,13 +12865,13 @@ class _GenericToolPageState extends State<GenericToolPage>
         return EdgeInsets.zero;
     }
   }
-  
+
   Widget _buildExpansionIndicator(String alignment, ColorScheme cs) {
     if (alignment == "Middle") return const SizedBox();
-    
+
     IconData icon;
     Alignment position;
-    
+
     switch (alignment) {
       case "Left":
         icon = LucideIcons.arrowRight;
@@ -12237,7 +12896,7 @@ class _GenericToolPageState extends State<GenericToolPage>
       default:
         return const SizedBox();
     }
-    
+
     return Align(
       alignment: position,
       child: Padding(
@@ -12259,7 +12918,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     final cs = Theme.of(context).colorScheme;
     final input = widget.config.inputs
         .firstWhere((i) => i["id"] == ref, orElse: () => {});
-    
+
     // Check showWhen condition
     final showWhen = input["showWhen"] as Map<String, dynamic>?;
     if (showWhen != null) {
@@ -12270,13 +12929,13 @@ class _GenericToolPageState extends State<GenericToolPage>
         return const SizedBox.shrink();
       }
     }
-    
+
     final label = input["label"] ?? ref;
     _inputs[ref] ??= input["default"] ?? input["min"] ?? 1.0;
     final minVal = (input["min"] as num?)?.toDouble() ?? 0;
     final maxVal = (input["max"] as num?)?.toDouble() ?? 100;
     final currentVal = (_inputs[ref] as num).toDouble();
-    
+
     return _buildCard(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
       child: Column(
@@ -12361,7 +13020,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     final label = input["label"] ?? ref;
     final description = input["description"] as String?;
     final showForModels = input["showForModels"] as List<dynamic>?;
-    
+
     // Check if toggle should be shown for current model
     if (showForModels != null && showForModels.isNotEmpty) {
       final currentModel = _selectedModelId ?? widget.config.model;
@@ -12369,7 +13028,7 @@ class _GenericToolPageState extends State<GenericToolPage>
         return const SizedBox.shrink();
       }
     }
-    
+
     // Check showWhen condition
     final showWhen = input["showWhen"] as Map<String, dynamic>?;
     if (showWhen != null) {
@@ -12380,7 +13039,7 @@ class _GenericToolPageState extends State<GenericToolPage>
         return const SizedBox.shrink();
       }
     }
-    
+
     // Initialize with default value
     _inputs[ref] ??= input["default"] ?? false;
     final isEnabled = _inputs[ref] == true;
@@ -12461,12 +13120,15 @@ class _GenericToolPageState extends State<GenericToolPage>
                 onTap: () => setState(() => _inputs[ref] = opt),
                 borderRadius: BorderRadius.circular(AppStyles.radiusFull),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                   decoration: BoxDecoration(
                     gradient: isSelected
                         ? const LinearGradient(colors: KalaColors.brandGradient)
                         : null,
-                    color: isSelected ? null : cs.surfaceContainerHigh.withOpacity(0.55),
+                    color: isSelected
+                        ? null
+                        : cs.surfaceContainerHigh.withOpacity(0.55),
                     borderRadius: BorderRadius.circular(AppStyles.radiusFull),
                     border: Border.all(
                       color: isSelected
@@ -12479,7 +13141,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       if (isSelected) ...[
-                        const Icon(LucideIcons.check, size: 13, color: Colors.white),
+                        const Icon(LucideIcons.check,
+                            size: 13, color: Colors.white),
                         const SizedBox(width: 5),
                       ],
                       Text(
@@ -12549,9 +13212,8 @@ class _GenericToolPageState extends State<GenericToolPage>
 
     // Filter elements: generate_button is rendered in the sticky footer;
     // the `prompt` element is rendered at the top as a composer card.
-    final contentElements = _currentElements
-        .where((e) => e["type"] != "generate_button")
-        .toList();
+    final contentElements =
+        _currentElements.where((e) => e["type"] != "generate_button").toList();
     Map<String, dynamic>? promptElement;
     for (final e in contentElements) {
       if (e['type'] == 'prompt') {
@@ -12570,6 +13232,7 @@ class _GenericToolPageState extends State<GenericToolPage>
           t == 'audio_upload' ||
           t == 'file_upload';
     }
+
     final afterPromptElements = contentElements
         .where((e) => e['type'] != 'prompt' && !isUploadCardHidden(e))
         .toList();
@@ -12635,16 +13298,14 @@ class _GenericToolPageState extends State<GenericToolPage>
       }
 
       final child = _buildElement(e);
-      final pulse = _pulseSectionId != null &&
-          _sectionIdMatches(_pulseSectionId!, type);
+      final pulse =
+          _pulseSectionId != null && _sectionIdMatches(_pulseSectionId!, type);
       final wrapped = AnimatedContainer(
         duration: const Duration(milliseconds: 300),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(AppStyles.radiusLg),
           border: Border.all(
-            color: pulse
-                ? cs.primary.withOpacity(0.55)
-                : Colors.transparent,
+            color: pulse ? cs.primary.withOpacity(0.55) : Colors.transparent,
             width: pulse ? 1.5 : 0,
           ),
         ),
@@ -12768,7 +13429,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     final cs = Theme.of(context).colorScheme;
     final isEnabled = _areRequiredInputsFilled();
     final missingInputs = _getMissingInputs();
-    
+
     return Container(
       padding: EdgeInsets.only(
         left: 14,
@@ -12804,13 +13465,13 @@ class _GenericToolPageState extends State<GenericToolPage>
                       // Check if this is a rate limit message (contains ⏳)
                       final isRateLimitHint = missingInputs.first.contains('⏳');
                       final isProcessing = _isProcessingImage;
-                      
+
                       // Choose colors based on hint type
                       final Color bgColor;
                       final Color borderColor;
                       final Color textColor;
                       final IconData hintIcon;
-                      
+
                       if (isProcessing) {
                         bgColor = cs.primaryContainer.withOpacity(0.3);
                         borderColor = cs.primary.withOpacity(0.2);
@@ -12829,87 +13490,95 @@ class _GenericToolPageState extends State<GenericToolPage>
                         textColor = cs.error.withOpacity(0.9);
                         hintIcon = LucideIcons.alertCircle;
                       }
-                      
+
                       // Format message for display
                       final String displayMessage;
                       if (isProcessing) {
                         displayMessage = "Processing image...";
                       } else if (isRateLimitHint) {
                         // Remove emoji and show cleaner message
-                        displayMessage = missingInputs.first.replaceAll('⏳ ', '');
+                        displayMessage =
+                            missingInputs.first.replaceAll('⏳ ', '');
                       } else {
-                        displayMessage = "Add ${missingInputs.join(' & ')} to continue";
+                        displayMessage =
+                            "Add ${missingInputs.join(' & ')} to continue";
                       }
-                      
+
                       // Calculate jobs for rate limit sheet
-                      final variations = _advancedSettings.variations.clamp(1, getMaxVariations());
-                      final int imageCount = _advancedSettings.bulkEditEnabled && _hasBulkInput 
-                          ? _bulkActiveMediaCount 
-                          : 1;
+                      final variations = _advancedSettings.variations
+                          .clamp(1, getMaxVariations());
+                      final int imageCount =
+                          _advancedSettings.bulkEditEnabled && _hasBulkInput
+                              ? _bulkActiveMediaCount
+                              : 1;
                       final int totalJobsToSubmit = imageCount * variations;
-                      
+
                       return GestureDetector(
-                        onTap: isRateLimitHint ? () => _showRateLimitErrorSheet('', totalJobsToSubmit) : null,
+                        onTap: isRateLimitHint
+                            ? () =>
+                                _showRateLimitErrorSheet('', totalJobsToSubmit)
+                            : null,
                         child: Container(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    decoration: BoxDecoration(
-                          color: bgColor,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                            color: borderColor,
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                            if (isProcessing)
-                          SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: cs.primary.withOpacity(0.8),
+                          margin: const EdgeInsets.only(bottom: 10),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: bgColor,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: borderColor,
                             ),
-                          )
-                        else
-                          Icon(
-                                hintIcon,
-                            size: 14,
-                                color: textColor,
                           ),
-                        const SizedBox(width: 8),
-                        Flexible(
-                          child: Text(
-                                displayMessage,
-                            style: TextStyle(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (isProcessing)
+                                SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: cs.primary.withOpacity(0.8),
+                                  ),
+                                )
+                              else
+                                Icon(
+                                  hintIcon,
+                                  size: 14,
                                   color: textColor,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                            ),
+                                ),
+                              const SizedBox(width: 8),
+                              Flexible(
+                                child: Text(
+                                  displayMessage,
+                                  style: TextStyle(
+                                    color: textColor,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                              // Add "tap for details" indicator for rate limit hints
+                              if (isRateLimitHint) ...[
+                                const SizedBox(width: 8),
+                                Icon(
+                                  LucideIcons.chevronRight,
+                                  size: 14,
+                                  color: textColor.withOpacity(0.6),
+                                ),
+                              ],
+                            ],
                           ),
-                        ),
-                        // Add "tap for details" indicator for rate limit hints
-                        if (isRateLimitHint) ...[
-                          const SizedBox(width: 8),
-                          Icon(
-                            LucideIcons.chevronRight,
-                            size: 14,
-                            color: textColor.withOpacity(0.6),
-                          ),
-                        ],
-                      ],
-                    ),
                         ),
                       );
                     },
                   )
                 : const SizedBox.shrink(),
           ),
-          
+
           // Settings summary row (model + upscale indicator)
           if (_showAdvancedControls) _buildSettingsSummary(cs),
-          
+
           // Settings button + Generate button row
           Row(
             children: [
@@ -12950,13 +13619,13 @@ class _GenericToolPageState extends State<GenericToolPage>
   /// Build settings summary showing model name and upscale status
   Widget _buildSettingsSummary(ColorScheme cs) {
     // Get model name
-    final modelName = _selectedModelData?['name'] as String? ?? 
+    final modelName = _selectedModelData?['name'] as String? ??
         widget.config.models?.firstWhere(
           (m) => m['id'] == widget.config.model,
           orElse: () => {'name': widget.config.model},
-        )['name'] as String? ?? 
+        )['name'] as String? ??
         widget.config.model;
-    
+
     // Check upscale status
     final isUpscaled = _isVideoUpscalerTool
         ? true
@@ -13009,8 +13678,12 @@ class _GenericToolPageState extends State<GenericToolPage>
                     if (!hideVideoEnhancementSummaryChips)
                       _buildSummaryChip(
                         cs,
-                        icon: isUpscaled ? LucideIcons.maximize2 : LucideIcons.minimize2,
-                        label: isUpscaled ? '${scaleFactor}x Upscale' : 'No Upscale',
+                        icon: isUpscaled
+                            ? LucideIcons.maximize2
+                            : LucideIcons.minimize2,
+                        label: isUpscaled
+                            ? '${scaleFactor}x Upscale'
+                            : 'No Upscale',
                         highlight: isUpscaled,
                         isPositive: isUpscaled,
                       ),
@@ -13057,19 +13730,19 @@ class _GenericToolPageState extends State<GenericToolPage>
     bool highlight = false,
     bool isPositive = true,
   }) {
-    final chipColor = highlight 
+    final chipColor = highlight
         ? (isPositive ? cs.primary : cs.tertiary)
         : cs.onSurfaceVariant;
-        
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       decoration: BoxDecoration(
-        color: highlight 
+        color: highlight
             ? chipColor.withOpacity(0.1)
             : cs.surfaceContainerHigh.withOpacity(0.5),
         borderRadius: BorderRadius.circular(6),
         border: Border.all(
-          color: highlight 
+          color: highlight
               ? chipColor.withOpacity(0.2)
               : cs.outlineVariant.withOpacity(0.1),
         ),
@@ -13100,19 +13773,20 @@ class _GenericToolPageState extends State<GenericToolPage>
   Widget _buildAnimatedGenerateButton() {
     final cs = Theme.of(context).colorScheme;
     final offer = _currentModelOffer;
-    final variations = _advancedSettings.variations.clamp(1, getMaxVariations());
+    final variations =
+        _advancedSettings.variations.clamp(1, getMaxVariations());
 
     // VIP benefits
-    final int imageCount = _advancedSettings.bulkEditEnabled && _hasBulkInput 
-        ? _bulkActiveMediaCount 
+    final int imageCount = _advancedSettings.bulkEditEnabled && _hasBulkInput
+        ? _bulkActiveMediaCount
         : 1;
-    
+
     // Total jobs = images × variations
     final int totalJobs = imageCount * variations;
 
     // Use the unified cost calculation that includes variations
     final totalCost = _calculateTotalCost();
-    
+
     // Calculate cost before discount (for showing strikethrough if offer or VIP free upscale)
     int totalBeforeDiscount;
     if (_isVideoUpscalerTool) {
@@ -13130,17 +13804,16 @@ class _GenericToolPageState extends State<GenericToolPage>
 
     // Check if button should be enabled
     final isEnabled = _areRequiredInputsFilled();
-    
+
     // Check if we have multiple images or variations (show compact summary)
     final bool showJobCount = totalJobs > 1;
 
     return AnimatedBuilder(
       animation: _glowAnimationController,
       builder: (context, child) {
-        final glowOpacity = isEnabled 
-            ? 0.3 + (_glowAnimationController.value * 0.2) 
-            : 0.0;
-        
+        final glowOpacity =
+            isEnabled ? 0.3 + (_glowAnimationController.value * 0.2) : 0.0;
+
         return Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
@@ -13167,7 +13840,10 @@ class _GenericToolPageState extends State<GenericToolPage>
                 gradient: LinearGradient(
                   colors: isEnabled
                       ? KalaColors.brandGradient
-                      : [cs.onSurfaceVariant.withOpacity(0.4), cs.onSurfaceVariant.withOpacity(0.3)],
+                      : [
+                          cs.onSurfaceVariant.withOpacity(0.4),
+                          cs.onSurfaceVariant.withOpacity(0.3)
+                        ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -13175,18 +13851,20 @@ class _GenericToolPageState extends State<GenericToolPage>
               child: Material(
                 color: Colors.transparent,
                 child: InkWell(
-                  onTap: isEnabled 
-                      ? _handleGenerateTap 
+                  onTap: isEnabled
+                      ? _handleGenerateTap
                       : () {
                           // When disabled, check if it's due to rate limit and show the sheet
-                          final rateLimitError = checkRateLimitForSubmission(totalJobs);
+                          final rateLimitError =
+                              checkRateLimitForSubmission(totalJobs);
                           if (rateLimitError != null) {
                             _showRateLimitErrorSheet(rateLimitError, totalJobs);
                           }
                         },
                   borderRadius: BorderRadius.circular(16),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 14, horizontal: 16),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -13207,7 +13885,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                             letterSpacing: 0.3,
                           ),
                         ),
-                        
+
                         // Divider
                         Container(
                           margin: const EdgeInsets.symmetric(horizontal: 10),
@@ -13215,11 +13893,12 @@ class _GenericToolPageState extends State<GenericToolPage>
                           width: 1,
                           color: Colors.white.withOpacity(0.3),
                         ),
-                        
+
                         // Compact job count badge (when multiple jobs)
                         if (showJobCount) ...[
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 3),
                             decoration: BoxDecoration(
                               color: Colors.white.withOpacity(0.15),
                               borderRadius: BorderRadius.circular(6),
@@ -13235,7 +13914,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                           ),
                           const SizedBox(width: 6),
                         ],
-                        
+
                         // Cost display (compact)
                         Row(
                           mainAxisSize: MainAxisSize.min,
@@ -13246,14 +13925,16 @@ class _GenericToolPageState extends State<GenericToolPage>
                               color: Colors.white.withOpacity(0.9),
                             ),
                             const SizedBox(width: 3),
-                            if (offer > 0 && totalBeforeDiscount > totalCost) ...[
+                            if (offer > 0 &&
+                                totalBeforeDiscount > totalCost) ...[
                               Text(
                                 "$totalBeforeDiscount",
                                 style: TextStyle(
                                   color: Colors.white.withOpacity(0.5),
                                   fontSize: 11,
                                   decoration: TextDecoration.lineThrough,
-                                  decorationColor: Colors.white.withOpacity(0.5),
+                                  decorationColor:
+                                      Colors.white.withOpacity(0.5),
                                 ),
                               ),
                               const SizedBox(width: 2),
@@ -13305,14 +13986,14 @@ class _GenericToolPageState extends State<GenericToolPage>
   void _handleGenerateTap() async {
     // Trigger haptic feedback
     HapticFeedback.mediumImpact();
-    
+
     // Check if bulk mode is enabled - show confirmation dialog
     final isBulkMode = _advancedSettings.bulkEditEnabled && _hasBulkInput;
     if (isBulkMode) {
       final confirmed = await _showBulkConfirmationDialog();
       if (!confirmed) return; // User cancelled
     }
-    
+
     // Call the actual job runner
     _runJob();
   }
@@ -13321,9 +14002,10 @@ class _GenericToolPageState extends State<GenericToolPage>
   Future<bool> _showBulkConfirmationDialog() async {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     // Gather job information
-    final variations = _advancedSettings.variations.clamp(1, getMaxVariations());
+    final variations =
+        _advancedSettings.variations.clamp(1, getMaxVariations());
     final imageCount = _bulkActiveMediaCount;
     final totalJobs = imageCount * variations;
     final totalCost = _calculateTotalCost();
@@ -13333,15 +14015,15 @@ class _GenericToolPageState extends State<GenericToolPage>
     final showEnhancementConfirm = _videoGenEnhancementEnabled ||
         _isVideoUpscalerTool ||
         (_advancedSettings.upscaleOutput && _scaleFactor > 1);
-    
+
     // Get model name
-    final modelName = _selectedModelData?['name'] as String? ?? 
+    final modelName = _selectedModelData?['name'] as String? ??
         widget.config.models?.firstWhere(
           (m) => m['id'] == widget.config.model,
           orElse: () => {'name': widget.config.title},
-        )['name'] as String? ?? 
+        )['name'] as String? ??
         widget.config.title;
-    
+
     final result = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -13361,8 +14043,9 @@ class _GenericToolPageState extends State<GenericToolPage>
             right: 20,
             top: 12,
             // Account for both keyboard (viewInsets) and system nav bar (viewPadding)
-            bottom: MediaQuery.of(ctx).viewInsets.bottom + 
-                    MediaQuery.of(ctx).viewPadding.bottom + 20,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom +
+                MediaQuery.of(ctx).viewPadding.bottom +
+                20,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -13377,7 +14060,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                 ),
               ),
               const SizedBox(height: 20),
-              
+
               // Header with icon
               Container(
                 padding: const EdgeInsets.all(16),
@@ -13397,7 +14080,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                 ),
               ),
               const SizedBox(height: 16),
-              
+
               Text(
                 'Confirm Bulk Generation',
                 style: TextStyle(
@@ -13415,7 +14098,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                 ),
               ),
               const SizedBox(height: 24),
-              
+
               // Job details card
               Container(
                 padding: const EdgeInsets.all(16),
@@ -13437,7 +14120,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                       iconColor: KalaColors.purple,
                     ),
                     const SizedBox(height: 12),
-                    
+
                     // Model
                     _buildConfirmDetailRow(
                       cs,
@@ -13447,11 +14130,13 @@ class _GenericToolPageState extends State<GenericToolPage>
                       iconColor: KalaColors.cyan,
                     ),
                     const SizedBox(height: 12),
-                    
+
                     // Images / videos (bulk)
                     _buildConfirmDetailRow(
                       cs,
-                      icon: bulkVideoConfirm ? LucideIcons.video : LucideIcons.image,
+                      icon: bulkVideoConfirm
+                          ? LucideIcons.video
+                          : LucideIcons.image,
                       label: bulkVideoConfirm ? 'Videos' : 'Images',
                       value: bulkVideoConfirm
                           ? '$imageCount video${imageCount > 1 ? 's' : ''}'
@@ -13459,7 +14144,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                       iconColor: Colors.blue,
                     ),
                     const SizedBox(height: 12),
-                    
+
                     // Variations
                     _buildConfirmDetailRow(
                       cs,
@@ -13476,7 +14161,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                       _buildConfirmDetailRow(
                         cs,
                         icon: LucideIcons.clock,
-                        label: _isVideoUpscalerTool ? 'Input video' : 'Duration',
+                        label:
+                            _isVideoUpscalerTool ? 'Input video' : 'Duration',
                         value: _isVideoUpscalerTool
                             ? (bulkVideoConfirm
                                 ? 'Batch (${_bulkVideoPaths.length} files)'
@@ -13489,7 +14175,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                       ),
                     ],
                     const SizedBox(height: 12),
-                    
+
                     // Enhancement / upscale
                     if (showEnhancementConfirm)
                       Padding(
@@ -13497,17 +14183,19 @@ class _GenericToolPageState extends State<GenericToolPage>
                         child: _buildConfirmDetailRow(
                           cs,
                           icon: LucideIcons.zap,
-                          label: _videoGenEnhancementEnabled ? 'Enhancement' : 'Upscale',
+                          label: _videoGenEnhancementEnabled
+                              ? 'Enhancement'
+                              : 'Upscale',
                           value: _enhancementConfirmDetailValue(freeUpscale),
                           iconColor: Colors.green,
                           valueColor: freeUpscale ? Colors.green : null,
                         ),
                       ),
-                    
+
                     // Divider
                     Divider(color: cs.outline.withOpacity(0.2)),
                     const SizedBox(height: 12),
-                    
+
                     // Total jobs
                     _buildConfirmDetailRow(
                       cs,
@@ -13520,10 +14208,11 @@ class _GenericToolPageState extends State<GenericToolPage>
                     // Cost breakup (video tools only)
                     if (_isVideoTool) ...[
                       const SizedBox(height: 12),
-                      _buildVideoCostBreakup(cs, totalCost, variations, imageCount, freeUpscale),
+                      _buildVideoCostBreakup(
+                          cs, totalCost, variations, imageCount, freeUpscale),
                     ],
                     const SizedBox(height: 12),
-                    
+
                     // Total cost
                     Row(
                       children: [
@@ -13549,7 +14238,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                         ),
                         const Spacer(),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 6),
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
                               colors: [
@@ -13585,7 +14275,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                 ),
               ),
               const SizedBox(height: 24),
-              
+
               // Action buttons
               Row(
                 children: [
@@ -13610,7 +14300,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                     ),
                   ),
                   const SizedBox(width: 12),
-                  
+
                   // Confirm button
                   Expanded(
                     flex: 2,
@@ -13666,7 +14356,7 @@ class _GenericToolPageState extends State<GenericToolPage>
         ),
       ),
     );
-    
+
     return result ?? false;
   }
 
@@ -13714,19 +14404,23 @@ class _GenericToolPageState extends State<GenericToolPage>
 
     if (_isVideoUpscalerTool) {
       if (_inputVideoDuration == null || _inputVideoDuration!.inSeconds <= 0) {
-        return Text('Cost based on input video length (per 5s)', style: smallStyle);
+        return Text('Cost based on input video length (per 5s)',
+            style: smallStyle);
       }
       final baseCostPer5Sec = _currentModelCost;
       final units = (_inputVideoDuration!.inSeconds / 5).ceil().clamp(1, 10000);
       final subTotal = baseCostPer5Sec * units;
-      final parts = <String>['$units unit${units > 1 ? 's' : ''} × $baseCostPer5Sec = $subTotal'];
+      final parts = <String>[
+        '$units unit${units > 1 ? 's' : ''} × $baseCostPer5Sec = $subTotal'
+      ];
       if (offer > 0) {
         parts.add(' (−$offer% offer) = $totalCost');
       }
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Cost breakup', style: smallStyle.copyWith(fontWeight: FontWeight.w600)),
+          Text('Cost breakup',
+              style: smallStyle.copyWith(fontWeight: FontWeight.w600)),
           const SizedBox(height: 4),
           Text(parts.join(), style: lineStyle),
         ],
@@ -13763,7 +14457,8 @@ class _GenericToolPageState extends State<GenericToolPage>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Cost breakup', style: smallStyle.copyWith(fontWeight: FontWeight.w600)),
+        Text('Cost breakup',
+            style: smallStyle.copyWith(fontWeight: FontWeight.w600)),
         const SizedBox(height: 4),
         ...lines,
       ],
@@ -13874,8 +14569,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: selected ? cs.onPrimary : cs.onSurfaceVariant,
-                      fontWeight:
-                          selected ? FontWeight.w600 : FontWeight.w500,
+                      fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
                       fontSize: 12.5,
                     ),
                   ),
@@ -14070,13 +14764,13 @@ class _GenericToolPageState extends State<GenericToolPage>
     final currentProcessing = status['currentProcessing'] as int;
     final available = status['available'] as int;
     final percentUsed = status['percentUsed'] as int;
-    
+
     // Dynamic title and subtitle based on situation
     final String title;
     final String subtitle;
     final IconData icon;
     final Color iconColor;
-    
+
     if (available == 0) {
       title = 'Your Jobs Are Running! 🚀';
       subtitle = 'All $maxJobs slots are busy processing your creations';
@@ -14084,7 +14778,8 @@ class _GenericToolPageState extends State<GenericToolPage>
       iconColor = cs.primary;
     } else if (jobsRequested > available) {
       title = 'Almost There! ⏳';
-      subtitle = 'You want $jobsRequested jobs but only $available slot${available > 1 ? 's' : ''} available';
+      subtitle =
+          'You want $jobsRequested jobs but only $available slot${available > 1 ? 's' : ''} available';
       icon = LucideIcons.clock;
       iconColor = Colors.amber.shade600;
     } else {
@@ -14178,7 +14873,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                           ),
                         ),
                         FractionallySizedBox(
-                          widthFactor: maxJobs > 0 ? currentProcessing / maxJobs : 0,
+                          widthFactor:
+                              maxJobs > 0 ? currentProcessing / maxJobs : 0,
                           child: Container(
                             height: 12,
                             decoration: BoxDecoration(
@@ -14192,7 +14888,9 @@ class _GenericToolPageState extends State<GenericToolPage>
                               borderRadius: BorderRadius.circular(6),
                               boxShadow: [
                                 BoxShadow(
-                                  color: (percentUsed >= 100 ? Colors.orange : cs.primary)
+                                  color: (percentUsed >= 100
+                                          ? Colors.orange
+                                          : cs.primary)
                                       .withOpacity(0.3),
                                   blurRadius: 4,
                                   offset: const Offset(0, 2),
@@ -14252,7 +14950,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                 ),
               ),
               const SizedBox(height: 16),
-              
+
               // Helpful suggestion
               Container(
                 padding: const EdgeInsets.all(12),
@@ -14334,7 +15032,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                     ),
                 ],
               ),
-              
+
               // Tip for VIP users
               if (isVip) ...[
                 const SizedBox(height: 16),
@@ -14362,7 +15060,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                   ),
                 ),
               ],
-              
+
               // Upgrade tip for non-VIP
               if (!isVip) ...[
                 const SizedBox(height: 16),
@@ -14380,7 +15078,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                   ),
                   child: Row(
                     children: [
-                      Icon(LucideIcons.crown, size: 18, color: Colors.amber.shade700),
+                      Icon(LucideIcons.crown,
+                          size: 18, color: Colors.amber.shade700),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
@@ -14505,7 +15204,10 @@ class _GenericToolPageState extends State<GenericToolPage>
         if (val.first is Uint8List) {
           encoded[key] = val.length == 1
               ? _encodeBytesToCleanBase64ForSubmit(val.first as Uint8List)
-              : val.map((e) => _encodeBytesToCleanBase64ForSubmit(e as Uint8List)).toList();
+              : val
+                  .map(
+                      (e) => _encodeBytesToCleanBase64ForSubmit(e as Uint8List))
+                  .toList();
         } else {
           encoded[key] = val.length == 1 ? val.first : val;
         }
@@ -14562,7 +15264,8 @@ class _GenericToolPageState extends State<GenericToolPage>
       }
       _videoBulkSequentialActive = true;
       try {
-        final variations = _advancedSettings.variations.clamp(1, getMaxVariations());
+        final variations =
+            _advancedSettings.variations.clamp(1, getMaxVariations());
         final totalJobs = _bulkVideoPaths.length * variations;
         final rateLimitError = checkRateLimitForSubmission(totalJobs);
         if (rateLimitError != null) {
@@ -14587,7 +15290,8 @@ class _GenericToolPageState extends State<GenericToolPage>
           return;
         }
         _syncLiveSubmitInputsFromUi();
-        final adGateOk = await _runHeavyTierRewardedGateWithParallelMediaEncode();
+        final adGateOk =
+            await _runHeavyTierRewardedGateWithParallelMediaEncode();
         if (!adGateOk) return;
 
         for (var i = 0; i < _bulkVideoPaths.length; i++) {
@@ -14623,12 +15327,13 @@ class _GenericToolPageState extends State<GenericToolPage>
     final cs = Theme.of(context).colorScheme;
 
     // --- Calculate total jobs for rate limiting ---
-    final variations = _advancedSettings.variations.clamp(1, getMaxVariations());
-    final int imageCount = _advancedSettings.bulkEditEnabled && _hasBulkInput 
-        ? _bulkActiveMediaCount 
+    final variations =
+        _advancedSettings.variations.clamp(1, getMaxVariations());
+    final int imageCount = _advancedSettings.bulkEditEnabled && _hasBulkInput
+        ? _bulkActiveMediaCount
         : 1;
     final int totalJobsToSubmit = imageCount * variations;
-    
+
     // --- RATE LIMITING CHECK ---
     if (!_videoBulkSequentialActive) {
       final rateLimitError = checkRateLimitForSubmission(totalJobsToSubmit);
@@ -14685,7 +15390,7 @@ class _GenericToolPageState extends State<GenericToolPage>
 
     // Track dialog visibility for safe dismissal
     bool dialogShowing = false;
-    
+
     // Helper to safely dismiss the dialog
     void dismissDialog() {
       messageTimer?.cancel();
@@ -14708,7 +15413,8 @@ class _GenericToolPageState extends State<GenericToolPage>
         return Dialog(
           backgroundColor: cs.surface,
           elevation: 0,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
           insetPadding: const EdgeInsets.symmetric(horizontal: 40),
           child: Container(
             decoration: BoxDecoration(
@@ -14746,7 +15452,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                   ),
                 ),
                 const SizedBox(height: 24),
-                
+
                 // Title with icon
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -14757,18 +15463,18 @@ class _GenericToolPageState extends State<GenericToolPage>
                       color: cs.primary,
                     ),
                     const SizedBox(width: 10),
-                Text(
+                    Text(
                       "Creating Magic",
-                  style: TextStyle(
-                    color: cs.onSurface,
+                      style: TextStyle(
+                        color: cs.onSurface,
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
-                  ),
+                      ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 12),
-                
+
                 // Description
                 ValueListenableBuilder<String>(
                   valueListenable: dialogMessage,
@@ -14796,7 +15502,8 @@ class _GenericToolPageState extends State<GenericToolPage>
       attempt++;
       try {
         // --- Clone _inputs for encoding (base64 may have run in parallel with the rewarded ad) ---
-        final bool usedEncodedPrefetch = _prefetchedEncodedInputsForSubmit != null;
+        final bool usedEncodedPrefetch =
+            _prefetchedEncodedInputsForSubmit != null;
         final Map<String, dynamic> encoded;
         if (usedEncodedPrefetch) {
           encoded =
@@ -14879,7 +15586,8 @@ class _GenericToolPageState extends State<GenericToolPage>
           // Support model-specific input overrides (e.g. qwen_image_edit_2509 references {{images}}
           // but the base input id is init_image).
           try {
-            final overrides = _selectedModelData?['inputOverrides'] as Map<String, dynamic>?;
+            final overrides =
+                _selectedModelData?['inputOverrides'] as Map<String, dynamic>?;
             if (overrides != null && overrides.isNotEmpty) {
               for (final entry in overrides.entries) {
                 final baseId = entry.key;
@@ -14889,14 +15597,17 @@ class _GenericToolPageState extends State<GenericToolPage>
 
                   // If template asks for overrideId (e.g. "images"), return the base value ("init_image").
                   if (overrideId == refId ||
-                      overrideId.replaceAll('-', '_') == refId.replaceAll('-', '_')) {
+                      overrideId.replaceAll('-', '_') ==
+                          refId.replaceAll('-', '_')) {
                     if (encoded.containsKey(baseId)) return encoded[baseId];
                   }
 
                   // If template asks for baseId, return overrideId value (in case UI stored it there).
                   if (baseId == refId ||
-                      baseId.replaceAll('-', '_') == refId.replaceAll('-', '_')) {
-                    if (encoded.containsKey(overrideId)) return encoded[overrideId];
+                      baseId.replaceAll('-', '_') ==
+                          refId.replaceAll('-', '_')) {
+                    if (encoded.containsKey(overrideId))
+                      return encoded[overrideId];
                   }
                 }
               }
@@ -14936,9 +15647,9 @@ class _GenericToolPageState extends State<GenericToolPage>
             modelParams = Map<String, dynamic>.from(p);
           }
         }
-        final Map<String, dynamic>? modelRootParams = 
-            _selectedModelData?['rootParams'] as Map<String, dynamic>? ?? 
-            widget.config.rootParams;
+        final Map<String, dynamic>? modelRootParams =
+            _selectedModelData?['rootParams'] as Map<String, dynamic>? ??
+                widget.config.rootParams;
 
         // Resolve {{template}} placeholders
         modelParams?.forEach((key, value) {
@@ -14952,7 +15663,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                 val = fetched;
                 consumedInputs.add(ref);
               } else {
-                debugPrint('⚠️ Unresolved param placeholder {{$ref}} for key="$key" (model=${_selectedModelId ?? widget.config.model})');
+                debugPrint(
+                    '⚠️ Unresolved param placeholder {{$ref}} for key="$key" (model=${_selectedModelId ?? widget.config.model})');
               }
             }
           }
@@ -14970,7 +15682,8 @@ class _GenericToolPageState extends State<GenericToolPage>
               val = fetched;
               consumedInputs.add(refId);
             } else {
-              debugPrint('⚠️ Unresolved root placeholder {{$refId}} for key="$key" (model=${_selectedModelId ?? widget.config.model})');
+              debugPrint(
+                  '⚠️ Unresolved root placeholder {{$refId}} for key="$key" (model=${_selectedModelId ?? widget.config.model})');
             }
           }
           rootParams[key] = val;
@@ -15014,18 +15727,17 @@ class _GenericToolPageState extends State<GenericToolPage>
 
         // Calculate height/width based on selected aspect ratio (default 1:1; legacy `Default` → 1:1).
         if (!_isOnDeviceInpaintTool) {
-          final selectedRatio =
-              AdvancedSettings.normalizeAspectRatio(_advancedSettings.aspectRatio);
+          final selectedRatio = _selectedShapeRatio;
           final ratioParts = selectedRatio.split(':');
           if (ratioParts.length == 2) {
             final ratioW = double.tryParse(ratioParts[0]) ?? 1;
             final ratioH = double.tryParse(ratioParts[1]) ?? 1;
             final targetRatio = ratioW / ratioH;
-            
+
             // Get current dimensions (may have been inferred from image)
             final currentWidth = resolvedParams["width"] as int? ?? 896;
             final currentHeight = resolvedParams["height"] as int? ?? 896;
-            
+
             // Calculate new dimensions maintaining the larger dimension
             int newWidth, newHeight;
             if (targetRatio >= 1.0) {
@@ -15037,11 +15749,11 @@ class _GenericToolPageState extends State<GenericToolPage>
               newHeight = currentHeight;
               newWidth = (currentHeight * targetRatio).round();
             }
-            
+
             // Round to nearest 32 (required by most models) or 8 (for Hunyuan)
             int roundTo32(int x) => ((x / 32).round() * 32).clamp(32, 2048);
             int roundTo8(int x) => ((x / 8).round() * 8).clamp(8, 2048);
-            
+
             // Model-specific handling for aspect ratio
             if (currentModelId == 'dreamid') {
               // DreamID uses "size" parameter in format "width*height" (string)
@@ -15051,19 +15763,27 @@ class _GenericToolPageState extends State<GenericToolPage>
               // Remove height/width if they exist (DreamID doesn't use them)
               resolvedParams.remove("width");
               resolvedParams.remove("height");
-              debugPrint("🎬 DreamID: aspect ratio $selectedRatio → size=$finalWidth*$finalHeight");
-            } else if (currentModelId == 'hunyan15_480p_i2v_step_distilled' || 
-                       currentModelId == 'hunyan15_480p_t2v_distilled') {
+              debugPrint(
+                  "🎬 DreamID: aspect ratio $selectedRatio → size=$finalWidth*$finalHeight");
+            } else if (currentModelId == 'hunyan15_480p_i2v_step_distilled' ||
+                currentModelId == 'hunyan15_480p_t2v_distilled') {
               // Hunyuan models require dimensions rounded to 8
               resolvedParams["width"] = roundTo8(newWidth);
               resolvedParams["height"] = roundTo8(newHeight);
-              debugPrint("🎬 Hunyuan: aspect ratio $selectedRatio → ${roundTo8(newWidth)}x${roundTo8(newHeight)}");
+              debugPrint(
+                  "🎬 Hunyuan: aspect ratio $selectedRatio → ${roundTo8(newWidth)}x${roundTo8(newHeight)}");
             } else if (currentModelId == 'ltx2_3_t2v') {
               // Create Video: honor aspect ratio but never exceed 720p-class bounds
               final wh = _ltx23T2vPixelsForAspectRatio(selectedRatio);
               _applyLtx23T2vFloor32ToParams(resolvedParams, wh.$1, wh.$2);
               debugPrint(
                 "🎬 LTX 2.3 T2V: aspect $selectedRatio → ${resolvedParams['width']}x${resolvedParams['height']} (max 720p)",
+              );
+            } else if (_isLtx25Model) {
+              final wh = _ltx25PixelsForAspectRatio(selectedRatio);
+              _applyLtx25CanvasToParams(resolvedParams, wh.$1, wh.$2);
+              debugPrint(
+                "🎬 CineReal: aspect $selectedRatio → ${resolvedParams['width']}x${resolvedParams['height']}",
               );
             } else if (currentModelId.startsWith('ltx2_3')) {
               // Animate / other LTX: worker dims floored to multiples of 32
@@ -15073,11 +15793,20 @@ class _GenericToolPageState extends State<GenericToolPage>
               debugPrint(
                 "🎬 LTX 2.3: aspect ratio $selectedRatio → ${resolvedParams['width']}x${resolvedParams['height']}",
               );
+            } else if (_isMinimaxH3Model) {
+              resolvedParams.remove("width");
+              resolvedParams.remove("height");
+              resolvedParams["aspect_ratio"] =
+                  _kH3AspectSelectorLabels[selectedRatio] ?? selectedRatio;
+              debugPrint(
+                "🎬 Cinemotion Pro: aspect $selectedRatio → ${resolvedParams['aspect_ratio']}",
+              );
             } else {
               // Fastwan and other models use height and width (integers, rounded to 32)
-            resolvedParams["width"] = roundTo32(newWidth);
-            resolvedParams["height"] = roundTo32(newHeight);
-              debugPrint("📐 Model $currentModelId: aspect ratio $selectedRatio → ${roundTo32(newWidth)}x${roundTo32(newHeight)}");
+              resolvedParams["width"] = roundTo32(newWidth);
+              resolvedParams["height"] = roundTo32(newHeight);
+              debugPrint(
+                  "📐 Model $currentModelId: aspect ratio $selectedRatio → ${roundTo32(newWidth)}x${roundTo32(newHeight)}");
             }
           }
         }
@@ -15085,58 +15814,82 @@ class _GenericToolPageState extends State<GenericToolPage>
         // --- Add outpaint-specific params ---
         // IMPORTANT: For outpaint tools, we need to set alignment and aspect_ratio in base params
         // In bulk mode, per-image configs in bulk_outpaint_configs will override these defaults
-        final bool isBulkEditEnabled = _advancedSettings.bulkEditEnabled && 
-            _hasBulkInput && 
+        final bool isBulkEditEnabled = _advancedSettings.bulkEditEnabled &&
+            _hasBulkInput &&
             canUseBulkEdit();
-        
+
         if (_isOutpaint) {
           // Custom mode params (only for single mode, bulk mode uses bulk_outpaint_configs)
           if (!isBulkEditEnabled) {
             // Single mode: set alignment and aspect_ratio in base params
-          resolvedParams["alignment"] = _inputs["alignment"] ?? "Middle";
-          resolvedParams["aspect_ratio"] = _inputs["aspect_ratio"] ?? "1:1";
-          
-          final bool isCustomMode = _inputs["is_custom"] == "true";
-          if (isCustomMode) {
-            resolvedParams["is_custom_mode"] = true;
-            resolvedParams["custom_scale"] = double.tryParse(_inputs["custom_scale"] ?? "0.7") ?? 0.7;
-            resolvedParams["norm_offset_x"] = double.tryParse(_inputs["norm_offset_x"] ?? "0") ?? 0.0;
-            resolvedParams["norm_offset_y"] = double.tryParse(_inputs["norm_offset_y"] ?? "0") ?? 0.0;
-            // Canvas and image dimensions for backend calculation
-            resolvedParams["canvas_width"] = double.tryParse(_inputs["canvas_width"] ?? "0");
-            resolvedParams["canvas_height"] = double.tryParse(_inputs["canvas_height"] ?? "0");
-            resolvedParams["image_width"] = double.tryParse(_inputs["image_width"] ?? "0");
-            resolvedParams["image_height"] = double.tryParse(_inputs["image_height"] ?? "0");
-            resolvedParams["image_left"] = double.tryParse(_inputs["image_left"] ?? "0");
-            resolvedParams["image_top"] = double.tryParse(_inputs["image_top"] ?? "0");
-          }
-          
-          debugPrint("🖼️ Outpaint params (single): alignment=${resolvedParams["alignment"]}, "
-              "aspect=${resolvedParams["aspect_ratio"]}, custom=$isCustomMode");
+            resolvedParams["alignment"] = _inputs["alignment"] ?? "Middle";
+            resolvedParams["aspect_ratio"] = _inputs["aspect_ratio"] ?? "1:1";
+
+            final bool isCustomMode = _inputs["is_custom"] == "true";
+            if (isCustomMode) {
+              resolvedParams["is_custom_mode"] = true;
+              resolvedParams["custom_scale"] =
+                  double.tryParse(_inputs["custom_scale"] ?? "0.7") ?? 0.7;
+              resolvedParams["norm_offset_x"] =
+                  double.tryParse(_inputs["norm_offset_x"] ?? "0") ?? 0.0;
+              resolvedParams["norm_offset_y"] =
+                  double.tryParse(_inputs["norm_offset_y"] ?? "0") ?? 0.0;
+              // Canvas and image dimensions for backend calculation
+              resolvedParams["canvas_width"] =
+                  double.tryParse(_inputs["canvas_width"] ?? "0");
+              resolvedParams["canvas_height"] =
+                  double.tryParse(_inputs["canvas_height"] ?? "0");
+              resolvedParams["image_width"] =
+                  double.tryParse(_inputs["image_width"] ?? "0");
+              resolvedParams["image_height"] =
+                  double.tryParse(_inputs["image_height"] ?? "0");
+              resolvedParams["image_left"] =
+                  double.tryParse(_inputs["image_left"] ?? "0");
+              resolvedParams["image_top"] =
+                  double.tryParse(_inputs["image_top"] ?? "0");
+            }
+
+            debugPrint(
+                "🖼️ Outpaint params (single): alignment=${resolvedParams["alignment"]}, "
+                "aspect=${resolvedParams["aspect_ratio"]}, custom=$isCustomMode");
           } else {
             // Bulk mode: don't set alignment/aspect_ratio in base params
             // They will be provided per-image in bulk_outpaint_configs
-          debugPrint("🖼️ Outpaint params (bulk): ${_bulkOutpaintConfigs.length} per-image configs will be sent");
+            debugPrint(
+                "🖼️ Outpaint params (bulk): ${_bulkOutpaintConfigs.length} per-image configs will be sent");
           }
         }
 
         // --- Build payload ---
         // Send ONE request with variations: N, server creates N jobs internally
         final modelId = _selectedModelId ?? widget.config.model;
-        
+
         // LoRA adapter for qwen_image_edit_2511_rapid_aio
         if (modelId == 'qwen_image_edit_2511_rapid_aio') {
           resolvedParams['lora_adapter'] = _advancedSettings.loraAdapter;
         }
-        
+
         // Duration handling for video models (animate_image, create_video — not video upscaler)
         if (widget.config.outputType == 'video' && !_isVideoUpscalerTool) {
           final duration =
               _clampVideoGenDurationSeconds(_advancedSettings.videoDuration);
 
-          if (modelId.startsWith('ltx2_3')) {
+          if (_isLtx25Model) {
+            resolvedParams['duration_seconds'] = duration;
+            resolvedParams.remove('duration');
+            resolvedParams.remove('num_frames');
+            resolvedParams.remove('frame_rate');
+            resolvedParams.remove('fps');
+            debugPrint('🎬 CineReal: duration_seconds=$duration');
+          } else if (_isMinimaxH3Model) {
+            resolvedParams['seconds'] = duration;
+            resolvedParams.remove('duration');
+            resolvedParams.remove('duration_seconds');
+            debugPrint('🎬 Cinemotion Pro: seconds=$duration');
+          } else if (modelId.startsWith('ltx2_3')) {
             // LTX 2.3 worker: frame_rate + num_frames (8k+1); no legacy duration/rife keys
-            final fpsVal = resolvedParams['frame_rate'] ?? resolvedParams['fps'];
+            final fpsVal =
+                resolvedParams['frame_rate'] ?? resolvedParams['fps'];
             final fps = (fpsVal is num) ? fpsVal.toDouble() : 24.0;
             resolvedParams['frame_rate'] = fps;
             resolvedParams.remove('fps');
@@ -15160,7 +15913,8 @@ class _GenericToolPageState extends State<GenericToolPage>
               final fps = (resolvedParams["fps"] as num?)?.toInt() ?? 24;
               final numFrames = (duration * fps).round();
               resolvedParams["num_frames"] = numFrames;
-              debugPrint("🎬 Hunyuan: duration=${duration}s, fps=$fps, num_frames=$numFrames");
+              debugPrint(
+                  "🎬 Hunyuan: duration=${duration}s, fps=$fps, num_frames=$numFrames");
             }
 
             // DreamID: calculate frame_num from duration and fps
@@ -15168,12 +15922,15 @@ class _GenericToolPageState extends State<GenericToolPage>
               final fps = (resolvedParams["sample_fps"] as num?)?.toInt() ?? 24;
               final frameNum = (duration * fps).round();
               resolvedParams["frame_num"] = frameNum;
-              debugPrint("🎬 DreamID: duration=${duration}s, fps=$fps, frame_num=$frameNum");
+              debugPrint(
+                  "🎬 DreamID: duration=${duration}s, fps=$fps, frame_num=$frameNum");
             }
           }
 
           // Video upscale / RIFE (not used by LTX 2.3 worker stack)
-          if (!_isVideoUpscalerTool && !modelId.startsWith('ltx2_3')) {
+          if (!_isVideoUpscalerTool &&
+              !modelId.startsWith('ltx2_3') &&
+              !_isComfyVideoWorker) {
             if (_advancedSettings.enableInterpolate) {
               final mult = migrateLegacyInterpolateStorageValue(
                 _advancedSettings.interpolateFps,
@@ -15195,18 +15952,27 @@ class _GenericToolPageState extends State<GenericToolPage>
 
             if (_advancedSettings.enableUpscale) {
               resolvedParams["enable_upscaling"] = true;
-              resolvedParams["upscale_factor"] = _advancedSettings.upscaleFactor;
+              resolvedParams["upscale_factor"] =
+                  _advancedSettings.upscaleFactor;
             } else {
               resolvedParams["enable_upscaling"] = false;
             }
           }
         }
 
-        if (modelId.startsWith('ltx2_3')) {
-          for (final k in _kLtx23WorkerOmitParams) {
+        if (_isLtx25Model) {
+          for (final k in _kLtx25WorkerOmitParams) {
             resolvedParams.remove(k);
           }
-          // LTX 2.3: spatial 2× upsampler (not Real-ESRGAN/RIFE). Match worker_ltx2_3_multi flags / offload.
+        } else if (_isMinimaxH3Model) {
+          for (final k in _kH3WorkerOmitParams) {
+            resolvedParams.remove(k);
+          }
+        } else if (modelId.startsWith('ltx2_3')) {
+          for (final k in _kLtx25WorkerOmitParams) {
+            resolvedParams.remove(k);
+          }
+          // LTX 2.3: spatial 2× upsampler (not Real-ESRGAN/RIFE).
           if (widget.config.outputType == 'video' && !_isVideoUpscalerTool) {
             if (_advancedSettings.enableUpscale) {
               resolvedParams['use_spatial_upsampler'] = true;
@@ -15219,10 +15985,11 @@ class _GenericToolPageState extends State<GenericToolPage>
             }
           }
         }
-        
+
         // Video upscaler tool: map Additional Settings directly to backend params
         if (_isVideoUpscalerTool) {
-          resolvedParams['enable_interpolation'] = _advancedSettings.enableInterpolate;
+          resolvedParams['enable_interpolation'] =
+              _advancedSettings.enableInterpolate;
           final mult = migrateLegacyInterpolateStorageValue(
             _advancedSettings.interpolateFps,
           );
@@ -15248,33 +16015,35 @@ class _GenericToolPageState extends State<GenericToolPage>
             // Get maxDuration from tool_config.json (default to 2 minutes = 120 seconds)
             final modelId = _selectedModelId ?? widget.config.model;
             final modelData = widget.config.models?.firstWhere(
-              (m) => m['id'] == modelId,
-              orElse: () => <String, dynamic>{},
-            ) ?? <String, dynamic>{};
-            final maxDurationSeconds = (modelData['maxDuration'] as int?) ?? 120;
+                  (m) => m['id'] == modelId,
+                  orElse: () => <String, dynamic>{},
+                ) ??
+                <String, dynamic>{};
+            final maxDurationSeconds =
+                (modelData['maxDuration'] as int?) ?? 120;
             final maxDuration = Duration(seconds: maxDurationSeconds);
-            
+
             // Send actual video duration in seconds (capped at maxDuration)
-            final actualDuration = _inputVideoDuration! > maxDuration 
-                ? maxDuration 
+            final actualDuration = _inputVideoDuration! > maxDuration
+                ? maxDuration
                 : _inputVideoDuration!;
             resolvedParams['video_duration'] = actualDuration.inSeconds;
-            
+
             // Also send max_duration_seconds if video was trimmed
             if (_inputVideoDuration! > maxDuration) {
               resolvedParams['max_duration_seconds'] = maxDuration.inSeconds;
             }
           }
         }
-        
+
         // Server enforces max variations: 2 for non-VIP, 4 for VIP
         // Client-side clamp is just for preview - server is authoritative
         final int requestedVariations =
             _advancedSettings.variations.clamp(1, getMaxVariations());
-        
+
         // Check if bulk edit is enabled
-        final bool isBulkEdit = _advancedSettings.bulkEditEnabled && 
-            _hasBulkInput && 
+        final bool isBulkEdit = _advancedSettings.bulkEditEnabled &&
+            _hasBulkInput &&
             canUseBulkEdit();
 
         // enhance_prompt is a top-level SubmitRequest field (not params).
@@ -15312,7 +16081,8 @@ class _GenericToolPageState extends State<GenericToolPage>
           if (_requiresMask) {
             resolvedParams.remove("mask_image");
             resolvedParams.remove("mask");
-            debugPrint("🎭 Removed single mask_image — bulk uses bulk_mask_r2_keys");
+            debugPrint(
+                "🎭 Removed single mask_image — bulk uses bulk_mask_r2_keys");
           }
 
           if (_isOutpaint) {
@@ -15340,19 +16110,22 @@ class _GenericToolPageState extends State<GenericToolPage>
           if (_isOutpaint && _bulkOutpaintConfigs.isNotEmpty) {
             final List<Map<String, String>?> configs = [];
             for (int i = 0; i < _bulkImageJobs.length; i++) {
-              if (i < _bulkOutpaintConfigs.length && _bulkOutpaintConfigs[i] != null) {
+              if (i < _bulkOutpaintConfigs.length &&
+                  _bulkOutpaintConfigs[i] != null) {
                 // Create a copy of the config and filter based on is_custom mode
-                final Map<String, String> config = Map<String, String>.from(_bulkOutpaintConfigs[i]!);
+                final Map<String, String> config =
+                    Map<String, String>.from(_bulkOutpaintConfigs[i]!);
                 final isCustom = config["is_custom"] ?? "false";
                 final isCustomMode = config["is_custom_mode"] ?? "false";
-                final bool isActuallyCustom = (isCustom == "true" || isCustom == "True") || 
-                                             (isCustomMode == "true" || isCustomMode == "True");
-                
+                final bool isActuallyCustom =
+                    (isCustom == "true" || isCustom == "True") ||
+                        (isCustomMode == "true" || isCustomMode == "True");
+
                 // Only keep is_custom/is_custom_mode if it's true
                 if (!isActuallyCustom) {
                   config.remove("is_custom");
                   config.remove("is_custom_mode");
-                  
+
                   // Remove custom positioning params when not in custom mode
                   config.remove("norm_offset_x");
                   config.remove("norm_offset_y");
@@ -15376,14 +16149,15 @@ class _GenericToolPageState extends State<GenericToolPage>
                     config["is_custom_mode"] = "true";
                   }
                 }
-                
+
                 configs.add(config);
               } else {
                 configs.add(null);
               }
             }
             basePayload["bulk_outpaint_configs"] = configs;
-            debugPrint("🖼️ Added ${configs.where((c) => c != null).length} outpaint configs for bulk edit");
+            debugPrint(
+                "🖼️ Added ${configs.where((c) => c != null).length} outpaint configs for bulk edit");
           }
         }
 
@@ -15419,7 +16193,8 @@ class _GenericToolPageState extends State<GenericToolPage>
 
         if (!isBulkEdit) {
           final imageInputDef = widget.config.inputs.firstWhere(
-              (i) => i["type"] == "image", orElse: () => <String, dynamic>{});
+              (i) => i["type"] == "image",
+              orElse: () => <String, dynamic>{});
           final String? imageInputId =
               imageInputDef.isNotEmpty ? imageInputDef["id"] as String? : null;
 
@@ -15440,7 +16215,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                 mediaType: "image",
                 authToken: firebaseToken,
               );
-              if (imageKeys == null || imageKeys.length != rawImageList.length) {
+              if (imageKeys == null ||
+                  imageKeys.length != rawImageList.length) {
                 throw Exception(
                   "Could not upload images to cloud storage. Check your connection and try again.",
                 );
@@ -15469,8 +16245,9 @@ class _GenericToolPageState extends State<GenericToolPage>
 
           if (_isAnimateImageTool &&
               (_isCineRealFlf2vMode ||
+                  _isMinimaxH3Model ||
                   (_selectedModelId ?? widget.config.model) ==
-                      _kWanLightx2vI2vModelId)) {
+                      _kLegacyWanI2vModelId)) {
             final lastRaw = _inputs['last_frame_image'];
             List<Uint8List>? lastList;
             if (lastRaw is List &&
@@ -15546,12 +16323,13 @@ class _GenericToolPageState extends State<GenericToolPage>
               paramsForSubmit.remove(k);
             }
             debugPrint(
-                "☁️ R2: uploaded ${bulkImageKeys.length} image(s) in ${bulkGroupedImageR2Keys.length} bulk task(s)",
+              "☁️ R2: uploaded ${bulkImageKeys.length} image(s) in ${bulkGroupedImageR2Keys.length} bulk task(s)",
             );
           }
 
           if (_requiresMask && _bulkMasks.isNotEmpty) {
-            final bulkMaskKeys = await MediaUploadService.uploadNullableMediaBatch(
+            final bulkMaskKeys =
+                await MediaUploadService.uploadNullableMediaBatch(
               files: _bulkMasks,
               mediaType: "image",
               authToken: firebaseToken,
@@ -15567,7 +16345,8 @@ class _GenericToolPageState extends State<GenericToolPage>
         }
 
         final videoInputDef = widget.config.inputs.firstWhere(
-            (i) => i["type"] == "video", orElse: () => <String, dynamic>{});
+            (i) => i["type"] == "video",
+            orElse: () => <String, dynamic>{});
         if (videoInputDef.isNotEmpty &&
             !(isBulkEdit &&
                 _isCineRealAnimateModel &&
@@ -15610,9 +16389,7 @@ class _GenericToolPageState extends State<GenericToolPage>
           final rawBytes = _inputs[id];
           if (rawBytes is! Uint8List || rawBytes.isEmpty) continue;
           final mime = (_inputs["${id}_mime"] as String?) ??
-              (t == "audio_upload"
-                  ? "audio/mpeg"
-                  : "application/octet-stream");
+              (t == "audio_upload" ? "audio/mpeg" : "application/octet-stream");
           final urls = await MediaUploadService.getMediaUploadUrls(
             count: 1,
             mediaType: "image",
@@ -15661,7 +16438,9 @@ class _GenericToolPageState extends State<GenericToolPage>
           skipMainMultipartSubmit = true;
         }
 
-        if (isBulkEdit && _hasBulkInput && basePayload["input_image_r2_keys"] == null) {
+        if (isBulkEdit &&
+            _hasBulkInput &&
+            basePayload["input_image_r2_keys"] == null) {
           throw Exception(
             "Bulk edit requires uploading images to cloud storage. Please try again.",
           );
@@ -15686,7 +16465,8 @@ class _GenericToolPageState extends State<GenericToolPage>
               )
               .timeout(const Duration(seconds: 60));
           if (submitResp.statusCode != 200) {
-            throw Exception("On-device submit failed: ${submitResp.statusCode} ${submitResp.body}");
+            throw Exception(
+                "On-device submit failed: ${submitResp.statusCode} ${submitResp.body}");
           }
 
           final data = jsonDecode(submitResp.body);
@@ -15708,8 +16488,10 @@ class _GenericToolPageState extends State<GenericToolPage>
           final List<String> bulkInputPaths = [];
           if (isBulkEdit) {
             for (int imgIdx = 0; imgIdx < _bulkImageJobs.length; imgIdx++) {
-              final thumbFile = File('${tmpDir.path}/bulk_thumb_${timestamp}_$imgIdx.jpg');
-              await thumbFile.writeAsBytes(_bulkImageJobs[imgIdx].first, flush: true);
+              final thumbFile =
+                  File('${tmpDir.path}/bulk_thumb_${timestamp}_$imgIdx.jpg');
+              await thumbFile.writeAsBytes(_bulkImageJobs[imgIdx].first,
+                  flush: true);
               bulkInputPaths.add(thumbFile.path);
             }
           } else {
@@ -15723,10 +16505,19 @@ class _GenericToolPageState extends State<GenericToolPage>
 
           final String? originalPrompt = _inputs["prompt"] as String?;
           final List<JobModel> localJobs = [];
+          final String? onDeviceBatchId = jobIds.length > 1
+              ? 'batch_${DateTime.now().microsecondsSinceEpoch}'
+              : null;
+          final snapshot = _buildSettingsSnapshot();
+          final perJobCredits = jobIds.isEmpty
+              ? _calculateTotalCost()
+              : (_calculateTotalCost() / jobIds.length).round();
           for (int i = 0; i < jobIds.length; i++) {
             final imageIndex = isBulkEdit ? (i ~/ requestedVariations) : 0;
             final inputPath = isBulkEdit
-                ? (imageIndex < bulkInputPaths.length ? bulkInputPaths[imageIndex] : null)
+                ? (imageIndex < bulkInputPaths.length
+                    ? bulkInputPaths[imageIndex]
+                    : null)
                 : singleInputPath;
             final job = JobModel(
               jobId: jobIds[i],
@@ -15740,6 +16531,13 @@ class _GenericToolPageState extends State<GenericToolPage>
               enhancedPrompt: enhancedPromptFromServer,
               promptEnhanced: promptWasEnhanced,
               originalPrompt: originalPrompt,
+              templateId: widget.launchTemplateId,
+              templateTitle: widget.launchTemplateTitle,
+              capabilityId: widget.config.capabilityId,
+              settingsSnapshot: snapshot,
+              creditsCharged: perJobCredits,
+              parentJobId: widget.sourceJobId,
+              batchId: onDeviceBatchId,
             );
             localJobs.add(job);
             await addOrUpdateJob(job);
@@ -15751,12 +16549,10 @@ class _GenericToolPageState extends State<GenericToolPage>
             bulkImagesSnapshot.length,
             (i) => i < _bulkMasks.length ? _bulkMasks[i] : null,
           );
-          final Uint8List? singleImageSnapshot = isBulkEdit
-              ? null
-              : await _extractSingleInputImageBytes();
-          final Uint8List? singleMaskSnapshot = isBulkEdit
-              ? null
-              : (_inputs["mask_image"] as Uint8List?);
+          final Uint8List? singleImageSnapshot =
+              isBulkEdit ? null : await _extractSingleInputImageBytes();
+          final Uint8List? singleMaskSnapshot =
+              isBulkEdit ? null : (_inputs["mask_image"] as Uint8List?);
 
           // Do processing in background so UI redirects immediately.
           unawaited(
@@ -15787,17 +16583,18 @@ class _GenericToolPageState extends State<GenericToolPage>
         // Save input preview(s) - for bulk edit, save each image separately
         String? inputImageLocalPath;
         List<String> bulkImagePaths = [];
-        
+
         try {
           final tmpDir = await FileService.getTempDir();
           final timestamp = DateTime.now().millisecondsSinceEpoch;
-          
+
           if (isBulkEdit && _hasBulkInput) {
             // For bulk edit: save each bulk image to disk for preview
             for (int imgIdx = 0; imgIdx < _bulkImageJobs.length; imgIdx++) {
-              final thumbFile = File(
-                  '${tmpDir.path}/bulk_thumb_${timestamp}_$imgIdx.jpg');
-              await thumbFile.writeAsBytes(_bulkImageJobs[imgIdx].first, flush: true);
+              final thumbFile =
+                  File('${tmpDir.path}/bulk_thumb_${timestamp}_$imgIdx.jpg');
+              await thumbFile.writeAsBytes(_bulkImageJobs[imgIdx].first,
+                  flush: true);
               bulkImagePaths.add(thumbFile.path);
             }
             debugPrint("📷 Saved ${bulkImagePaths.length} bulk image previews");
@@ -15812,9 +16609,9 @@ class _GenericToolPageState extends State<GenericToolPage>
                   dat is List &&
                   dat.isNotEmpty &&
                   dat.first is Uint8List) {
-                final thumbFile = File(
-                    '${tmpDir.path}/thumb_$timestamp.jpg');
-                await thumbFile.writeAsBytes(dat.first as Uint8List, flush: true);
+                final thumbFile = File('${tmpDir.path}/thumb_$timestamp.jpg');
+                await thumbFile.writeAsBytes(dat.first as Uint8List,
+                    flush: true);
                 inputImageLocalPath = thumbFile.path;
               } else {
                 final existingPath = _inputs["${id}_path"];
@@ -15884,17 +16681,19 @@ class _GenericToolPageState extends State<GenericToolPage>
         // Handle both single and multiple job_ids from response
         final List<String> jobIds = [];
         final List<String?> downloadUrls = [];
-        
+
         if (data["job_ids"] != null && data["job_ids"] is List) {
           // Server returned multiple job_ids for variations
           jobIds.addAll((data["job_ids"] as List).map((e) => e.toString()));
           if (data["download_urls"] != null && data["download_urls"] is List) {
-            downloadUrls.addAll((data["download_urls"] as List).map((e) => e?.toString()));
+            downloadUrls.addAll(
+                (data["download_urls"] as List).map((e) => e?.toString()));
           }
         } else if (data["job_id"] != null) {
           // Single job_id (backwards compatibility or variations=1)
           jobIds.add(data["job_id"].toString());
-          downloadUrls.add(data["download_url"]?.toString() ?? data["downloadUrl"]?.toString());
+          downloadUrls.add(data["download_url"]?.toString() ??
+              data["downloadUrl"]?.toString());
         }
 
         if (jobIds.isEmpty) {
@@ -15903,12 +16702,19 @@ class _GenericToolPageState extends State<GenericToolPage>
 
         debugPrint("✅ Server created ${jobIds.length} job(s): $jobIds");
 
+        final String? submitBatchId = jobIds.length > 1
+            ? 'batch_${DateTime.now().microsecondsSinceEpoch}'
+            : null;
+        final snapshot = _buildSettingsSnapshot();
+        final perJobCredits =
+            jobIds.isEmpty ? totalCost : (totalCost / jobIds.length).round();
+
         // Create a JobModel for each job_id returned
         // For bulk edit: jobs are ordered as [img1_var1, img1_var2, ..., img2_var1, img2_var2, ...]
         for (int i = 0; i < jobIds.length; i++) {
           final jobId = jobIds[i];
           final downloadUrl = i < downloadUrls.length ? downloadUrls[i] : null;
-          
+
           // Determine which input image this job corresponds to
           String? jobInputImagePath;
           if (isBulkEdit && bulkImagePaths.isNotEmpty) {
@@ -15921,7 +16727,7 @@ class _GenericToolPageState extends State<GenericToolPage>
           } else {
             jobInputImagePath = inputImageLocalPath;
           }
-          
+
           final String title = await generateFriendlyJobName();
           // Use selected model ID if available, otherwise fall back to config default
           final actualModelId = _selectedModelId ?? widget.config.model;
@@ -15938,10 +16744,17 @@ class _GenericToolPageState extends State<GenericToolPage>
             enhancedPrompt: enhancedPromptFromServer,
             promptEnhanced: promptWasEnhanced,
             originalPrompt: originalPrompt,
+            templateId: widget.launchTemplateId,
+            templateTitle: widget.launchTemplateTitle,
+            capabilityId: widget.config.capabilityId,
+            settingsSnapshot: snapshot,
+            creditsCharged: perJobCredits,
+            parentJobId: widget.sourceJobId,
+            batchId: submitBatchId,
           );
 
           createdJobs.add(newJob);
-          
+
           // ✅ Add job to notifier IMMEDIATELY so FCM handlers find it
           // This prevents ghost records from being created by FCM race conditions
           await addOrUpdateJob(newJob);
@@ -15955,7 +16768,7 @@ class _GenericToolPageState extends State<GenericToolPage>
           };
           await prefs.setString("notify_job_$jobId", jsonEncode(jobContext));
         }
-        
+
         // Jobs are already persisted via addOrUpdateJob - no need for redundant saves
 
         // Record batch submission for rate limiting cooldown
@@ -15974,7 +16787,8 @@ class _GenericToolPageState extends State<GenericToolPage>
           );
         }
 
-        debugPrint("✅ Submitted 1 request, created ${createdJobs.length} job(s) for $requestedVariations variation(s)");
+        debugPrint(
+            "✅ Submitted 1 request, created ${createdJobs.length} job(s) for $requestedVariations variation(s)");
         return;
       } catch (e) {
         debugPrint("❌ Job submission attempt $attempt failed: $e");
@@ -16002,11 +16816,13 @@ class _GenericToolPageState extends State<GenericToolPage>
     required Map<String, String> headers,
   }) async {
     try {
-      await http.post(
-        Uri.parse('$controllerUrl/on_device/job_started'),
-        headers: headers,
-        body: jsonEncode(<String, dynamic>{'job_id': jobId}),
-      ).timeout(const Duration(seconds: 20));
+      await http
+          .post(
+            Uri.parse('$controllerUrl/on_device/job_started'),
+            headers: headers,
+            body: jsonEncode(<String, dynamic>{'job_id': jobId}),
+          )
+          .timeout(const Duration(seconds: 20));
     } catch (e) {
       debugPrint('⚠️ on-device job_started failed for $jobId: $e');
     }
@@ -16019,15 +16835,17 @@ class _GenericToolPageState extends State<GenericToolPage>
     String? error,
   }) async {
     try {
-      await http.post(
-        Uri.parse('$controllerUrl/on_device/job_complete'),
-        headers: headers,
-        body: jsonEncode(<String, dynamic>{
-          'job_id': jobId,
-          'success': success,
-          if (error != null && error.isNotEmpty) 'error': error,
-        }),
-      ).timeout(const Duration(seconds: 20));
+      await http
+          .post(
+            Uri.parse('$controllerUrl/on_device/job_complete'),
+            headers: headers,
+            body: jsonEncode(<String, dynamic>{
+              'job_id': jobId,
+              'success': success,
+              if (error != null && error.isNotEmpty) 'error': error,
+            }),
+          )
+          .timeout(const Duration(seconds: 20));
     } catch (e) {
       debugPrint('⚠️ on-device job_complete failed for $jobId: $e');
     }
@@ -16052,7 +16870,8 @@ class _GenericToolPageState extends State<GenericToolPage>
 
   Future<String> _writeOnDeviceOutput(Uint8List bytes, String jobId) async {
     final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/on_device_${jobId}_${DateTime.now().millisecondsSinceEpoch}.png');
+    final file = File(
+        '${dir.path}/on_device_${jobId}_${DateTime.now().millisecondsSinceEpoch}.png');
     await file.writeAsBytes(bytes, flush: true);
     return file.path;
   }
@@ -16140,9 +16959,11 @@ class _GenericToolPageState extends State<GenericToolPage>
       // If existingMask is null in bulk mode, start with empty mask
       // For single mode, fall back to _inputs["mask_image"] if no existingMask provided
       final maskToLoad = isBulkMode
-          ? existingMask  // Bulk mode: only use the provided mask (or null for fresh start)
-          : (existingMask ?? (_inputs["mask_image"] as Uint8List?));  // Single mode: use provided or fall back to _inputs
-      
+          ? existingMask // Bulk mode: only use the provided mask (or null for fresh start)
+          : (existingMask ??
+              (_inputs["mask_image"]
+                  as Uint8List?)); // Single mode: use provided or fall back to _inputs
+
       return await Navigator.push<Uint8List?>(
         context,
         MaterialPageRoute(
@@ -16190,12 +17011,12 @@ class _CheckerPainter extends CustomPainter {
 class _StylePreviewImage extends StatefulWidget {
   final StylePreset style;
   final Color accentColor;
-  
+
   const _StylePreviewImage({
     required this.style,
     required this.accentColor,
   });
-  
+
   @override
   State<_StylePreviewImage> createState() => _StylePreviewImageState();
 }
@@ -16205,28 +17026,28 @@ class _StylePreviewImageState extends State<_StylePreviewImage> {
   VideoPlayerController? _videoController;
   bool _loading = true;
   bool _isVideo = false;
-  
+
   @override
   void initState() {
     super.initState();
     _loadPreview();
   }
-  
+
   @override
   void dispose() {
     _videoController?.pause();
     super.dispose();
   }
-  
+
   Future<void> _loadPreview() async {
     final url = widget.style.previewUrl;
     if (url == null || url.isEmpty) {
       if (mounted) setState(() => _loading = false);
       return;
     }
-    
+
     _isVideo = url.endsWith('.mp4') || url.endsWith('.webm');
-    
+
     if (_isVideo) {
       // Load video with caching
       final controller = await StylePreviewManager.instance.getVideoController(
@@ -16255,7 +17076,7 @@ class _StylePreviewImageState extends State<_StylePreviewImage> {
       }
     }
   }
-  
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -16282,8 +17103,10 @@ class _StylePreviewImageState extends State<_StylePreviewImage> {
         ),
       );
     }
-    
-    if (_isVideo && _videoController != null && _videoController!.value.isInitialized) {
+
+    if (_isVideo &&
+        _videoController != null &&
+        _videoController!.value.isInitialized) {
       return FittedBox(
         fit: BoxFit.cover,
         child: SizedBox(
@@ -16293,7 +17116,7 @@ class _StylePreviewImageState extends State<_StylePreviewImage> {
         ),
       );
     }
-    
+
     if (_imageBytes != null) {
       return Image.memory(
         _imageBytes!,
@@ -16301,10 +17124,10 @@ class _StylePreviewImageState extends State<_StylePreviewImage> {
         errorBuilder: (_, __, ___) => _buildFallback(),
       );
     }
-    
+
     return _buildFallback();
   }
-  
+
   Widget _buildFallback() {
     return Container(
       decoration: BoxDecoration(
@@ -16354,13 +17177,14 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
   bool _isDrawingLasso = false;
   _EraseMaskMode _mode = _EraseMaskMode.removeObject;
 
-  final SelfieSegmentationService _peopleSegmenter = SelfieSegmentationService();
+  final SelfieSegmentationService _peopleSegmenter =
+      SelfieSegmentationService();
   List<DetectedPersonRegion> _detectedPeople = [];
   final Set<int> _selectedPeople = <int>{};
 
   double _brushSize = 50.0;
   bool _eraser = false;
-  
+
   // Zoom and pan state
   double _scale = 1.0;
   Offset _offset = Offset.zero;
@@ -16419,7 +17243,8 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
     if (_peopleLoading) return;
     setState(() => _peopleLoading = true);
     try {
-      final regions = await _peopleSegmenter.detectPeople(widget.baseImageBytes);
+      final regions =
+          await _peopleSegmenter.detectPeople(widget.baseImageBytes);
       if (!mounted) return;
       setState(() {
         _detectedPeople = regions;
@@ -16453,7 +17278,7 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
       yInImageSpace.clamp(0.0, ih),
     );
   }
-  
+
   void _resetZoom() {
     setState(() {
       _scale = 1.0;
@@ -16550,7 +17375,8 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
       final xj = poly[j].dx;
       final yj = poly[j].dy;
       final intersects = ((yi > py) != (yj > py)) &&
-          (px < (xj - xi) * (py - yi) / ((yj - yi) == 0 ? 1e-6 : (yj - yi)) + xi);
+          (px <
+              (xj - xi) * (py - yi) / ((yj - yi) == 0 ? 1e-6 : (yj - yi)) + xi);
       if (intersects) inside = !inside;
     }
     return inside;
@@ -16662,287 +17488,333 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 2),
                     child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          final widgetSize = constraints.biggest;
-                          final imgW = _image!.width.toDouble();
-                          final imgH = _image!.height.toDouble();
-                          final imgAspect = imgW / imgH;
-                          final widgetAspect =
-                              widgetSize.width / widgetSize.height;
+                      builder: (context, constraints) {
+                        final widgetSize = constraints.biggest;
+                        final imgW = _image!.width.toDouble();
+                        final imgH = _image!.height.toDouble();
+                        final imgAspect = imgW / imgH;
+                        final widgetAspect =
+                            widgetSize.width / widgetSize.height;
 
-                          double fitW;
-                          double fitH;
-                          if (imgAspect > widgetAspect) {
-                            fitW = widgetSize.width;
-                            fitH = fitW / imgAspect;
-                          } else {
-                            fitH = widgetSize.height;
-                            fitW = fitH * imgAspect;
-                          }
+                        double fitW;
+                        double fitH;
+                        if (imgAspect > widgetAspect) {
+                          fitW = widgetSize.width;
+                          fitH = fitW / imgAspect;
+                        } else {
+                          fitH = widgetSize.height;
+                          fitW = fitH * imgAspect;
+                        }
 
-                          final fitSize = Size(fitW, fitH);
+                        final fitSize = Size(fitW, fitH);
 
-                          return Stack(
-                            fit: StackFit.expand,
-                            clipBehavior: Clip.none,
-                            children: [
-                              Positioned.fill(
-                                child: IgnorePointer(
-                                  child: ClipRect(
-                                    child: ImageFiltered(
-                                      imageFilter: ui.ImageFilter.blur(
-                                        sigmaX: 18,
-                                        sigmaY: 18,
-                                      ),
-                                      child: CustomPaint(
-                                        painter: _CoverFillImagePainter(
-                                          image: _image!,
-                                        ),
-                                        size: widgetSize,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              Center(
-                                child: Container(
-                              decoration: BoxDecoration(
-                                border: Border.all(
-                                  color: cs.outline.withOpacity(0.3),
-                                  width: 2,
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.2),
-                                    blurRadius: 20,
-                                    offset: const Offset(0, 8),
-                                  ),
-                                ],
-                              ),
-                              child: ClipRect(
-                                child: SizedBox(
-                                  width: fitW,
-                                  height: fitH,
-                                  child: Listener(
-                            onPointerDown: (_) {
-                              _pointerCount++;
-                              if (_pointerCount >= 2) {
-                                // Cancel current stroke if user starts zooming
-                                _currentStroke = null;
-                                _isZooming = true;
-                              }
-                            },
-                            onPointerUp: (_) {
-                              _pointerCount = (_pointerCount - 1).clamp(0, 10);
-                              if (_pointerCount < 2) {
-                                _isZooming = false;
-                              }
-                            },
-                            onPointerCancel: (_) {
-                              _pointerCount = (_pointerCount - 1).clamp(0, 10);
-                              if (_pointerCount < 2) {
-                                _isZooming = false;
-                              }
-                            },
-                            child: GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTapDown: _mode == _EraseMaskMode.removePeople
-                                  ? (details) {
-                                      final imgPos =
-                                          _toImageCoords(details.localPosition, fitSize);
-                                      for (final p in _detectedPeople) {
-                                        if (p.bounds.contains(imgPos)) {
-                                          setState(() {
-                                            if (_selectedPeople.contains(p.id)) {
-                                              _selectedPeople.remove(p.id);
-                                            } else {
-                                              _selectedPeople.add(p.id);
-                                            }
-                                          });
-                                          break;
-                                        }
-                                      }
-                                    }
-                                  : null,
-                              onScaleStart: (details) {
-                                _baseScale = _scale;
-                                _baseOffset = _offset;
-                                _focalPointStart = details.localFocalPoint;
-                                if (_pointerCount < 2 &&
-                                    _mode != _EraseMaskMode.removePeople) {
-                                  // Single finger: start drawing
-                                  final local = details.localFocalPoint;
-                                  final imgPos = _toImageCoords(local, fitSize);
-                                  if (_mode == _EraseMaskMode.removeObject) {
-                                    setState(() {
-                                      _isDrawingLasso = true;
-                                      _lassoPoints = [imgPos];
-                                    });
-                                  } else {
-                                    _currentStroke = _Stroke(
-                                      points: [imgPos],
-                                      size: _brushSize,
-                                      eraser: _eraser,
-                                    );
-                                    setState(() => _strokes.add(_currentStroke!));
-                                  }
-                                }
-                              },
-                              onScaleUpdate: (details) {
-                                if (_pointerCount >= 2 || details.scale != 1.0) {
-                                  // Multi-finger: zoom and pan
-                                  setState(() {
-                                    final newScale = (_baseScale * details.scale).clamp(1.0, 5.0);
-                                    final scaleDelta = newScale / _baseScale;
-                                    _scale = newScale;
-                                    
-                                    // Calculate the center of the display area
-                                    final centerX = fitSize.width / 2;
-                                    final centerY = fitSize.height / 2;
-                                    
-                                    // Calculate the focal point relative to center
-                                    final focalPointRelativeToCenter = _focalPointStart - Offset(centerX, centerY);
-                                    
-                                    // When zooming, adjust offset so the point under the focal point stays fixed
-                                    // The offset needs to compensate for the scale change at the focal point
-                                    final offsetDelta = focalPointRelativeToCenter * (1 - scaleDelta);
-                                    
-                                    // Also account for pan gesture (focal point movement)
-                                    final panDelta = details.localFocalPoint - _focalPointStart;
-                                    
-                                    // Calculate new offset
-                                    final maxOffsetX = (fitSize.width * _scale - fitSize.width) / 2;
-                                    final maxOffsetY = (fitSize.height * _scale - fitSize.height) / 2;
-                                    
-                                    final newOffset = _baseOffset + offsetDelta + panDelta;
-                                    _offset = Offset(
-                                      newOffset.dx.clamp(-maxOffsetX, maxOffsetX),
-                                      newOffset.dy.clamp(-maxOffsetY, maxOffsetY),
-                                    );
-                                  });
-                                  _currentStroke = null; // Cancel any stroke
-                                } else if (_mode == _EraseMaskMode.removeObject &&
-                                    _isDrawingLasso &&
-                                    !_isZooming) {
-                                  final local = details.localFocalPoint;
-                                  final imgPos = _toImageCoords(local, fitSize);
-                                  setState(() => _lassoPoints.add(imgPos));
-                                } else if (_currentStroke != null &&
-                                    _mode == _EraseMaskMode.manual &&
-                                    !_isZooming) {
-                                  // Single finger: continue drawing
-                                  final local = details.localFocalPoint;
-                                  final imgPos = _toImageCoords(local, fitSize);
-                                  setState(() => _currentStroke!.points.add(imgPos));
-                                }
-                              },
-                              onScaleEnd: (_) {
-                                _currentStroke = null;
-                                _isZooming = false;
-                                _isDrawingLasso = false;
-                              },
-                              child: Transform.translate(
-                                offset: _offset,
-                                child: Transform.scale(
-                                  alignment: Alignment.center,
-                                  scale: _scale,
-                                  child: CustomPaint(
-                                    painter: _MaskEditorPainter(
-                                      baseImage: _image!,
-                                      displaySize: fitSize,
-                                      strokes: _strokes,
-                                      maskOverlay: _maskOverlay,
-                                      lassoPoints: _lassoPoints,
-                                      showLasso: _mode == _EraseMaskMode.removeObject,
-                                      people: _detectedPeople,
-                                      selectedPeople: _selectedPeople,
-                                      showPeople: _mode == _EraseMaskMode.removePeople,
-                                    ),
-                                    size: fitSize,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              );
-                        },
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    left: 10,
-                    right: 10,
-                    top: 6,
-                    child: Material(
-                      color: Colors.transparent,
-                      elevation: 1,
-                      borderRadius: BorderRadius.circular(10),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: cs.primaryContainer.withOpacity(0.5),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: cs.primary.withOpacity(0.22),
-                          ),
-                        ),
-                        child: Row(
+                        return Stack(
+                          fit: StackFit.expand,
+                          clipBehavior: Clip.none,
                           children: [
-                            Icon(LucideIcons.info,
-                                size: 16, color: cs.primary),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                _mode == _EraseMaskMode.removePeople
-                                    ? (_peopleLoading
-                                        ? "Detecting people…"
-                                        : "Tap person boxes to select • Pinch to zoom")
-                                    : _mode == _EraseMaskMode.removeObject
-                                        ? "Draw closed lasso around object • Pinch to zoom"
-                                        : (_eraser
-                                            ? "Manual erase mode • Pinch to zoom"
-                                            : "Manual draw mode • Pinch to zoom"),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: cs.onSurface.withOpacity(0.88),
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ),
-                            if (_scale != 1.0) ...[
-                              const SizedBox(width: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 6, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: cs.primary.withOpacity(0.18),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text(
-                                  "${(_scale * 100).toInt()}%",
-                                  style: TextStyle(
-                                    color: cs.primary,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
+                            Positioned.fill(
+                              child: IgnorePointer(
+                                child: ClipRect(
+                                  child: ImageFiltered(
+                                    imageFilter: ui.ImageFilter.blur(
+                                      sigmaX: 18,
+                                      sigmaY: 18,
+                                    ),
+                                    child: CustomPaint(
+                                      painter: _CoverFillImagePainter(
+                                        image: _image!,
+                                      ),
+                                      size: widgetSize,
+                                    ),
                                   ),
                                 ),
                               ),
-                            ],
+                            ),
+                            Center(
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  border: Border.all(
+                                    color: cs.outline.withOpacity(0.3),
+                                    width: 2,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.2),
+                                      blurRadius: 20,
+                                      offset: const Offset(0, 8),
+                                    ),
+                                  ],
+                                ),
+                                child: ClipRect(
+                                  child: SizedBox(
+                                    width: fitW,
+                                    height: fitH,
+                                    child: Listener(
+                                      onPointerDown: (_) {
+                                        _pointerCount++;
+                                        if (_pointerCount >= 2) {
+                                          // Cancel current stroke if user starts zooming
+                                          _currentStroke = null;
+                                          _isZooming = true;
+                                        }
+                                      },
+                                      onPointerUp: (_) {
+                                        _pointerCount =
+                                            (_pointerCount - 1).clamp(0, 10);
+                                        if (_pointerCount < 2) {
+                                          _isZooming = false;
+                                        }
+                                      },
+                                      onPointerCancel: (_) {
+                                        _pointerCount =
+                                            (_pointerCount - 1).clamp(0, 10);
+                                        if (_pointerCount < 2) {
+                                          _isZooming = false;
+                                        }
+                                      },
+                                      child: GestureDetector(
+                                        behavior: HitTestBehavior.opaque,
+                                        onTapDown: _mode ==
+                                                _EraseMaskMode.removePeople
+                                            ? (details) {
+                                                final imgPos = _toImageCoords(
+                                                    details.localPosition,
+                                                    fitSize);
+                                                for (final p
+                                                    in _detectedPeople) {
+                                                  if (p.bounds
+                                                      .contains(imgPos)) {
+                                                    setState(() {
+                                                      if (_selectedPeople
+                                                          .contains(p.id)) {
+                                                        _selectedPeople
+                                                            .remove(p.id);
+                                                      } else {
+                                                        _selectedPeople
+                                                            .add(p.id);
+                                                      }
+                                                    });
+                                                    break;
+                                                  }
+                                                }
+                                              }
+                                            : null,
+                                        onScaleStart: (details) {
+                                          _baseScale = _scale;
+                                          _baseOffset = _offset;
+                                          _focalPointStart =
+                                              details.localFocalPoint;
+                                          if (_pointerCount < 2 &&
+                                              _mode !=
+                                                  _EraseMaskMode.removePeople) {
+                                            // Single finger: start drawing
+                                            final local =
+                                                details.localFocalPoint;
+                                            final imgPos =
+                                                _toImageCoords(local, fitSize);
+                                            if (_mode ==
+                                                _EraseMaskMode.removeObject) {
+                                              setState(() {
+                                                _isDrawingLasso = true;
+                                                _lassoPoints = [imgPos];
+                                              });
+                                            } else {
+                                              _currentStroke = _Stroke(
+                                                points: [imgPos],
+                                                size: _brushSize,
+                                                eraser: _eraser,
+                                              );
+                                              setState(() => _strokes
+                                                  .add(_currentStroke!));
+                                            }
+                                          }
+                                        },
+                                        onScaleUpdate: (details) {
+                                          if (_pointerCount >= 2 ||
+                                              details.scale != 1.0) {
+                                            // Multi-finger: zoom and pan
+                                            setState(() {
+                                              final newScale =
+                                                  (_baseScale * details.scale)
+                                                      .clamp(1.0, 5.0);
+                                              final scaleDelta =
+                                                  newScale / _baseScale;
+                                              _scale = newScale;
+
+                                              // Calculate the center of the display area
+                                              final centerX = fitSize.width / 2;
+                                              final centerY =
+                                                  fitSize.height / 2;
+
+                                              // Calculate the focal point relative to center
+                                              final focalPointRelativeToCenter =
+                                                  _focalPointStart -
+                                                      Offset(centerX, centerY);
+
+                                              // When zooming, adjust offset so the point under the focal point stays fixed
+                                              // The offset needs to compensate for the scale change at the focal point
+                                              final offsetDelta =
+                                                  focalPointRelativeToCenter *
+                                                      (1 - scaleDelta);
+
+                                              // Also account for pan gesture (focal point movement)
+                                              final panDelta =
+                                                  details.localFocalPoint -
+                                                      _focalPointStart;
+
+                                              // Calculate new offset
+                                              final maxOffsetX =
+                                                  (fitSize.width * _scale -
+                                                          fitSize.width) /
+                                                      2;
+                                              final maxOffsetY =
+                                                  (fitSize.height * _scale -
+                                                          fitSize.height) /
+                                                      2;
+
+                                              final newOffset = _baseOffset +
+                                                  offsetDelta +
+                                                  panDelta;
+                                              _offset = Offset(
+                                                newOffset.dx.clamp(
+                                                    -maxOffsetX, maxOffsetX),
+                                                newOffset.dy.clamp(
+                                                    -maxOffsetY, maxOffsetY),
+                                              );
+                                            });
+                                            _currentStroke =
+                                                null; // Cancel any stroke
+                                          } else if (_mode ==
+                                                  _EraseMaskMode.removeObject &&
+                                              _isDrawingLasso &&
+                                              !_isZooming) {
+                                            final local =
+                                                details.localFocalPoint;
+                                            final imgPos =
+                                                _toImageCoords(local, fitSize);
+                                            setState(
+                                                () => _lassoPoints.add(imgPos));
+                                          } else if (_currentStroke != null &&
+                                              _mode == _EraseMaskMode.manual &&
+                                              !_isZooming) {
+                                            // Single finger: continue drawing
+                                            final local =
+                                                details.localFocalPoint;
+                                            final imgPos =
+                                                _toImageCoords(local, fitSize);
+                                            setState(() => _currentStroke!
+                                                .points
+                                                .add(imgPos));
+                                          }
+                                        },
+                                        onScaleEnd: (_) {
+                                          _currentStroke = null;
+                                          _isZooming = false;
+                                          _isDrawingLasso = false;
+                                        },
+                                        child: Transform.translate(
+                                          offset: _offset,
+                                          child: Transform.scale(
+                                            alignment: Alignment.center,
+                                            scale: _scale,
+                                            child: CustomPaint(
+                                              painter: _MaskEditorPainter(
+                                                baseImage: _image!,
+                                                displaySize: fitSize,
+                                                strokes: _strokes,
+                                                maskOverlay: _maskOverlay,
+                                                lassoPoints: _lassoPoints,
+                                                showLasso: _mode ==
+                                                    _EraseMaskMode.removeObject,
+                                                people: _detectedPeople,
+                                                selectedPeople: _selectedPeople,
+                                                showPeople: _mode ==
+                                                    _EraseMaskMode.removePeople,
+                                              ),
+                                              size: fitSize,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
                           ],
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: 10,
+                  right: 10,
+                  top: 6,
+                  child: Material(
+                    color: Colors.transparent,
+                    elevation: 1,
+                    borderRadius: BorderRadius.circular(10),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: cs.primaryContainer.withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: cs.primary.withOpacity(0.22),
                         ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(LucideIcons.info, size: 16, color: cs.primary),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _mode == _EraseMaskMode.removePeople
+                                  ? (_peopleLoading
+                                      ? "Detecting people…"
+                                      : "Tap person boxes to select • Pinch to zoom")
+                                  : _mode == _EraseMaskMode.removeObject
+                                      ? "Draw closed lasso around object • Pinch to zoom"
+                                      : (_eraser
+                                          ? "Manual erase mode • Pinch to zoom"
+                                          : "Manual draw mode • Pinch to zoom"),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: cs.onSurface.withOpacity(0.88),
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                          if (_scale != 1.0) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: cs.primary.withOpacity(0.18),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                "${(_scale * 100).toInt()}%",
+                                style: TextStyle(
+                                  color: cs.primary,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
+          ),
 
           // Tool bar (keep clear of gesture/nav insets)
           SafeArea(
@@ -17006,7 +17878,8 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
               ),
               child: Row(
                 children: [
-                  Icon(LucideIcons.circle, size: 14, color: cs.onSurfaceVariant),
+                  Icon(LucideIcons.circle,
+                      size: 14, color: cs.onSurfaceVariant),
                   const SizedBox(width: 8),
                   Text("Size",
                       style: TextStyle(
@@ -17024,7 +17897,8 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
                     ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
                       color: cs.primary.withOpacity(0.12),
                       borderRadius: BorderRadius.circular(8),
@@ -17112,8 +17986,12 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
     final Color fgColor = isActive
         ? cs.onPrimary
         : isDanger
-            ? (isEnabled ? cs.onErrorContainer : cs.onSurfaceVariant.withOpacity(0.5))
-            : (isEnabled ? cs.onSurfaceVariant : cs.onSurfaceVariant.withOpacity(0.5));
+            ? (isEnabled
+                ? cs.onErrorContainer
+                : cs.onSurfaceVariant.withOpacity(0.5))
+            : (isEnabled
+                ? cs.onSurfaceVariant
+                : cs.onSurfaceVariant.withOpacity(0.5));
 
     return GestureDetector(
       onTap: onTap,
@@ -17124,9 +18002,7 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
           color: bgColor,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isActive
-                ? cs.primary
-                : cs.outline.withOpacity(0.2),
+            color: isActive ? cs.primary : cs.outline.withOpacity(0.2),
             width: 1.5,
           ),
         ),
@@ -17160,9 +18036,11 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
     setState(() {
       if (_mode == _EraseMaskMode.manual && _strokes.isNotEmpty) {
         _strokes.removeLast();
-      } else if (_mode == _EraseMaskMode.removeObject && _lassoPoints.isNotEmpty) {
+      } else if (_mode == _EraseMaskMode.removeObject &&
+          _lassoPoints.isNotEmpty) {
         _lassoPoints.removeLast();
-      } else if (_mode == _EraseMaskMode.removePeople && _selectedPeople.isNotEmpty) {
+      } else if (_mode == _EraseMaskMode.removePeople &&
+          _selectedPeople.isNotEmpty) {
         _selectedPeople.remove(_selectedPeople.last);
       }
     });
@@ -17300,9 +18178,8 @@ class _MaskEditorPainter extends CustomPainter {
           ..strokeWidth = strokeWidth
           ..isAntiAlias = true
           ..blendMode = s.eraser ? BlendMode.clear : BlendMode.srcOver
-          ..color = s.eraser
-              ? const Color(0x00000000)
-              : const Color(0xFFFFFFFF);
+          ..color =
+              s.eraser ? const Color(0x00000000) : const Color(0xFFFFFFFF);
 
         final path = Path()
           ..moveTo(s.points.first.dx * sx, s.points.first.dy * sy);
@@ -17332,7 +18209,7 @@ class _MaskEditorPainter extends CustomPainter {
         ..style = PaintingStyle.fill
         ..color = const Color(0x33FFD166);
       final path = Path()
-          ..moveTo(lassoPoints.first.dx * sx, lassoPoints.first.dy * sy);
+        ..moveTo(lassoPoints.first.dx * sx, lassoPoints.first.dy * sy);
       for (var i = 1; i < lassoPoints.length; i++) {
         path.lineTo(lassoPoints[i].dx * sx, lassoPoints[i].dy * sy);
       }
@@ -17355,7 +18232,8 @@ class _MaskEditorPainter extends CustomPainter {
         final stroke = Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = selected ? 2.5 : 1.5
-          ..color = selected ? const Color(0xFFFF5252) : const Color(0xFF4FC3F7);
+          ..color =
+              selected ? const Color(0xFFFF5252) : const Color(0xFF4FC3F7);
         final peopleFill = Paint()
           ..style = PaintingStyle.fill
           ..color =
@@ -17421,7 +18299,8 @@ class _BulkVideoStripThumbState extends State<_BulkVideoStripThumb> {
     return ColoredBox(
       color: Theme.of(context).colorScheme.surfaceContainerHighest,
       child: Center(
-        child: Icon(LucideIcons.video, color: widget.placeholderColor, size: 28),
+        child:
+            Icon(LucideIcons.video, color: widget.placeholderColor, size: 28),
       ),
     );
   }
@@ -17494,7 +18373,8 @@ class _DottedRoundedRectPainter extends CustomPainter {
       while (distance < metric.length) {
         final chunk = draw ? _dash : _gap;
         if (draw) {
-          final extract = metric.extractPath(distance, min(distance + chunk, metric.length));
+          final extract = metric.extractPath(
+              distance, min(distance + chunk, metric.length));
           canvas.drawPath(extract, paint);
         }
         distance += chunk;
@@ -17569,7 +18449,8 @@ class _BulkExtraRefsStack extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: Colors.black.withOpacity(0.62),
                   borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: cs.surface.withOpacity(0.35), width: 0.5),
+                  border: Border.all(
+                      color: cs.surface.withOpacity(0.35), width: 0.5),
                 ),
                 child: Text(
                   '+$overflow',
@@ -17604,7 +18485,8 @@ class _ComposerImageGalleryDialog extends StatefulWidget {
       _ComposerImageGalleryDialogState();
 }
 
-class _ComposerImageGalleryDialogState extends State<_ComposerImageGalleryDialog> {
+class _ComposerImageGalleryDialogState
+    extends State<_ComposerImageGalleryDialog> {
   late final PageController _pageController;
   late int _pageIndex;
 
@@ -17829,6 +18711,7 @@ enum _ComposerAttachmentKind {
   file,
   bulkImage,
   bulkVideo,
+
   /// CineReal bulk: optional reference video for task [index] (parallel to [_bulkImageJobs]).
   bulkCineRealRefVideo,
 }
@@ -17841,6 +18724,7 @@ class _ComposerAttachment {
   final String label;
   final Uint8List? thumbBytes;
   final String? filePath;
+
   /// For bulk-image tasks on multi-init-per-job models (e.g. Vectra/Revia),
   /// the additional reference images in the same task beyond the primary.
   /// Displayed as small stacked previews on the tile.

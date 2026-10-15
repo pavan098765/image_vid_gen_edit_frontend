@@ -131,13 +131,22 @@ class _TimelinePanelState extends ConsumerState<TimelinePanel> {
 
                           // Tracks – vertically scrollable
                           Expanded(
-                            child: SingleChildScrollView(
-                              scrollDirection: Axis.vertical,
+                            child: ReorderableListView.builder(
+                              shrinkWrap: true,
                               physics: const ClampingScrollPhysics(),
-                              child: Column(
-                                children: List.generate(project.tracks.length, (i) {
+                              buildDefaultDragHandles: false,
+                              itemCount: project.tracks.length,
+                              onReorder: (oldIndex, newIndex) {
+                                ref
+                                    .read(projectProvider.notifier)
+                                    .reorderTracks(oldIndex, newIndex);
+                              },
+                              itemBuilder: (context, i) {
                                   final track = project.tracks[i];
-                                  return TimelineTrackRow(
+                                  return ReorderableDelayedDragStartListener(
+                                    key: ValueKey(track.id),
+                                    index: i,
+                                    child: TimelineTrackRow(
                                     track: track,
                                     pixelsPerSecond: pps,
                                     scrollOffset: 0,
@@ -159,9 +168,27 @@ class _TimelinePanelState extends ConsumerState<TimelinePanel> {
                                         _handleResizeRight(clipId, dx, pps),
                                     onClipMove: (clipId, dx) =>
                                         _handleClipMove(clipId, dx, pps),
+                                    onToggleVisible: () {
+                                      ref.read(projectProvider.notifier).updateTrack(
+                                            track.id,
+                                            (t) => t.copyWith(isVisible: !t.isVisible),
+                                          );
+                                    },
+                                    onToggleLock: () {
+                                      ref.read(projectProvider.notifier).updateTrack(
+                                            track.id,
+                                            (t) => t.copyWith(isLocked: !t.isLocked),
+                                          );
+                                    },
+                                    onToggleMute: () {
+                                      ref.read(projectProvider.notifier).updateTrack(
+                                            track.id,
+                                            (t) => t.copyWith(isMuted: !t.isMuted),
+                                          );
+                                    },
+                                  ),
                                   );
-                                }),
-                              ),
+                                },
                             ),
                           ),
                         ],
@@ -294,27 +321,36 @@ class _TimelinePanelState extends ConsumerState<TimelinePanel> {
     final project = ref.read(projectProvider);
     if (project == null) return;
     final clip = project.findClipById(clipId);
-    if (clip == null) return;
+    final track = project.findTrackForClip(clipId);
+    if (clip == null || track == null || track.isLocked) return;
 
     final deltaDuration = TimeUtils.pxToDuration(dx.abs(), pps);
-    if (dx > 0) {
-      // Move right
-      ref.read(projectProvider.notifier).updateClip(clipId, (c) {
-        return c.copyWith(startTime: c.startTime + deltaDuration);
-      });
-    } else {
-      // Move left
-      if (clip.startTime >= deltaDuration) {
-        ref.read(projectProvider.notifier).updateClip(clipId, (c) {
-          return c.copyWith(startTime: c.startTime - deltaDuration);
-        });
-      } else {
-        // Clamp to zero
-        ref.read(projectProvider.notifier).updateClip(clipId, (c) {
-          return c.copyWith(startTime: Duration.zero);
-        });
+    var next = dx > 0
+        ? clip.startTime + deltaDuration
+        : (clip.startTime >= deltaDuration
+            ? clip.startTime - deltaDuration
+            : Duration.zero);
+    if (next < Duration.zero) next = Duration.zero;
+
+    final snapUs = TimeUtils.pxToDuration(EditorConstants.snapThresholdPx, pps)
+        .inMicroseconds;
+    final playhead = ref.read(playbackProvider).position;
+    final magnets = <int>[0, playhead.inMicroseconds];
+    for (final c in track.clips) {
+      if (c.id == clipId) continue;
+      magnets.add(c.startTime.inMicroseconds);
+      magnets.add(c.endTime.inMicroseconds);
+    }
+    for (final m in magnets) {
+      if ((next.inMicroseconds - m).abs() <= snapUs) {
+        next = Duration(microseconds: m);
+        break;
       }
     }
+
+    ref.read(projectProvider.notifier).updateClip(clipId, (c) {
+      return c.copyWith(startTime: next);
+    });
   }
 
   void _handleResizeLeft(String clipId, double dx, double pps) {

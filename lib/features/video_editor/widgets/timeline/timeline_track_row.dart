@@ -1,7 +1,7 @@
 // lib/features/video_editor/widgets/timeline/timeline_track_row.dart
 
 import 'package:flutter/material.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../models/project_model.dart';
 import '../../utils/editor_constants.dart';
@@ -17,6 +17,9 @@ class TimelineTrackRow extends StatelessWidget {
   final void Function(String clipId, double dx)? onClipResizeLeft;
   final void Function(String clipId, double dx)? onClipResizeRight;
   final void Function(String clipId, double dx)? onClipMove;
+  final VoidCallback? onToggleVisible;
+  final VoidCallback? onToggleLock;
+  final VoidCallback? onToggleMute;
 
   const TimelineTrackRow({
     super.key,
@@ -28,6 +31,9 @@ class TimelineTrackRow extends StatelessWidget {
     this.onClipResizeLeft,
     this.onClipResizeRight,
     this.onClipMove,
+    this.onToggleVisible,
+    this.onToggleLock,
+    this.onToggleMute,
   });
 
   Color get _trackColor {
@@ -98,6 +104,39 @@ class TimelineTrackRow extends StatelessWidget {
                     fontWeight: FontWeight.w500,
                   ),
                   overflow: TextOverflow.ellipsis,
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    GestureDetector(
+                      onTap: onToggleVisible,
+                      child: Icon(
+                        track.isVisible
+                            ? LucideIcons.eye
+                            : LucideIcons.eyeOff,
+                        size: 10,
+                        color: cs.onSurface.withOpacity(0.6),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    GestureDetector(
+                      onTap: onToggleLock,
+                      child: Icon(
+                        track.isLocked ? LucideIcons.lock : LucideIcons.unlock,
+                        size: 10,
+                        color: cs.onSurface.withOpacity(0.6),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    GestureDetector(
+                      onTap: onToggleMute,
+                      child: Icon(
+                        track.isMuted ? LucideIcons.volumeX : LucideIcons.volume2,
+                        size: 10,
+                        color: cs.onSurface.withOpacity(0.6),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

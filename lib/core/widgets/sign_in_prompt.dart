@@ -6,7 +6,7 @@ import 'package:kala_ai_create_images_videos_with_ai/core/services/auth_service.
 import 'package:kala_ai_create_images_videos_with_ai/core/services/user_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_button.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 /// A widget that prompts users to sign in to use AI tools
 /// Shows benefits of signing up (free credits, sync, etc.)

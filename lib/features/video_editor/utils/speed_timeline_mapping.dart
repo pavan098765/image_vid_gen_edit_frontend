@@ -81,7 +81,7 @@ Duration filePositionForTimelineInClip(VideoClip clip, Duration timelinePos) {
   if (uDen <= 0) return clip.trimStart;
   final u = rel.inMicroseconds / uDen;
 
-  final r = rAtNormalizedU(clip.speedEffect, u);
+  final r = rAtNormalizedU(clip.speedEffect, clip.reverse ? 1.0 - u : u);
   final off = (S.inMicroseconds * r).round();
   return Duration(microseconds: clip.trimStart.inMicroseconds + off);
 }

@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../models/clip_model.dart';
@@ -15,11 +16,13 @@ import '../utils/color_matrix_presets.dart';
 import '../utils/keyframe_ffmpeg_expr.dart';
 import '../utils/speed_timeline_mapping.dart';
 import '../utils/transition_ffmpeg.dart';
+import 'native_compositor.dart';
+import 'native_export_service.dart';
 
 /// Orchestrates the full export pipeline using FFmpeg Kit.
 ///
 /// **Keyframe animation** for text/emoji uses piecewise-linear FFmpeg expressions;
-/// raster stickers use interval overlays. PiP keyframe motion is not exported (v1).
+/// raster stickers use interval overlays. PiP keyframe motion uses overlay exprs.
 ///
 /// Pipeline:
 ///   1. Gather & sort video clips
@@ -33,6 +36,25 @@ import '../utils/transition_ffmpeg.dart';
 ///   7. Final encode (scale, bitrate, fps)
 class ExportService {
   static Future<String?> exportProject({
+    required VideoProject project,
+    required Function(double progress) onProgress,
+  }) async {
+    if (NativeCompositor.isSupported) {
+      try {
+        final path = await NativeExportService.exportProject(
+          project: project,
+          onProgress: onProgress,
+        );
+        if (path != null && path.isNotEmpty) return path;
+      } catch (e, st) {
+        debugPrint('Native compositor export failed, using FFmpeg: $e\n$st');
+      }
+    }
+    return exportWithFfmpeg(project: project, onProgress: onProgress);
+  }
+
+  /// Desktop / fallback encoder. Phone and tablet prefer [NativeExportService].
+  static Future<String?> exportWithFfmpeg({
     required VideoProject project,
     required Function(double progress) onProgress,
   }) async {
@@ -76,34 +98,53 @@ class ExportService {
 
         final sp = _effectiveConstantSpeed(clip);
         final hasSpeed = (sp - 1.0).abs() > 0.01;
-        final hasTrim =
-            clip.trimStart > Duration.zero || clip.trimEnd < clip.originalDuration;
+        final hasTrim = clip.trimStart > Duration.zero ||
+            clip.trimEnd < clip.originalDuration;
+        final vfExtra = _clipGeometryFilters(clip);
 
-        if (!hasTrim && !hasSpeed) {
+        if (!hasTrim && !hasSpeed && vfExtra.isEmpty) {
           processedPaths.add(clip.sourcePath);
         } else {
           final args = <String>['-y'];
           if (hasTrim) {
-            args.addAll(['-ss', _dur(clip.trimStart), '-to', _dur(clip.trimEnd)]);
+            args.addAll(
+                ['-ss', _dur(clip.trimStart), '-to', _dur(clip.trimEnd)]);
           }
           args.addAll(['-i', clip.sourcePath]);
-          if (hasSpeed) {
-            final setpts = '${(1 / sp).toStringAsFixed(4)}*PTS';
+          if (hasSpeed || vfExtra.isNotEmpty) {
+            final vparts = <String>[
+              ...vfExtra,
+              if (hasSpeed) 'setpts=${(1 / sp).toStringAsFixed(4)}*PTS',
+            ];
+            final aParts = <String>[
+              if (clip.reverse) 'areverse',
+              if (hasSpeed) _atempoChain(sp),
+            ];
+            final vchain = vparts.join(',');
+            final achain = aParts.isEmpty ? 'anull' : aParts.join(',');
             final withAudio = <String>[
               ...args,
               '-filter_complex',
-              '[0:v]setpts=$setpts[v];[0:a]${_atempoChain(sp)}[a]',
-              '-map', '[v]', '-map', '[a]',
+              '[0:v]$vchain[v];[0:a]$achain[a]',
+              '-map',
+              '[v]',
+              '-map',
+              '[a]',
               out,
             ];
             final videoOnly = <String>[
               ...args,
-              '-filter_complex', '[0:v]setpts=$setpts[v]',
-              '-map', '[v]', '-an',
+              '-filter_complex',
+              '[0:v]$vchain[v]',
+              '-map',
+              '[v]',
+              '-an',
               out,
             ];
             processedPaths.add(
-              (await _run(withAudio) || await _run(videoOnly)) ? out : clip.sourcePath,
+              (await _run(withAudio) || await _run(videoOnly))
+                  ? out
+                  : clip.sourcePath,
             );
           } else {
             args.addAll(['-c', 'copy']);
@@ -152,7 +193,8 @@ class ExportService {
               clip.transitionIn.type != TransitionType.none &&
               clip.transitionIn.type != TransitionType.fade &&
               clip.transitionIn.type != TransitionType.dissolve) {
-            logTransitionFallback(clip.transitionIn.type, 'Pass A failed; using fade');
+            logTransitionFallback(
+                clip.transitionIn.type, 'Pass A failed; using fade');
             vf = _videoFiltersPassA(
               clip,
               transitionOverride: ClipTransition(
@@ -181,17 +223,17 @@ class ExportService {
               .join('\n'),
         );
         if (!await _run([
-              '-y',
-              '-f',
-              'concat',
-              '-safe',
-              '0',
-              '-i',
-              listFile.path,
-              '-c',
-              'copy',
-              cur,
-            ])) {
+          '-y',
+          '-f',
+          'concat',
+          '-safe',
+          '0',
+          '-i',
+          listFile.path,
+          '-c',
+          'copy',
+          cur,
+        ])) {
           cur = segmentPathsAfterFx.first;
         }
       }
@@ -203,11 +245,20 @@ class ExportService {
       {
         final vf = <String>[];
 
-        // Detect available font files
-        const robotFont = '/system/fonts/Roboto-Regular.ttf';
         const emojiFont = '/system/fonts/NotoColorEmoji.ttf';
-        final hasRobot = await File(robotFont).exists();
         final hasEmoji = await File(emojiFont).exists();
+        final fontPaths = <String, String>{};
+        for (final track in project.textTracks) {
+          if (!track.isVisible) continue;
+          for (final clip in track.clips) {
+            if (clip is TextClip) {
+              fontPaths[clip.fontFamily] ??=
+                  await bundledFontPath(clip.fontFamily, workDir);
+            }
+          }
+        }
+        final fallbackFont = await bundledFontPath('Roboto', workDir);
+        final hasRobot = fallbackFont.isNotEmpty;
 
         // Text clips
         for (final track in project.textTracks) {
@@ -217,7 +268,7 @@ class ExportService {
               _appendTextDrawtextVf(
                 vf,
                 clip,
-                hasRobot ? robotFont : '',
+                fontPaths[clip.fontFamily] ?? fallbackFont,
               );
             }
           }
@@ -234,7 +285,7 @@ class ExportService {
                 hasEmoji,
                 hasRobot,
                 emojiFont,
-                robotFont,
+                fallbackFont,
               );
             }
           }
@@ -243,7 +294,8 @@ class ExportService {
         if (vf.isNotEmpty) {
           vf.add('format=yuv420p');
           final out = '${workDir.path}/text.mp4';
-          if (await _run(['-y', '-i', cur, '-vf', vf.join(','), '-c:a', 'copy', out])) {
+          if (await _run(
+              ['-y', '-i', cur, '-vf', vf.join(','), '-c:a', 'copy', out])) {
             cur = out;
           }
         }
@@ -318,22 +370,22 @@ class ExportService {
               final t1 = bounds[bi + 1];
               if (t1 <= t0) continue;
               final mid = (t0 + t1) / 2.0;
-              final midRel =
-                  Duration(microseconds: (mid * 1000000).round()) -
+              final midRel = Duration(microseconds: (mid * 1000000).round()) -
                   clip.startTime;
-              final ox = trackFor(clip.keyframeTracks, KeyframeProperty.positionX)
-                      ?.valueAt(midRel) ??
-                  0.0;
-              final oy = trackFor(clip.keyframeTracks, KeyframeProperty.positionY)
-                      ?.valueAt(midRel) ??
-                  0.0;
+              final ox =
+                  trackFor(clip.keyframeTracks, KeyframeProperty.positionX)
+                          ?.valueAt(midRel) ??
+                      0.0;
+              final oy =
+                  trackFor(clip.keyframeTracks, KeyframeProperty.positionY)
+                          ?.valueAt(midRel) ??
+                      0.0;
               final sc = trackFor(clip.keyframeTracks, KeyframeProperty.scale)
                       ?.valueAt(midRel) ??
                   1.0;
               final px = (clip.position.dx + ox).clamp(0.0, 1.0);
               final py = (clip.position.dy + oy).clamp(0.0, 1.0);
-              final w =
-                  (160 * clip.scale * sc).clamp(16.0, 2048.0).round();
+              final w = (160 * clip.scale * sc).clamp(16.0, 2048.0).round();
               final intervalOut =
                   '${workDir.path}/stk_img_${clip.id.hashCode & 0x7fffffff}_$bi.mp4';
               final fc = '[1:v]scale=w=$w:h=-1,format=rgba[st];'
@@ -393,33 +445,57 @@ class ExportService {
         }
         for (int i = 0; i < pipClips.length; i++) {
           final pip = pipClips[i];
-          if (pip.keyframeTracks.isNotEmpty) {
-            _logPipKeyframeMotionSkipOnce();
-          }
           var pipPath = pip.sourcePath;
           final pipNeedsTrim = pip.trimStart > Duration.zero ||
               pip.trimEnd < pip.originalDuration;
           if (pipNeedsTrim) {
             final pipCut = '${workDir.path}/pip_trim_$i.mp4';
             if (await _run([
-                  '-y',
-                  '-ss',
-                  _dur(pip.trimStart),
-                  '-to',
-                  _dur(pip.trimEnd),
-                  '-i',
-                  pip.sourcePath,
-                  '-c',
-                  'copy',
-                  pipCut,
-                ])) {
+              '-y',
+              '-ss',
+              _dur(pip.trimStart),
+              '-to',
+              _dur(pip.trimEnd),
+              '-i',
+              pip.sourcePath,
+              '-c',
+              'copy',
+              pipCut,
+            ])) {
               pipPath = pipCut;
             }
           }
           final out = '${workDir.path}/pip_$i.mp4';
-          final sc = 'iw*${pip.scale}:ih*${pip.scale}';
-          final ox = 'W*${pip.position.dx}-w/2';
-          final oy = 'H*${pip.position.dy}-h/2';
+          final scaleTrack = pip.keyframeTracks
+              .where((t) => t.property == KeyframeProperty.scale)
+              .firstOrNull;
+          final xTrack = pip.keyframeTracks
+              .where((t) => t.property == KeyframeProperty.positionX)
+              .firstOrNull;
+          final yTrack = pip.keyframeTracks
+              .where((t) => t.property == KeyframeProperty.positionY)
+              .firstOrNull;
+          final scaleExpr = scalarExprForTrack(
+            track: scaleTrack,
+            clipStart: pip.startTime,
+            clipEnd: pip.endTime,
+            constant: pip.scale,
+          );
+          final xFrac = scalarExprForTrack(
+            track: xTrack,
+            clipStart: pip.startTime,
+            clipEnd: pip.endTime,
+            constant: pip.position.dx,
+          );
+          final yFrac = scalarExprForTrack(
+            track: yTrack,
+            clipStart: pip.startTime,
+            clipEnd: pip.endTime,
+            constant: pip.position.dy,
+          );
+          final sc = 'iw*($scaleExpr):ih*($scaleExpr)';
+          final ox = 'W*($xFrac)-w/2';
+          final oy = 'H*($yFrac)-h/2';
           final s = pip.startTime.inMilliseconds / 1000.0;
           final e = pip.endTime.inMilliseconds / 1000.0;
 
@@ -523,17 +599,34 @@ class ExportService {
           for (int i = 0; i < extra.length; i++) {
             final ac = extra[i];
             final delay = ac.startTime.inMilliseconds;
+            final fadeIn = ac.fadeIn.inMilliseconds / 1000.0;
+            final fadeOut = ac.fadeOut.inMilliseconds / 1000.0;
+            final fadeBits = StringBuffer();
+            if (fadeIn > 0) fadeBits.write(',afade=t=in:st=0:d=$fadeIn');
+            if (fadeOut > 0) {
+              final st = (ac.duration.inMilliseconds / 1000.0) - fadeOut;
+              fadeBits.write(',afade=t=out:st=${st.clamp(0, 1e6)}:d=$fadeOut');
+            }
             filters.add(
-              '[${i + 1}:a]volume=${ac.volume.toStringAsFixed(2)},'
+              '[${i + 1}:a]volume=${ac.volume.toStringAsFixed(2)}'
+              '${fadeBits.toString()},'
               'adelay=$delay|$delay[a$i]',
             );
             labels.add('[a$i]');
           }
-          filters.add('${labels.join()}amix=inputs=${labels.length}:normalize=0[oa]');
+          filters.add(
+              '${labels.join()}amix=inputs=${labels.length}:normalize=0[oa]');
 
           args.addAll([
-            '-filter_complex', filters.join(';'),
-            '-map', '0:v', '-map', '[oa]', '-c:v', 'copy', out,
+            '-filter_complex',
+            filters.join(';'),
+            '-map',
+            '0:v',
+            '-map',
+            '[oa]',
+            '-c:v',
+            'copy',
+            out,
           ]);
           if (await _run(args)) cur = out;
         }
@@ -546,15 +639,30 @@ class ExportService {
       final finalPath = '${workDir.path}/export_final.$ext';
 
       final ok = await _run([
-        '-y', '-i', cur,
-        '-vf', 'scale=-2:${settings.quality.height},format=yuv420p',
-        '-c:v', 'libx264', '-preset', 'medium',
-        '-b:v', '${settings.quality.bitrate}',
-        '-r', '${settings.fps}',
-        '-pix_fmt', 'yuv420p',
-        '-c:a', 'aac', '-b:a', '192k',
-        '-movflags', '+faststart',
-        '-f', ext, finalPath,
+        '-y',
+        '-i',
+        cur,
+        '-vf',
+        'scale=-2:${settings.quality.height},format=yuv420p',
+        '-c:v',
+        'libx264',
+        '-preset',
+        'medium',
+        '-b:v',
+        '${settings.quality.bitrate}',
+        '-r',
+        '${settings.fps}',
+        '-pix_fmt',
+        'yuv420p',
+        '-c:a',
+        'aac',
+        '-b:a',
+        '192k',
+        '-movflags',
+        '+faststart',
+        '-f',
+        ext,
+        finalPath,
       ]);
 
       onProgress(1.0);
@@ -697,11 +805,42 @@ class ExportService {
     return ok ? outPath : null;
   }
 
+  static List<String> _clipGeometryFilters(VideoClip clip) {
+    final vf = <String>[];
+    final crop = clip.cropNorm;
+    if (crop != null) {
+      vf.add(
+        'crop=iw*${crop.width}:ih*${crop.height}:iw*${crop.left}:ih*${crop.top}',
+      );
+    }
+    switch (clip.rotateQuarterTurns % 4) {
+      case 1:
+        vf.add('transpose=1');
+        break;
+      case 2:
+        vf.add('transpose=1,transpose=1');
+        break;
+      case 3:
+        vf.add('transpose=2');
+        break;
+    }
+    if (clip.reverse) vf.add('reverse');
+    if (clip.chroma.enabled) {
+      final rgb = clip.chroma.color & 0xFFFFFF;
+      final hex = rgb.toRadixString(16).padLeft(6, '0');
+      vf.add(
+        'chromakey=0x$hex:${clip.chroma.similarity}:${clip.chroma.smoothness}',
+      );
+    }
+    return vf;
+  }
+
   // =========================================================================
   //  Pass A — per-clip video filters (colour + transition fade-in)
   // =========================================================================
 
-  static List<String> _videoFiltersPassA(VideoClip clip, {ClipTransition? transitionOverride}) {
+  static List<String> _videoFiltersPassA(VideoClip clip,
+      {ClipTransition? transitionOverride}) {
     final vf = <String>[];
     final adj = clip.colorAdjustment;
     final preset = _presetToVf(adj.filterPresetId);
@@ -732,22 +871,26 @@ class ExportService {
 
     FilterPreset? preset;
     for (final p in ColorMatrixPresets.presets) {
-      if (p.id == id) { preset = p; break; }
+      if (p.id == id) {
+        preset = p;
+        break;
+      }
     }
     if (preset == null || preset.id == 'normal') return null;
 
     final m = preset.matrix;
     final parts = <String>[
       'colorchannelmixer='
-      'rr=${m[0]}:rg=${m[1]}:rb=${m[2]}:ra=${m[3]}:'
-      'gr=${m[5]}:gg=${m[6]}:gb=${m[7]}:ga=${m[8]}:'
-      'br=${m[10]}:bg=${m[11]}:bb=${m[12]}:ba=${m[13]}:'
-      'ar=${m[15]}:ag=${m[16]}:ab=${m[17]}:aa=${m[18]}',
+          'rr=${m[0]}:rg=${m[1]}:rb=${m[2]}:ra=${m[3]}:'
+          'gr=${m[5]}:gg=${m[6]}:gb=${m[7]}:ga=${m[8]}:'
+          'br=${m[10]}:bg=${m[11]}:bb=${m[12]}:ba=${m[13]}:'
+          'ar=${m[15]}:ag=${m[16]}:ab=${m[17]}:aa=${m[18]}',
     ];
 
     final rOff = m[4], gOff = m[9], bOff = m[14];
     if (rOff != 0 || gOff != 0 || bOff != 0) {
-      parts.add('lutrgb=r=val+${rOff.toInt()}:g=val+${gOff.toInt()}:b=val+${bOff.toInt()}');
+      parts.add(
+          'lutrgb=r=val+${rOff.toInt()}:g=val+${gOff.toInt()}:b=val+${bOff.toInt()}');
     }
 
     return parts.join(',');
@@ -784,8 +927,14 @@ class ExportService {
   static String _atempoChain(double speed) {
     final parts = <String>[];
     var r = speed;
-    while (r > 2.0) { parts.add('atempo=2.0'); r /= 2.0; }
-    while (r < 0.5) { parts.add('atempo=0.5'); r /= 0.5; }
+    while (r > 2.0) {
+      parts.add('atempo=2.0');
+      r /= 2.0;
+    }
+    while (r < 0.5) {
+      parts.add('atempo=0.5');
+      r /= 0.5;
+    }
     parts.add('atempo=${r.toStringAsFixed(4)}');
     return parts.join(',');
   }
@@ -818,16 +967,7 @@ class ExportService {
     return '${_colorHex(color)}@${o.toStringAsFixed(4)}';
   }
 
-  static bool _pipKeyframeLogged = false;
   static bool _rotationKeyframeLogged = false;
-
-  static void _logPipKeyframeMotionSkipOnce() {
-    if (_pipKeyframeLogged) return;
-    _pipKeyframeLogged = true;
-    debugPrint(
-      'Export: PiP keyframe motion is not applied in FFmpeg (v1); using static position/scale.',
-    );
-  }
 
   static void _logKeyframeRotationExportOnce() {
     if (_rotationKeyframeLogged) return;
@@ -871,13 +1011,55 @@ class ExportService {
     return times.toList()..sort();
   }
 
+  static const Map<String, String> _fontAssets = {
+    'Inter': 'assets/fonts/Inter-Regular.ttf',
+    'Roboto': 'assets/fonts/Roboto-Regular.ttf',
+    'Poppins': 'assets/fonts/Poppins-Regular.ttf',
+    'Montserrat': 'assets/fonts/Montserrat-Regular.ttf',
+    'Oswald': 'assets/fonts/Oswald-Regular.ttf',
+  };
+
+  static Future<String> bundledFontPath(
+      String family, Directory workDir) async {
+    const systemFallback = '/system/fonts/Roboto-Regular.ttf';
+    Future<String?> extract(String asset) async {
+      try {
+        final data = await rootBundle.load(asset);
+        final name = asset.split('/').last;
+        final file = File('${workDir.path}/$name');
+        await file.writeAsBytes(
+          data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+          flush: true,
+        );
+        return file.path;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    final wanted = _fontAssets[family] ?? _fontAssets['Roboto']!;
+    final path = await extract(wanted) ?? await extract(_fontAssets['Roboto']!);
+    if (path != null) return path;
+    if (await File(systemFallback).exists()) return systemFallback;
+    return '';
+  }
+
+  static String _ffmpegFontArg(String path) {
+    if (path.isEmpty) return '';
+    final escaped = path
+        .replaceAll('\\', '/')
+        .replaceAll(':', '\\:')
+        .replaceAll("'", "\\'");
+    return ':fontfile=$escaped';
+  }
+
   static void _appendTextDrawtextVf(
     List<String> vf,
     TextClip clip,
     String robotFontPath,
   ) {
     final txt = _escDt(clip.text);
-    final font = robotFontPath.isNotEmpty ? ':fontfile=$robotFontPath' : '';
+    final font = _ffmpegFontArg(robotFontPath);
     final s = clip.startTime.inMilliseconds / 1000.0;
     final e = clip.endTime.inMilliseconds / 1000.0;
 
@@ -934,8 +1116,7 @@ class ExportService {
         if (t1 <= t0) continue;
         final mid = (t0 + t1) / 2.0;
         final midRel =
-            Duration(microseconds: (mid * 1000000).round()) -
-            clip.startTime;
+            Duration(microseconds: (mid * 1000000).round()) - clip.startTime;
         final a = kop.valueAt(midRel).clamp(0.0, 1.0);
         final fc = _fontColorWithAlpha(clip.color, a);
         vf.add(
@@ -974,8 +1155,8 @@ class ExportService {
     final e = clip.endTime.inMilliseconds / 1000.0;
     final baseSz = 64 * clip.scale;
     final font = hasEmoji
-        ? ':fontfile=$emojiFont'
-        : (hasRobot ? ':fontfile=$robotFont' : '');
+        ? _ffmpegFontArg(emojiFont)
+        : (hasRobot ? _ffmpegFontArg(robotFont) : '');
 
     if (trackFor(clip.keyframeTracks, KeyframeProperty.rotation)
             ?.keyframes
@@ -1030,8 +1211,7 @@ class ExportService {
         if (t1 <= t0) continue;
         final mid = (t0 + t1) / 2.0;
         final midRel =
-            Duration(microseconds: (mid * 1000000).round()) -
-            clip.startTime;
+            Duration(microseconds: (mid * 1000000).round()) - clip.startTime;
         final a = kop.valueAt(midRel).clamp(0.0, 1.0);
         final fc = 'white@${a.toStringAsFixed(4)}';
         vf.add(

@@ -2,8 +2,10 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:video_player/video_player.dart';
+
+import 'package:pro_video_editor/pro_video_editor.dart' as pve;
 
 import '../../models/clip_model.dart';
 import '../../models/effect_model.dart';
@@ -11,6 +13,8 @@ import '../../models/project_model.dart';
 import '../../state/editor_providers.dart';
 import '../../utils/color_matrix_presets.dart';
 import '../../utils/time_utils.dart';
+import '../../utils/video_looks.dart';
+import 'crop_box_overlay.dart';
 import 'preview_overlay.dart';
 
 /// The video preview area at the top of the editor.
@@ -25,6 +29,14 @@ class PreviewPlayer extends ConsumerStatefulWidget {
 }
 
 class _PreviewPlayerState extends ConsumerState<PreviewPlayer> {
+  final _fxPos = ValueNotifier(Duration.zero);
+
+  @override
+  void dispose() {
+    _fxPos.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -61,16 +73,27 @@ class _PreviewPlayerState extends ConsumerState<PreviewPlayer> {
                   // Video (with color filter applied)
                   Center(
                     child: AspectRatio(
-                      aspectRatio: controller.value.aspectRatio,
-                      child: _buildFilteredVideo(ref, controller),
+                      aspectRatio: _previewAspect(ref, controller),
+                      child: FittedBox(
+                        fit: BoxFit.contain,
+                        child: SizedBox(
+                          width: controller.value.size.width,
+                          height: controller.value.size.height,
+                          child: _buildFilteredVideo(ref, controller),
+                        ),
+                      ),
                     ),
                   ),
 
-                  // Overlays (text, stickers)
                   Center(
                     child: AspectRatio(
-                      aspectRatio: controller.value.aspectRatio,
-                      child: const PreviewOverlay(),
+                      aspectRatio: _previewAspect(ref, controller),
+                      child: Stack(
+                        children: const [
+                          PreviewOverlay(),
+                          CropBoxOverlay(),
+                        ],
+                      ),
                     ),
                   ),
 
@@ -97,6 +120,24 @@ class _PreviewPlayerState extends ConsumerState<PreviewPlayer> {
               ),
             ),
           ),
+
+          Builder(builder: (context) {
+            final project = ref.watch(projectProvider);
+            final ar = project?.exportSettings.aspectRatio;
+            if (ar == null || ar == AspectRatioPreset.original) {
+              return const SizedBox.shrink();
+            }
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: Text(
+                'Exporting as ${ar.platformHint} ${ar.label}',
+                style: TextStyle(
+                  color: cs.onSurface.withOpacity(0.55),
+                  fontSize: 11,
+                ),
+              ),
+            );
+          }),
 
           // Transport controls bar
           Container(
@@ -170,6 +211,13 @@ class _PreviewPlayerState extends ConsumerState<PreviewPlayer> {
     );
   }
 
+  double _previewAspect(WidgetRef ref, VideoPlayerController controller) {
+    final project = ref.watch(projectProvider);
+    final ratio = project?.exportSettings.aspectRatio.ratio;
+    if (ratio != null && ratio > 0) return ratio;
+    return controller.value.aspectRatio;
+  }
+
   /// Build the video player widget, optionally wrapped in ColorFiltered.
   Widget _buildFilteredVideo(WidgetRef ref, VideoPlayerController controller) {
     final project = ref.watch(projectProvider);
@@ -225,10 +273,51 @@ class _PreviewPlayerState extends ConsumerState<PreviewPlayer> {
           activeVideoClip,
           playback.position,
         );
+
+        videoWidget = _applyGeometry(videoWidget, activeVideoClip, controller);
+
+        final look = lookToEffect(activeVideoClip.look);
+        if (look != null && pve.VideoEffectPreview.isSupported) {
+          _fxPos.value = playback.position;
+          videoWidget = pve.VideoEffectPreview(
+            effects: [look],
+            position: _fxPos,
+            child: videoWidget,
+          );
+        }
       }
     }
 
     return videoWidget;
+  }
+
+  Widget _applyGeometry(
+    Widget child,
+    VideoClip clip,
+    VideoPlayerController controller,
+  ) {
+    Widget out = child;
+    final crop = clip.cropNorm;
+    if (crop != null) {
+      out = ClipRect(
+        clipper: _NormCropClipper(crop),
+        child: FittedBox(
+          fit: BoxFit.cover,
+          child: SizedBox(
+            width: controller.value.size.width * crop.width,
+            height: controller.value.size.height * crop.height,
+            child: FractionalTranslation(
+              translation: Offset(-crop.left, -crop.top),
+              child: out,
+            ),
+          ),
+        ),
+      );
+    }
+    if (clip.rotateQuarterTurns % 4 != 0) {
+      out = RotatedBox(quarterTurns: clip.rotateQuarterTurns % 4, child: out);
+    }
+    return out;
   }
 
   /// Apply transition-in effect to the video widget based on the clip's transition setting.
@@ -415,4 +504,22 @@ class _WipeClipper extends CustomClipper<Rect> {
   @override
   bool shouldReclip(_WipeClipper oldClipper) =>
       oldClipper.progress != progress || oldClipper.direction != direction;
+}
+
+class _NormCropClipper extends CustomClipper<Rect> {
+  final Rect cropNorm;
+  const _NormCropClipper(this.cropNorm);
+
+  @override
+  Rect getClip(Size size) {
+    return Rect.fromLTWH(
+      cropNorm.left * size.width,
+      cropNorm.top * size.height,
+      cropNorm.width * size.width,
+      cropNorm.height * size.height,
+    );
+  }
+
+  @override
+  bool shouldReclip(_NormCropClipper old) => old.cropNorm != cropNorm;
 }
