@@ -3,9 +3,10 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  app_links_linux
+  ffmpeg_kit_flutter_new
   file_saver
   file_selector_linux
-  gtk
   media_kit_libs_linux
   media_kit_video
   pro_video_editor
@@ -14,7 +15,9 @@ list(APPEND FLUTTER_PLUGIN_LIST
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
+  jni
   onnxruntime
+  tflite_flutter
 )
 
 set(PLUGIN_BUNDLED_LIBRARIES)

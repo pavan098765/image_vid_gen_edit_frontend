@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/adgem_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 

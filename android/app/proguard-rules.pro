@@ -43,3 +43,7 @@
 -dontwarn com.google.android.play.core.tasks.OnFailureListener
 -dontwarn com.google.android.play.core.tasks.OnSuccessListener
 -dontwarn com.google.android.play.core.tasks.Task
+
+# TensorFlow Lite GPU delegate classes (release + R8)
+-keep class org.tensorflow.lite.** { *; }
+-dontwarn org.tensorflow.lite.**

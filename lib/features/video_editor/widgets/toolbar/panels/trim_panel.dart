@@ -2,7 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../models/clip_model.dart';
 import '../../../state/editor_providers.dart';
@@ -81,22 +81,157 @@ class TrimPanel extends ConsumerWidget {
                 ),
                 _ActionButton(
                   icon: LucideIcons.trash2,
-                  label: 'Delete',
+                  label: 'Ripple',
                   color: Colors.redAccent,
                   onTap: () {
                     ref
                         .read(projectProvider.notifier)
-                        .removeClip(selectedClip.id);
+                        .rippleDelete(selectedClip.id);
                     ref.read(timelineProvider.notifier).clearSelection();
                     Navigator.of(context).pop();
                   },
                 ),
               ],
             ),
+            if (selectedClip is VideoClip) ...[
+              const SizedBox(height: 14),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _ActionButton(
+                    icon: LucideIcons.rotateCw,
+                    label: 'Rotate',
+                    color: cs.primary,
+                    onTap: () {
+                      ref.read(projectProvider.notifier).updateClip(
+                            selectedClip.id,
+                            (c) {
+                              final v = c as VideoClip;
+                              return v.copyWith(
+                                rotateQuarterTurns:
+                                    (v.rotateQuarterTurns + 1) % 4,
+                              );
+                            },
+                          );
+                    },
+                  ),
+                  _ActionButton(
+                    icon: LucideIcons.rewind,
+                    label: selectedClip.reverse ? 'Forward' : 'Reverse',
+                    color: cs.secondary,
+                    onTap: () {
+                      ref.read(projectProvider.notifier).updateClip(
+                            selectedClip.id,
+                            (c) => (c as VideoClip)
+                                .copyWith(reverse: !selectedClip.reverse),
+                          );
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text('Crop',
+                  style: TextStyle(
+                      fontSize: 12, color: cs.onSurface.withOpacity(0.6))),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                children: [
+                  _cropChip(ref, selectedClip, cs, 'Full', null),
+                  _cropChip(ref, selectedClip, cs, '9:16', 9 / 16),
+                  _cropChip(ref, selectedClip, cs, '1:1', 1),
+                  _cropChip(ref, selectedClip, cs, '16:9', 16 / 9),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _ActionButton(
+                    icon: LucideIcons.unplug,
+                    label: 'Detach',
+                    color: cs.primary,
+                    onTap: () {
+                      ref
+                          .read(projectProvider.notifier)
+                          .detachAudio(selectedClip.id);
+                    },
+                  ),
+                  _ActionButton(
+                    icon: LucideIcons.snowflake,
+                    label: 'Freeze',
+                    color: cs.secondary,
+                    onTap: () {
+                      ref.read(projectProvider.notifier).freezeFrame(
+                            selectedClip.id,
+                            playback.position,
+                            const Duration(seconds: 1),
+                          );
+                    },
+                  ),
+                  _ActionButton(
+                    icon: LucideIcons.alignHorizontalSpaceAround,
+                    label: 'Close gap',
+                    color: cs.tertiary,
+                    onTap: () {
+                      final track = ref
+                          .read(projectProvider)
+                          ?.findTrackForClip(selectedClip.id);
+                      if (track != null) {
+                        ref
+                            .read(projectProvider.notifier)
+                            .closeGapOnTrack(track.id);
+                      }
+                    },
+                  ),
+                ],
+              ),
+            ],
         ],
       ),
     );
   }
+}
+
+Widget _cropChip(
+  WidgetRef ref,
+  VideoClip clip,
+  ColorScheme cs,
+  String label,
+  double? ratio,
+) {
+  Rect? next;
+  if (ratio != null && clip.resolution.width > 0 && clip.resolution.height > 0) {
+    final src = clip.resolution.width / clip.resolution.height;
+    double w;
+    double h;
+    if (src > ratio) {
+      h = 1;
+      w = ratio / src;
+    } else {
+      w = 1;
+      h = src / ratio;
+    }
+    next = Rect.fromLTWH((1 - w) / 2, (1 - h) / 2, w, h);
+  }
+  final selected = (clip.cropNorm == null && ratio == null) ||
+      (clip.cropNorm != null &&
+          ratio != null &&
+          (clip.cropNorm!.width / clip.cropNorm!.height - ratio).abs() < 0.02);
+  return FilterChip(
+    label: Text(label),
+    selected: selected,
+    onSelected: (_) {
+      ref.read(projectProvider.notifier).updateClip(
+            clip.id,
+            (c) => (c as VideoClip).copyWith(
+              cropNorm: next,
+              clearCrop: ratio == null,
+            ),
+          );
+    },
+  );
 }
 
 class _ActionButton extends StatelessWidget {

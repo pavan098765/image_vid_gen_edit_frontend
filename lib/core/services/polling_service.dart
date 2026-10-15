@@ -28,7 +28,17 @@ import 'package:kala_ai_create_images_videos_with_ai/main.dart' show navigatorKe
 class PollingService {
   PollingService._();
   static final PollingService instance = PollingService._();
-  static final allowed = ["processing", "completed", "failed"];
+  static final allowed = [
+    "processing",
+    "completed",
+    "failed",
+    "reviewing",
+    "provisioning",
+    "queued",
+    "running",
+    "stitching",
+    "uploading",
+  ];
   static const int minPollIntervalSec = 20; // per-job cooldown (for background polling only)
   static const int maxJobAgeMinutesForBackgroundPoll = 60; // background poll skips very old jobs
 
@@ -232,6 +242,12 @@ class PollingService {
       final bool allCompleted = data['all_completed'] ?? (status == 'completed' || status == 'failed');
       final String? enhancedPrompt = data['enhanced_prompt'];
       final bool promptEnhanced = data['prompt_enhanced'] ?? false;
+      final int? estimatedWaitSeconds = (data['estimated_wait_seconds'] is num)
+          ? (data['estimated_wait_seconds'] as num).toInt()
+          : null;
+      final int? queuePosition = (data['queue_position'] is num)
+          ? (data['queue_position'] as num).toInt()
+          : null;
 
       // --- 2️⃣ Emit event to UI
 
@@ -248,34 +264,41 @@ class PollingService {
           finalStatus = old.status;
         }
         
-        jobs[idx] = JobModel(
-          jobId: old.jobId,
-          title: old.title,
-          model: old.model,
-          outputType: old.outputType,
+        jobs[idx] = old.copyWith(
           downloadUrl: (downloadUrl != null && downloadUrl.isNotEmpty)
               ? downloadUrl
               : old.downloadUrl,
           status: finalStatus.isNotEmpty ? finalStatus : old.status,
-          createdAt: old.createdAt,
-          inputImagePath: old.inputImagePath,
-          localFilePath: old.localFilePath,
-          // Keep original variations (each job is a single variation in the batch)
-          variations: old.variations,
+          estimatedWaitSeconds: estimatedWaitSeconds ?? old.estimatedWaitSeconds,
+          queuePosition: queuePosition ?? old.queuePosition,
           variationResults: variationResults ?? old.variationResults,
           allCompleted: allCompleted,
           enhancedPrompt: enhancedPrompt ?? old.enhancedPrompt,
           promptEnhanced: promptEnhanced || old.promptEnhanced,
-          originalPrompt: old.originalPrompt,
         );
         jobListNotifier.value = jobs;
       }
+
+      // Persist ETA / queue info to prefs (best-effort)
+      unawaited(updateJobFields(
+        jobId: jobId,
+        status: status,
+        downloadUrl: downloadUrl,
+        estimatedWaitSeconds: estimatedWaitSeconds,
+        queuePosition: queuePosition,
+        variationResults: variationResults,
+        allCompleted: allCompleted,
+        enhancedPrompt: enhancedPrompt,
+        promptEnhanced: promptEnhanced,
+      ));
 
       if (!_onStatus.isClosed) {
         _onStatus.add({
           "job_id": jobId,
           "status": status,
           "download_url": downloadUrl,
+          "estimated_wait_seconds": estimatedWaitSeconds,
+          "queue_position": queuePosition,
           "raw": data,
         });
       }
@@ -310,23 +333,10 @@ class PollingService {
               }
 
               // ✅ Reinsert with preserved fields
-              final updatedJob = JobModel(
-                jobId: job.jobId,
-                title: job.title,
-                model: job.model,
-                outputType: job.outputType,
+              final updatedJob = job.copyWith(
                 downloadUrl: job.downloadUrl ?? downloadUrl,
-                status: job.status,
-                createdAt: job.createdAt,
-                inputImagePath: inputThumb, // 🟣 ensure preserved
+                inputImagePath: inputThumb,
                 localFilePath: job.localFilePath,
-                // NEW: Preserve variation and prompt fields
-                variations: job.variations,
-                variationResults: job.variationResults,
-                allCompleted: job.allCompleted,
-                enhancedPrompt: job.enhancedPrompt,
-                promptEnhanced: job.promptEnhanced,
-                originalPrompt: job.originalPrompt,
               );
               await addOrUpdateJob(updatedJob);
 
@@ -452,7 +462,17 @@ class PollingService {
         if (!success) continue;
 
         String status = (data["status"] ?? "").toString().toLowerCase();
-        const allowedStatuses = ["processing", "completed", "failed"];
+        const allowedStatuses = [
+          "processing",
+          "completed",
+          "failed",
+          "reviewing",
+          "provisioning",
+          "queued",
+          "running",
+          "stitching",
+          "uploading",
+        ];
         if (!allowedStatuses.contains(status)) {
           status = "processing";
         }
@@ -473,6 +493,12 @@ class PollingService {
         final bool allCompleted = data['all_completed'] ?? (status == 'completed' || status == 'failed');
         final String? enhancedPrompt = data['enhanced_prompt'];
         final bool promptEnhanced = data['prompt_enhanced'] ?? false;
+        final int? estimatedWaitSeconds = (data['estimated_wait_seconds'] is num)
+            ? (data['estimated_wait_seconds'] as num).toInt()
+            : null;
+        final int? queuePosition = (data['queue_position'] is num)
+            ? (data['queue_position'] as num).toInt()
+            : null;
 
         final idx = jobs.indexWhere((j) => j.jobId == jobId);
         if (idx != -1) {
@@ -485,22 +511,15 @@ class PollingService {
             finalStatus = old.status;
           }
 
-          jobs[idx] = JobModel(
-            jobId: old.jobId,
-            title: old.title,
-            model: old.model,
-            outputType: old.outputType,
-            downloadUrl: old.downloadUrl, // Will update below for completed jobs
+          jobs[idx] = old.copyWith(
+            downloadUrl: old.downloadUrl,
             status: finalStatus.isNotEmpty ? finalStatus : old.status,
-            createdAt: old.createdAt,
-            inputImagePath: old.inputImagePath,
-            localFilePath: old.localFilePath,
-            variations: old.variations,
+            estimatedWaitSeconds: estimatedWaitSeconds ?? old.estimatedWaitSeconds,
+            queuePosition: queuePosition ?? old.queuePosition,
             variationResults: variationResults ?? old.variationResults,
             allCompleted: allCompleted,
             enhancedPrompt: enhancedPrompt ?? old.enhancedPrompt,
             promptEnhanced: promptEnhanced || old.promptEnhanced,
-            originalPrompt: old.originalPrompt,
           );
 
           debugPrint("✅ Job $jobId → $finalStatus");
@@ -532,22 +551,8 @@ class PollingService {
             final idx = jobs.indexWhere((j) => j.jobId == jobId);
             if (idx != -1) {
               final old = jobs[idx];
-              jobs[idx] = JobModel(
-                jobId: old.jobId,
-                title: old.title,
-                model: old.model,
-                outputType: old.outputType,
+              jobs[idx] = old.copyWith(
                 downloadUrl: downloadUrl,
-                status: old.status,
-                createdAt: old.createdAt,
-                inputImagePath: old.inputImagePath,
-                localFilePath: old.localFilePath,
-                variations: old.variations,
-                variationResults: old.variationResults,
-                allCompleted: old.allCompleted,
-                enhancedPrompt: old.enhancedPrompt,
-                promptEnhanced: old.promptEnhanced,
-                originalPrompt: old.originalPrompt,
               );
               debugPrint("✅ Got download URL for $jobId");
             }
@@ -589,7 +594,13 @@ class PollingService {
       // 🧩 Only refresh 'processing' jobs (apply age filter only for background polling)
       final processingJobs = list.where((job) {
         final status = (job["status"] ?? "").toString().toLowerCase();
-        if (status != "processing") return false;
+        if (status != "processing" &&
+            status != "reviewing" &&
+            status != "provisioning" &&
+            status != "queued" &&
+            status != "running" &&
+            status != "stitching" &&
+            status != "uploading") return false;
 
         // Skip age check for manual/force refresh
         if (forceRefresh) return true;
@@ -642,18 +653,50 @@ class PollingService {
         return;
       }
 
+      final outputTypeById = <String, String>{};
+      for (final job in processingJobs) {
+        final id = job["jobId"] as String?;
+        if (id != null) {
+          outputTypeById[id] = (job["outputType"] ?? job["output_type"] ?? '').toString();
+        }
+      }
+
       debugPrint("🌐 Fetching ${jobsToFetch.length} jobs IN PARALLEL...");
 
       // 🚀 PARALLEL API CALLS - fetch all job statuses concurrently
       final statusFutures = jobsToFetch.map((jobId) async {
         try {
-          final url = "$baseUrl/job_status?job_id=$jobId";
+          final isStudio = outputTypeById[jobId] == 'studio_video';
+          final url = isStudio
+              ? "$baseUrl/studio/jobs/$jobId"
+              : "$baseUrl/job_status?job_id=$jobId";
           final resp = await http
               .get(Uri.parse(url), headers: headers)
               .timeout(const Duration(seconds: 15));
           
           if (resp.statusCode == 200) {
-            return (jobId, jsonDecode(resp.body) as Map<String, dynamic>, true);
+            final body = jsonDecode(resp.body) as Map<String, dynamic>;
+            if (isStudio) {
+              var st = (body["status"] ?? "").toString().toLowerCase();
+              if (st == "done") st = "completed";
+              if (st == "review") st = "reviewing";
+              body["status"] = st;
+              if (st == "completed") {
+                try {
+                  final resultResp = await http
+                      .get(
+                        Uri.parse("$baseUrl/studio/jobs/$jobId/result"),
+                        headers: headers,
+                      )
+                      .timeout(const Duration(seconds: 15));
+                  if (resultResp.statusCode == 200) {
+                    final result = jsonDecode(resultResp.body) as Map<String, dynamic>;
+                    body["download_url"] = result["url"];
+                  }
+                } catch (_) {}
+              }
+            }
+            return (jobId, body, true);
           }
           return (jobId, <String, dynamic>{}, false);
         } catch (e) {
@@ -673,7 +716,17 @@ class PollingService {
         if (!success) continue;
         
         String status = (data["status"] ?? "").toString().toLowerCase();
-        const allowedStatuses = ["processing", "completed", "failed"];
+        const allowedStatuses = [
+          "processing",
+          "completed",
+          "failed",
+          "reviewing",
+          "provisioning",
+          "queued",
+          "running",
+          "stitching",
+          "uploading",
+        ];
         if (!allowedStatuses.contains(status)) {
           status = "processing";
         }
@@ -714,6 +767,12 @@ class PollingService {
           final bool allCompleted = data['all_completed'] ?? (status == 'completed' || status == 'failed');
           final String? enhancedPrompt = data['enhanced_prompt'];
           final bool promptEnhanced = data['prompt_enhanced'] ?? false;
+          final int? estimatedWaitSeconds = (data['estimated_wait_seconds'] is num)
+              ? (data['estimated_wait_seconds'] as num).toInt()
+              : null;
+          final int? queuePosition = (data['queue_position'] is num)
+              ? (data['queue_position'] as num).toInt()
+              : null;
           
           // 🛡️ NEVER downgrade terminal status
           String finalStatus = status;
@@ -722,22 +781,16 @@ class PollingService {
             finalStatus = old.status;
           }
 
-          jobs[idx] = JobModel(
-            jobId: old.jobId,
-            title: old.title,
-            model: old.model,
-            outputType: old.outputType,
-            downloadUrl: old.downloadUrl, // Will update below for completed jobs
+          jobs[idx] = old.copyWith(
+            downloadUrl: old.downloadUrl,
             status: finalStatus.isNotEmpty ? finalStatus : old.status,
-            createdAt: old.createdAt,
             inputImagePath: preservedInputPath,
-            localFilePath: old.localFilePath,
-            variations: old.variations,
+            estimatedWaitSeconds: estimatedWaitSeconds ?? old.estimatedWaitSeconds,
+            queuePosition: queuePosition ?? old.queuePosition,
             variationResults: variationResults ?? old.variationResults,
             allCompleted: allCompleted,
             enhancedPrompt: enhancedPrompt ?? old.enhancedPrompt,
             promptEnhanced: promptEnhanced || old.promptEnhanced,
-            originalPrompt: old.originalPrompt,
           );
 
           debugPrint("✅ Job $jobId → $finalStatus");
@@ -770,22 +823,8 @@ class PollingService {
             final idx = jobs.indexWhere((j) => j.jobId == jobId);
             if (idx != -1) {
               final old = jobs[idx];
-              jobs[idx] = JobModel(
-                jobId: old.jobId,
-                title: old.title,
-                model: old.model,
-                outputType: old.outputType,
+              jobs[idx] = old.copyWith(
                 downloadUrl: downloadUrl,
-                status: old.status,
-                createdAt: old.createdAt,
-                inputImagePath: old.inputImagePath,
-                localFilePath: old.localFilePath,
-                variations: old.variations,
-                variationResults: old.variationResults,
-                allCompleted: old.allCompleted,
-                enhancedPrompt: old.enhancedPrompt,
-                promptEnhanced: old.promptEnhanced,
-                originalPrompt: old.originalPrompt,
               );
               debugPrint("✅ Got download URL for $jobId");
             }

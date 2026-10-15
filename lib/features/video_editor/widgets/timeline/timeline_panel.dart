@@ -1,16 +1,16 @@
 // lib/features/video_editor/widgets/timeline/timeline_panel.dart
 
 import 'dart:io';
-import 'dart:ui' show Size;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:pro_video_editor/pro_video_editor.dart';
 
 import '../../models/clip_model.dart';
+import '../../models/effect_model.dart';
 import '../../models/project_model.dart';
+import '../../services/thumbnail_cache_service.dart';
 import '../../state/editor_providers.dart';
 import '../../state/tool_notifier.dart';
 import '../../utils/editor_constants.dart';
@@ -20,6 +20,22 @@ import 'timeline_controls.dart';
 import 'timeline_playhead.dart';
 import 'timeline_ruler.dart';
 import 'timeline_track_row.dart';
+
+/// Source span in the file = timeline duration × speed (constant-speed clips).
+Duration _mediaSourceSpan(Duration timelineDur, double speed) {
+  if (speed <= 0) return timelineDur;
+  return Duration(
+    microseconds: (timelineDur.inMicroseconds * speed).round(),
+  );
+}
+
+/// Timeline duration from a source trim span and speed.
+Duration _mediaTimelineFromSourceSpan(Duration sourceSpan, double speed) {
+  if (speed <= 0) return sourceSpan;
+  return Duration(
+    microseconds: (sourceSpan.inMicroseconds / speed).round(),
+  );
+}
 
 /// The multi-track timeline panel.
 class TimelinePanel extends ConsumerStatefulWidget {
@@ -115,13 +131,22 @@ class _TimelinePanelState extends ConsumerState<TimelinePanel> {
 
                           // Tracks – vertically scrollable
                           Expanded(
-                            child: SingleChildScrollView(
-                              scrollDirection: Axis.vertical,
+                            child: ReorderableListView.builder(
+                              shrinkWrap: true,
                               physics: const ClampingScrollPhysics(),
-                              child: Column(
-                                children: List.generate(project.tracks.length, (i) {
+                              buildDefaultDragHandles: false,
+                              itemCount: project.tracks.length,
+                              onReorder: (oldIndex, newIndex) {
+                                ref
+                                    .read(projectProvider.notifier)
+                                    .reorderTracks(oldIndex, newIndex);
+                              },
+                              itemBuilder: (context, i) {
                                   final track = project.tracks[i];
-                                  return TimelineTrackRow(
+                                  return ReorderableDelayedDragStartListener(
+                                    key: ValueKey(track.id),
+                                    index: i,
+                                    child: TimelineTrackRow(
                                     track: track,
                                     pixelsPerSecond: pps,
                                     scrollOffset: 0,
@@ -143,9 +168,27 @@ class _TimelinePanelState extends ConsumerState<TimelinePanel> {
                                         _handleResizeRight(clipId, dx, pps),
                                     onClipMove: (clipId, dx) =>
                                         _handleClipMove(clipId, dx, pps),
+                                    onToggleVisible: () {
+                                      ref.read(projectProvider.notifier).updateTrack(
+                                            track.id,
+                                            (t) => t.copyWith(isVisible: !t.isVisible),
+                                          );
+                                    },
+                                    onToggleLock: () {
+                                      ref.read(projectProvider.notifier).updateTrack(
+                                            track.id,
+                                            (t) => t.copyWith(isLocked: !t.isLocked),
+                                          );
+                                    },
+                                    onToggleMute: () {
+                                      ref.read(projectProvider.notifier).updateTrack(
+                                            track.id,
+                                            (t) => t.copyWith(isMuted: !t.isMuted),
+                                          );
+                                    },
+                                  ),
                                   );
-                                }),
-                              ),
+                                },
                             ),
                           ),
                         ],
@@ -278,27 +321,36 @@ class _TimelinePanelState extends ConsumerState<TimelinePanel> {
     final project = ref.read(projectProvider);
     if (project == null) return;
     final clip = project.findClipById(clipId);
-    if (clip == null) return;
+    final track = project.findTrackForClip(clipId);
+    if (clip == null || track == null || track.isLocked) return;
 
     final deltaDuration = TimeUtils.pxToDuration(dx.abs(), pps);
-    if (dx > 0) {
-      // Move right
-      ref.read(projectProvider.notifier).updateClip(clipId, (c) {
-        return c.copyWith(startTime: c.startTime + deltaDuration);
-      });
-    } else {
-      // Move left
-      if (clip.startTime >= deltaDuration) {
-        ref.read(projectProvider.notifier).updateClip(clipId, (c) {
-          return c.copyWith(startTime: c.startTime - deltaDuration);
-        });
-      } else {
-        // Clamp to zero
-        ref.read(projectProvider.notifier).updateClip(clipId, (c) {
-          return c.copyWith(startTime: Duration.zero);
-        });
+    var next = dx > 0
+        ? clip.startTime + deltaDuration
+        : (clip.startTime >= deltaDuration
+            ? clip.startTime - deltaDuration
+            : Duration.zero);
+    if (next < Duration.zero) next = Duration.zero;
+
+    final snapUs = TimeUtils.pxToDuration(EditorConstants.snapThresholdPx, pps)
+        .inMicroseconds;
+    final playhead = ref.read(playbackProvider).position;
+    final magnets = <int>[0, playhead.inMicroseconds];
+    for (final c in track.clips) {
+      if (c.id == clipId) continue;
+      magnets.add(c.startTime.inMicroseconds);
+      magnets.add(c.endTime.inMicroseconds);
+    }
+    for (final m in magnets) {
+      if ((next.inMicroseconds - m).abs() <= snapUs) {
+        next = Duration(microseconds: m);
+        break;
       }
     }
+
+    ref.read(projectProvider.notifier).updateClip(clipId, (c) {
+      return c.copyWith(startTime: next);
+    });
   }
 
   void _handleResizeLeft(String clipId, double dx, double pps) {
@@ -308,6 +360,113 @@ class _TimelinePanelState extends ConsumerState<TimelinePanel> {
     if (clip == null) return;
 
     final deltaDuration = TimeUtils.pxToDuration(dx.abs(), pps);
+
+    if (clip is VideoClip && clip.speedEffect.mode == SpeedMode.constant) {
+      final v = clip;
+      final s = v.speedEffect.speed;
+      if (dx > 0) {
+        if (v.duration <= deltaDuration + const Duration(milliseconds: 200)) {
+          return;
+        }
+        final newStart = v.startTime + deltaDuration;
+        final newDur = v.duration - deltaDuration;
+        final newTrimStart = v.trimStart + _mediaSourceSpan(deltaDuration, s);
+        if (newTrimStart >= v.trimEnd) return;
+        ref.read(projectProvider.notifier).updateClip(clipId, (c) {
+          final vc = c as VideoClip;
+          return vc.copyWith(
+            startTime: newStart,
+            duration: newDur,
+            trimStart: newTrimStart,
+          );
+        });
+        return;
+      }
+      if (v.startTime >= deltaDuration) {
+        final newStart = v.startTime - deltaDuration;
+        final newDur = v.duration + deltaDuration;
+        final newTrimStart = v.trimStart - _mediaSourceSpan(deltaDuration, s);
+        ref.read(projectProvider.notifier).updateClip(clipId, (c) {
+          final vc = c as VideoClip;
+          return vc.copyWith(
+            startTime: newStart,
+            duration: newDur,
+            trimStart: newTrimStart < Duration.zero ? Duration.zero : newTrimStart,
+          );
+        });
+        return;
+      }
+    } else if (clip is AudioClip) {
+      final a = clip;
+      if (dx > 0) {
+        if (a.duration <= deltaDuration + const Duration(milliseconds: 200)) {
+          return;
+        }
+        final newStart = a.startTime + deltaDuration;
+        final newDur = a.duration - deltaDuration;
+        final newTrimStart = a.trimStart + deltaDuration;
+        if (newTrimStart >= a.trimEnd) return;
+        ref.read(projectProvider.notifier).updateClip(clipId, (c) {
+          final ac = c as AudioClip;
+          return ac.copyWith(
+            startTime: newStart,
+            duration: newDur,
+            trimStart: newTrimStart,
+          );
+        });
+        return;
+      }
+      if (a.startTime >= deltaDuration) {
+        final newStart = a.startTime - deltaDuration;
+        final newDur = a.duration + deltaDuration;
+        final newTrimStart = a.trimStart - deltaDuration;
+        ref.read(projectProvider.notifier).updateClip(clipId, (c) {
+          final ac = c as AudioClip;
+          return ac.copyWith(
+            startTime: newStart,
+            duration: newDur,
+            trimStart: newTrimStart < Duration.zero ? Duration.zero : newTrimStart,
+          );
+        });
+        return;
+      }
+    } else if (clip is PipClip) {
+      final p = clip;
+      const s = 1.0;
+      if (dx > 0) {
+        if (p.duration <= deltaDuration + const Duration(milliseconds: 200)) {
+          return;
+        }
+        final newStart = p.startTime + deltaDuration;
+        final newDur = p.duration - deltaDuration;
+        final newTrimStart = p.trimStart + _mediaSourceSpan(deltaDuration, s);
+        if (newTrimStart >= p.trimEnd) return;
+        ref.read(projectProvider.notifier).updateClip(clipId, (c) {
+          final pc = c as PipClip;
+          return pc.copyWith(
+            startTime: newStart,
+            duration: newDur,
+            trimStart: newTrimStart,
+          );
+        });
+        return;
+      }
+      if (p.startTime >= deltaDuration) {
+        final newStart = p.startTime - deltaDuration;
+        final newDur = p.duration + deltaDuration;
+        final newTrimStart = p.trimStart - _mediaSourceSpan(deltaDuration, s);
+        ref.read(projectProvider.notifier).updateClip(clipId, (c) {
+          final pc = c as PipClip;
+          return pc.copyWith(
+            startTime: newStart,
+            duration: newDur,
+            trimStart: newTrimStart < Duration.zero ? Duration.zero : newTrimStart,
+          );
+        });
+        return;
+      }
+    }
+
     if (dx > 0) {
       // Shrink from left
       if (clip.duration > deltaDuration + const Duration(milliseconds: 200)) {
@@ -338,6 +497,100 @@ class _TimelinePanelState extends ConsumerState<TimelinePanel> {
     if (clip == null) return;
 
     final deltaDuration = TimeUtils.pxToDuration(dx.abs(), pps);
+
+    if (clip is VideoClip && clip.speedEffect.mode == SpeedMode.constant) {
+      final v = clip;
+      final s = v.speedEffect.speed;
+      if (dx > 0) {
+        final newDur = v.duration + deltaDuration;
+        final newSpan = _mediaSourceSpan(newDur, s);
+        var newTrimEnd = v.trimStart + newSpan;
+        if (newTrimEnd > v.originalDuration) {
+          newTrimEnd = v.originalDuration;
+        }
+        if (newTrimEnd <= v.trimStart) return;
+        final adjustedDur =
+            _mediaTimelineFromSourceSpan(newTrimEnd - v.trimStart, s);
+        ref.read(projectProvider.notifier).updateClip(clipId, (c) {
+          final vc = c as VideoClip;
+          return vc.copyWith(duration: adjustedDur, trimEnd: newTrimEnd);
+        });
+        return;
+      }
+      if (v.duration > deltaDuration + const Duration(milliseconds: 200)) {
+        final newDur = v.duration - deltaDuration;
+        final newSpan = _mediaSourceSpan(newDur, s);
+        final newTrimEnd = v.trimStart + newSpan;
+        if (newTrimEnd <= v.trimStart) return;
+        ref.read(projectProvider.notifier).updateClip(clipId, (c) {
+          final vc = c as VideoClip;
+          return vc.copyWith(duration: newDur, trimEnd: newTrimEnd);
+        });
+        return;
+      }
+      return;
+    } else if (clip is AudioClip) {
+      final a = clip;
+      if (dx > 0) {
+        final newDur = a.duration + deltaDuration;
+        var newTrimEnd = a.trimStart + newDur;
+        if (newTrimEnd > a.originalDuration) {
+          newTrimEnd = a.originalDuration;
+        }
+        if (newTrimEnd <= a.trimStart) return;
+        ref.read(projectProvider.notifier).updateClip(clipId, (c) {
+          final ac = c as AudioClip;
+          return ac.copyWith(
+            duration: newTrimEnd - ac.trimStart,
+            trimEnd: newTrimEnd,
+          );
+        });
+        return;
+      }
+      if (a.duration > deltaDuration + const Duration(milliseconds: 200)) {
+        final newDur = a.duration - deltaDuration;
+        final newTrimEnd = a.trimStart + newDur;
+        if (newTrimEnd <= a.trimStart) return;
+        ref.read(projectProvider.notifier).updateClip(clipId, (c) {
+          final ac = c as AudioClip;
+          return ac.copyWith(duration: newDur, trimEnd: newTrimEnd);
+        });
+        return;
+      }
+      return;
+    } else if (clip is PipClip) {
+      final p = clip;
+      const s = 1.0;
+      if (dx > 0) {
+        final newDur = p.duration + deltaDuration;
+        final newSpan = _mediaSourceSpan(newDur, s);
+        var newTrimEnd = p.trimStart + newSpan;
+        if (newTrimEnd > p.originalDuration) {
+          newTrimEnd = p.originalDuration;
+        }
+        if (newTrimEnd <= p.trimStart) return;
+        final adjustedDur =
+            _mediaTimelineFromSourceSpan(newTrimEnd - p.trimStart, s);
+        ref.read(projectProvider.notifier).updateClip(clipId, (c) {
+          final pc = c as PipClip;
+          return pc.copyWith(duration: adjustedDur, trimEnd: newTrimEnd);
+        });
+        return;
+      }
+      if (p.duration > deltaDuration + const Duration(milliseconds: 200)) {
+        final newDur = p.duration - deltaDuration;
+        final newSpan = _mediaSourceSpan(newDur, s);
+        final newTrimEnd = p.trimStart + newSpan;
+        if (newTrimEnd <= p.trimStart) return;
+        ref.read(projectProvider.notifier).updateClip(clipId, (c) {
+          final pc = c as PipClip;
+          return pc.copyWith(duration: newDur, trimEnd: newTrimEnd);
+        });
+        return;
+      }
+      return;
+    }
+
     if (dx > 0) {
       // Expand to right
       ref.read(projectProvider.notifier).updateClip(clipId, (c) {
@@ -552,16 +805,7 @@ class _TimelinePanelState extends ConsumerState<TimelinePanel> {
   /// Generate thumbnails for a newly added video clip.
   Future<void> _generateThumbnailsForClip(File file, Duration duration, String clipId) async {
     try {
-      final video = EditorVideo.file(file);
-      final thumbs = await ProVideoEditor.instance.getKeyFrames(
-        KeyFramesConfigs(
-          video: video,
-          outputSize: const Size.square(48),
-          boxFit: ThumbnailBoxFit.cover,
-          maxOutputFrames: 10,
-          outputFormat: ThumbnailFormat.jpeg,
-        ),
-      );
+      final thumbs = await ThumbnailCacheService.generateKeyFramesForFile(file);
       if (thumbs.isNotEmpty && mounted) {
         ref.read(projectProvider.notifier).updateClip(
               clipId,

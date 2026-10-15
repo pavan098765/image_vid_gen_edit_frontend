@@ -2,7 +2,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 /// OutpaintCanvasPage allows users to position their image within a canvas
 /// for outpainting/expanding. Supports both fixed aspect ratios and custom mode.

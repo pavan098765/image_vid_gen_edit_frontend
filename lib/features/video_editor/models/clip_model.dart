@@ -91,6 +91,19 @@ class VideoClip extends Clip {
   /// Cached thumbnail images for the timeline strip.
   final List<Uint8List>? thumbnails;
 
+  /// Play this clip backwards.
+  final bool reverse;
+
+  /// 90-degree turns clockwise (0–3).
+  final int rotateQuarterTurns;
+
+  /// Normalized crop rectangle in source space, or null for the full frame.
+  final Rect? cropNorm;
+
+  final VideoLook look;
+
+  final ChromaSettings chroma;
+
   const VideoClip({
     required super.id,
     required super.startTime,
@@ -108,6 +121,11 @@ class VideoClip extends Clip {
     this.volume = 1.0,
     this.isMuted = false,
     this.thumbnails,
+    this.reverse = false,
+    this.rotateQuarterTurns = 0,
+    this.cropNorm,
+    this.look = VideoLook.clean,
+    this.chroma = const ChromaSettings(),
   });
 
   @override
@@ -127,6 +145,12 @@ class VideoClip extends Clip {
     double? volume,
     bool? isMuted,
     List<Uint8List>? thumbnails,
+    bool? reverse,
+    int? rotateQuarterTurns,
+    Rect? cropNorm,
+    bool clearCrop = false,
+    VideoLook? look,
+    ChromaSettings? chroma,
   }) {
     return VideoClip(
       id: id,
@@ -145,6 +169,11 @@ class VideoClip extends Clip {
       volume: volume ?? this.volume,
       isMuted: isMuted ?? this.isMuted,
       thumbnails: thumbnails ?? this.thumbnails,
+      reverse: reverse ?? this.reverse,
+      rotateQuarterTurns: rotateQuarterTurns ?? this.rotateQuarterTurns,
+      cropNorm: clearCrop ? null : (cropNorm ?? this.cropNorm),
+      look: look ?? this.look,
+      chroma: chroma ?? this.chroma,
     );
   }
 }
@@ -184,6 +213,8 @@ class AudioClip extends Clip {
   /// Display name (file name).
   final String name;
 
+  final VoiceEq voiceEq;
+
   const AudioClip({
     required super.id,
     required super.startTime,
@@ -199,6 +230,7 @@ class AudioClip extends Clip {
     this.fadeOut = Duration.zero,
     this.waveform,
     this.name = '',
+    this.voiceEq = VoiceEq.none,
   });
 
   @override
@@ -216,6 +248,7 @@ class AudioClip extends Clip {
     Duration? fadeOut,
     List<double>? waveform,
     String? name,
+    VoiceEq? voiceEq,
   }) {
     return AudioClip(
       id: id,
@@ -232,6 +265,7 @@ class AudioClip extends Clip {
       fadeOut: fadeOut ?? this.fadeOut,
       waveform: waveform ?? this.waveform,
       name: name ?? this.name,
+      voiceEq: voiceEq ?? this.voiceEq,
     );
   }
 }

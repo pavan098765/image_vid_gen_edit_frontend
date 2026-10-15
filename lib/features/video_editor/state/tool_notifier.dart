@@ -15,6 +15,8 @@ enum EditorTool {
   pip,
   export,
   keyframe,
+  more,
+  chroma,
 }
 
 extension EditorToolX on EditorTool {
@@ -42,6 +44,10 @@ extension EditorToolX on EditorTool {
         return 'Export';
       case EditorTool.keyframe:
         return 'Animate';
+      case EditorTool.more:
+        return 'More';
+      case EditorTool.chroma:
+        return 'Key';
     }
   }
 
@@ -69,6 +75,10 @@ extension EditorToolX on EditorTool {
         return 'download';
       case EditorTool.keyframe:
         return 'key';
+      case EditorTool.more:
+        return 'more';
+      case EditorTool.chroma:
+        return 'aperture';
     }
   }
 }

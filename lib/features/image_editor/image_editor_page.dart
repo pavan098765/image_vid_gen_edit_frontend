@@ -10,17 +10,40 @@ import 'package:kala_ai_create_images_videos_with_ai/core/services/ad_service.da
 import 'package:kala_ai_create_images_videos_with_ai/core/services/file_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_button.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/media_source_picker_sheet.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/themed_native_ad.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:material_ui/material_ui.dart' as mui;
 import 'package:pro_image_editor/pro_image_editor.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new/return_code.dart';
+import 'package:kala_ai_create_images_videos_with_ai/features/image_editor/image_encode.dart';
+import 'package:kala_ai_create_images_videos_with_ai/features/image_editor/image_history_store.dart';
+import 'package:kala_ai_create_images_videos_with_ai/features/image_editor/image_layer_list_sheet.dart';
+import 'package:kala_ai_create_images_videos_with_ai/features/image_editor/image_text_style_store.dart';
+import 'package:kala_ai_create_images_videos_with_ai/features/image_editor/kala_image_editor_configs.dart';
+import 'package:kala_ai_create_images_videos_with_ai/features/video_editor/video_editor_page.dart';
+
+enum ImageEditorInitialTool { none, text, crop, sticker }
 
 class EditorPage extends StatefulWidget {
   /// Whether to show the AppBar. Set to false when nested in MediaEditorPage.
   final bool showAppBar;
-  
-  const EditorPage({super.key, this.showAppBar = true});
+  final File? initialImage;
+  final File? stickerImage;
+  final ImageEditorInitialTool initialTool;
+  final String? historyId;
+
+  const EditorPage({
+    super.key,
+    this.showAppBar = true,
+    this.initialImage,
+    this.stickerImage,
+    this.initialTool = ImageEditorInitialTool.none,
+    this.historyId,
+  });
 
   @override
   State<EditorPage> createState() => _EditorPageState();
@@ -38,7 +61,18 @@ class _EditorPageState extends State<EditorPage> {
   /// GlobalKey to access ProImageEditor state for undo/redo/done
   final _editorKey = GlobalKey<ProImageEditorState>();
 
-  late final ProImageEditorConfigs _configs = const ProImageEditorConfigs();
+  ImportStateHistory? _importHistory;
+  bool _openedInitialTool = false;
+  bool _placedSticker = false;
+  late String _historyId;
+  Uint8List? _originalBytes;
+  bool _holdingBeforeAfter = false;
+  bool _historyReady = false;
+  String _frameGuide = 'off';
+  ImageSaveFormat _saveFormat = ImageSaveFormat.jpeg;
+  int _maxEdge = 0;
+  mui.TextStyle? _savedTextStyle;
+  Timer? _holdTimer;
 
   late final ProImageEditorCallbacks _callbacks = ProImageEditorCallbacks(
     onImageEditingComplete: (bytes) async {
@@ -46,20 +80,160 @@ class _EditorPageState extends State<EditorPage> {
     },
     onCloseEditor: (_) {}, // ✅ keep minimal
   );
-  
+
   @override
   void initState() {
     super.initState();
     // Listen for ad-free status changes to hide/show native ads
     isAdFreeNotifier.addListener(_onAdFreeStatusChanged);
+    _historyId = widget.historyId ??
+        ImageHistoryStore.historyIdFor(image: widget.initialImage);
+    _historyReady = widget.initialImage == null;
+    ImageTextStyleStore.load().then((style) {
+      if (!mounted) return;
+      setState(() {
+        _savedTextStyle = mui.TextStyle(
+          fontFamily: style.family,
+          fontSize: style.size,
+          color: mui.Color(style.color.toARGB32()),
+        );
+      });
+    });
+    final initial = widget.initialImage;
+    if (initial != null && initial.existsSync()) {
+      _selectedImage = initial;
+      _originalBytes = initial.readAsBytesSync();
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        _importHistory = await ImageHistoryStore.load(
+          _historyId,
+          widgetLoader: ImageHistoryStore.widgetLoader,
+        );
+        if (mounted) {
+          setState(() => _historyReady = true);
+          _openRequestedToolOnce();
+        }
+      });
+    }
   }
-  
+
+  Future<void> _persistHistory() async {
+    final state = _editorKey.currentState;
+    if (state == null) return;
+    try {
+      final hist = await state.exportStateHistory();
+      final json = await hist.toJson();
+      await ImageHistoryStore.save(_historyId, json);
+    } catch (e) {
+      debugPrint('Image editor history save failed: $e');
+    }
+  }
+
+  void _openRequestedToolOnce() {
+    if (_openedInitialTool) return;
+    _openedInitialTool = true;
+    final state = _editorKey.currentState;
+    if (state == null) return;
+    switch (widget.initialTool) {
+      case ImageEditorInitialTool.text:
+        state.openTextEditor();
+        break;
+      case ImageEditorInitialTool.crop:
+        state.openCropRotateEditor();
+        break;
+      case ImageEditorInitialTool.sticker:
+        state.openStickerEditor();
+        break;
+      case ImageEditorInitialTool.none:
+        break;
+    }
+    _placeStickerIfNeeded();
+  }
+
+  void _placeStickerIfNeeded() {
+    if (_placedSticker) return;
+    final sticker = widget.stickerImage;
+    final state = _editorKey.currentState;
+    if (sticker == null || !sticker.existsSync() || state == null) return;
+    _placedSticker = true;
+    state.addLayer(
+      WidgetLayer(
+        widget: Image.file(sticker, fit: BoxFit.contain),
+        exportConfigs: WidgetLayerExportConfigs(id: sticker.path),
+      ),
+    );
+  }
+
   @override
   void dispose() {
+    _holdTimer?.cancel();
     isAdFreeNotifier.removeListener(_onAdFreeStatusChanged);
     super.dispose();
   }
-  
+
+  Future<bool?> _pickSaveOptions() async {
+    return showModalBottomSheet<bool>(
+      context: context,
+      builder: (ctx) {
+        var format = _saveFormat;
+        var edge = _maxEdge;
+        return StatefulBuilder(builder: (ctx, setLocal) {
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Save format',
+                      style: TextStyle(fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      for (final f in ImageSaveFormat.values)
+                        ChoiceChip(
+                          label: Text(f.name.toUpperCase()),
+                          selected: format == f,
+                          onSelected: (_) => setLocal(() => format = f),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  const Text('Max edge'),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      for (final e in const [0, 1080, 1440, 2048])
+                        ChoiceChip(
+                          label: Text(e == 0 ? 'Original' : '$e'),
+                          selected: edge == e,
+                          onSelected: (_) => setLocal(() => edge = e),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: FilledButton(
+                      onPressed: () {
+                        setState(() {
+                          _saveFormat = format;
+                          _maxEdge = edge;
+                        });
+                        Navigator.pop(ctx, true);
+                      },
+                      child: const Text('Save'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        });
+      },
+    );
+  }
+
   void _onAdFreeStatusChanged() {
     // Rebuild to hide/show native ads when ad-free status changes
     if (mounted) setState(() {});
@@ -136,10 +310,23 @@ class _EditorPageState extends State<EditorPage> {
       }
 
       if (!mounted) return;
+      _historyId = ImageHistoryStore.historyIdFor(image: safeFile);
+      _originalBytes = await safeFile.readAsBytes();
+      _importHistory = await ImageHistoryStore.load(
+        _historyId,
+        widgetLoader: ImageHistoryStore.widgetLoader,
+      );
+      if (!mounted) return;
       setState(() {
         _selectedImage = safeFile;
         _exportedImage = null;
         _lastEditCompleteAt = null;
+        _openedInitialTool = false;
+        _placedSticker = false;
+        _historyReady = true;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _openRequestedToolOnce();
       });
 
       debugPrint('✅ Image selected safely: ${safeFile.path}');
@@ -153,163 +340,13 @@ class _EditorPageState extends State<EditorPage> {
     }
   }
 
-  Future<ImageSource?> _showSourcePickerSheet() async {
-    final cs = Theme.of(context).colorScheme;
-
-    return showModalBottomSheet<ImageSource>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (_) {
-        return Container(
-          decoration: BoxDecoration(
-            color: cs.surface,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.2),
-                blurRadius: 20,
-                offset: const Offset(0, -4),
-              ),
-            ],
-          ),
-          child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Handle bar
-                  Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: cs.outlineVariant.withOpacity(0.5),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  
-                  // Title
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: cs.primary.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Icon(
-                          LucideIcons.imagePlus,
-                          color: cs.primary,
-                          size: 22,
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Text(
-                        'Choose Image Source',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                          color: cs.onSurface,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  
-                  // Options
-                  Row(
-                    children: [
-                      // Gallery option
-                      Expanded(
-                        child: _buildPickerOption(
-                          icon: LucideIcons.image,
-                          label: 'Gallery',
-                          sublabel: 'Choose from photos',
-                          color: cs.primary,
-                          onTap: () => Navigator.pop(context, ImageSource.gallery),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      
-                      // Camera option
-                      Expanded(
-                        child: _buildPickerOption(
-                          icon: LucideIcons.camera,
-                          label: 'Camera',
-                          sublabel: 'Take a new photo',
-                          color: cs.secondary,
-                          onTap: () => Navigator.pop(context, ImageSource.camera),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  // Picker option card for bottom sheet
-  Widget _buildPickerOption({
-    required IconData icon,
-    required String label,
-    required String sublabel,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    final cs = Theme.of(context).colorScheme;
-    return Material(
-      color: cs.surfaceContainerHigh,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: cs.outlineVariant.withOpacity(0.3),
-            ),
-          ),
-          child: Column(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.12),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, size: 28, color: color),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                label,
-                style: TextStyle(
-                  color: cs.onSurface,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                sublabel,
-                style: TextStyle(
-                  color: cs.onSurfaceVariant.withOpacity(0.7),
-                  fontSize: 12,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
-      ),
+  Future<ImageSource?> _showSourcePickerSheet() {
+    return showMediaSourcePickerBottomSheet(
+      context,
+      title: 'Choose Image Source',
+      titleIcon: LucideIcons.imagePlus,
+      gallerySublabel: 'Choose from photos',
+      cameraSublabel: 'Take a new photo',
     );
   }
 
@@ -324,13 +361,13 @@ class _EditorPageState extends State<EditorPage> {
   Future<bool> _handleSystemBack() async {
     // Show confirmation dialog when pressing back
     final ok = await _confirmExitApp();
-      if (ok) {
+    if (ok) {
       // User confirmed exit - actually exit the app
       SystemNavigator.pop();
-      }
-    return false; // Always prevent default back navigation
     }
-  
+    return false; // Always prevent default back navigation
+  }
+
   Future<bool> _confirmExitApp() async {
     return (await showDialog<bool>(
           context: context,
@@ -349,15 +386,18 @@ class _EditorPageState extends State<EditorPage> {
       );
       return;
     }
-    
+
     if (_isSaving) return;
-    
+
+    final options = await _pickSaveOptions();
+    if (options == null) return;
+
     setState(() => _isSaving = true);
-    
+
     try {
       // Show rewarded ad before allowing export
       final adCompleted = await _showExportAd();
-      
+
       if (!adCompleted) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -366,13 +406,15 @@ class _EditorPageState extends State<EditorPage> {
                 children: [
                   Icon(LucideIcons.alertCircle, color: Colors.white, size: 20),
                   SizedBox(width: 12),
-                  Expanded(child: Text('Please watch the ad to save your image')),
+                  Expanded(
+                      child: Text('Please watch the ad to save your image')),
                 ],
               ),
               backgroundColor: Colors.orange.shade700,
               behavior: SnackBarBehavior.floating,
               margin: const EdgeInsets.all(16),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
             ),
           );
         }
@@ -380,7 +422,22 @@ class _EditorPageState extends State<EditorPage> {
       }
 
       // Ad completed - proceed with save
-      final savedPath = await FileService.saveFile(context, _exportedImage!);
+      final encoded = encodeEditedImage(
+        _exportedImage!,
+        format: _saveFormat,
+        maxEdge: _maxEdge,
+      );
+      final savedPath = await FileService.saveFile(
+        context,
+        encoded,
+        extension: extensionFor(_saveFormat),
+      );
+      if (savedPath != null) {
+        await ImageHistoryStore.copyTo(
+          _historyId,
+          ImageHistoryStore.historyIdFor(image: File(savedPath)),
+        );
+      }
       if (savedPath != null) {
         debugPrint('✅ Image saved at: $savedPath');
       }
@@ -390,16 +447,43 @@ class _EditorPageState extends State<EditorPage> {
       }
     }
   }
-  
+
+  Future<void> _saveAsClip() async {
+    final bytes = _exportedImage;
+    if (bytes == null) return;
+    final dir = await getTemporaryDirectory();
+    final png = File('${dir.path}/still_${DateTime.now().millisecondsSinceEpoch}.png');
+    await png.writeAsBytes(encodeEditedImage(bytes, format: ImageSaveFormat.png));
+    final out = '${dir.path}/clip_${DateTime.now().millisecondsSinceEpoch}.mp4';
+    final session = await FFmpegKit.execute(
+      '-y -loop 1 -t 4 -i "${png.path}" -vf scale=trunc(iw/2)*2:trunc(ih/2)*2 -c:v libx264 -pix_fmt yuv420p "$out"',
+    );
+    final code = await session.getReturnCode();
+    if (!ReturnCode.isSuccess(code) || !File(out).existsSync()) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not make a clip from this photo.')),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => VideoEditorPage(initialVideoPath: out),
+      ),
+    );
+  }
+
   /// Shows a rewarded ad for export gate
   /// Returns true if ad was completed (or skipped for ad-free users), false otherwise
   Future<bool> _showExportAd() async {
-    // Skip ad entirely if user has purchased Remove Ads
-    if (!shouldShowAds()) {
-      debugPrint('✅ User is ad-free, skipping export ad');
+    if (!shouldRequireHeavyTierRewardedAd()) {
+      debugPrint('✅ User is not on heavy ad tier, skipping export ad');
       return true;
     }
-    
+
     // Pre-load ad if not ready
     if (!_adService.isAdReadyNotifier.value) {
       // Show loading indicator
@@ -411,7 +495,8 @@ class _EditorPageState extends State<EditorPage> {
                 SizedBox(
                   width: 20,
                   height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: Colors.white),
                 ),
                 SizedBox(width: 12),
                 Text('Loading ad...'),
@@ -421,27 +506,27 @@ class _EditorPageState extends State<EditorPage> {
           ),
         );
       }
-      
+
       await _adService.loadRewardedAd();
-      
+
       // Wait for ad to load (with timeout)
       for (int i = 0; i < 10; i++) {
         if (_adService.isAdReadyNotifier.value) break;
         await Future.delayed(const Duration(milliseconds: 500));
       }
-      
+
       // Clear the loading snackbar
       if (mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
       }
-      
+
       if (!_adService.isAdReadyNotifier.value) {
         // Ad failed to load - allow export anyway (better UX)
         debugPrint('⚠️ Ad failed to load, allowing export anyway');
         return true;
       }
     }
-    
+
     // Show the ad
     return await _adService.showAdForFeatureGate();
   }
@@ -455,6 +540,32 @@ class _EditorPageState extends State<EditorPage> {
             ? AppBar(
                 title: const KalaLogoWithIcon(logoHeight: 30, fontSize: 22),
                 actions: [
+                  if (_selectedImage != null)
+                    PopupMenuButton<String>(
+                      tooltip: 'Frame',
+                      icon: const Icon(Icons.crop_free),
+                      onSelected: (id) => setState(() => _frameGuide = id),
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(value: 'off', child: Text('No frame')),
+                        PopupMenuItem(value: '9:16', child: Text('Story 9:16')),
+                        PopupMenuItem(value: '4:5', child: Text('4:5')),
+                        PopupMenuItem(value: '1:1', child: Text('Square 1:1')),
+                      ],
+                    ),
+                  if (_selectedImage != null)
+                    IconButton(
+                      icon: const Icon(Icons.layers_outlined),
+                      tooltip: 'Layers',
+                      onPressed: () =>
+                          showImageLayerListSheet(context, _editorKey),
+                    ),
+                  if (_selectedImage != null)
+                    IconButton(
+                      icon: const Icon(Icons.blur_on),
+                      tooltip: 'Hide',
+                      onPressed: () =>
+                          _editorKey.currentState?.openPaintEditor(),
+                    ),
                   if (_selectedImage != null)
                     IconButton(
                       icon: const Icon(Icons.photo_library_outlined),
@@ -483,15 +594,43 @@ class _EditorPageState extends State<EditorPage> {
           children: [
             if (_selectedImage == null)
               _buildEmptyStateWithAd(context)
+            else if (!_historyReady && widget.initialImage != null)
+              const Center(child: CircularProgressIndicator())
             else
-              ProImageEditor.file(
+              Listener(
+                onPointerDown: (_) {
+                  _holdTimer?.cancel();
+                  _holdTimer = Timer(const Duration(milliseconds: 420), () {
+                    if (mounted) {
+                      setState(() => _holdingBeforeAfter = true);
+                    }
+                  });
+                },
+                onPointerUp: (_) {
+                  _holdTimer?.cancel();
+                  setState(() => _holdingBeforeAfter = false);
+                },
+                onPointerCancel: (_) {
+                  _holdTimer?.cancel();
+                  setState(() => _holdingBeforeAfter = false);
+                },
+                child: Stack(
+                  children: [
+                    ProImageEditor.file(
                 _selectedImage!,
                 key: _editorKey,
-                configs: _configs,
+                configs: kalaImageEditorConfigs(
+                  context,
+                  stickerSeed: widget.stickerImage,
+                  initStateHistory: _importHistory,
+                  frameGuides: kalaFrameGuides(_frameGuide),
+                  textStyle: _savedTextStyle,
+                ),
                 callbacks: _callbacks.copyWith(
                   // inside the callbacks.copyWith(...)
                   onImageEditingComplete: (bytes) async {
                     if (!mounted) return;
+                    await _persistHistory();
                     _lastEditCompleteAt = DateTime.now();
 
                     // Keep the timestamp for a short debounce window; then clear it so future closes behave normally.
@@ -500,8 +639,14 @@ class _EditorPageState extends State<EditorPage> {
                     });
 
                     setState(() => _exportedImage = bytes);
+                    await ImageTextStyleStore.save(
+                      family: 'Inter',
+                      size: 24,
+                      color: Colors.white,
+                      background: Colors.transparent,
+                    );
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('✅ Image editing complete')),
+                      const SnackBar(content: Text('Image editing complete')),
                     );
                   },
 
@@ -550,6 +695,13 @@ class _EditorPageState extends State<EditorPage> {
                       debugPrint('❌ User cancelled exit from editor.');
                     }
                   },
+                ),
+              ),
+                    if (_holdingBeforeAfter && _originalBytes != null)
+                      Positioned.fill(
+                        child: Image.memory(_originalBytes!, fit: BoxFit.contain),
+                      ),
+                  ],
                 ),
               ),
             if (_exportedImage != null)
@@ -601,6 +753,20 @@ class _EditorPageState extends State<EditorPage> {
                       onPressed: _pickImage,
                     ),
                     const SizedBox(width: 8),
+                    _buildActionButton(
+                      icon: Icons.layers_outlined,
+                      tooltip: 'Layers',
+                      onPressed: () =>
+                          showImageLayerListSheet(context, _editorKey),
+                    ),
+                    const SizedBox(width: 8),
+                    _buildActionButton(
+                      icon: Icons.blur_on,
+                      tooltip: 'Hide',
+                      onPressed: () =>
+                          _editorKey.currentState?.openPaintEditor(),
+                    ),
+                    const SizedBox(width: 8),
                     // Tick/Done button before editing complete, Save button after
                     if (_exportedImage == null)
                       // Tick/Done button - triggers editing complete
@@ -617,22 +783,36 @@ class _EditorPageState extends State<EditorPage> {
                               width: 40,
                               height: 40,
                               decoration: BoxDecoration(
-                                color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.9),
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .surface
+                                    .withValues(alpha: 0.9),
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: const Center(
                                 child: SizedBox(
                                   width: 20,
                                   height: 20,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
                                 ),
                               ),
                             )
-                          : _buildActionButton(
-                              icon: Icons.save_alt,
-                              tooltip: 'Save Image',
-                              onPressed: _onExportPressed,
-                              isPrimary: true,
+                          : Row(
+                              children: [
+                                _buildActionButton(
+                                  icon: Icons.movie_creation_outlined,
+                                  tooltip: 'Save as clip',
+                                  onPressed: _saveAsClip,
+                                ),
+                                const SizedBox(width: 8),
+                                _buildActionButton(
+                                  icon: Icons.save_alt,
+                                  tooltip: 'Save Image',
+                                  onPressed: _onExportPressed,
+                                  isPrimary: true,
+                                ),
+                              ],
                             ),
                   ],
                 ),
@@ -642,7 +822,7 @@ class _EditorPageState extends State<EditorPage> {
         floatingActionButton: _selectedImage == null
             ? GradientButton(
                 icon: Icons.add_photo_alternate_outlined,
-                label: "Pick Image",
+                label: "Choose a photo",
                 onPressed: _pickImage,
                 variant: ButtonVariant.primary,
                 size: ButtonSize.large,
@@ -662,9 +842,7 @@ class _EditorPageState extends State<EditorPage> {
   }) {
     final cs = Theme.of(context).colorScheme;
     return Material(
-      color: isPrimary 
-          ? cs.primary 
-          : cs.surface.withValues(alpha: 0.9),
+      color: isPrimary ? cs.primary : cs.surface.withValues(alpha: 0.9),
       borderRadius: BorderRadius.circular(10),
       elevation: 2,
       child: InkWell(
@@ -685,8 +863,8 @@ class _EditorPageState extends State<EditorPage> {
   }
 
   Widget _buildEmptyStateWithAd(BuildContext context) {
-    final showAds = shouldShowAds();
-    
+    final showAds = shouldShowNativeBannerAds();
+
     return Column(
       children: [
         // Native ad at top (only if not ad-free)
@@ -741,7 +919,7 @@ class _EditorPageState extends State<EditorPage> {
                 size: 56, color: cs.onSurface.withOpacity(0.38)),
             const SizedBox(height: 12),
             Text(
-              'No image selected.\nTap the button below to choose one to start editing.',
+              'Choose a photo to start.',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: cs.onSurface.withOpacity(0.70),
@@ -868,7 +1046,6 @@ class _ConfirmExitAppDialog extends StatelessWidget {
     );
   }
 }
-
 
 class _ResultPreviewPage extends StatelessWidget {
   final Uint8List imageBytes;

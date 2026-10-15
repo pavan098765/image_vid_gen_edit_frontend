@@ -5,9 +5,10 @@
 // Flow:
 // 1. Call getMediaUploadUrls() to get presigned PUT URLs + R2 keys from the backend
 // 2. PUT raw binary data to each presigned URL
-// 3. Return the R2 keys so the caller can include them in the /submit payload
+// 3. Return the R2 keys so the caller can include them in the /submit payload.
 //
-// On any failure the methods return null so callers can fall back to base64.
+// On failure, methods return null — callers must not submit embedded base64 media;
+// the server rejects raw init_image / video bytes in params.
 
 import 'dart:convert';
 
@@ -27,16 +28,18 @@ class MediaUploadService {
   static const String _baseUrl = "https://genedit.mooo.com";
 
   /// Request [count] presigned PUT URLs for the given [mediaType] ("image" or "video").
-  /// Returns null on failure so the caller can fall back to base64.
+  /// Returns null on failure (caller should abort submit or show an error).
   static Future<List<MediaUploadUrlResult>?> getMediaUploadUrls({
     required int count,
     required String mediaType,
     required String authToken,
+    String? baseUrl,
   }) async {
+    final root = (baseUrl ?? _baseUrl).replaceAll(RegExp(r'/$'), '');
     try {
       final resp = await http
           .post(
-            Uri.parse('$_baseUrl/get_media_upload_urls'),
+            Uri.parse('$root/get_media_upload_urls'),
             headers: {
               'Content-Type': 'application/json',
               'Authorization': 'Bearer $authToken',
@@ -96,8 +99,7 @@ class MediaUploadService {
   ///
   /// 1. Requests presigned URLs from the backend.
   /// 2. PUTs each file in parallel.
-  /// 3. Returns the list of R2 keys on success, or null if any step fails
-  ///    (so the caller can fall back to base64).
+  /// 3. Returns the list of R2 keys on success, or null if any step fails.
   ///
   /// [files] — non-empty list of raw bytes to upload.
   /// [mediaType] — "image" or "video".
@@ -106,6 +108,7 @@ class MediaUploadService {
     required List<Uint8List> files,
     required String mediaType,
     required String authToken,
+    String? baseUrl,
   }) async {
     if (files.isEmpty) return null;
 
@@ -113,6 +116,7 @@ class MediaUploadService {
       count: files.length,
       mediaType: mediaType,
       authToken: authToken,
+      baseUrl: baseUrl,
     );
 
     if (urls == null) return null;
@@ -126,7 +130,7 @@ class MediaUploadService {
     );
 
     if (results.any((ok) => !ok)) {
-      debugPrint('⚠️ R2 batch upload: one or more uploads failed — falling back to base64');
+      debugPrint('⚠️ R2 batch upload: one or more uploads failed');
       return null;
     }
 
@@ -139,6 +143,7 @@ class MediaUploadService {
     required List<Uint8List?> files,
     required String mediaType,
     required String authToken,
+    String? baseUrl,
   }) async {
     // Collect non-null items with their indices
     final nonNullIndices = <int>[];
@@ -159,6 +164,7 @@ class MediaUploadService {
       files: nonNullFiles,
       mediaType: mediaType,
       authToken: authToken,
+      baseUrl: baseUrl,
     );
 
     if (keys == null) return null;
@@ -169,5 +175,59 @@ class MediaUploadService {
       aligned[nonNullIndices[j]] = keys[j];
     }
     return aligned;
+  }
+
+  /// POST `/describe_asset_for_prompt` after the image bytes are on R2 ([inputR2Key]).
+  /// Returns `(prompt, null)` on success, or `(null, errorMessage)` on failure.
+  static Future<(String?, String?)> describeAssetForPrompt({
+    required String baseUrl,
+    required String authToken,
+    required String inputR2Key,
+    String contentType = 'image/jpeg',
+  }) async {
+    final root = baseUrl.replaceAll(RegExp(r'/$'), '');
+    try {
+      final resp = await http
+          .post(
+            Uri.parse('$root/describe_asset_for_prompt'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $authToken',
+            },
+            body: jsonEncode({
+              'input_r2_key': inputR2Key,
+              'media_type': 'image',
+              'content_type': contentType,
+            }),
+          )
+          .timeout(const Duration(seconds: 90));
+
+      if (resp.statusCode != 200) {
+        String? err;
+        try {
+          final m = jsonDecode(resp.body) as Map<String, dynamic>?;
+          final d = m?['detail'];
+          if (d is String) {
+            err = d;
+          } else if (d is List && d.isNotEmpty) {
+            err = d.first.toString();
+          }
+        } catch (_) {
+          err = null;
+        }
+        debugPrint('⚠️ describe_asset_for_prompt: ${resp.statusCode} ${resp.body}');
+        return (null, err ?? 'Auto-prompt failed (${resp.statusCode})');
+      }
+
+      final data = jsonDecode(resp.body) as Map<String, dynamic>?;
+      final p = data?['prompt'] as String?;
+      if (p == null || p.trim().isEmpty) {
+        return (null, 'Empty prompt in response');
+      }
+      return (p.trim(), null);
+    } catch (e) {
+      debugPrint('⚠️ describe_asset_for_prompt error: $e');
+      return (null, 'Network error: $e');
+    }
   }
 }

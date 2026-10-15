@@ -78,6 +78,14 @@ class GemPackConfig {
     this.isPopular = false,
     this.isBestValue = false,
   });
+
+  /// Server [get_credits_for_product]: base packs ≤500 grant base; larger packs +10% (rounded).
+  int get totalCreditsAwarded {
+    if (gems <= 500) return gems;
+    return gems + (gems * 0.1).round();
+  }
+
+  bool get hasServerCreditBonus => gems > 500;
 }
 
 /// All gem packs in order (smallest to largest)

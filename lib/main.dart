@@ -1,11 +1,13 @@
 // lib/main.dart
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:material_ui/material_ui.dart' as material_ui;
 import 'package:kala_ai_create_images_videos_with_ai/core/services/file_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/polling_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/thumbnail_service.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // Firebase imports
@@ -22,6 +24,8 @@ import 'core/services/notification_service.dart';
 import 'core/services/user_service.dart';
 import 'core/services/ad_service.dart';
 import 'core/services/integrity_service.dart';
+import 'core/services/model_cache_service.dart';
+import 'core/services/sale_service.dart';
 
 import 'features/media_editor/media_editor_page.dart';
 import 'features/ai_tools/generic_tool_page.dart';
@@ -166,23 +170,10 @@ Future<void> _reloadJobsToNotifier({bool retryOnEmpty = true}) async {
                                 (prefsJob.downloadUrl != null && prefsJob.downloadUrl != currentJob.downloadUrl);
                 final sourceJob = usePrefs ? prefsJob : currentJob;
                 
-                final mergedJob = JobModel(
-                  jobId: sourceJob.jobId,
-                  title: sourceJob.title,
-                  model: sourceJob.model,
-                  outputType: sourceJob.outputType,
-                  status: sourceJob.status,
-                  downloadUrl: sourceJob.downloadUrl,
-                  createdAt: sourceJob.createdAt,
+                final mergedJob = sourceJob.copyWith(
                   localFilePath: currentJob.localFilePath ?? sourceJob.localFilePath,
                   inputImagePath: currentJob.inputImagePath ?? sourceJob.inputImagePath,
-                  enhancedPrompt: sourceJob.enhancedPrompt,
-                  originalPrompt: sourceJob.originalPrompt,
-                  variations: sourceJob.variations,
-                  variationResults: sourceJob.variationResults,
                 );
-                mergedJob.promptEnhanced = sourceJob.promptEnhanced;
-                mergedJob.allCompleted = sourceJob.allCompleted;
                 mergedJobs.add(mergedJob);
               }
             } else {
@@ -194,23 +185,10 @@ Future<void> _reloadJobsToNotifier({bool retryOnEmpty = true}) async {
                 );
                 
                 // Use prefsJob (has latest status/url) but preserve localFilePath if it exists
-                final mergedJob = JobModel(
-                  jobId: prefsJob.jobId,
-                  title: prefsJob.title,
-                  model: prefsJob.model,
-                  outputType: prefsJob.outputType,
-                  status: prefsJob.status,
-                  downloadUrl: prefsJob.downloadUrl,
-                  createdAt: prefsJob.createdAt,
+                final mergedJob = prefsJob.copyWith(
                   localFilePath: currentJob.localFilePath ?? prefsJob.localFilePath,
                   inputImagePath: currentJob.inputImagePath ?? prefsJob.inputImagePath,
-                  enhancedPrompt: prefsJob.enhancedPrompt,
-                  originalPrompt: prefsJob.originalPrompt,
-                  variations: prefsJob.variations,
-                  variationResults: prefsJob.variationResults,
                 );
-                mergedJob.promptEnhanced = prefsJob.promptEnhanced;
-                mergedJob.allCompleted = prefsJob.allCompleted;
                 mergedJobs.add(mergedJob);
               }
             }
@@ -300,9 +278,21 @@ Future<void> _applyFcmUpdate(Map<String, dynamic> data) async {
     final jobId = (data['job_id'] ?? data['jobId'] ?? '').toString();
     if (jobId.isEmpty) return;
 
-    final status = (data['status'] ?? '').toString();
-    const allowed = ['processing', 'completed', 'failed'];
-    final normalizedStatus = allowed.contains(status.toLowerCase()) ? status.toLowerCase() : 'processing';
+    var status = (data['status'] ?? '').toString().toLowerCase();
+    if (status == 'review') status = 'reviewing';
+    if (status == 'done') status = 'completed';
+    const allowed = [
+      'processing',
+      'completed',
+      'failed',
+      'reviewing',
+      'provisioning',
+      'queued',
+      'running',
+      'stitching',
+      'uploading',
+    ];
+    final normalizedStatus = allowed.contains(status) ? status : 'processing';
     final downloadUrl = (data['download_url'] ?? data['downloadUrl'] ?? '').toString();
     final title = (data['title'] ?? '').toString();
     final model = (data['model'] ?? '').toString();
@@ -348,7 +338,17 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   try {
     final data = message.data;
     final jobId = (data['job_id'] ?? '').toString();
-    const allowed = ['processing', 'completed', 'failed'];
+    const allowed = [
+      'processing',
+      'completed',
+      'failed',
+      'reviewing',
+      'provisioning',
+      'queued',
+      'running',
+      'stitching',
+      'uploading',
+    ];
     final status = (data['status'] ?? '').toString().toLowerCase();
     final normalizedStatus = allowed.contains(status) ? status : 'processing';
 
@@ -605,6 +605,8 @@ Future<void> initializeApp() async {
   await ThumbnailService.instance.init();
   await UserService().initialize();
   await AdService.initialize();
+  unawaited(ModelCacheService.prefetchInpaintModelInBackground());
+  SaleService().start();
   
   // ============================================================
   // AD-FREE STATUS - Requires authentication + server verification
@@ -668,7 +670,17 @@ Future<void> initializeApp() async {
 
     final data = message.data;
     final jobId = (data['job_id'] ?? '').toString();
-    const allowed = ['processing', 'completed', 'failed'];
+    const allowed = [
+      'processing',
+      'completed',
+      'failed',
+      'reviewing',
+      'provisioning',
+      'queued',
+      'running',
+      'stitching',
+      'uploading',
+    ];
 
     final status = (data['status'] ?? '').toString().toLowerCase();
     final normalizedStatus = allowed.contains(status) ? status : 'processing';
@@ -778,7 +790,17 @@ Future<void> initializeApp() async {
     final jobId = (data['job_id'] ?? '').toString();
     if (jobId.isEmpty) return;
 
-    const allowed = ['processing', 'completed', 'failed'];
+    const allowed = [
+      'processing',
+      'completed',
+      'failed',
+      'reviewing',
+      'provisioning',
+      'queued',
+      'running',
+      'stitching',
+      'uploading',
+    ];
     final status = (data['status'] ?? '').toString().toLowerCase();
     final normalizedStatus = allowed.contains(status) ? status : 'processing';
     final downloadUrl = (data['download_url'] ?? data['downloadUrl'] ?? '').toString();
@@ -830,7 +852,17 @@ Future<void> initializeApp() async {
     final jobId = (data['job_id'] ?? '').toString();
     debugPrint("🟣 App launched from notification while killed: job=$jobId");
 
-    const allowed = ['processing', 'completed', 'failed'];
+    const allowed = [
+      'processing',
+      'completed',
+      'failed',
+      'reviewing',
+      'provisioning',
+      'queued',
+      'running',
+      'stitching',
+      'uploading',
+    ];
     final status = (data['status'] ?? '').toString().toLowerCase();
     final normalizedStatus = allowed.contains(status) ? status : 'processing';
     final downloadUrl = (data['download_url'] ?? data['downloadUrl'] ?? '').toString();
@@ -994,6 +1026,9 @@ class _KalaAIAppState extends State<KalaAIApp> {
       builder: (context, themeMode, _) {
         return MaterialApp(
           title: 'Kala AI',
+          localizationsDelegates: [
+            ...material_ui.GlobalMaterialLocalizations.delegates,
+          ],
 
           // Light + Dark theme pair
           theme: AppTheme.modernLight,
