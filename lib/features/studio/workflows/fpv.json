@@ -1,0 +1,17 @@
+{
+  "id": "fpv",
+  "title": "FPV",
+  "blurb": "One camera, the wind, and the road.",
+  "research": "none",
+  "skip": ["research", "angles"],
+  "lengths": [30, 45, 90],
+  "defaultLength": 45,
+  "aspects": ["9:16", "16:9"],
+  "defaultAspect": "16:9",
+  "speech": "none",
+  "music": true,
+  "sfx": 0,
+  "clipAudioIsMain": true,
+  "chainEndFrames": true,
+  "rubric": "No face. One camera height, one lens, one weather, copied onto every card. Each shot is animated from its own keyframe and lands on the next shot's keyframe. Title card is the hook. Wind and motor stay loud."
+}

@@ -37,7 +37,6 @@ import 'package:kala_ai_create_images_videos_with_ai/core/widgets/media_source_p
 import 'package:kala_ai_create_images_videos_with_ai/core/services/sale_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/utils/rife_interpolation.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/result_manager/result_manager_page.dart';
-import 'package:kala_ai_create_images_videos_with_ai/features/studio/studio_page.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/ai_tools/ai_tools_page.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/ai_tools/generic_tool_page.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -764,16 +763,6 @@ class _ExploreAIPageState extends State<ExploreAIPage>
     }).toList();
   }
 
-  List<Map<String, dynamic>> _starterTemplates() {
-    const ids = ['ai_headshot', 'glow_up_photo', 'animate_portrait'];
-    return ids
-        .map((id) => _templates[id])
-        .whereType<Map>()
-        .map((e) => Map<String, dynamic>.from(e))
-        .where(_isTemplateModelEnabled)
-        .toList();
-  }
-
   List<Map<String, dynamic>> _newThisWeekTemplates() {
     final raw = _exploreConfig?['new_this_week'];
     if (raw is! List) return [];
@@ -1188,7 +1177,6 @@ class _ExploreAIPageState extends State<ExploreAIPage>
               return ExplorePersonalSection(
                 jobs: jobs,
                 shortcuts: _userShortcuts,
-                starterTemplates: _starterTemplates(),
                 onSeeAll: () {
                   Navigator.push(
                     context,
@@ -1206,7 +1194,6 @@ class _ExploreAIPageState extends State<ExploreAIPage>
                   );
                 },
                 onOpenShortcut: _openShortcut,
-                onOpenStarter: _showTemplateConfigSheet,
               );
             },
           ),
@@ -1593,6 +1580,17 @@ class _ExploreAIPageState extends State<ExploreAIPage>
     );
   }
 
+  bool _capabilityHasEnabledModel(Map<String, dynamic> capability) {
+    final models = capability['models'];
+    if (models is! List || models.isEmpty) return false;
+    for (final model in models) {
+      if (model is! Map) continue;
+      final enabled = model['enabled'];
+      if (enabled == null || enabled == true) return true;
+    }
+    return false;
+  }
+
   // ============================================================================
   // AI TOOLS PREVIEW SECTION - Collapsible section with all tools
   // ============================================================================
@@ -1626,6 +1624,9 @@ class _ExploreAIPageState extends State<ExploreAIPage>
         allTools.add(capMap);
       }
     }
+
+    // Hidden tools (no enabled model) must not keep an empty grid cell.
+    allTools.removeWhere((tool) => !_capabilityHasEnabledModel(tool));
 
     // Show 6 tools when collapsed (2 rows x 3 cols), all when expanded
     const collapsedCount = 6;
@@ -1952,8 +1953,6 @@ class _ExploreAIPageState extends State<ExploreAIPage>
               const KalaLogoWithIcon(logoHeight: 30, fontSize: 22),
               Row(
                 children: [
-                  _buildStudioButton(cs, isDark),
-                  const SizedBox(width: 8),
                   _buildCreditsChip(cs, isDark),
                   const SizedBox(width: 8),
                   _buildResultsButton(cs, isDark),
@@ -2323,39 +2322,6 @@ class _ExploreAIPageState extends State<ExploreAIPage>
     );
   }
 
-  Widget _buildStudioButton(ColorScheme cs, bool isDark) {
-    return GestureDetector(
-      onTap: () {
-        HapticFeedback.lightImpact();
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const StudioPage()),
-        );
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: cs.secondaryContainer.withValues(alpha: 0.85),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: cs.secondary, width: 1.2),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(LucideIcons.video, color: cs.secondary, size: 16),
-            const SizedBox(width: 6),
-            Text(
-              'Studio',
-              style: TextStyle(
-                color: cs.onSecondaryContainer,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildCreditsChip(ColorScheme cs, bool isDark) {
     return ValueListenableBuilder<int>(
       valueListenable: userCreditsNotifier,
@@ -2363,7 +2329,7 @@ class _ExploreAIPageState extends State<ExploreAIPage>
         return GestureDetector(
           onTap: () {
             HapticFeedback.lightImpact();
-            selectedIndexNotifier.value = 2; // Credits/Store page
+            selectedIndexNotifier.value = AppTabs.credits; // Credits/Store page
           },
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -2969,7 +2935,7 @@ class _ExploreAIPageState extends State<ExploreAIPage>
                       label: 'Get Credits',
                       onPressed: () {
                         Navigator.pop(ctx);
-                        selectedIndexNotifier.value = 2; // Credits/Store page
+                        selectedIndexNotifier.value = AppTabs.credits;
                       },
                       variant: ButtonVariant.primary,
                       size: ButtonSize.large,
@@ -4462,7 +4428,7 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
                       ? null // Disabled because media not selected
                       : () {
                           Navigator.pop(context);
-                          selectedIndexNotifier.value = 2;
+                          selectedIndexNotifier.value = AppTabs.credits;
                         },
               variant: _canGenerate
                   ? ButtonVariant.primary
@@ -5711,7 +5677,7 @@ class _CategoryTemplatesPageState extends State<_CategoryTemplatesPage> {
                     label: 'Get Credits',
                     onPressed: () {
                       Navigator.pop(ctx);
-                      selectedIndexNotifier.value = 2;
+                      selectedIndexNotifier.value = AppTabs.credits;
                     },
                     variant: ButtonVariant.primary,
                     size: ButtonSize.large,

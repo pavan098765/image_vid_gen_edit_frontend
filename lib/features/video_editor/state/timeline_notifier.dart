@@ -27,6 +27,12 @@ class TimelineState {
   /// Whether the user is currently dragging a clip.
   final bool isDraggingClip;
 
+  /// Bumped when an edit should scroll the new clip into view.
+  final int focusGeneration;
+
+  /// Timeline time to reveal when [focusGeneration] changes.
+  final Duration? focusTime;
+
   const TimelineState({
     this.zoom = EditorConstants.defaultZoom,
     this.scrollOffset = 0,
@@ -35,6 +41,8 @@ class TimelineState {
     this.isDraggingPlayhead = false,
     this.isResizingClip = false,
     this.isDraggingClip = false,
+    this.focusGeneration = 0,
+    this.focusTime,
   });
 
   TimelineState copyWith({
@@ -46,6 +54,8 @@ class TimelineState {
     bool? isResizingClip,
     bool? isDraggingClip,
     bool clearSelection = false,
+    int? focusGeneration,
+    Duration? focusTime,
   }) {
     return TimelineState(
       zoom: zoom ?? this.zoom,
@@ -55,6 +65,8 @@ class TimelineState {
       isDraggingPlayhead: isDraggingPlayhead ?? this.isDraggingPlayhead,
       isResizingClip: isResizingClip ?? this.isResizingClip,
       isDraggingClip: isDraggingClip ?? this.isDraggingClip,
+      focusGeneration: focusGeneration ?? this.focusGeneration,
+      focusTime: focusTime ?? this.focusTime,
     );
   }
 
@@ -67,12 +79,22 @@ class TimelineNotifier extends StateNotifier<TimelineState> {
   TimelineNotifier() : super(const TimelineState());
 
   void setZoom(double z) {
-    final clamped = z.clamp(EditorConstants.minZoom, EditorConstants.maxZoom);
+    final clamped =
+        z.clamp(EditorConstants.minZoom, EditorConstants.maxZoom).toDouble();
+    if ((clamped - state.zoom).abs() < 0.0001) return;
     state = state.copyWith(zoom: clamped);
   }
 
-  void zoomIn() => setZoom(state.zoom * 1.25);
-  void zoomOut() => setZoom(state.zoom / 1.25);
+  void zoomIn() => setZoom(state.zoom * 1.6);
+  void zoomOut() => setZoom(state.zoom / 1.6);
+
+  /// Ask the timeline to scroll [time] into view.
+  void focusOn(Duration time) {
+    state = state.copyWith(
+      focusGeneration: state.focusGeneration + 1,
+      focusTime: time,
+    );
+  }
 
   void setScrollOffset(double offset) {
     state = state.copyWith(scrollOffset: offset.clamp(0, double.infinity));

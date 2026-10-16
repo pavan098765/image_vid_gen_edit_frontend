@@ -1,0 +1,16 @@
+{
+  "id": "what_if_diary",
+  "title": "What-if diary",
+  "blurb": "You, one character, three days, then the bill.",
+  "research": "light",
+  "skip": [],
+  "lengths": [45, 60, 90],
+  "defaultLength": 60,
+  "aspects": ["9:16"],
+  "defaultAspect": "9:16",
+  "speech": "narrator",
+  "music": true,
+  "sfx": 0,
+  "clipAudioIsMain": false,
+  "rubric": "Second person. Chapters are Day 1, Day 2, Day 3, and the bill. One locked traveler. The last day changes the stakes."
+}

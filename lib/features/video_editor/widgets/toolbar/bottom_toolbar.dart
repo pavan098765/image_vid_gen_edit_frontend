@@ -1,10 +1,13 @@
 // lib/features/video_editor/widgets/toolbar/bottom_toolbar.dart
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import '../../models/clip_model.dart';
+import '../../models/clip_model.dart' hide Clip;
 import '../../state/editor_providers.dart';
 import '../../state/tool_notifier.dart';
 import '../../utils/editor_constants.dart';
@@ -74,7 +77,7 @@ class BottomToolbar extends ConsumerWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 2),
       child: InkWell(
-        onTap: () => _onToolTap(context, ref, tool),
+        onTap: () => openToolSheet(context, tool),
         borderRadius: BorderRadius.circular(10),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
@@ -111,73 +114,84 @@ class BottomToolbar extends ConsumerWidget {
     );
   }
 
-  void _onToolTap(BuildContext context, WidgetRef ref, EditorTool tool) {
-    openToolSheet(context, ref, tool);
-  }
+  /// Bumped so a sheet that is being replaced does not clear the next one.
+  static int _sheetToken = 0;
+
+  static void invalidateOpenSheet() => _sheetToken++;
 
   /// Opens the modal bottom sheet for the given tool.
-  /// Can be called externally (e.g. from timeline clip tap).
-  static void openToolSheet(BuildContext context, WidgetRef ref, EditorTool tool) {
-    ref.read(toolProvider.notifier).openTool(tool);
+  /// Shares the editor's provider container so edits update the timeline.
+  static void openToolSheet(BuildContext context, EditorTool tool) {
+    final container = ProviderScope.containerOf(context, listen: false);
+    final current = container.read(toolProvider);
+    if (current.isPanelOpen && current.activeTool == tool) return;
 
-    final panel = _buildPanelForTool(tool);
+    final panel = _buildPanelForTool(tool, context);
     if (panel == null) return;
 
-    final cs = Theme.of(context).colorScheme;
+    final token = ++_sheetToken;
+    container.read(toolProvider.notifier).activate(tool);
 
-    showModalBottomSheet(
+    final cs = Theme.of(context).colorScheme;
+    final screenHeight = MediaQuery.sizeOf(context).height;
+    final sheetHeight = _sheetHeightFor(tool, screenHeight);
+
+    showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (_) {
-        return ProviderScope(
-          parent: ProviderScope.containerOf(context),
-          child: Container(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.45,
-            ),
-            decoration: BoxDecoration(
+      useSafeArea: true,
+      builder: (sheetContext) {
+        return UncontrolledProviderScope(
+          container: container,
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: Material(
               color: cs.surface,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.3),
-                  blurRadius: 16,
-                  offset: const Offset(0, -4),
-                ),
-              ],
-            ),
-            child: SafeArea(
-              top: false,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Drag handle
-                  Padding(
-                    padding: const EdgeInsets.only(top: 10, bottom: 4),
-                    child: Container(
+              elevation: 12,
+              shadowColor: Colors.black54,
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(22)),
+              clipBehavior: Clip.antiAlias,
+              child: SizedBox(
+                height: sheetHeight,
+                child: Column(
+                  children: [
+                    const SizedBox(height: 8),
+                    Container(
                       width: 40,
                       height: 4,
                       decoration: BoxDecoration(
-                        color: cs.onSurface.withOpacity(0.2),
+                        color: cs.onSurface.withOpacity(0.22),
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
-                  ),
-                  // Panel content
-                  Flexible(child: panel),
-                ],
+                    const SizedBox(height: 4),
+                    Expanded(child: panel),
+                  ],
+                ),
               ),
             ),
           ),
         );
       },
-    ).then((_) {
-      ref.read(toolProvider.notifier).closePanel();
+    ).whenComplete(() {
+      if (token != _sheetToken) return;
+      container.read(toolProvider.notifier).closePanel();
     });
   }
 
-  static Widget? _buildPanelForTool(EditorTool tool) {
+  static double _sheetHeightFor(EditorTool tool, double screenHeight) {
+    final cap = switch (tool) {
+      EditorTool.more => 300.0,
+      EditorTool.trim => 360.0,
+      EditorTool.export || EditorTool.text || EditorTool.filter => 440.0,
+      _ => 380.0,
+    };
+    return math.min(screenHeight * 0.52, cap);
+  }
+
+  static Widget? _buildPanelForTool(EditorTool tool, BuildContext hostContext) {
     switch (tool) {
       case EditorTool.trim:
         return const TrimPanel();
@@ -202,7 +216,7 @@ class BottomToolbar extends ConsumerWidget {
       case EditorTool.chroma:
         return const ChromaPanel();
       case EditorTool.more:
-        return const _MoreToolsSheet();
+        return _MoreToolsSheet(hostContext: hostContext);
       case EditorTool.none:
         return null;
     }
@@ -210,51 +224,158 @@ class BottomToolbar extends ConsumerWidget {
 }
 
 class _MoreToolsSheet extends ConsumerWidget {
-  const _MoreToolsSheet();
+  final BuildContext hostContext;
+
+  const _MoreToolsSheet({required this.hostContext});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    Widget chip(EditorTool tool, IconData icon) {
-      return ActionChip(
-        avatar: Icon(icon, size: 16),
-        label: Text(tool.label),
-        onPressed: () {
-          Navigator.pop(context);
-          BottomToolbar.openToolSheet(context, ref, tool);
-        },
-      );
-    }
+    final cs = Theme.of(context).colorScheme;
+    final tools = <(EditorTool, IconData, String)>[
+      (EditorTool.filter, LucideIcons.palette, 'Filters'),
+      (EditorTool.speed, LucideIcons.gauge, 'Speed'),
+      (EditorTool.keyframe, LucideIcons.diamond, 'Animate'),
+      (EditorTool.transition, LucideIcons.layers, 'Effects'),
+      (EditorTool.pip, LucideIcons.pictureInPicture2, 'PiP'),
+      (EditorTool.chroma, LucideIcons.aperture, 'Chroma key'),
+    ];
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: [
-          chip(EditorTool.filter, LucideIcons.palette),
-          chip(EditorTool.speed, LucideIcons.gauge),
-          chip(EditorTool.keyframe, LucideIcons.diamond),
-          chip(EditorTool.pip, LucideIcons.pictureInPicture2),
-          chip(EditorTool.chroma, LucideIcons.aperture),
-          ActionChip(
-            avatar: const Icon(LucideIcons.snowflake, size: 16),
-            label: const Text('Freeze'),
-            onPressed: () {
-              Navigator.pop(context);
-              final clip = ref.read(selectedClipProvider);
-              final pos = ref.read(playbackProvider).position;
-              if (clip is VideoClip) {
-                ref.read(projectProvider.notifier).freezeFrame(
-                      clip.id,
-                      pos,
-                      const Duration(seconds: 1),
-                    );
-              }
-            },
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+      children: [
+        Text(
+          'More',
+          style: TextStyle(
+            color: cs.onSurface,
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
           ),
-          chip(EditorTool.transition, LucideIcons.layers),
-        ],
+        ),
+        const SizedBox(height: 12),
+        GridView.count(
+          crossAxisCount: 3,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          mainAxisSpacing: 8,
+          crossAxisSpacing: 8,
+          childAspectRatio: 1.15,
+          children: [
+            for (final tool in tools)
+              _MoreTile(
+                icon: tool.$2,
+                label: tool.$3,
+                color: cs.primary,
+                onTap: () => _openTool(context, tool.$1),
+              ),
+            _MoreTile(
+              icon: LucideIcons.snowflake,
+              label: 'Freeze',
+              color: cs.secondary,
+              onTap: () => _freeze(context, ref),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  void _openTool(BuildContext sheetContext, EditorTool tool) {
+    HapticFeedback.selectionClick();
+    final host = hostContext;
+    BottomToolbar.invalidateOpenSheet();
+    Navigator.of(sheetContext).pop();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!host.mounted) return;
+      BottomToolbar.openToolSheet(host, tool);
+    });
+  }
+
+  Future<void> _freeze(BuildContext context, WidgetRef ref) async {
+    HapticFeedback.selectionClick();
+    final clip = ref.read(selectedClipProvider);
+    final pos = ref.read(playbackProvider).position;
+    if (clip is! VideoClip) {
+      _toast(context, 'Select a video clip first');
+      return;
+    }
+    final inside = pos > clip.startTime + const Duration(milliseconds: 80) &&
+        pos < clip.endTime - const Duration(milliseconds: 80);
+    if (!inside) {
+      _toast(context, 'Move the playhead into the clip, then freeze');
+      return;
+    }
+    await ref.read(projectProvider.notifier).freezeFrame(
+          clip.id,
+          pos,
+          const Duration(seconds: 1),
+        );
+    if (!context.mounted) return;
+    ref.read(timelineProvider.notifier).focusOn(pos);
+    _toast(context, 'Froze 1 second at the playhead');
+    Navigator.of(context).pop();
+  }
+}
+
+class _MoreTile extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _MoreTile({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      color: color.withOpacity(0.1),
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: color.withOpacity(0.22)),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 20, color: color),
+              const SizedBox(height: 6),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: cs.onSurface,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
+}
+
+void _toast(BuildContext context, String message) {
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(milliseconds: 1800),
+      ),
+    );
 }

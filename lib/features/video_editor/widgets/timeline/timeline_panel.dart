@@ -48,11 +48,15 @@ class TimelinePanel extends ConsumerStatefulWidget {
 class _TimelinePanelState extends ConsumerState<TimelinePanel> {
   final ScrollController _scrollController = ScrollController();
   double _lastScale = 1.0;
+  bool _didInitialFit = false;
 
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _fitOnce();
+    });
   }
 
   @override
@@ -68,8 +72,67 @@ class _TimelinePanelState extends ConsumerState<TimelinePanel> {
         .setScrollOffset(_scrollController.offset);
   }
 
+  void _scrollToTime(Duration time) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      final pps = ref.read(timelineProvider).pixelsPerSecond;
+      final x = time.inMilliseconds / 1000.0 * pps;
+      final viewport = _scrollController.position.viewportDimension;
+      final target = (x - viewport * 0.28)
+          .clamp(0.0, _scrollController.position.maxScrollExtent);
+      _scrollController.animateTo(
+        target,
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOutCubic,
+      );
+    });
+  }
+
+  void _fitOnce() {
+    if (_didInitialFit || !_scrollController.hasClients) return;
+    final project = ref.read(projectProvider);
+    if (project == null || project.totalDuration <= Duration.zero) return;
+    if (_scrollController.position.viewportDimension < 80) return;
+    _didInitialFit = true;
+    _zoomToFit();
+  }
+
+  void _zoomToFit() {
+    final project = ref.read(projectProvider);
+    if (project == null || !_scrollController.hasClients) return;
+    final seconds = project.totalDuration.inMilliseconds / 1000.0;
+    if (seconds <= 0) return;
+    final viewport = _scrollController.position.viewportDimension;
+    final available = (viewport - EditorConstants.trackLabelWidth - 32)
+        .clamp(64.0, viewport);
+    final fit = available / (seconds * EditorConstants.pixelsPerSecondBase);
+    ref.read(timelineProvider.notifier).setZoom(fit);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      _scrollController.jumpTo(0);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(timelineProvider.select((s) => s.focusGeneration), (prev, next) {
+      if (prev == next) return;
+      final time = ref.read(timelineProvider).focusTime;
+      if (time == null) return;
+      _scrollToTime(time);
+    });
+    ref.listen<VideoProject?>(projectProvider, (prev, next) {
+      if (next == null) {
+        _didInitialFit = false;
+        return;
+      }
+      if (prev == null || prev.id != next.id) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _fitOnce();
+        });
+      }
+    });
+
     final cs = Theme.of(context).colorScheme;
     final project = ref.watch(projectProvider);
     final tlState = ref.watch(timelineProvider);
@@ -285,6 +348,7 @@ class _TimelinePanelState extends ConsumerState<TimelinePanel> {
             zoom: tlState.zoom,
             onZoomIn: () => ref.read(timelineProvider.notifier).zoomIn(),
             onZoomOut: () => ref.read(timelineProvider.notifier).zoomOut(),
+            onFit: _zoomToFit,
             onAddTrack: () => _showAddTrackSheet(context),
           ),
         ],
@@ -314,7 +378,7 @@ class _TimelinePanelState extends ConsumerState<TimelinePanel> {
     }
 
     // Use the BottomToolbar's static helper to open the sheet
-    BottomToolbar.openToolSheet(context, ref, tool);
+    BottomToolbar.openToolSheet(context, tool);
   }
 
   void _handleClipMove(String clipId, double dx, double pps) {

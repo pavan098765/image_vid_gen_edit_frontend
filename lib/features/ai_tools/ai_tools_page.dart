@@ -307,7 +307,7 @@ class _AiToolsPageState extends State<AiToolsPage>
                 onTap: () {
                   // Pop back to main scaffold, then switch to credits tab
                   Navigator.pop(context);
-                  selectedIndexNotifier.value = 2; // Credits/Store page
+                  selectedIndexNotifier.value = AppTabs.credits;
                 },
                 child: Container(
                   padding:

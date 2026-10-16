@@ -1,0 +1,17 @@
+{
+  "id": "cut_my_clips",
+  "title": "Cut my clips",
+  "blurb": "Only the footage you already have.",
+  "research": "none",
+  "skip": ["research", "angles", "prompts", "generate"],
+  "lengths": [30, 60, 180],
+  "defaultLength": 60,
+  "aspects": ["9:16", "16:9"],
+  "defaultAspect": "16:9",
+  "speech": "optional",
+  "music": true,
+  "sfx": 0,
+  "clipAudioIsMain": true,
+  "requiresFiles": true,
+  "rubric": "Use only the attached files. Do not invent replacement shots."
+}

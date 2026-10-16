@@ -45,7 +45,8 @@ class EditorConstants {
   static const double pixelsPerSecondBase = 60.0;
 
   /// Minimum zoom level for the timeline.
-  static const double minZoom = 0.25;
+  /// Low enough that a multi-minute project can fit on a phone.
+  static const double minZoom = 0.02;
 
   /// Maximum zoom level for the timeline.
   static const double maxZoom = 8.0;

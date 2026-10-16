@@ -39,7 +39,7 @@ class ExportService {
     required VideoProject project,
     required Function(double progress) onProgress,
   }) async {
-    if (NativeCompositor.isSupported) {
+    if (NativeCompositor.isSupported && !_needsKeyframedPicture(project)) {
       try {
         final path = await NativeExportService.exportProject(
           project: project,
@@ -608,7 +608,7 @@ class ExportService {
               fadeBits.write(',afade=t=out:st=${st.clamp(0, 1e6)}:d=$fadeOut');
             }
             filters.add(
-              '[${i + 1}:a]volume=${ac.volume.toStringAsFixed(2)}'
+              '[${i + 1}:a]${_audioVolumeFilter(ac)}'
               '${fadeBits.toString()},'
               'adelay=$delay|$delay[a$i]',
             );
@@ -839,6 +839,35 @@ class ExportService {
   //  Pass A — per-clip video filters (colour + transition fade-in)
   // =========================================================================
 
+  static bool _needsKeyframedPicture(VideoProject project) {
+    for (final track in project.videoTracks) {
+      for (final clip in track.clips) {
+        if (clip is! VideoClip) continue;
+        for (final keys in clip.keyframeTracks) {
+          if (keys.property == KeyframeProperty.scale && keys.keyframes.length >= 2) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  static String _audioVolumeFilter(AudioClip ac) {
+    final envelope = ac.keyframeTracks.where(
+      (t) => t.property == KeyframeProperty.opacity && t.keyframes.length >= 2,
+    );
+    if (envelope.isEmpty) {
+      return 'volume=${ac.volume.toStringAsFixed(2)}';
+    }
+    final frames = List<Keyframe<double>>.from(envelope.first.keyframes)
+      ..sort((a, b) => a.time.compareTo(b.time));
+    final knotsT = frames.map((k) => k.time.inMilliseconds / 1000.0).toList();
+    final knotsV = frames.map((k) => (k.value * ac.volume).clamp(0.0, 1.0)).toList();
+    final expr = ffmpegPiecewiseLinearExpr(knotsT, knotsV, ac.volume);
+    return "volume=eval=frame:volume='$expr'";
+  }
+
   static List<String> _videoFiltersPassA(VideoClip clip,
       {ClipTransition? transitionOverride}) {
     final vf = <String>[];
@@ -854,6 +883,16 @@ class ExportService {
     final trIn = transitionOverride ?? clip.transitionIn;
     final trFilter = transitionInVideoFilter(trIn);
     if (trFilter != null) vf.add(trFilter);
+    final push = clip.keyframeTracks.where(
+      (t) => t.property == KeyframeProperty.scale && t.keyframes.length >= 2,
+    );
+    if (push.isNotEmpty) {
+      final d = (clip.duration.inMilliseconds / 1000).clamp(0.2, 3600).toStringAsFixed(3);
+      vf.add(
+        "scale=trunc(iw*1.12/2)*2:trunc(ih*1.12/2)*2,"
+        "crop=iw/1.12:ih/1.12:'(in_w-out_w)*min(t/$d\\,1)':'(in_h-out_h)*min(t/$d\\,1)'",
+      );
+    }
     return vf;
   }
 

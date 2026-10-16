@@ -1886,17 +1886,24 @@ class _GenericToolPageState extends State<GenericToolPage>
   bool get _supportsBulkEdit =>
       _supportsBulkImageEdit || _supportsBulkVideoEdit;
 
-  /// Duration-based cost for animate_image and create_video: 5s=15, 8s=24, 10s=30.
-  /// Formula: duration<=5 ? 3*duration : 15+(duration-5)*3, capped by model maxDuration.
+  /// Duration cost for animate / create video.
+  /// Scales the model's `baseCost5Sec` (then `cost`) from tool_config.json.
+  /// 5 seconds bills that base; 10 seconds bills twice that.
   int _getDurationBasedCost() {
     final maxDuration =
         (_selectedModelData?['maxDuration'] as num?)?.toInt() ?? 10;
     final d = _clampVideoGenDurationSeconds(_advancedSettings.videoDuration)
         .clamp(1, maxDuration);
-    if (d <= 5) {
-      return (3 * d).round();
-    }
-    return 15 + (d - 5) * 3;
+    final base5 = _videoBaseCost5Sec(_selectedModelData);
+    return max(0, ((base5 * d) / 5).round());
+  }
+
+  /// 5-second price from the model map in tool_config.json.
+  int _videoBaseCost5Sec(Map<String, dynamic>? model) {
+    final raw = model?['baseCost5Sec'] ?? model?['cost'] ?? model?['baseCost'];
+    if (raw is num && raw > 0) return raw.round();
+    if (_currentModelCost > 0) return _currentModelCost;
+    return 15;
   }
 
   /// Per-variation add-on for resolution/video enhancement (VIP pays 0).
@@ -1948,6 +1955,14 @@ class _GenericToolPageState extends State<GenericToolPage>
 
   int _baseGemCostForModelMap(Map<String, dynamic> model) {
     return model['baseCost'] as int? ?? model['cost'] as int? ?? 10;
+  }
+
+  /// Price shown on a model card. Video models use the 5-second config price.
+  int _listedGemCostForModel(Map<String, dynamic> model) {
+    if (widget.config.outputType == 'video' && !_isVideoUpscalerTool) {
+      return _videoBaseCost5Sec(model);
+    }
+    return _baseGemCostForModelMap(model);
   }
 
   /// Apply percent-off to credit totals. Plain [round] can leave small bases unchanged (e.g. 5 @ 10%).
@@ -2004,7 +2019,7 @@ class _GenericToolPageState extends State<GenericToolPage>
       return undiscounted;
     }
 
-    // Animate image / create video: duration-based cost (5s=15, 8s=24, 10s=30)
+    // Animate image / create video: duration × the model's baseCost5Sec.
     final bool isVideoGenTool =
         widget.config.outputType == 'video' && !_isVideoUpscalerTool;
     final baseCost =
@@ -4183,7 +4198,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   }) {
     final name = model['name'] as String? ?? 'Unknown';
     final description = model['description'] as String? ?? '';
-    final cost = _baseGemCostForModelMap(model);
+    final cost = _listedGemCostForModel(model);
     final offer = _offerPercentForModelMap(model);
     final discountedCost = offer > 0 ? _applyOfferDiscount(cost, offer) : cost;
 
@@ -6419,6 +6434,10 @@ class _GenericToolPageState extends State<GenericToolPage>
               ] else if (canAttach) ...[
                 _buildMediaComposerEmptyHint(cs, attachInputs),
                 const SizedBox(height: 10),
+              ],
+              if (widget.config.capabilityId == 'edit_image') ...[
+                _buildEditBrushRow(cs, attachments),
+                const SizedBox(height: 8),
               ],
 
               // Selected Style chip row
@@ -14690,7 +14709,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                     // Navigate to main app's credits tab (index 2) instead of standalone page
                     // This ensures bottom app bar is visible and back button works correctly
                     Navigator.popUntil(context, (route) => route.isFirst);
-                    selectedIndexNotifier.value = 2; // Credits/Store page
+                    selectedIndexNotifier.value = AppTabs.credits;
                   },
                   variant: ButtonVariant.primary,
                   size: ButtonSize.large,
@@ -15012,7 +15031,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                         onPressed: () {
                           Navigator.pop(sheetContext);
                           // Navigate to credits page for VIP purchase
-                          selectedIndexNotifier.value = 2;
+                          selectedIndexNotifier.value = AppTabs.credits;
                         },
                         variant: ButtonVariant.primary,
                         size: ButtonSize.large,
@@ -16274,7 +16293,11 @@ class _GenericToolPageState extends State<GenericToolPage>
           }
 
           final rawMask = _inputs["mask_image"];
-          if (rawMask is Uint8List) {
+          final photos = _inputs['init_image'];
+          final photoCount = photos is List ? photos.length : (photos is Uint8List ? 1 : 0);
+          final qwenBrush = widget.config.capabilityId == 'edit_image' && (_selectedModelId ?? widget.config.model) == 'qwen2_1_i2i';
+          final sendMask = rawMask is Uint8List && (!qwenBrush || photoCount == 1);
+          if (sendMask) {
             final maskKeys = await MediaUploadService.uploadMediaBatch(
               files: [rawMask],
               mediaType: "image",
@@ -16943,6 +16966,55 @@ class _GenericToolPageState extends State<GenericToolPage>
     }
   }
 
+  bool _qwenEditBrush(List<_ComposerAttachment> attachments) {
+    final model = _selectedModelId ?? widget.config.model;
+    if (model != 'qwen2_1_i2i') return false;
+    final photos = attachments.where((a) => a.ref == 'init_image' && a.kind == _ComposerAttachmentKind.image);
+    return photos.length == 1;
+  }
+
+  Widget _buildEditBrushRow(ColorScheme cs, List<_ComposerAttachment> attachments) {
+    final model = _selectedModelId ?? widget.config.model;
+    if (model != 'qwen2_1_i2i') return const SizedBox.shrink();
+    final photos = attachments.where((a) => a.ref == 'init_image' && a.kind == _ComposerAttachmentKind.image).toList();
+    final painted = _inputs['mask_image'] is Uint8List;
+    if (photos.length != 1) {
+      return Text(
+        photos.length > 1
+            ? 'With several photos, name each one in the prompt. Paint an area when a single photo is attached.'
+            : 'Add one photo, then paint the area the prompt should change.',
+        style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13, height: 1.35),
+      );
+    }
+    return Row(
+      children: [
+        Icon(LucideIcons.brush, size: 16, color: cs.primary),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            painted ? 'An area is painted. The prompt changes only that area.' : 'Paint the area to change, then describe the edit.',
+            style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13, height: 1.35),
+          ),
+        ),
+        TextButton(
+          onPressed: () async {
+            final base = photos.first.thumbBytes;
+            if (base == null) return;
+            final mask = await _openMaskEditor(base, brushOnly: true);
+            if (mask != null && mounted) setState(() => _inputs['mask_image'] = mask);
+          },
+          child: Text(painted ? 'Edit area' : 'Paint'),
+        ),
+        if (painted)
+          IconButton(
+            tooltip: 'Clear painted area',
+            onPressed: () => setState(() => _inputs.remove('mask_image')),
+            icon: Icon(LucideIcons.x, size: 16, color: cs.onSurfaceVariant),
+          ),
+      ],
+    );
+  }
+
   // -------- Painter (Mask Editor) --------
   /// Opens mask editor with optional existing mask
   /// [base] - The base image to draw mask on
@@ -16953,6 +17025,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     Uint8List base, {
     Uint8List? existingMask,
     bool isBulkMode = false,
+    bool brushOnly = false,
   }) async {
     try {
       // CRITICAL: For bulk mode, NEVER use single image mask
@@ -16970,6 +17043,7 @@ class _GenericToolPageState extends State<GenericToolPage>
           builder: (_) => MaskEditorPage(
             baseImageBytes: base,
             existingMask: maskToLoad,
+            brushOnly: brushOnly,
           ),
           fullscreenDialog: true,
         ),
@@ -17151,11 +17225,13 @@ class _StylePreviewImageState extends State<_StylePreviewImage> {
 class MaskEditorPage extends StatefulWidget {
   final Uint8List baseImageBytes;
   final Uint8List? existingMask;
+  final bool brushOnly;
 
   const MaskEditorPage({
     super.key,
     required this.baseImageBytes,
     this.existingMask,
+    this.brushOnly = false,
   });
 
   @override
@@ -17197,6 +17273,7 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
   @override
   void initState() {
     super.initState();
+    if (widget.brushOnly) _mode = _EraseMaskMode.manual;
     _loadImage();
   }
 
@@ -17409,7 +17486,7 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
       return Scaffold(
         backgroundColor: isDark ? const Color(0xFF0D0D0D) : cs.surface,
         appBar: AppBar(
-          title: const Text("Draw Mask"),
+          title: Text(widget.brushOnly ? 'Paint what to change' : 'Draw Mask'),
           backgroundColor: Colors.transparent,
           foregroundColor: cs.onSurface,
           elevation: 0,
@@ -17422,7 +17499,7 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
       return Scaffold(
         backgroundColor: isDark ? const Color(0xFF0D0D0D) : cs.surface,
         appBar: AppBar(
-          title: const Text("Draw Mask"),
+          title: Text(widget.brushOnly ? 'Paint what to change' : 'Draw Mask'),
           backgroundColor: Colors.transparent,
           foregroundColor: cs.onSurface,
           elevation: 0,
@@ -17442,7 +17519,7 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF0D0D0D) : cs.surface,
       appBar: AppBar(
-        title: const Text("Draw Mask"),
+        title: Text(widget.brushOnly ? 'Paint what to change' : 'Draw Mask'),
         backgroundColor: isDark ? const Color(0xFF0D0D0D) : cs.surface,
         surfaceTintColor: Colors.transparent,
         foregroundColor: cs.onSurface,
@@ -17775,7 +17852,9 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
                                   ? (_peopleLoading
                                       ? "Detecting people…"
                                       : "Tap person boxes to select • Pinch to zoom")
-                                  : _mode == _EraseMaskMode.removeObject
+                                  : widget.brushOnly
+                                      ? "Paint the area the prompt may change. The rest of the photo stays."
+                                      : _mode == _EraseMaskMode.removeObject
                                       ? "Draw closed lasso around object • Pinch to zoom"
                                       : (_eraser
                                           ? "Manual erase mode • Pinch to zoom"
@@ -17836,37 +17915,39 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Column(
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: _buildModeChip(
-                  cs: cs,
-                  label: 'Remove Object',
-                  active: _mode == _EraseMaskMode.removeObject,
-                  onTap: () => _setMode(_EraseMaskMode.removeObject),
+          if (!widget.brushOnly) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: _buildModeChip(
+                    cs: cs,
+                    label: 'Remove Object',
+                    active: _mode == _EraseMaskMode.removeObject,
+                    onTap: () => _setMode(_EraseMaskMode.removeObject),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildModeChip(
-                  cs: cs,
-                  label: 'Remove People',
-                  active: _mode == _EraseMaskMode.removePeople,
-                  onTap: () => _setMode(_EraseMaskMode.removePeople),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildModeChip(
+                    cs: cs,
+                    label: 'Remove People',
+                    active: _mode == _EraseMaskMode.removePeople,
+                    onTap: () => _setMode(_EraseMaskMode.removePeople),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildModeChip(
-                  cs: cs,
-                  label: 'Manual',
-                  active: _mode == _EraseMaskMode.manual,
-                  onTap: () => _setMode(_EraseMaskMode.manual),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildModeChip(
+                    cs: cs,
+                    label: 'Manual',
+                    active: _mode == _EraseMaskMode.manual,
+                    onTap: () => _setMode(_EraseMaskMode.manual),
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
+              ],
+            ),
+            const SizedBox(height: 12),
+          ],
           // Brush size slider
           if (_mode == _EraseMaskMode.manual)
             Container(

@@ -171,12 +171,13 @@ class AppSettings {
 
 /// Helpful constants for default tab indices.
 /// Adjust if you reorder the tabs in main.dart.
-/// Navigation: Editor (0), AI Explore (1), Store/Credits (2), Settings (3)
+/// Navigation: Editor (0), AI Explore (1), Studio (2), Store/Credits (3), Settings (4)
 class AppTabs {
   static const int editor = 0;
   static const int explore = 1;
-  static const int credits = 2;
-  static const int settings = 3;
+  static const int studio = 2;
+  static const int credits = 3;
+  static const int settings = 4;
 }
 
 /// Global list of jobs

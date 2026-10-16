@@ -190,6 +190,15 @@ class TimelineClipWidget extends StatelessWidget {
     if (videoClip.isMuted) {
       badges.add(_effectBadge(Icons.volume_off, 'Muted'));
     }
+    if (videoClip.reverse) {
+      badges.add(_effectBadge(Icons.replay, 'Rev'));
+    }
+    if (videoClip.rotateQuarterTurns != 0) {
+      badges.add(_effectBadge(Icons.rotate_right, '${videoClip.rotateQuarterTurns * 90}°'));
+    }
+    if (videoClip.cropNorm != null) {
+      badges.add(_effectBadge(Icons.crop, 'Crop'));
+    }
     if (videoClip.transitionIn.type != TransitionType.none) {
       badges.add(_effectBadge(Icons.animation, 'TR'));
     }

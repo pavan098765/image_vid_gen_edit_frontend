@@ -1,0 +1,17 @@
+{
+  "id": "explainer",
+  "title": "Explainer",
+  "blurb": "A clear film built on sourced facts.",
+  "research": "full",
+  "skip": [],
+  "lengths": [180, 300, 600],
+  "defaultLength": 180,
+  "aspects": ["16:9", "9:16"],
+  "defaultAspect": "16:9",
+  "speech": "narrator",
+  "music": true,
+  "sfx": 0,
+  "clipAudioIsMain": false,
+  "minFindings": 6,
+  "rubric": "At least six sourced findings. The script may not add a number that is not in that list. On-screen text is the term, not a repeat of the sentence. Opening claim is a moving shot."
+}

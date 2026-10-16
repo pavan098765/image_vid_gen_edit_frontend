@@ -144,10 +144,10 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
       if (!mounted) return;
       switch (widget.initialTool) {
         case VideoEditorInitialTool.text:
-          BottomToolbar.openToolSheet(context, ref, EditorTool.text);
+          BottomToolbar.openToolSheet(context, EditorTool.text);
           break;
         case VideoEditorInitialTool.export:
-          BottomToolbar.openToolSheet(context, ref, EditorTool.export);
+          BottomToolbar.openToolSheet(context, EditorTool.export);
           break;
         case VideoEditorInitialTool.none:
           break;
@@ -1045,7 +1045,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
             onPressed: _isExporting
                 ? null
                 : () => BottomToolbar.openToolSheet(
-                    context, ref, EditorTool.export),
+                    context, EditorTool.export),
             icon: const Icon(LucideIcons.download, size: 16),
             label: const Text('Export', style: TextStyle(fontSize: 13)),
             style: FilledButton.styleFrom(
@@ -1065,22 +1065,24 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
 
   Future<void> _onCloseEditor() async {
     final ok = await _confirmExitEditing();
-    if (!ok) return;
+    if (!ok || !mounted) return;
+    await _closeProject(leaveRoute: false);
+  }
 
-    // Close any open tool panel
+  /// Clears the open project and returns to the empty editor.
+  /// When this page was pushed on its own, also leaves the screen.
+  Future<void> _closeProject({required bool leaveRoute}) async {
     ref.read(toolProvider.notifier).closePanel();
 
-    // Cancel timers & subscriptions
     _positionTimer?.cancel();
     for (final sub in _providerSubscriptions) {
       sub.close();
     }
     _providerSubscriptions.clear();
 
-    // Dispose all controllers (video, result, audio)
     await _disposeControllers();
+    if (!mounted) return;
 
-    // Clear all project state so we go back to the "Pick Video" screen
     ref.read(projectProvider.notifier).clearProject();
     ref.read(playbackProvider.notifier).setPosition(Duration.zero);
     ref.read(playbackProvider.notifier).setTotalDuration(Duration.zero);
@@ -1093,6 +1095,10 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
       _isExporting = false;
       _exportProgress = 0;
     });
+
+    if (leaveRoute && widget.showAppBar && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
   }
 
   // =========================================================================
@@ -1317,27 +1323,50 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
                 ),
               ),
             const SizedBox(height: 24),
-            Wrap(
-              spacing: 12,
-              alignment: WrapAlignment.center,
-              children: [
-                GradientButton(
-                  label: "Edit Again",
-                  icon: Icons.edit,
-                  onPressed: _isSaving
-                      ? null
-                      : () => setState(() => _editorOpen = true),
-                  variant: ButtonVariant.secondary,
-                  size: ButtonSize.medium,
-                ),
-                GradientButton(
-                  label: _isSaving ? "Saving..." : "Save Video",
-                  icon: _isSaving ? null : Icons.save_alt,
-                  onPressed: _isSaving ? null : _saveExported,
-                  variant: ButtonVariant.success,
-                  size: ButtonSize.medium,
-                ),
-              ],
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                children: [
+                  GradientButton(
+                    label: _isSaving ? 'Saving...' : 'Save Video',
+                    icon: _isSaving ? null : Icons.save_alt,
+                    onPressed: _isSaving ? null : _saveExported,
+                    variant: ButtonVariant.success,
+                    size: ButtonSize.medium,
+                    expanded: true,
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: GradientButton(
+                          label: 'Edit Again',
+                          icon: Icons.edit,
+                          onPressed: _isSaving
+                              ? null
+                              : () => setState(() => _editorOpen = true),
+                          variant: ButtonVariant.secondary,
+                          size: ButtonSize.medium,
+                          expanded: true,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: GradientButton(
+                          label: 'Close',
+                          icon: Icons.close,
+                          onPressed: _isSaving
+                              ? null
+                              : () => _closeProject(leaveRoute: true),
+                          variant: ButtonVariant.outline,
+                          size: ButtonSize.medium,
+                          expanded: true,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ],
         ),

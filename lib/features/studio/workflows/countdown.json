@@ -1,0 +1,16 @@
+{
+  "id": "countdown",
+  "title": "Countdown",
+  "blurb": "A ranked list that saves the best for last.",
+  "research": "full",
+  "skip": [],
+  "lengths": [45, 90, 180, 300],
+  "defaultLength": 90,
+  "aspects": ["9:16", "16:9"],
+  "defaultAspect": "9:16",
+  "speech": "narrator",
+  "music": true,
+  "sfx": 1,
+  "clipAudioIsMain": false,
+  "rubric": "Count down so the best item is last. One sourced fact per rank. One host voice. The last rank is a moving shot."
+}

@@ -9,21 +9,17 @@ import 'package:kala_ai_create_images_videos_with_ai/core/user_template_store.da
 class ExplorePersonalSection extends StatelessWidget {
   final List<JobModel> jobs;
   final List<UserTemplateRecord> shortcuts;
-  final List<Map<String, dynamic>> starterTemplates;
   final VoidCallback onSeeAll;
   final ValueChanged<JobModel> onOpenJob;
   final ValueChanged<UserTemplateRecord> onOpenShortcut;
-  final ValueChanged<Map<String, dynamic>> onOpenStarter;
 
   const ExplorePersonalSection({
     super.key,
     required this.jobs,
     required this.shortcuts,
-    required this.starterTemplates,
     required this.onSeeAll,
     required this.onOpenJob,
     required this.onOpenShortcut,
-    required this.onOpenStarter,
   });
 
   @override
@@ -101,23 +97,7 @@ class ExplorePersonalSection extends StatelessWidget {
       );
     }
 
-    if (starterTemplates.isEmpty) return const SizedBox.shrink();
-    return _section(
-      cs,
-      title: 'Start your first creation',
-      child: Column(
-        children: starterTemplates
-            .map(
-              (t) => ListTile(
-                contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-                title: Text(t['title'] as String? ?? 'Template'),
-                subtitle: Text(t['subtitle'] as String? ?? ''),
-                onTap: () => onOpenStarter(t),
-              ),
-            )
-            .toList(),
-      ),
-    );
+    return const SizedBox.shrink();
   }
 
   bool _hasUsableThumb(JobModel job) {

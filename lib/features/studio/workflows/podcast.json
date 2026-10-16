@@ -1,0 +1,16 @@
+{
+  "id": "podcast",
+  "title": "Podcast",
+  "blurb": "Two voices, their lines, no mouth sync.",
+  "research": "light",
+  "skip": [],
+  "lengths": [180, 300, 600],
+  "defaultLength": 180,
+  "aspects": ["16:9", "9:16"],
+  "defaultAspect": "16:9",
+  "speech": "dialogue",
+  "music": true,
+  "sfx": 0,
+  "clipAudioIsMain": false,
+  "rubric": "Dialogue with at least two speaker ids. Each speaker keeps one voice. Do not write mouth-sync directions. Moving shots only open and close the episode."
+}

@@ -1,0 +1,16 @@
+{
+  "id": "narrated_story",
+  "title": "Narrated story",
+  "blurb": "A voiced film from a topic.",
+  "research": "full",
+  "skip": [],
+  "lengths": [45, 90, 180, 300, 600],
+  "defaultLength": 90,
+  "aspects": ["9:16", "16:9"],
+  "defaultAspect": "16:9",
+  "speech": "narrator",
+  "music": true,
+  "sfx": 0,
+  "clipAudioIsMain": false,
+  "rubric": "Hook, then a spiral, a turn, and a last image. One narrator with a voice lock that is not the picture lock. Name the sound of each place. Facts must cite research ids."
+}

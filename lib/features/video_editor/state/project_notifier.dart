@@ -12,7 +12,6 @@ import 'package:path_provider/path_provider.dart';
 import 'package:pro_video_editor/pro_video_editor.dart' hide ClipTransition;
 
 import '../models/clip_model.dart';
-import '../models/effect_model.dart';
 import '../models/project_model.dart';
 import '../services/audio_service.dart';
 import '../services/native_compositor.dart';
@@ -247,20 +246,21 @@ class ProjectNotifier extends StateNotifier<VideoProject?> {
 
   // ─── Clip splitting ───────────────────────────────────────────────────────
 
-  /// Split a video clip at the given time (relative to clip start).
-  Future<void> splitVideoClipAt(String clipId, Duration splitPoint) async {
-    if (state == null) return;
+  /// Split a video clip at [splitPoint] on the timeline.
+  ///
+  /// Updates the project immediately using trim points. Returns the id of the
+  /// new right-hand clip, or null when the cut is outside the clip.
+  Future<String?> splitVideoClipAt(String clipId, Duration splitPoint) async {
+    if (state == null) return null;
     final clip = state!.findClipById(clipId);
-    if (clip == null || clip is! VideoClip) return;
+    if (clip == null || clip is! VideoClip) return null;
     final track = state!.findTrackForClip(clipId);
-    if (track == null) return;
+    if (track == null) return null;
 
     final relSplit = splitPoint - clip.startTime;
-    if (relSplit <= Duration.zero || relSplit >= clip.duration) return;
-
-    if (NativeCompositor.isSupported && clip.trimStart == Duration.zero) {
-      final ok = await _nativeSplit(clip, track, relSplit);
-      if (ok) return;
+    if (relSplit <= const Duration(milliseconds: 80) ||
+        clip.duration - relSplit <= const Duration(milliseconds: 80)) {
+      return null;
     }
 
     _pushUndo();
@@ -337,86 +337,7 @@ class ProjectNotifier extends StateNotifier<VideoProject?> {
     state = proj.copyWith(
       totalDuration: proj.computeTotalDuration(),
     );
-  }
-
-  Future<bool> _nativeSplit(
-    VideoClip clip,
-    Track track,
-    Duration relSplit,
-  ) async {
-    try {
-      final dir = await getTemporaryDirectory();
-      final stamp = DateTime.now().millisecondsSinceEpoch;
-      final startOut = '${dir.path}/split_${stamp}_a.mp4';
-      final endOut = '${dir.path}/split_${stamp}_b.mp4';
-      final paths = await ProVideoEditor.instance.splitVideo(
-        SplitVideoModel(
-          video: EditorVideo.file(File(clip.sourcePath)),
-          splitPosition: relSplit,
-          startOutputPath: startOut,
-          endOutputPath: endOut,
-        ),
-      );
-      if (paths.length < 2) return false;
-      if (!File(paths[0]).existsSync() || !File(paths[1]).existsSync()) {
-        return false;
-      }
-      _pushUndo();
-      final clip1 = clip.copyWith(
-        duration: relSplit,
-        sourcePath: paths[0],
-        trimStart: Duration.zero,
-        trimEnd: relSplit,
-        originalDuration: relSplit,
-      );
-      final clip2 = VideoClip(
-        id: '${clip.id}_split_$stamp',
-        startTime: clip.startTime + relSplit,
-        duration: clip.duration - relSplit,
-        sourcePath: paths[1],
-        trimStart: Duration.zero,
-        trimEnd: clip.duration - relSplit,
-        originalDuration: clip.duration - relSplit,
-        resolution: clip.resolution,
-        speedEffect: clip.speedEffect,
-        colorAdjustment: clip.colorAdjustment,
-        transitionIn: const ClipTransition(),
-        volume: clip.volume,
-        isMuted: clip.isMuted,
-        keyframeTracks: clip.keyframeTracks,
-        reverse: clip.reverse,
-        rotateQuarterTurns: clip.rotateQuarterTurns,
-        cropNorm: clip.cropNorm,
-        look: clip.look,
-        chroma: clip.chroma,
-      );
-      final newClips = <Clip>[];
-      for (final c in track.clips) {
-        if (c.id == clip.id) {
-          newClips.add(clip1);
-          newClips.add(clip2);
-        } else {
-          newClips.add(c);
-        }
-      }
-      var tracks = state!.tracks.map((t) {
-        if (t.id == track.id) return t.copyWith(clips: newClips);
-        return t;
-      }).toList();
-      tracks = tracks
-          .map((t) => _splitPairedEmbeddedAudio(
-                t,
-                clip,
-                clip.startTime + relSplit,
-              ))
-          .toList();
-      final proj = state!.copyWith(tracks: tracks);
-      state = proj.copyWith(totalDuration: proj.computeTotalDuration());
-      return true;
-    } catch (e) {
-      debugPrint('Native split failed: $e');
-      return false;
-    }
+    return clip2.id;
   }
 
   /// When the user splits a [VideoClip], split the matching embedded [AudioClip]
@@ -472,12 +393,13 @@ class ProjectNotifier extends StateNotifier<VideoProject?> {
   }
 
   /// Duplicate a clip (placed right after the original).
-  void duplicateClip(String clipId) {
-    if (state == null) return;
+  /// Returns the new clip id.
+  String? duplicateClip(String clipId) {
+    if (state == null) return null;
     final clip = state!.findClipById(clipId);
-    if (clip == null) return;
+    if (clip == null) return null;
     final track = state!.findTrackForClip(clipId);
-    if (track == null) return;
+    if (track == null) return null;
 
     _pushUndo();
 
@@ -600,7 +522,7 @@ class ProjectNotifier extends StateNotifier<VideoProject?> {
         thumbnails: dupe.thumbnails,
       );
     } else {
-      return; // Unknown type
+      return null;
     }
 
     final newTracks = state!.tracks.map((t) {
@@ -617,6 +539,7 @@ class ProjectNotifier extends StateNotifier<VideoProject?> {
 
     final proj = state!.copyWith(tracks: newTracks);
     state = proj.copyWith(totalDuration: proj.computeTotalDuration());
+    return dupeWithNewId.id;
   }
 
   // ─── Export settings ──────────────────────────────────────────────────────
@@ -677,7 +600,8 @@ class ProjectNotifier extends StateNotifier<VideoProject?> {
     if (state == null) return;
     final clip = state!.findClipById(clipId);
     if (clip is! VideoClip) return;
-    await splitVideoClipAt(clipId, at);
+    final splitId = await splitVideoClipAt(clipId, at);
+    if (splitId == null) return;
     final left = state!.findClipById(clipId);
     if (left is! VideoClip) return;
     final track = state!.findTrackForClip(clipId);

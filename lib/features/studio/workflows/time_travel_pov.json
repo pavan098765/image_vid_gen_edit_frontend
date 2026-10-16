@@ -1,0 +1,17 @@
+{
+  "id": "time_travel_pov",
+  "title": "Time-travel POV",
+  "blurb": "You wake up in another era, with one modern object.",
+  "research": "light",
+  "skip": [],
+  "lengths": [45, 60, 90],
+  "defaultLength": 60,
+  "aspects": ["9:16"],
+  "defaultAspect": "9:16",
+  "speech": "narrator",
+  "music": true,
+  "sfx": 0,
+  "clipAudioIsMain": false,
+  "chainEndFrames": true,
+  "rubric": "Same locked person. One modern object named in the hook. A walk starts on one keyframe and lands on the next. A recurring stranger may speak only as a second speech-track speaker."
+}

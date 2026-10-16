@@ -32,6 +32,7 @@ import 'features/ai_tools/generic_tool_page.dart';
 import 'features/explore/explore_ai_page.dart';
 import 'features/credits/credits_page.dart';
 import 'features/settings/settings_page.dart';
+import 'features/studio/studio_page.dart';
 import 'features/result_manager/result_manager_page.dart'; // 🔹 NEW import
 import 'features/splash/splash_screen.dart'; // 🔹 Splash screen
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -1002,10 +1003,11 @@ class KalaAIApp extends StatefulWidget {
 class _KalaAIAppState extends State<KalaAIApp> {
   bool _showSplash = true;
 
-  // Navigation: Editor, AI Explore, Store, Settings (AI Tools accessible from Explore)
+  // Navigation: Editor, AI Explore, Studio, Store, Settings
   final List<Widget> _pages = const [
     MediaEditorPage(),
     ExploreAIPage(),
+    StudioPage(),
     CreditsPage(),
     SettingsPage(),
   ];
@@ -1123,6 +1125,7 @@ class _ModernBottomNav extends StatelessWidget {
     final items = [
       const _NavItem(icon: LucideIcons.palette, label: 'Editor'),
       const _NavItem(icon: LucideIcons.sparkles, label: 'AI Explore'),
+      const _NavItem(icon: LucideIcons.film, label: 'Studio'),
       const _NavItem(icon: LucideIcons.gem, label: 'Store'),
       const _NavItem(icon: LucideIcons.settings, label: 'Settings'),
     ];

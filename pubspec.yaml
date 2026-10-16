@@ -125,6 +125,7 @@ flutter:
     - assets/kala_ai_logo_monochrome.png
     - assets/models/
     - assets/fonts/
+    - lib/features/studio/workflows/
 
   fonts:
     - family: Inter

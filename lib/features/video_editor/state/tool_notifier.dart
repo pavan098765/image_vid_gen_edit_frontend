@@ -120,6 +120,11 @@ class ToolNotifier extends StateNotifier<ToolState> {
     }
   }
 
+  /// Opens [tool] without toggling. Used by the modal sheet, which closes itself.
+  void activate(EditorTool tool) {
+    state = state.copyWith(activeTool: tool, isPanelOpen: true);
+  }
+
   void closePanel() {
     state = state.copyWith(activeTool: EditorTool.none, isPanelOpen: false);
   }
