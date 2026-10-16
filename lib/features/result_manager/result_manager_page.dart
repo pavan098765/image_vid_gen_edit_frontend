@@ -957,6 +957,7 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
 
                   return ListView.builder(
                     physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.only(bottom: 24),
                     itemCount: filteredJobs.length,
                     itemBuilder: (_, i) {
                       final job = filteredJobs[i];
@@ -1122,6 +1123,7 @@ class _JobCardState extends State<JobCard> {
         final source = widget.job.inputImagePath;
         if (widget.job.isImageOutput &&
             source != null &&
+            source != path &&
             File(source).existsSync() &&
             File(path).existsSync()) {
           openBeforeAfterPreview(

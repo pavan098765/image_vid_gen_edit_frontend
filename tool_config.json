@@ -992,7 +992,7 @@
           "enabled": true,
           "params": {
             "init_image": "{{init_image}}",
-            "aspect_ratio": "{{aspect_ratio}}"
+            "aspect_ratio": "auto"
           },
           "rootParams": {
             "prompt": "{{prompt}}"
@@ -1009,7 +1009,7 @@
           "enabled": true,
           "params": {
             "init_image": "{{init_image}}",
-            "aspect_ratio": "{{aspect_ratio}}"
+            "aspect_ratio": "auto"
           },
           "rootParams": {
             "prompt": "{{prompt}}"
@@ -1034,19 +1034,6 @@
             "Precise local edit: Remove the backpack strap from the left shoulder only; keep fabric folds and shadows consistent.",
             "Text swap: Replace the headline with \"HALF OFF\" using the same font weight, color, alignment, and perspective as the original lettering."
           ]
-        },
-        {
-          "id": "aspect_ratio",
-          "type": "dropdown",
-          "label": "Aspect Ratio",
-          "options": [
-            "1:1",
-            "16:9",
-            "9:16",
-            "4:3",
-            "3:4"
-          ],
-          "default": "1:1"
         }
       ],
       "elements": [

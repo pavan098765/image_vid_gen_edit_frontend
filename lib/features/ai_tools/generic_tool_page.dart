@@ -16072,6 +16072,10 @@ class _GenericToolPageState extends State<GenericToolPage>
         if (useExternalApi != null) {
           resolvedParams['use_external_api'] = useExternalApi;
         }
+        if (widget.config.capabilityId == 'edit_image') {
+          // Keep the result on the source photo's canvas.
+          resolvedParams['aspect_ratio'] = 'auto';
+        }
 
         final filteredRootParams = filterSubmitRootParams(rootParams);
 

@@ -17,7 +17,7 @@ class BeforeAfterPreviewPage extends StatefulWidget {
 }
 
 class _BeforeAfterPreviewPageState extends State<BeforeAfterPreviewPage> {
-  double _t = 1;
+  double _split = 0.5;
 
   @override
   Widget build(BuildContext context) {
@@ -29,78 +29,109 @@ class _BeforeAfterPreviewPageState extends State<BeforeAfterPreviewPage> {
         foregroundColor: Colors.white,
         title: const Text('Compare'),
       ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          return GestureDetector(
-            onHorizontalDragUpdate: (d) {
-              setState(() {
-                _t = (_t + d.delta.dx / constraints.maxWidth).clamp(0.0, 1.0);
-              });
-            },
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                Image.file(
-                  widget.originalFile,
-                  fit: BoxFit.cover,
-                  width: constraints.maxWidth,
-                  height: constraints.maxHeight,
-                ),
-                ClipRect(
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    widthFactor: _t,
-                    child: Image.file(
-                      widget.resultFile,
-                      fit: BoxFit.cover,
-                      width: constraints.maxWidth,
-                      height: constraints.maxHeight,
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return GestureDetector(
+                    onHorizontalDragUpdate: (d) {
+                      setState(() {
+                        _split = (_split + d.delta.dx / constraints.maxWidth)
+                            .clamp(0.04, 0.96);
+                      });
+                    },
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        const ColoredBox(color: Colors.black),
+                        _framedImage(widget.resultFile),
+                        ClipRect(
+                          clipper: _LeftRevealClipper(_split),
+                          child: _framedImage(widget.originalFile),
+                        ),
+                        Positioned(
+                          left: constraints.maxWidth * _split - 1,
+                          top: 0,
+                          bottom: 0,
+                          child: Container(width: 2, color: Colors.white),
+                        ),
+                        Positioned(
+                          left: constraints.maxWidth * _split - 18,
+                          top: constraints.maxHeight / 2 - 18,
+                          child: Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: cs.primary,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.drag_handle,
+                                color: Colors.white, size: 18),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                ),
-                Positioned(
-                  left: (constraints.maxWidth * _t) - 1,
-                  top: 0,
-                  bottom: 0,
-                  child: Container(width: 2, color: cs.primary),
-                ),
-                Positioned(
-                  left: (constraints.maxWidth * _t) - 18,
-                  top: constraints.maxHeight / 2 - 18,
-                  child: Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: cs.primary,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.drag_handle,
-                        color: Colors.white, size: 18),
-                  ),
-                ),
-                const Positioned(
-                  left: 16,
-                  bottom: 24,
-                  child: Text(
-                    'Original',
-                    style: TextStyle(color: Colors.white, fontSize: 12),
-                  ),
-                ),
-                const Positioned(
-                  right: 16,
-                  bottom: 24,
-                  child: Text(
-                    'Result',
-                    style: TextStyle(color: Colors.white, fontSize: 12),
-                  ),
-                ),
-              ],
+                  );
+                },
+              ),
             ),
-          );
-        },
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+              child: Row(
+                children: [
+                  const Text(
+                    'Original',
+                    style: TextStyle(color: Colors.white, fontSize: 13),
+                  ),
+                  const Spacer(),
+                  Text(
+                    'Drag to compare',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.6),
+                      fontSize: 12,
+                    ),
+                  ),
+                  const Spacer(),
+                  const Text(
+                    'Result',
+                    style: TextStyle(color: Colors.white, fontSize: 13),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
+
+  Widget _framedImage(File file) {
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: Image.file(
+        file,
+        fit: BoxFit.contain,
+        width: double.infinity,
+        height: double.infinity,
+      ),
+    );
+  }
+}
+
+class _LeftRevealClipper extends CustomClipper<Rect> {
+  final double split;
+
+  _LeftRevealClipper(this.split);
+
+  @override
+  Rect getClip(Size size) {
+    return Rect.fromLTWH(0, 0, size.width * split, size.height);
+  }
+
+  @override
+  bool shouldReclip(_LeftRevealClipper oldClipper) => oldClipper.split != split;
 }
 
 void openBeforeAfterPreview(

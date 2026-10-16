@@ -208,9 +208,11 @@ class _JobNextActionsState extends State<JobNextActions> {
               const SizedBox(height: 8),
               _chip(
                 cs,
-                label: job.creditsCharged != null
-                    ? 'Try again · ${_cost(job.capabilityId ?? '', modelId: job.model) ?? '—'}'
-                    : 'Try again',
+                icon: Icons.refresh_rounded,
+                label: 'Try again',
+                detail: job.creditsCharged != null
+                    ? '${_cost(job.capabilityId ?? '', modelId: job.model) ?? '—'} gems'
+                    : null,
                 onTap: () => _guard(() => _useAgain(afterFailure: true)),
               ),
             ],
@@ -238,8 +240,10 @@ class _JobNextActionsState extends State<JobNextActions> {
               const SizedBox(height: 6),
               _chip(
                 cs,
-                label:
-                    'Use again · ${_cost(job.capabilityId ?? '', modelId: job.model) ?? '—'}',
+                icon: Icons.refresh_rounded,
+                label: 'Use again',
+                detail:
+                    '${_cost(job.capabilityId ?? '', modelId: job.model) ?? '—'} gems',
                 onTap: () => _guard(() => _useAgain(afterFailure: false)),
               ),
             ],
@@ -254,7 +258,7 @@ class _JobNextActionsState extends State<JobNextActions> {
     final paid = <Widget>[];
 
     if (job.isImageOutput) {
-      free.add(_chip(cs, label: 'Add text', onTap: () {
+      free.add(_chip(cs, icon: Icons.text_fields_rounded, label: 'Add text', onTap: () {
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -266,7 +270,7 @@ class _JobNextActionsState extends State<JobNextActions> {
           ),
         );
       }));
-      free.add(_chip(cs, label: 'Crop', onTap: () {
+      free.add(_chip(cs, icon: Icons.crop_rounded, label: 'Crop', onTap: () {
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -278,20 +282,20 @@ class _JobNextActionsState extends State<JobNextActions> {
           ),
         );
       }));
-      free.add(_chip(cs, label: 'Save sizes', onTap: () {
+      free.add(_chip(cs, icon: Icons.photo_size_select_large_rounded, label: 'Save sizes', onTap: () {
         showSaveSizeSheet(context, result);
       }));
-      free.add(_chip(cs, label: 'Use as sticker', onTap: () {
+      free.add(_chip(cs, icon: Icons.layers_rounded, label: 'Use as sticker', onTap: () {
         _guard(_useAsSticker);
       }));
-      free.add(_chip(cs, label: 'Place on video', onTap: () {
+      free.add(_chip(cs, icon: Icons.movie_outlined, label: 'Place on video', onTap: () {
         _guard(_placeOnVideo);
       }));
 
       if (_capEnabled('upscale')) {
         final c = _cost('upscale');
         if (c != null) {
-          paid.add(_chip(cs, label: 'Upscale · $c', onTap: () {
+          paid.add(_chip(cs, icon: Icons.hd_rounded, label: 'Upscale', detail: '$c gems', onTap: () {
             _guard(() => _openCapability('upscale', paths: [result.path]));
           }));
         }
@@ -299,7 +303,7 @@ class _JobNextActionsState extends State<JobNextActions> {
       if (_capEnabled('remove_background')) {
         final c = _cost('remove_background');
         if (c != null) {
-          paid.add(_chip(cs, label: 'Remove background · $c', onTap: () {
+          paid.add(_chip(cs, icon: Icons.auto_fix_high_rounded, label: 'Remove background', detail: '$c gems', onTap: () {
             _guard(() =>
                 _openCapability('remove_background', paths: [result.path]));
           }));
@@ -308,7 +312,7 @@ class _JobNextActionsState extends State<JobNextActions> {
       if (_capEnabled('animate_image')) {
         final c = _cost('animate_image');
         if (c != null) {
-          paid.add(_chip(cs, label: 'Animate · $c', onTap: () {
+          paid.add(_chip(cs, icon: Icons.play_circle_outline_rounded, label: 'Animate', detail: '$c gems', onTap: () {
             _guard(() => _openCapability('animate_image',
                 paths: [result.path], prompt: ''));
           }));
@@ -317,7 +321,7 @@ class _JobNextActionsState extends State<JobNextActions> {
       if (_capEnabled('edit_image')) {
         final c = _cost('edit_image');
         if (c != null) {
-          paid.add(_chip(cs, label: 'Another style · $c', onTap: () {
+          paid.add(_chip(cs, icon: Icons.palette_outlined, label: 'Another style', detail: '$c gems', onTap: () {
             _guard(() => _openCapability(
                   'edit_image',
                   paths: [result.path],
@@ -327,7 +331,7 @@ class _JobNextActionsState extends State<JobNextActions> {
         }
       }
     } else if (job.isVideoOutput) {
-      free.add(_chip(cs, label: 'Add text', onTap: () {
+      free.add(_chip(cs, icon: Icons.text_fields_rounded, label: 'Add text', onTap: () {
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -339,7 +343,7 @@ class _JobNextActionsState extends State<JobNextActions> {
           ),
         );
       }));
-      free.add(_chip(cs, label: 'Open editor', onTap: () {
+      free.add(_chip(cs, icon: Icons.movie_creation_outlined, label: 'Open editor', onTap: () {
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -356,7 +360,7 @@ class _JobNextActionsState extends State<JobNextActions> {
           _capEnabled('edit_image')) {
         final c = _cost('edit_image');
         if (c != null) {
-          paid.add(_chip(cs, label: 'Use the photo · $c', onTap: () {
+          paid.add(_chip(cs, icon: Icons.photo_outlined, label: 'Use the photo', detail: '$c gems', onTap: () {
             _guard(() => _openCapability('edit_image', paths: [source.path]));
           }));
         }
@@ -367,7 +371,9 @@ class _JobNextActionsState extends State<JobNextActions> {
     if (job.capabilityId != null || job.model.isNotEmpty) {
       paid.add(_chip(
         cs,
-        label: againCost != null ? 'Use again · $againCost' : 'Use again',
+        icon: Icons.refresh_rounded,
+        label: 'Use again',
+        detail: againCost != null ? '$againCost gems' : null,
         onTap: () => _guard(() => _useAgain(afterFailure: false)),
       ));
     }
@@ -381,20 +387,27 @@ class _JobNextActionsState extends State<JobNextActions> {
         children: [
           if (free.isNotEmpty) ...[
             Text(
-              'On this phone · 0 credits',
-              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 11),
+              'On this phone',
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
             ),
-            const SizedBox(height: 6),
-            Wrap(spacing: 8, runSpacing: 8, children: free),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
+            ...free,
           ],
           if (paid.isNotEmpty) ...[
             Text(
-              'New generation',
-              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 11),
+              'Continue',
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
             ),
-            const SizedBox(height: 6),
-            Wrap(spacing: 8, runSpacing: 8, children: paid),
+            const SizedBox(height: 8),
+            ...paid,
           ],
           if (canSaveSetup)
             SizedBox(
@@ -409,18 +422,54 @@ class _JobNextActionsState extends State<JobNextActions> {
     );
   }
 
-  Widget _chip(ColorScheme cs,
-      {required String label, required VoidCallback onTap}) {
-    return ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: 44),
-      child: ActionChip(
-        label: Text(label),
-        onPressed: _busy
-            ? null
-            : () {
-                HapticFeedback.lightImpact();
-                onTap();
-              },
+  Widget _chip(
+    ColorScheme cs, {
+    required String label,
+    required VoidCallback onTap,
+    IconData icon = Icons.arrow_forward_rounded,
+    String? detail,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: _busy
+              ? null
+              : () {
+                  HapticFeedback.lightImpact();
+                  onTap();
+                },
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 52),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              child: Row(
+                children: [
+                  Icon(icon, size: 20, color: cs.primary),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      label,
+                      style: TextStyle(
+                        color: cs.onSurface,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                  if (detail != null)
+                    Text(
+                      detail,
+                      style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
