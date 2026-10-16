@@ -17,9 +17,9 @@ class GeminiDirector {
   GeminiDirector({
     this.endpoint = const String.fromEnvironment(
       'GEMINI_WORKER_URL',
-      defaultValue: 'https://kala-gemini-director.workers.dev/v1/generate',
+      defaultValue: 'https://kala-gemini-director.pavanalur3.workers.dev/v1/generate',
     ),
-    this.model = 'gemini-2.5-flash',
+    this.model = 'gemini-3.5-flash-lite',
     this.override,
     http.Client? client,
   }) : _client = client ?? http.Client();
