@@ -11,6 +11,7 @@ import '../../models/clip_model.dart' hide Clip;
 import '../../state/editor_providers.dart';
 import '../../state/tool_notifier.dart';
 import '../../utils/editor_constants.dart';
+import '../../utils/playback_mapping.dart';
 import 'panels/audio_panel.dart';
 import 'panels/chroma_panel.dart';
 import 'panels/export_panel.dart';
@@ -133,42 +134,50 @@ class BottomToolbar extends ConsumerWidget {
     container.read(toolProvider.notifier).activate(tool);
 
     final cs = Theme.of(context).colorScheme;
-    final screenHeight = MediaQuery.sizeOf(context).height;
-    final sheetHeight = _sheetHeightFor(tool, screenHeight);
+    _ensureClipForTool(container, tool);
 
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      useSafeArea: true,
+      useSafeArea: false,
       builder: (sheetContext) {
+        final sheetMedia = MediaQuery.of(sheetContext);
+        final inset = sheetMedia.viewPadding.bottom;
+        final keys = sheetMedia.viewInsets.bottom;
+        final maxSheet =
+            sheetMedia.size.height - sheetMedia.padding.top - inset - keys - 12;
+        final sheetHeight = _sheetHeightFor(tool, maxSheet);
         return UncontrolledProviderScope(
           container: container,
-          child: Align(
-            alignment: Alignment.bottomCenter,
-            child: Material(
-              color: cs.surface,
-              elevation: 12,
-              shadowColor: Colors.black54,
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(22)),
-              clipBehavior: Clip.antiAlias,
-              child: SizedBox(
-                height: sheetHeight,
-                child: Column(
-                  children: [
-                    const SizedBox(height: 8),
-                    Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: cs.onSurface.withOpacity(0.22),
-                        borderRadius: BorderRadius.circular(2),
+          child: Padding(
+            padding: EdgeInsets.only(bottom: inset + keys),
+            child: Align(
+              alignment: Alignment.bottomCenter,
+              child: Material(
+                color: cs.surface,
+                elevation: 12,
+                shadowColor: Colors.black54,
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(22)),
+                clipBehavior: Clip.antiAlias,
+                child: SizedBox(
+                  height: sheetHeight,
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 8),
+                      Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: cs.onSurface.withOpacity(0.22),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    Expanded(child: panel),
-                  ],
+                      const SizedBox(height: 4),
+                      Expanded(child: panel),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -181,14 +190,44 @@ class BottomToolbar extends ConsumerWidget {
     });
   }
 
-  static double _sheetHeightFor(EditorTool tool, double screenHeight) {
-    final cap = switch (tool) {
+  static double _sheetHeightFor(EditorTool tool, double maxHeight) {
+    final preferred = switch (tool) {
       EditorTool.more => 300.0,
-      EditorTool.trim => 360.0,
-      EditorTool.export || EditorTool.text || EditorTool.filter => 440.0,
-      _ => 380.0,
+      EditorTool.trim => 420.0,
+      EditorTool.export || EditorTool.text || EditorTool.filter => 480.0,
+      _ => 400.0,
     };
-    return math.min(screenHeight * 0.52, cap);
+    if (maxHeight <= 0) return math.min(preferred, 180);
+    return math.min(preferred, maxHeight);
+  }
+
+  /// Effects need a clip. Pick the one under the playhead, else the first video clip.
+  static void _ensureClipForTool(ProviderContainer container, EditorTool tool) {
+    const needsVideo = {
+      EditorTool.trim,
+      EditorTool.filter,
+      EditorTool.transition,
+      EditorTool.speed,
+      EditorTool.chroma,
+      EditorTool.keyframe,
+    };
+    if (!needsVideo.contains(tool)) return;
+    final project = container.read(projectProvider);
+    if (project == null) return;
+    final selectedId = container.read(timelineProvider).selectedClipId;
+    if (selectedId != null && project.findClipById(selectedId) is VideoClip) {
+      return;
+    }
+    final position = container.read(playbackProvider).position;
+    final clips = sortedVideoClips(project);
+    final pick = activeVideoClipAt(project, position) ??
+        (clips.isEmpty ? null : clips.first);
+    if (pick == null) return;
+    final track = project.findTrackForClip(pick.id);
+    container
+        .read(timelineProvider.notifier)
+        .selectClip(pick.id, trackId: track?.id);
+    container.read(projectProvider.notifier).selectClip(pick.id);
   }
 
   static Widget? _buildPanelForTool(EditorTool tool, BuildContext hostContext) {

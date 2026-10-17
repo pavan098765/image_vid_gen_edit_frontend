@@ -63,7 +63,7 @@ class _StudioStoryboardPageState extends State<StudioStoryboardPage> {
   }
 
   Future<void> _replaceFromRoll(StudioScene scene) async {
-    final file = await ImagePicker().pickVideo(source: ImageSource.gallery);
+    final file = await ImagePicker().pickMedia();
     if (file == null) return;
     final key = await StudioApi.instance.uploadFile(
       jobId: widget.jobId,
@@ -75,7 +75,7 @@ class _StudioStoryboardPageState extends State<StudioStoryboardPage> {
   Future<void> _replaceFromExplore(StudioScene scene) async {
     final jobs = jobListNotifier.value
         .where((j) =>
-            j.outputType == 'video' &&
+            (j.isVideoOutput || j.isImageOutput) &&
             j.status == 'completed' &&
             (j.downloadUrl != null || j.localFilePath != null))
         .toList();
@@ -86,7 +86,7 @@ class _StudioStoryboardPageState extends State<StudioStoryboardPage> {
         if (jobs.isEmpty) {
           return const Padding(
             padding: EdgeInsets.all(24),
-            child: Text('No Explore video results yet.'),
+            child: Text('No finished photos or videos from Explore yet.'),
           );
         }
         return ListView(
@@ -109,17 +109,33 @@ class _StudioStoryboardPageState extends State<StudioStoryboardPage> {
     final controller = TextEditingController(text: scene.scriptLine ?? '');
     final next = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Edit copy'),
-        content: TextField(controller: controller, maxLines: 4),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, controller.text),
-            child: const Text('Save'),
+      builder: (ctx) {
+        final cs = Theme.of(ctx).colorScheme;
+        return AlertDialog(
+          title: const Text('Rewrite this line'),
+          content: TextField(
+            controller: controller,
+            maxLines: 4,
+            autofocus: true,
+            decoration: InputDecoration(
+              hintText: 'Say it the way you would out loud.',
+              filled: true,
+              fillColor: cs.surfaceContainerHighest,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide.none,
+              ),
+            ),
           ),
-        ],
-      ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Not now')),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, controller.text),
+              child: const Text('Keep this'),
+            ),
+          ],
+        );
+      },
     );
     if (next == null) return;
     await _act(scene, 'patch_copy', copy: next);
@@ -196,7 +212,7 @@ class _StudioStoryboardPageState extends State<StudioStoryboardPage> {
                                   ),
                                   TextButton(
                                     onPressed: _busy ? null : () => _replaceFromRoll(scene),
-                                    child: const Text('Replace (camera roll)'),
+                                    child: const Text('Photo or video'),
                                   ),
                                   TextButton(
                                     onPressed: _busy

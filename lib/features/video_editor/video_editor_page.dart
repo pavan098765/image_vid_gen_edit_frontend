@@ -95,6 +95,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
   // ─── Listeners ─────────────────────────────────────────────────────────────
   Timer? _positionTimer;
   bool _isSyncingFromController = false;
+  DateTime? _playClock;
   final List<ProviderSubscription> _providerSubscriptions = [];
 
   @override
@@ -330,6 +331,168 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
     }
   }
 
+  /// Drive the playhead from the file while a clip is showing, and by the
+  /// wall clock through gaps so a split does not restart playback.
+  void _onPlaybackTick() {
+    final controller = _videoController;
+    if (controller == null || !controller.value.isInitialized) return;
+    if (ref.read(timelineProvider).isDraggingPlayhead) {
+      _playClock = null;
+      return;
+    }
+
+    final project = ref.read(projectProvider);
+    if (project == null) return;
+    final playback = ref.read(playbackProvider);
+    if (!playback.isPlaying) {
+      _playClock = null;
+      _syncAudioPlayers(project);
+      _syncAudioPlayback();
+      return;
+    }
+
+    final total = project.computeTotalDuration();
+    if (controller.value.isCompleted) {
+      _finishPlayback(controller, total);
+      return;
+    }
+
+    final pos = playback.position;
+    final active = activeVideoClipAt(project, pos);
+    if (active == null) {
+      _advanceThroughGap(controller, project, pos, total);
+      return;
+    }
+
+    var filePos = controller.value.position;
+    if (filePos < active.trimStart) {
+      controller.seekTo(active.trimStart);
+      filePos = active.trimStart;
+    } else if (filePos >= active.trimEnd) {
+      if (_handoffAtClipEnd(controller, project, active)) return;
+    }
+
+    final timeline = timelinePositionForSource(project, filePos, pos);
+    if ((timeline - pos).abs() > const Duration(milliseconds: 40)) {
+      _setPlayhead(timeline);
+    }
+
+    final atClip = activeVideoClipAt(
+      project,
+      ref.read(playbackProvider).position,
+    );
+    if (atClip != null) {
+      final speed = instantaneousPlaybackSpeed(
+        atClip,
+        ref.read(playbackProvider).position,
+      ).clamp(0.25, 5.0);
+      if ((controller.value.playbackSpeed - speed).abs() > 0.01) {
+        controller.setPlaybackSpeed(speed);
+      }
+      if (!controller.value.isPlaying) controller.play();
+    }
+
+    _syncAudioPlayers(project);
+    _syncAudioPlayback();
+  }
+
+  /// Returns true when this tick already placed the playhead (gap, seek, or end).
+  bool _handoffAtClipEnd(
+    VideoPlayerController controller,
+    VideoProject project,
+    VideoClip active,
+  ) {
+    final nextClip = nextVideoClipAfter(project, active);
+    if (nextClip == null) {
+      _finishPlayback(controller, project.computeTotalDuration());
+      return true;
+    }
+
+    final gap = nextClip.startTime - active.endTime;
+    final snapped = gap <= const Duration(milliseconds: 80) &&
+        gap >= const Duration(milliseconds: -40);
+    final filePos = controller.value.position;
+    final sameFileContinues = snapped &&
+        nextClip.sourcePath == active.sourcePath &&
+        filePos >= nextClip.trimStart &&
+        filePos < nextClip.trimEnd;
+    if (sameFileContinues) return false;
+
+    if (snapped && nextClip.sourcePath == active.sourcePath) {
+      final enter = active.endTime;
+      _setPlayhead(enter);
+      controller.seekTo(sourcePositionForTimeline(nextClip, enter));
+      if (!controller.value.isPlaying) controller.play();
+      _syncAudioPlayers(project);
+      _syncAudioPlayback();
+      return true;
+    }
+
+    // A real gap, or a following clip this player cannot show: hold and stay quiet.
+    controller.pause();
+    _setPlayhead(active.endTime);
+    _playClock = DateTime.now();
+    _syncAudioPlayers(project);
+    _syncAudioPlayback();
+    return true;
+  }
+
+  void _advanceThroughGap(
+    VideoPlayerController controller,
+    VideoProject project,
+    Duration pos,
+    Duration total,
+  ) {
+    final now = DateTime.now();
+    final elapsed =
+        _playClock == null ? Duration.zero : now.difference(_playClock!);
+    _playClock = now;
+    if (controller.value.isPlaying) controller.pause();
+
+    var nextPos = pos + elapsed;
+    if (total > Duration.zero && nextPos >= total) {
+      _finishPlayback(controller, total);
+      return;
+    }
+
+    VideoClip? upcoming;
+    for (final clip in sortedVideoClips(project)) {
+      if (clip.startTime >= pos) {
+        upcoming = clip;
+        break;
+      }
+    }
+
+    if (upcoming != null && nextPos >= upcoming.startTime) {
+      nextPos = upcoming.startTime;
+      if (upcoming.sourcePath == _videoFile?.path) {
+        controller.seekTo(sourcePositionForTimeline(upcoming, nextPos));
+        if (!controller.value.isPlaying) controller.play();
+      }
+      _playClock = null;
+    }
+    _setPlayhead(nextPos);
+    _syncAudioPlayers(project);
+    _syncAudioPlayback();
+  }
+
+  void _finishPlayback(VideoPlayerController controller, Duration total) {
+    controller.pause();
+    ref.read(playbackProvider.notifier).pause();
+    final end = total > Duration.zero
+        ? total - const Duration(microseconds: 1)
+        : Duration.zero;
+    _setPlayhead(end);
+    _playClock = null;
+    _syncAudioPlayback();
+  }
+
+  void _setPlayhead(Duration position) {
+    _isSyncingFromController = true;
+    ref.read(playbackProvider.notifier).setPosition(position);
+    _isSyncingFromController = false;
+  }
+
   /// Periodically sync the video_player position to our playback state.
   void _startPositionSync() {
     _positionTimer?.cancel();
@@ -339,75 +502,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
     }
     _providerSubscriptions.clear();
     _positionTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
-      if (_videoController == null || !_videoController!.value.isInitialized) {
-        return;
-      }
-      // Don't overwrite position while user is dragging the playhead
-      final tlState = ref.read(timelineProvider);
-      if (tlState.isDraggingPlayhead) return;
-
-      final project = ref.read(projectProvider);
-      if (project == null) return;
-
-      final playback = ref.read(playbackProvider);
-      var fp = _videoController!.value.position;
-
-      var active = activeVideoClipAt(project, playback.position);
-      if (active != null) {
-        if (fp >= active.trimEnd) {
-          final nextClip = nextVideoClipAfter(project, active);
-          if (nextClip != null) {
-            _videoController!.seekTo(nextClip.trimStart);
-            fp = nextClip.trimStart;
-            _isSyncingFromController = true;
-            ref.read(playbackProvider.notifier).setPosition(nextClip.startTime);
-            _isSyncingFromController = false;
-            active = nextClip;
-          } else if (playback.isPlaying) {
-            _videoController!.pause();
-            ref.read(playbackProvider.notifier).pause();
-            _isSyncingFromController = true;
-            ref.read(playbackProvider.notifier).setPosition(
-                  active.endTime - const Duration(microseconds: 1),
-                );
-            _isSyncingFromController = false;
-            _syncAudioPlayback();
-            return;
-          }
-        } else if (fp < active.trimStart) {
-          _videoController!.seekTo(active.trimStart);
-          fp = active.trimStart;
-        }
-      }
-
-      final timeline = timelinePositionForSource(
-        project,
-        fp,
-        playback.position,
-      );
-
-      if ((timeline - playback.position).abs() >
-          const Duration(milliseconds: 50)) {
-        _isSyncingFromController = true;
-        ref.read(playbackProvider.notifier).setPosition(timeline);
-        _isSyncingFromController = false;
-      }
-
-      final atClip = activeVideoClipAt(
-        project,
-        ref.read(playbackProvider).position,
-      );
-      if (atClip != null) {
-        final pos = ref.read(playbackProvider).position;
-        final speed = instantaneousPlaybackSpeed(atClip, pos).clamp(0.25, 5.0);
-        if ((_videoController!.value.playbackSpeed - speed).abs() > 0.01) {
-          _videoController!.setPlaybackSpeed(speed);
-        }
-      }
-
-      // Sync audio players with current position
-      _syncAudioPlayers(project);
-      _syncAudioPlayback();
+      _onPlaybackTick();
     });
 
     // Listen for seek requests (e.g. from timeline playhead drag)
@@ -522,7 +617,8 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
           v = clip.volume;
         }
       }
-      targetVol = inClip ? v : 1.0;
+      // A gap between clips stays silent instead of leaking the file's audio.
+      targetVol = inClip ? v : 0.0;
     }
 
     for (final track in project.audioTracks) {

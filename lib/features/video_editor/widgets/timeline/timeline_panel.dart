@@ -3,6 +3,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:pro_video_editor/pro_video_editor.dart';
@@ -214,6 +215,7 @@ class _TimelinePanelState extends ConsumerState<TimelinePanel> {
                                     pixelsPerSecond: pps,
                                     scrollOffset: 0,
                                     selectedClipId: tlState.selectedClipId,
+                                    selectedClipIds: tlState.selectedClipIds,
                                     onClipTap: (clipId) {
                                       ref
                                           .read(timelineProvider.notifier)
@@ -224,6 +226,19 @@ class _TimelinePanelState extends ConsumerState<TimelinePanel> {
                                           .selectClip(clipId);
                                       // Auto-open the correct tool panel
                                       _openPanelForClip(context, ref, clipId);
+                                    },
+                                    onClipLongPress: (clipId) {
+                                      HapticFeedback.selectionClick();
+                                      ref
+                                          .read(timelineProvider.notifier)
+                                          .toggleMultiSelect(clipId,
+                                              trackId: track.id);
+                                      final ids = ref
+                                          .read(timelineProvider)
+                                          .selectedClipIds;
+                                      ref
+                                          .read(projectProvider.notifier)
+                                          .selectClips(ids.toSet());
                                     },
                                     onClipResizeLeft: (clipId, dx) =>
                                         _handleResizeLeft(clipId, dx, pps),

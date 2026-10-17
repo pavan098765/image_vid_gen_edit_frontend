@@ -165,22 +165,26 @@ class _TransitionPanelState extends ConsumerState<TransitionPanel> {
 
   void _applyTransition(TransitionType type) {
     setState(() => _selectedType = type);
-    final selectedClip = ref.read(selectedClipProvider);
-    if (selectedClip == null || selectedClip is! VideoClip) {
+    if (!ensureDefaultVideoSelection(ref)) {
       _showNoClipWarning();
       return;
     }
 
-    ref.read(projectProvider.notifier).updateClip(
-          selectedClip.id,
-          (c) => (c as VideoClip).copyWith(
-            transitionIn: ClipTransition(
-              type: type,
-              duration: Duration(milliseconds: _durationMs.round()),
-            ),
-          ),
-        );
-    _showAppliedFeedback('Transition: ${type.label}');
+    final count = applyToSelectedVideoClips(
+      ref,
+      (c) => c.copyWith(
+        transitionIn: ClipTransition(
+          type: type,
+          duration: Duration(milliseconds: _durationMs.round()),
+        ),
+      ),
+    );
+    if (count == 0) {
+      _showNoClipWarning();
+      return;
+    }
+    final label = 'Transition: ${type.label}';
+    _showAppliedFeedback(count > 1 ? '$label on $count clips' : label);
   }
 
   void _showAppliedFeedback(String message) {
@@ -224,18 +228,14 @@ class _TransitionPanelState extends ConsumerState<TransitionPanel> {
   }
 
   void _updateTransitionDuration(double ms) {
-    final selectedClip = ref.read(selectedClipProvider);
-    if (selectedClip == null || selectedClip is! VideoClip) return;
-
-    ref.read(projectProvider.notifier).updateClip(
-          selectedClip.id,
-          (c) {
-            final vc = c as VideoClip;
-            return vc.copyWith(
-            transitionIn: vc.transitionIn.copyWith(
-              duration: Duration(milliseconds: ms.round()),
-            ),
-          );},
-        );
+    if (!ensureDefaultVideoSelection(ref)) return;
+    applyToSelectedVideoClips(
+      ref,
+      (c) => c.copyWith(
+        transitionIn: c.transitionIn.copyWith(
+          duration: Duration(milliseconds: ms.round()),
+        ),
+      ),
+    );
   }
 }

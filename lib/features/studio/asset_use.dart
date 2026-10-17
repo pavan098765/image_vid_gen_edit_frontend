@@ -1,8 +1,13 @@
 import 'workflow_models.dart';
 
+bool isVideoAssetPath(String path) {
+  final name = path.split(RegExp(r'[/\\]')).last.toLowerCase();
+  return RegExp(r'\.(mp4|mov|webm|mkv|m4v)$').hasMatch(name);
+}
+
 UserAsset classifyAsset(String path) {
   final name = path.split(RegExp(r'[/\\]')).last.toLowerCase();
-  if (RegExp(r'\.(mp4|mov|webm|mkv)$').hasMatch(name)) {
+  if (isVideoAssetPath(path)) {
     return UserAsset(
       path: path,
       role: 'footage',

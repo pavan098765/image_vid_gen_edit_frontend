@@ -66,6 +66,15 @@ class _FilterPanelState extends ConsumerState<FilterPanel> {
               ),
             ],
           ),
+          const SizedBox(height: 8),
+          Text(
+            _selectionHint(ref),
+            style: TextStyle(
+              fontSize: 11,
+              height: 1.3,
+              color: cs.onSurface.withOpacity(0.55),
+            ),
+          ),
           const SizedBox(height: 12),
           if (selectedClip is VideoClip) ...[
             Text('Looks',
@@ -84,10 +93,10 @@ class _FilterPanelState extends ConsumerState<FilterPanel> {
                         label: Text(look.label),
                         selected: selectedClip.look == look,
                         onSelected: (_) {
-                          ref.read(projectProvider.notifier).updateClip(
-                                selectedClip.id,
-                                (c) => (c as VideoClip).copyWith(look: look),
-                              );
+                          applyToSelectedVideoClips(
+                            ref,
+                            (c) => c.copyWith(look: look),
+                          );
                         },
                       ),
                     ),
@@ -244,35 +253,55 @@ class _FilterPanelState extends ConsumerState<FilterPanel> {
   }
 
   void _updateAdjustment() {
-    final selectedClip = ref.read(selectedClipProvider);
-    if (selectedClip == null || selectedClip is! VideoClip) {
+    if (!ensureDefaultVideoSelection(ref)) {
       _showNoClipWarning();
       return;
     }
 
-    ref.read(projectProvider.notifier).updateClip(
-          selectedClip.id,
-          (c) => (c as VideoClip).copyWith(
-            colorAdjustment: ColorAdjustment(
-              brightness: _brightness,
-              contrast: _contrast,
-              saturation: _saturation,
-              filterPresetId: _selectedFilter,
-            ),
-          ),
-        );
-    _showAppliedFeedback();
+    final count = applyToSelectedVideoClips(
+      ref,
+      (c) => c.copyWith(
+        colorAdjustment: ColorAdjustment(
+          brightness: _brightness,
+          contrast: _contrast,
+          saturation: _saturation,
+          filterPresetId: _selectedFilter,
+        ),
+      ),
+    );
+    if (count == 0) {
+      _showNoClipWarning();
+      return;
+    }
+    _showAppliedFeedback(count);
   }
 
-  void _showAppliedFeedback() {
+  String _selectionHint(WidgetRef ref) {
+    final project = ref.watch(projectProvider);
+    final ids = ref.watch(timelineProvider).selectedClipIds;
+    var videos = 0;
+    if (project != null) {
+      for (final id in ids) {
+        if (project.findClipById(id) is VideoClip) videos++;
+      }
+    }
+    if (videos > 1) {
+      return 'Applying to $videos selected clips. A split stays separate until you long-press the other piece.';
+    }
+    return 'Applies to the selected clip only. Long-press another clip on the same track to include it.';
+  }
+
+  void _showAppliedFeedback(int count) {
     ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: const Row(
+        content: Row(
           children: [
-            Icon(Icons.check_circle, color: Colors.white, size: 16),
-            SizedBox(width: 8),
-            Text('Filter applied to clip'),
+            const Icon(Icons.check_circle, color: Colors.white, size: 16),
+            const SizedBox(width: 8),
+            Text(count > 1
+                ? 'Filter applied to $count clips'
+                : 'Filter applied to this clip'),
           ],
         ),
         duration: const Duration(milliseconds: 800),

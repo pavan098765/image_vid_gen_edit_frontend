@@ -8,7 +8,7 @@ class WorkflowRunner {
 
   void ensureCanStart(WorkflowSpec spec, List<String> files) {
     if (spec.requiresFiles && files.isEmpty) {
-      throw StateError('Add at least one clip to start.');
+      throw StateError('Add a video to start. A photo can come along as the look.');
     }
   }
 

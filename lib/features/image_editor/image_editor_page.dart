@@ -49,7 +49,8 @@ class EditorPage extends StatefulWidget {
   State<EditorPage> createState() => _EditorPageState();
 }
 
-class _EditorPageState extends State<EditorPage> {
+class _EditorPageState extends State<EditorPage>
+    with SingleTickerProviderStateMixin {
   Uint8List? _exportedImage;
   File? _selectedImage;
   final ImagePicker _picker = ImagePicker();
@@ -73,6 +74,7 @@ class _EditorPageState extends State<EditorPage> {
   int _maxEdge = 0;
   mui.TextStyle? _savedTextStyle;
   Timer? _holdTimer;
+  late final AnimationController _exportGlow;
 
   late final ProImageEditorCallbacks _callbacks = ProImageEditorCallbacks(
     onImageEditingComplete: (bytes) async {
@@ -84,6 +86,10 @@ class _EditorPageState extends State<EditorPage> {
   @override
   void initState() {
     super.initState();
+    _exportGlow = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 850),
+    );
     // Listen for ad-free status changes to hide/show native ads
     isAdFreeNotifier.addListener(_onAdFreeStatusChanged);
     _historyId = widget.historyId ??
@@ -166,8 +172,45 @@ class _EditorPageState extends State<EditorPage> {
   @override
   void dispose() {
     _holdTimer?.cancel();
+    _exportGlow.dispose();
     isAdFreeNotifier.removeListener(_onAdFreeStatusChanged);
     super.dispose();
+  }
+
+  void _startExportGlow() {
+    if (!_exportGlow.isAnimating) {
+      _exportGlow.repeat(reverse: true);
+    }
+  }
+
+  void _stopExportGlow() {
+    _exportGlow.stop();
+    _exportGlow.value = 0;
+  }
+
+  Widget _highlightExport(Widget child) {
+    if (_exportedImage == null) return child;
+    final glow = Theme.of(context).colorScheme.primary;
+    return AnimatedBuilder(
+      animation: _exportGlow,
+      builder: (context, child) {
+        final t = Curves.easeInOut.transform(_exportGlow.value);
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: glow.withOpacity(0.28 + 0.55 * t),
+                blurRadius: 8 + 16 * t,
+                spreadRadius: 1 + 2 * t,
+              ),
+            ],
+          ),
+          child: child,
+        );
+      },
+      child: child,
+    );
   }
 
   Future<bool?> _pickSaveOptions() async {
@@ -317,6 +360,7 @@ class _EditorPageState extends State<EditorPage> {
         widgetLoader: ImageHistoryStore.widgetLoader,
       );
       if (!mounted) return;
+      _stopExportGlow();
       setState(() {
         _selectedImage = safeFile;
         _exportedImage = null;
@@ -531,65 +575,108 @@ class _EditorPageState extends State<EditorPage> {
     return await _adService.showAdForFeatureGate();
   }
 
+  PreferredSizeWidget _buildEditorAppBar() {
+    final cs = Theme.of(context).colorScheme;
+    final actions = <Widget>[
+      if (_selectedImage != null)
+        PopupMenuButton<String>(
+          tooltip: 'Frame',
+          icon: const Icon(Icons.crop_free),
+          onSelected: (id) => setState(() => _frameGuide = id),
+          itemBuilder: (_) => const [
+            PopupMenuItem(value: 'off', child: Text('No frame')),
+            PopupMenuItem(value: '9:16', child: Text('Story 9:16')),
+            PopupMenuItem(value: '4:5', child: Text('4:5')),
+            PopupMenuItem(value: '1:1', child: Text('Square 1:1')),
+          ],
+        ),
+      if (_selectedImage != null)
+        IconButton(
+          icon: const Icon(Icons.layers_outlined),
+          tooltip: 'Layers',
+          onPressed: () => showImageLayerListSheet(context, _editorKey),
+        ),
+      if (_selectedImage != null)
+        IconButton(
+          icon: const Icon(Icons.blur_on),
+          tooltip: 'Hide',
+          onPressed: () => _editorKey.currentState?.openPaintEditor(),
+        ),
+      if (_selectedImage != null)
+        IconButton(
+          icon: const Icon(Icons.photo_library_outlined),
+          tooltip: 'Select Image',
+          onPressed: _pickImage,
+        ),
+      if (_exportedImage != null)
+        _isSaving
+            ? const Padding(
+                padding: EdgeInsets.all(12),
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
+            : _highlightExport(
+                IconButton(
+                  icon: const Icon(Icons.save_alt),
+                  tooltip: 'Save Image',
+                  onPressed: _onExportPressed,
+                ),
+              ),
+    ];
+
+    return PreferredSize(
+      preferredSize: const Size.fromHeight(kToolbarHeight),
+      child: Material(
+        color: cs.surface,
+        child: SafeArea(
+          bottom: false,
+          child: SizedBox(
+            height: kToolbarHeight,
+            child: Row(
+              children: [
+                const BackButton(),
+                const Flexible(
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: KalaLogoWithIcon(logoHeight: 26, fontSize: 18),
+                    ),
+                  ),
+                ),
+                if (actions.isNotEmpty)
+                  Flexible(
+                    flex: 2,
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        reverse: true,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: actions,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
       onWillPop: _handleSystemBack,
       child: Scaffold(
-        appBar: widget.showAppBar
-            ? AppBar(
-                title: const KalaLogoWithIcon(logoHeight: 30, fontSize: 22),
-                actions: [
-                  if (_selectedImage != null)
-                    PopupMenuButton<String>(
-                      tooltip: 'Frame',
-                      icon: const Icon(Icons.crop_free),
-                      onSelected: (id) => setState(() => _frameGuide = id),
-                      itemBuilder: (_) => const [
-                        PopupMenuItem(value: 'off', child: Text('No frame')),
-                        PopupMenuItem(value: '9:16', child: Text('Story 9:16')),
-                        PopupMenuItem(value: '4:5', child: Text('4:5')),
-                        PopupMenuItem(value: '1:1', child: Text('Square 1:1')),
-                      ],
-                    ),
-                  if (_selectedImage != null)
-                    IconButton(
-                      icon: const Icon(Icons.layers_outlined),
-                      tooltip: 'Layers',
-                      onPressed: () =>
-                          showImageLayerListSheet(context, _editorKey),
-                    ),
-                  if (_selectedImage != null)
-                    IconButton(
-                      icon: const Icon(Icons.blur_on),
-                      tooltip: 'Hide',
-                      onPressed: () =>
-                          _editorKey.currentState?.openPaintEditor(),
-                    ),
-                  if (_selectedImage != null)
-                    IconButton(
-                      icon: const Icon(Icons.photo_library_outlined),
-                      tooltip: 'Select Image',
-                      onPressed: _pickImage,
-                    ),
-                  if (_exportedImage != null)
-                    _isSaving
-                        ? const Padding(
-                            padding: EdgeInsets.all(12),
-                            child: SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                          )
-                        : IconButton(
-                            icon: const Icon(Icons.save_alt),
-                            tooltip: 'Save Image',
-                            onPressed: _onExportPressed,
-                          ),
-                ],
-              )
-            : null,
+        appBar: widget.showAppBar ? _buildEditorAppBar() : null,
         body: Stack(
           children: [
             if (_selectedImage == null)
@@ -639,6 +726,7 @@ class _EditorPageState extends State<EditorPage> {
                     });
 
                     setState(() => _exportedImage = bytes);
+                    _startExportGlow();
                     await ImageTextStyleStore.save(
                       family: 'Inter',
                       size: 24,
@@ -646,7 +734,15 @@ class _EditorPageState extends State<EditorPage> {
                       background: Colors.transparent,
                     );
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Image editing complete')),
+                      SnackBar(
+                        content: const Text(
+                          'Editing complete. Tap the glowing Save button to export.',
+                        ),
+                        action: SnackBarAction(
+                          label: 'Save',
+                          onPressed: _onExportPressed,
+                        ),
+                      ),
                     );
                   },
 
@@ -669,6 +765,7 @@ class _EditorPageState extends State<EditorPage> {
                       debugPrint(
                           'pro_image_editor: onCloseEditor after editing complete — closing without extra dialog.');
                       if (mounted) {
+                        _stopExportGlow();
                         setState(() {
                           _selectedImage = null;
                           _exportedImage = null;
@@ -685,6 +782,7 @@ class _EditorPageState extends State<EditorPage> {
                     final ok = await _confirmExitEditing();
                     if (ok) {
                       if (mounted) {
+                        _stopExportGlow();
                         setState(() {
                           _selectedImage = null;
                           _exportedImage = null;
@@ -728,8 +826,13 @@ class _EditorPageState extends State<EditorPage> {
             if (!widget.showAppBar && _selectedImage != null)
               Positioned(
                 top: 8,
+                left: 8,
                 right: 8,
-                child: Row(
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     // Undo button
@@ -806,15 +909,19 @@ class _EditorPageState extends State<EditorPage> {
                                   onPressed: _saveAsClip,
                                 ),
                                 const SizedBox(width: 8),
-                                _buildActionButton(
-                                  icon: Icons.save_alt,
-                                  tooltip: 'Save Image',
-                                  onPressed: _onExportPressed,
-                                  isPrimary: true,
+                                _highlightExport(
+                                  _buildActionButton(
+                                    icon: Icons.save_alt,
+                                    tooltip: 'Save Image',
+                                    onPressed: _onExportPressed,
+                                    isPrimary: true,
+                                  ),
                                 ),
                               ],
                             ),
                   ],
+                    ),
+                  ),
                 ),
               ),
           ],

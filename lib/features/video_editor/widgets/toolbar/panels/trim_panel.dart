@@ -30,7 +30,7 @@ class _TrimPanelState extends ConsumerState<TrimPanel> {
         _strictlyInside(selectedClip, playback.position);
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
       children: [
         Row(
           children: [
@@ -151,8 +151,8 @@ class _TrimPanelState extends ConsumerState<TrimPanel> {
           const SizedBox(height: 10),
           Text(
             playheadInside
-                ? 'Split and freeze use the playhead at ${TimeUtils.formatDuration(playback.position)}.'
-                : 'Playhead is outside this clip. Split half cuts the middle. Move the playhead to choose the cut.',
+                ? 'Split and freeze use the playhead at ${TimeUtils.formatDuration(playback.position)}. Long-press clips on a track to select more than one.'
+                : 'Playhead is outside this clip, so split cuts the middle. Long-press clips on a track to select more than one.',
             style: TextStyle(
               fontSize: 11,
               height: 1.3,
@@ -219,7 +219,7 @@ class _TrimPanelState extends ConsumerState<TrimPanel> {
     if (created != null) {
       ref.read(timelineProvider.notifier).focusOn(created.startTime);
     }
-    _toast('Clip duplicated');
+    _toast('Clip duplicated. Later clips moved forward.');
     Navigator.of(context).pop();
   }
 
@@ -243,18 +243,18 @@ class _TrimPanelState extends ConsumerState<TrimPanel> {
   void _rotate(VideoClip video) {
     HapticFeedback.selectionClick();
     final turns = (video.rotateQuarterTurns + 1) % 4;
-    ref.read(projectProvider.notifier).updateClip(
-          video.id,
-          (c) => (c as VideoClip).copyWith(rotateQuarterTurns: turns),
-        );
+    applyToSelectedVideoClips(
+      ref,
+      (c) => c.copyWith(rotateQuarterTurns: turns),
+    );
   }
 
   void _reverse(VideoClip video) {
     HapticFeedback.selectionClick();
-    ref.read(projectProvider.notifier).updateClip(
-          video.id,
-          (c) => (c as VideoClip).copyWith(reverse: !video.reverse),
-        );
+    applyToSelectedVideoClips(
+      ref,
+      (c) => c.copyWith(reverse: !video.reverse),
+    );
   }
 
   Future<void> _detach(VideoClip video) async {
@@ -311,13 +311,13 @@ class _TrimPanelState extends ConsumerState<TrimPanel> {
             borderRadius: BorderRadius.circular(10),
             onTap: () {
               HapticFeedback.selectionClick();
-              ref.read(projectProvider.notifier).updateClip(
-                    clip.id,
-                    (c) => (c as VideoClip).copyWith(
-                      cropNorm: next,
-                      clearCrop: ratio == null,
-                    ),
-                  );
+              applyToSelectedVideoClips(
+                ref,
+                (c) => c.copyWith(
+                  cropNorm: next,
+                  clearCrop: ratio == null,
+                ),
+              );
             },
             child: Container(
               height: 36,
@@ -386,7 +386,7 @@ class _ActionGrid extends StatelessWidget {
       physics: const NeverScrollableScrollPhysics(),
       mainAxisSpacing: 8,
       crossAxisSpacing: 8,
-      childAspectRatio: 0.82,
+      childAspectRatio: 0.92,
       children: [
         for (final tile in tiles)
           _ActionButton(

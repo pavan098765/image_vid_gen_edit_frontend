@@ -13,7 +13,9 @@ class TimelineTrackRow extends StatelessWidget {
   final double pixelsPerSecond;
   final double scrollOffset;
   final String? selectedClipId;
+  final List<String> selectedClipIds;
   final void Function(String clipId)? onClipTap;
+  final void Function(String clipId)? onClipLongPress;
   final void Function(String clipId, double dx)? onClipResizeLeft;
   final void Function(String clipId, double dx)? onClipResizeRight;
   final void Function(String clipId, double dx)? onClipMove;
@@ -27,7 +29,9 @@ class TimelineTrackRow extends StatelessWidget {
     required this.pixelsPerSecond,
     required this.scrollOffset,
     this.selectedClipId,
+    this.selectedClipIds = const [],
     this.onClipTap,
+    this.onClipLongPress,
     this.onClipResizeLeft,
     this.onClipResizeRight,
     this.onClipMove,
@@ -167,8 +171,10 @@ class TimelineTrackRow extends StatelessWidget {
                         trackType: track.type,
                         pixelsPerSecond: pixelsPerSecond,
                         scrollOffset: scrollOffset,
-                        isSelected: clip.id == selectedClipId,
+                        isSelected: selectedClipIds.contains(clip.id) ||
+                            clip.id == selectedClipId,
                         onTap: () => onClipTap?.call(clip.id),
+                        onLongPress: () => onClipLongPress?.call(clip.id),
                         onResizeLeft: (dx) =>
                             onClipResizeLeft?.call(clip.id, dx),
                         onResizeRight: (dx) =>

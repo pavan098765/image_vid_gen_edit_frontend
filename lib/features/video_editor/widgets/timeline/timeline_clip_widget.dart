@@ -15,6 +15,7 @@ class TimelineClipWidget extends StatelessWidget {
   final double scrollOffset;
   final bool isSelected;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
   final Function(double)? onResizeLeft;
   final Function(double)? onResizeRight;
   final Function(double)? onMove;
@@ -27,6 +28,7 @@ class TimelineClipWidget extends StatelessWidget {
     required this.scrollOffset,
     this.isSelected = false,
     this.onTap,
+    this.onLongPress,
     this.onResizeLeft,
     this.onResizeRight,
     this.onMove,
@@ -61,6 +63,7 @@ class TimelineClipWidget extends StatelessWidget {
       bottom: 2,
       child: GestureDetector(
         onTap: onTap,
+        onLongPress: onLongPress,
         onHorizontalDragUpdate: isSelected ? (d) => onMove?.call(d.delta.dx) : null,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 120),

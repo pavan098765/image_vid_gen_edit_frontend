@@ -12,8 +12,11 @@ class TimelineState {
   /// Horizontal scroll offset in pixels.
   final double scrollOffset;
 
-  /// ID of the currently selected clip (or null).
+  /// ID of the primary selected clip (the one tool panels edit).
   final String? selectedClipId;
+
+  /// Every selected clip. Multi-select stays on one track.
+  final List<String> selectedClipIds;
 
   /// ID of the currently selected track (or null).
   final String? selectedTrackId;
@@ -37,6 +40,7 @@ class TimelineState {
     this.zoom = EditorConstants.defaultZoom,
     this.scrollOffset = 0,
     this.selectedClipId,
+    this.selectedClipIds = const [],
     this.selectedTrackId,
     this.isDraggingPlayhead = false,
     this.isResizingClip = false,
@@ -49,6 +53,7 @@ class TimelineState {
     double? zoom,
     double? scrollOffset,
     String? selectedClipId,
+    List<String>? selectedClipIds,
     String? selectedTrackId,
     bool? isDraggingPlayhead,
     bool? isResizingClip,
@@ -61,6 +66,9 @@ class TimelineState {
       zoom: zoom ?? this.zoom,
       scrollOffset: scrollOffset ?? this.scrollOffset,
       selectedClipId: clearSelection ? null : (selectedClipId ?? this.selectedClipId),
+      selectedClipIds: clearSelection
+          ? const []
+          : (selectedClipIds ?? this.selectedClipIds),
       selectedTrackId: clearSelection ? null : (selectedTrackId ?? this.selectedTrackId),
       isDraggingPlayhead: isDraggingPlayhead ?? this.isDraggingPlayhead,
       isResizingClip: isResizingClip ?? this.isResizingClip,
@@ -101,7 +109,38 @@ class TimelineNotifier extends StateNotifier<TimelineState> {
   }
 
   void selectClip(String clipId, {String? trackId}) {
-    state = state.copyWith(selectedClipId: clipId, selectedTrackId: trackId);
+    state = state.copyWith(
+      selectedClipId: clipId,
+      selectedTrackId: trackId,
+      selectedClipIds: [clipId],
+    );
+  }
+
+  /// Long-press: add or remove [clipId] on the current track.
+  /// A clip on a different track replaces the selection.
+  void toggleMultiSelect(String clipId, {String? trackId}) {
+    final sameTrack = state.selectedTrackId == null ||
+        trackId == null ||
+        state.selectedTrackId == trackId;
+    if (!sameTrack || state.selectedClipIds.isEmpty) {
+      selectClip(clipId, trackId: trackId);
+      return;
+    }
+    final next = [...state.selectedClipIds];
+    if (next.contains(clipId)) {
+      next.remove(clipId);
+      if (next.isEmpty) {
+        clearSelection();
+        return;
+      }
+    } else {
+      next.add(clipId);
+    }
+    state = state.copyWith(
+      selectedClipId: next.last,
+      selectedTrackId: trackId ?? state.selectedTrackId,
+      selectedClipIds: next,
+    );
   }
 
   void clearSelection() {

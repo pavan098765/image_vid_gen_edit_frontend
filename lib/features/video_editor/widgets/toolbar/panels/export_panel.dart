@@ -17,8 +17,11 @@ class ExportPanel extends ConsumerWidget {
     final project = ref.watch(projectProvider);
     final settings = project?.exportSettings ?? const ExportSettings();
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+    return Column(
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -312,14 +315,16 @@ class ExportPanel extends ConsumerWidget {
               ),
             ],
           ),
-          const SizedBox(height: 20),
-
-          // Export button
-          SizedBox(
+        ],
+      ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+          child: SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
               onPressed: () {
-                // Trigger export via parent page callback
                 _triggerExport(context, ref);
               },
               icon: const Icon(LucideIcons.download),
@@ -334,8 +339,8 @@ class ExportPanel extends ConsumerWidget {
               ),
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 

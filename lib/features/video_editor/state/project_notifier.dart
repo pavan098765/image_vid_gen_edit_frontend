@@ -207,11 +207,18 @@ class ProjectNotifier extends StateNotifier<VideoProject?> {
   }
 
   void updateClip(String clipId, Clip Function(Clip) updater) {
+    updateMany([clipId], updater);
+  }
+
+  /// Apply [updater] to every listed clip in one undo step.
+  void updateMany(Iterable<String> clipIds, Clip Function(Clip) updater) {
     if (state == null) return;
+    final ids = clipIds.toSet();
+    if (ids.isEmpty) return;
     _pushUndo();
     final tracks = state!.tracks.map((t) {
       final clips = t.clips.map((c) {
-        if (c.id == clipId) return updater(c);
+        if (ids.contains(c.id)) return updater(c);
         return c;
       }).toList();
       return t.copyWith(clips: clips);
@@ -224,10 +231,15 @@ class ProjectNotifier extends StateNotifier<VideoProject?> {
 
   /// Select a single clip (deselect all others).
   void selectClip(String clipId) {
+    selectClips({clipId});
+  }
+
+  /// Mark every id in [ids] selected and clear the rest.
+  void selectClips(Set<String> ids) {
     if (state == null) return;
     final tracks = state!.tracks.map((t) {
       final clips = t.clips.map((c) {
-        return c.copyWith(isSelected: c.id == clipId);
+        return c.copyWith(isSelected: ids.contains(c.id));
       }).toList();
       return t.copyWith(clips: clips);
     }).toList();
@@ -462,6 +474,8 @@ class ProjectNotifier extends StateNotifier<VideoProject?> {
         reverse: dupe.reverse,
         rotateQuarterTurns: dupe.rotateQuarterTurns,
         cropNorm: dupe.cropNorm,
+        look: dupe.look,
+        chroma: dupe.chroma,
       );
     } else if (dupe is AudioClip) {
       dupeWithNewId = AudioClip(
@@ -525,6 +539,9 @@ class ProjectNotifier extends StateNotifier<VideoProject?> {
       return null;
     }
 
+    // Make room on every track so the copy does not cover the next clip.
+    _shiftClipsStartingAt(clip.endTime, clip.duration);
+
     final newTracks = state!.tracks.map((t) {
       if (t.id == track.id) {
         return t.copyWith(clips: [...t.clips, dupeWithNewId]);
@@ -557,6 +574,22 @@ class ProjectNotifier extends StateNotifier<VideoProject?> {
     final item = tracks.removeAt(oldIndex);
     tracks.insert(newIndex, item);
     state = state!.copyWith(tracks: tracks);
+  }
+
+  /// Push every clip that starts at or after [at] forward by [delta], on all tracks.
+  void _shiftClipsStartingAt(Duration at, Duration delta) {
+    if (state == null || delta <= Duration.zero) return;
+    final tracks = state!.tracks.map((t) {
+      final clips = t.clips.map((c) {
+        if (c.startTime >= at) {
+          return c.copyWith(startTime: c.startTime + delta);
+        }
+        return c;
+      }).toList();
+      return t.copyWith(clips: clips);
+    }).toList();
+    final proj = state!.copyWith(tracks: tracks);
+    state = proj.copyWith(totalDuration: proj.computeTotalDuration());
   }
 
   void rippleDelete(String clipId) {

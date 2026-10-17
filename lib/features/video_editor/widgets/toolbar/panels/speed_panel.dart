@@ -239,24 +239,28 @@ class _SpeedPanelState extends ConsumerState<SpeedPanel> {
   }
 
   void _applySpeed() {
-    final selectedClip = ref.read(selectedClipProvider);
-    if (selectedClip == null || selectedClip is! VideoClip) {
+    if (!ensureDefaultVideoSelection(ref)) {
       _showNoClipWarning();
       return;
     }
 
-    ref.read(projectProvider.notifier).updateClip(
-          selectedClip.id,
-          (c) => (c as VideoClip).copyWith(
-            speedEffect: SpeedEffect(
-              mode: _mode,
-              speed: _speed,
-              rampStart: _rampStart,
-              rampEnd: _rampEnd,
-            ),
-          ),
-        );
-    _showAppliedFeedback('Speed set to ${_speed.toStringAsFixed(1)}x');
+    final count = applyToSelectedVideoClips(
+      ref,
+      (c) => c.copyWith(
+        speedEffect: SpeedEffect(
+          mode: _mode,
+          speed: _speed,
+          rampStart: _rampStart,
+          rampEnd: _rampEnd,
+        ),
+      ),
+    );
+    if (count == 0) {
+      _showNoClipWarning();
+      return;
+    }
+    final label = 'Speed set to ${_speed.toStringAsFixed(1)}x';
+    _showAppliedFeedback(count > 1 ? '$label on $count clips' : label);
   }
 
   void _showAppliedFeedback(String message) {

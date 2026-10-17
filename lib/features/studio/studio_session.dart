@@ -301,18 +301,18 @@ class StudioSession extends ChangeNotifier {
 
   void _boardFromFiles(WorkflowSpec current) {
     final film = draft!;
-    final files = film.filePaths;
-    final each = (film.durationSeconds / (files.isEmpty ? 1 : files.length)).round().clamp(1, 20);
+    final clips = film.filePaths.where(isVideoAssetPath).toList();
+    final each = (film.durationSeconds / (clips.isEmpty ? 1 : clips.length)).round().clamp(1, 20);
     final shots = [
-      for (var i = 0; i < files.length; i++)
+      for (var i = 0; i < clips.length; i++)
         ShotCard(
           id: 'u$i',
           chapter: 'Clip ${i + 1}',
           action: 'Your clip',
           durationSeconds: each,
           kind: 'user',
-          userFileId: files[i],
-          localPath: files[i],
+          userFileId: clips[i],
+          localPath: clips[i],
           line: '',
         ),
     ];
