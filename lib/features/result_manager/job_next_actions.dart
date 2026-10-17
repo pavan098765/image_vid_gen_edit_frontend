@@ -298,7 +298,7 @@ class _JobNextActionsState extends State<JobNextActions> {
       if (_capEnabled('upscale')) {
         final c = _cost('upscale');
         if (c != null) {
-          paid.add(_chip(cs, icon: Icons.hd_rounded, label: 'Upscale', detail: '$c gems', onTap: () {
+          paid.add(_aiRow(cs, icon: Icons.hd_rounded, label: 'Upscale', detail: '$c gems', onTap: () {
             _guard(() => _openCapability('upscale', paths: [result.path]));
           }));
         }
@@ -306,7 +306,7 @@ class _JobNextActionsState extends State<JobNextActions> {
       if (_capEnabled('remove_background')) {
         final c = _cost('remove_background');
         if (c != null) {
-          paid.add(_chip(cs, icon: Icons.auto_fix_high_rounded, label: 'Remove background', detail: '$c gems', onTap: () {
+          paid.add(_aiRow(cs, icon: Icons.auto_fix_high_rounded, label: 'Remove background', detail: '$c gems', onTap: () {
             _guard(() =>
                 _openCapability('remove_background', paths: [result.path]));
           }));
@@ -315,7 +315,7 @@ class _JobNextActionsState extends State<JobNextActions> {
       if (_capEnabled('animate_image')) {
         final c = _cost('animate_image');
         if (c != null) {
-          paid.add(_chip(cs, icon: Icons.play_circle_outline_rounded, label: 'Animate', detail: '$c gems', onTap: () {
+          paid.add(_aiRow(cs, icon: Icons.play_circle_outline_rounded, label: 'Animate', detail: '$c gems', onTap: () {
             _guard(() => _openCapability('animate_image',
                 paths: [result.path], prompt: ''));
           }));
@@ -324,7 +324,7 @@ class _JobNextActionsState extends State<JobNextActions> {
       if (_capEnabled('edit_image')) {
         final c = _cost('edit_image');
         if (c != null) {
-          paid.add(_chip(cs, icon: Icons.palette_outlined, label: 'Another style', detail: '$c gems', onTap: () {
+          paid.add(_aiRow(cs, icon: Icons.palette_outlined, label: 'Another style', detail: '$c gems', onTap: () {
             _guard(() => _openCapability(
                   'edit_image',
                   paths: [result.path],
@@ -363,7 +363,7 @@ class _JobNextActionsState extends State<JobNextActions> {
           _capEnabled('edit_image')) {
         final c = _cost('edit_image');
         if (c != null) {
-          paid.add(_chip(cs, icon: Icons.photo_outlined, label: 'Use the photo', detail: '$c gems', onTap: () {
+          paid.add(_aiRow(cs, icon: Icons.photo_outlined, label: 'Use the photo', detail: '$c gems', onTap: () {
             _guard(() => _openCapability('edit_image', paths: [source.path]));
           }));
         }
@@ -372,7 +372,7 @@ class _JobNextActionsState extends State<JobNextActions> {
 
     final againCost = _cost(job.capabilityId ?? '', modelId: job.model);
     if (job.capabilityId != null || job.model.isNotEmpty) {
-      paid.add(_chip(
+      paid.add(_aiRow(
         cs,
         icon: Icons.refresh_rounded,
         label: 'Use again',
@@ -430,7 +430,7 @@ class _JobNextActionsState extends State<JobNextActions> {
             const SizedBox(height: 10),
             if (free.isNotEmpty) ...[
               Text(
-                'On this phone',
+                'Next actions',
                 style: TextStyle(
                   color: cs.onSurfaceVariant,
                   fontSize: 12,
@@ -443,7 +443,7 @@ class _JobNextActionsState extends State<JobNextActions> {
             ],
             if (paid.isNotEmpty) ...[
               Text(
-                'Continue',
+                'Continue editing with AI',
                 style: TextStyle(
                   color: cs.onSurfaceVariant,
                   fontSize: 12,
@@ -451,7 +451,7 @@ class _JobNextActionsState extends State<JobNextActions> {
                 ),
               ),
               const SizedBox(height: 8),
-              Wrap(spacing: 8, runSpacing: 8, children: paid),
+              ...paid,
             ],
             if (canSaveSetup)
               TextButton(
@@ -460,6 +460,73 @@ class _JobNextActionsState extends State<JobNextActions> {
               ),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _aiRow(
+    ColorScheme cs, {
+    required String label,
+    required VoidCallback onTap,
+    required IconData icon,
+    String? detail,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Material(
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: _busy
+              ? null
+              : () {
+                  HapticFeedback.lightImpact();
+                  onTap();
+                },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: cs.primary.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(icon, size: 16, color: cs.primary),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      color: cs.onSurface,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+                if (detail != null)
+                  Text(
+                    detail,
+                    style: TextStyle(
+                      color: cs.primary,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                    ),
+                  ),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 18,
+                  color: cs.onSurfaceVariant,
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

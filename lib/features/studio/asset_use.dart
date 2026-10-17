@@ -1,4 +1,5 @@
 import 'workflow_models.dart';
+import 'workflow_rules.dart';
 
 bool isVideoAssetPath(String path) {
   final name = path.split(RegExp(r'[/\\]')).last.toLowerCase();
@@ -55,6 +56,39 @@ List<UserAsset> classifyAssets(List<String> paths) {
   return assets;
 }
 
+/// A file the user placed in a named slot. [role] empty means the name is still a guess.
+List<UserAsset> assetsFromLabels(List<({String path, String role, String label})> picks) {
+  return [
+    for (final pick in picks)
+      pick.role.isEmpty ? _guess(pick.path, pick.label) : _named(pick.path, pick.role, pick.label),
+  ];
+}
+
+UserAsset _guess(String path, String label) {
+  final asset = classifyAsset(path);
+  final named = label.trim();
+  if (named.isEmpty) return asset;
+  asset.note = named;
+  asset.pinned = true;
+  return asset;
+}
+
+UserAsset _named(String path, String role, String label) {
+  final named = label.trim();
+  final who = named.isEmpty ? '' : ' named $named';
+  final note = switch (role) {
+    'character' => 'Character$who. The same face on every generated shot.',
+    'background' => 'Set$who. The place the film returns to, not one pasted card.',
+    'product' => 'Object$who. Keep it recognizable whenever it is in frame.',
+    'footage' => named.isEmpty ? 'Footage. Cut in as picture.' : 'Footage named $named. Cut in as picture.',
+    'reference' => named.isEmpty
+        ? 'Reference picture. Use only the look it shows.'
+        : 'Reference named $named. Use only the look it shows.',
+    _ => named,
+  };
+  return UserAsset(path: path, role: role, note: note, pinned: true);
+}
+
 void applyClassified(FilmDraft draft, Map<String, dynamic> json) {
   final list = json['assets'];
   if (list is! List) return;
@@ -66,6 +100,7 @@ void applyClassified(FilmDraft draft, Map<String, dynamic> json) {
     final match = draft.assets.where((a) => a.path == path);
     if (match.isEmpty) continue;
     const allowed = {'character', 'background', 'product', 'footage', 'reference'};
+    if (match.first.pinned) continue;
     if (allowed.contains(role)) match.first.role = role;
     if (note.trim().isNotEmpty) match.first.note = note.trim();
   }
@@ -216,7 +251,7 @@ String _ordinal(int index) {
 
 String _guideLabel(FilmDraft draft, UserAsset asset) {
   if (asset.role == 'background') return 'set';
-  if (asset.role == 'product') return 'product';
+  if (asset.role == 'product') return 'object';
   if (draft.workflowId == 'creature_eye') return 'creature';
   return 'character';
 }
@@ -250,19 +285,18 @@ String chooseVideoModel(FilmDraft draft, ShotCard shot, WorkflowSpec spec) {
   if (draft.videoEngine == 'minimax_h3') return 'minimax_h3';
   if (spec.chainEndFrames || spec.id == 'fpv' || spec.id == 'body') return 'ltx25_int8_t2v';
   if (shot.durationSeconds > 15) return 'ltx25_int8_t2v';
-  final text = '${shot.action} ${shot.onScreen} ${shot.chapter}'.toLowerCase();
-  final place = RegExp(
-    r'\b(wide|aerial|forest|river|palace|city|army|crowd|landscape|sky|sea|ocean|bridge|road|valley|temple|fly|flies|glides|camera)\b',
+  final text = '${shot.action} ${shot.onScreen} ${shot.chapter} ${shot.line}'.toLowerCase();
+  final named = draft.assets
+      .where((a) => a.role == 'character')
+      .where((a) => _assetMentioned(a, text))
+      .length;
+  final onScreen = shot.kind == 'video' && shot.line.trim().isNotEmpty && !isNarrationLine(shot);
+  final camera = RegExp(
+    r'\b(wide|aerial|forest|river|palace|city|army|crowd|landscape|sky|sea|ocean|bridge|road|valley|temple|fly|flies|glides|camera|crosses|crossing)\b',
   ).hasMatch(text);
-  final acting = RegExp(
-    r'\b(face|looks|speaks|cries|smiles|walks|draws|holds|turns|eyes|hands|bow|sword|sits|stands|reaches|runs|leaps|drinks|watches|blinks)\b',
-  ).hasMatch(text) ||
-      draft.assets
-          .where((a) => a.role == 'character' || a.role == 'reference')
-          .any((a) => _assetMentioned(a, text));
-  if (spec.id == 'podcast') return 'minimax_h3';
-  if (place && !acting) return 'ltx25_int8_t2v';
-  if (!acting && (spec.id == 'countdown' || spec.id == 'explainer' || spec.id == 'creature_eye')) {
+  if (spec.id == 'podcast' || onScreen || named >= 2) return 'minimax_h3';
+  if (spec.id == 'song_video' && named >= 1) return 'minimax_h3';
+  if (camera || spec.id == 'countdown' || spec.id == 'explainer' || spec.id == 'creature_eye' || spec.id == 'song_video') {
     return 'ltx25_int8_t2v';
   }
   return 'minimax_h3';
@@ -285,7 +319,11 @@ void applyPicturePolicy(List<ShotCard> shots, String workflowId) {
     for (var i = 0; i < live.length; i++) {
       live[i].kind = i == live.length - 1 ? 'video' : 'image';
     }
-  } else if (workflowId == 'fpv' || workflowId == 'what_if_diary' || workflowId == 'time_travel_pov' || workflowId == 'creature_eye') {
+  } else if (workflowId == 'fpv' ||
+      workflowId == 'what_if_diary' ||
+      workflowId == 'time_travel_pov' ||
+      workflowId == 'creature_eye' ||
+      workflowId == 'song_video') {
     for (final shot in live) {
       shot.kind = 'video';
     }
@@ -334,6 +372,8 @@ String musicStyle(String workflowId) {
       return 'naturalistic instrumental, no vocals';
     case 'countdown':
       return 'tense instrumental that lifts at the end, no vocals';
+    case 'song_video':
+      return 'a sung song with a clear lead vocal';
     default:
       return 'cinematic instrumental, no vocals';
   }

@@ -73,6 +73,7 @@ class UserAsset {
   String prompt;
   String? jobId;
   String? r2Key;
+  bool pinned;
 
   UserAsset({
     required this.path,
@@ -81,6 +82,7 @@ class UserAsset {
     this.prompt = '',
     this.jobId,
     this.r2Key,
+    this.pinned = false,
   });
 
   bool get isMade => path.startsWith('look:');
@@ -92,6 +94,7 @@ class UserAsset {
         'prompt': prompt,
         'jobId': jobId,
         'r2Key': r2Key,
+        'pinned': pinned,
       };
 
   factory UserAsset.fromJson(Map<String, dynamic> json) {
@@ -102,6 +105,7 @@ class UserAsset {
       prompt: (json['prompt'] as String?) ?? '',
       jobId: json['jobId'] as String?,
       r2Key: json['r2Key'] as String?,
+      pinned: json['pinned'] == true,
     );
   }
 }
@@ -117,6 +121,7 @@ const kWorkflowIds = [
   'creature_eye',
   'cut_my_clips',
   'countdown',
+  'song_video',
 ];
 
 Future<List<WorkflowSpec>> loadWorkflows() async {
@@ -156,6 +161,12 @@ class ShotCard {
   String? keyframePath;
   String? keyframeR2Key;
   String onScreen;
+  String quality;
+  bool makeKeyframe;
+  String? continuesFrom;
+  String? continuationLatentR2Key;
+  bool retried;
+  int audioInSeconds;
 
   ShotCard({
     required this.id,
@@ -185,6 +196,12 @@ class ShotCard {
     this.keyframePath,
     this.keyframeR2Key,
     this.onScreen = '',
+    this.quality = 'draft',
+    this.makeKeyframe = true,
+    this.continuesFrom,
+    this.continuationLatentR2Key,
+    this.retried = false,
+    this.audioInSeconds = 0,
   });
 
   Map<String, dynamic> toJson() => {
@@ -215,6 +232,12 @@ class ShotCard {
         'keyframePath': keyframePath,
         'keyframeR2Key': keyframeR2Key,
         'onScreen': onScreen,
+        'quality': quality,
+        'makeKeyframe': makeKeyframe,
+        'continuesFrom': continuesFrom,
+        'continuationLatentR2Key': continuationLatentR2Key,
+        'retried': retried,
+        'audioInSeconds': audioInSeconds,
       };
 
   factory ShotCard.fromJson(Map<String, dynamic> json) {
@@ -246,6 +269,12 @@ class ShotCard {
       keyframePath: json['keyframePath'] as String?,
       keyframeR2Key: json['keyframeR2Key'] as String?,
       onScreen: (json['onScreen'] as String?) ?? '',
+      quality: (json['quality'] as String?) ?? 'draft',
+      makeKeyframe: json['makeKeyframe'] != false,
+      continuesFrom: json['continuesFrom'] as String?,
+      continuationLatentR2Key: json['continuationLatentR2Key'] as String?,
+      retried: json['retried'] == true,
+      audioInSeconds: (json['audioInSeconds'] as num?)?.toInt() ?? 0,
     );
   }
 }
@@ -273,6 +302,9 @@ class FilmDraft {
   List<Map<String, dynamic>> script;
   Map<String, dynamic> editPlan;
   String voiceLock;
+  bool voicePinned;
+  String musicNote;
+  String lyrics;
   List<UserAsset> assets;
   String videoEngine;
 
@@ -299,6 +331,9 @@ class FilmDraft {
     this.script = const [],
     this.editPlan = const {},
     this.voiceLock = '',
+    this.voicePinned = false,
+    this.musicNote = '',
+    this.lyrics = '',
     this.assets = const [],
     this.videoEngine = 'auto',
   });
@@ -326,6 +361,9 @@ class FilmDraft {
         'script': script,
         'editPlan': editPlan,
         'voiceLock': voiceLock,
+        'voicePinned': voicePinned,
+        'musicNote': musicNote,
+        'lyrics': lyrics,
         'assets': assets.map((a) => a.toJson()).toList(),
         'videoEngine': videoEngine,
       };
@@ -362,6 +400,9 @@ class FilmDraft {
           .toList(),
       editPlan: Map<String, dynamic>.from((json['editPlan'] as Map?) ?? const {}),
       voiceLock: (json['voiceLock'] as String?) ?? '',
+      voicePinned: json['voicePinned'] == true,
+      musicNote: (json['musicNote'] as String?) ?? '',
+      lyrics: (json['lyrics'] as String?) ?? '',
       assets: ((json['assets'] as List?) ?? const [])
           .map((e) => UserAsset.fromJson(Map<String, dynamic>.from(e as Map)))
           .toList(),

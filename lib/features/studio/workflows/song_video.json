@@ -1,0 +1,17 @@
+{
+  "id": "song_video",
+  "title": "Song video",
+  "blurb": "A song first, then scenes cut to its lines.",
+  "research": "none",
+  "skip": ["research"],
+  "lengths": [60, 120, 180],
+  "defaultLength": 60,
+  "aspects": ["16:9", "9:16"],
+  "defaultAspect": "9:16",
+  "speech": "narrator",
+  "music": true,
+  "sfx": 0,
+  "clipAudioIsMain": false,
+  "minFindings": 0,
+  "rubric": "Write the song first. Cut scenes of 4 to 10 seconds on the lines. Spoken intro and outro stay with the narrator. The picture follows the song."
+}

@@ -9,6 +9,13 @@ class RuleFailure implements Exception {
 
 const _vague = ['throughout history', 'many people', "in today's world"];
 
+/// Voiceover is spoken off screen. A named speaker on a video shot talks in the clip.
+bool isNarrationLine(ShotCard shot) {
+  if (shot.kind != 'video') return true;
+  final speaker = shot.speaker.trim().toLowerCase();
+  return speaker.isEmpty || speaker == 'narrator' || speaker == 'voiceover' || speaker == 'host';
+}
+
 /// Spoken line must never be copied into a clip prompt when a speech track exists.
 String worldVideoPrompt({
   required String lock,
@@ -113,8 +120,11 @@ List<String> checkShots(List<ShotCard> shots, {required bool speechTrack}) {
     }
     final spoken = shot.line.trim();
     final video = shot.videoPrompt ?? '';
-    if (speechTrack && spoken.isNotEmpty && video.contains(spoken)) {
+    if (speechTrack && isNarrationLine(shot) && spoken.isNotEmpty && video.contains(spoken)) {
       reasons.add('A spoken line was copied into the clip prompt.');
+    }
+    if (shot.kind == 'video' && !isNarrationLine(shot) && spoken.isNotEmpty && !video.contains(spoken)) {
+      reasons.add('The person on screen never says their line.');
     }
   }
   return reasons;

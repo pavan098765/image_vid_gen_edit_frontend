@@ -84,7 +84,7 @@ class GeminiDirector {
   Map<String, dynamic> _jsonFromGemini(Map<String, dynamic> body) {
     final candidates = body['candidates'];
     if (candidates is! List || candidates.isEmpty) {
-      const direct = ['findings', 'angles', 'shots', 'failures', 'lines', 'plan', 'lock'];
+      const direct = ['findings', 'angles', 'shots', 'failures', 'lines', 'plan', 'lock', 'assets'];
       if (direct.any(body.containsKey)) return body;
       throw StateError('The writing step returned nothing.');
     }

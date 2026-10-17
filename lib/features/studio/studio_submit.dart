@@ -60,12 +60,16 @@ class StudioSubmit {
   }
 
   Future<String> submitPicture(ShotCard shot, {required String aspect, List<String> guides = const []}) {
-    final start = (shot.keyframeR2Key ?? '').trim().isNotEmpty
-        ? shot.keyframeR2Key!.trim()
-        : (shot.referenceR2Key ?? '').trim();
+    final posed = (shot.keyframeR2Key ?? '').trim();
+    final brought = (shot.referenceR2Key ?? '').trim();
+    final opening = posed.isNotEmpty
+        ? posed
+        : (shot.model.startsWith('ltx') || shot.makeKeyframe ? brought : '');
     final end = (shot.endFrameR2Key ?? '').trim();
-    final hasRef = start.isNotEmpty;
+    final hasRef = opening.isNotEmpty;
     final hasEnd = end.isNotEmpty;
+    final sheets = guides.map((key) => key.trim()).where((key) => key.isNotEmpty).take(4).toList();
+    final latent = (shot.continuationLatentR2Key ?? '').trim();
     if (shot.kind == 'video') {
       final chained = shot.model.startsWith('ltx');
       final String model;
@@ -93,16 +97,21 @@ class StudioSubmit {
           'duration_seconds': seconds,
           'aspect_ratio': aspect,
           'mode': mode,
+          'quality': shot.quality,
           'studio_shot': true,
-          if (hasRef) 'init_image_r2_key': start,
+          if (hasRef) 'init_image_r2_key': opening,
           if (!hasRef && hasEnd) 'init_image_r2_key': end,
           if (hasRef && hasEnd) 'last_frame_image_r2_key': end,
+          if (!chained && sheets.isNotEmpty) 'reference_image_r2_keys': sheets,
+          if (latent.isNotEmpty) 'continuation_latent_r2_key': latent,
+          if (chained && (shot.audioInSeconds > 0 || latent.isNotEmpty)) 'audio_in_seconds': shot.audioInSeconds,
         },
       );
     }
     final secondsStill = shot.durationSeconds;
     final keys = guides.map((k) => k.trim()).where((k) => k.isNotEmpty).toList();
-    if (keys.isEmpty && start.isNotEmpty) keys.add(start);
+    final stillStart = opening.isNotEmpty ? opening : (shot.referenceR2Key ?? '').trim();
+    if (keys.isEmpty && stillStart.isNotEmpty) keys.add(stillStart);
     return submit(
       model: keys.isNotEmpty ? 'qwen2_1_i2i' : 'qwen2_1_t2i',
       prompt: shot.stillPrompt ?? shot.action,

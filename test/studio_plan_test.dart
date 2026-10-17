@@ -3,6 +3,7 @@ import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/studio/asset_use.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/studio/gemini_client.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/studio/studio_assembler.dart';
+import 'package:kala_ai_create_images_videos_with_ai/features/studio/studio_director.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/studio/studio_jobs.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/studio/studio_media.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/studio/studio_session.dart';
@@ -643,7 +644,8 @@ void main() {
     await session.pollOnce();
     expect(submitted.last['model'], 'qwen2_1_i2i');
     expect(submitted.last['init_image_r2_keys'], ['r2/frames/job0.png', 'r2/frames/job1.png']);
-    expect(submitted.last['prompt'], contains('The first image is the character'));
+    expect(submitted.last['prompt'], contains('Image 1 is the character'));
+    expect(submitted.last['prompt'], contains('Image 2 is the set'));
   });
 
   test('a named cast stays within four references and a place shot uses LTX', () {
@@ -684,5 +686,296 @@ void main() {
     expect(chooseVideoModel(draft, army, spec), 'minimax_h3');
     draft.videoEngine = 'ltx25_int8_t2v';
     expect(chooseVideoModel(draft, court, spec), 'ltx25_int8_t2v');
+  });
+
+  test('a director keeps an uploaded character and makes the missing set', () {
+    final draft = FilmDraft(
+      id: 'd',
+      workflowId: 'narrated_story',
+      topic: 'Ramayana',
+      durationSeconds: 60,
+      aspect: '16:9',
+      lock: 'Gold cloth, forest court.',
+      assets: [
+        UserAsset(path: 'look:character', role: 'character', note: 'Made for this film.', prompt: 'generic'),
+        UserAsset(path: 'look:background', role: 'background', note: 'Made for this film.', prompt: 'generic set'),
+        UserAsset(path: '/rama.png', role: 'character', note: 'Rama, same face', pinned: true),
+      ],
+    );
+    installCast(draft, {
+      'assets': [
+        {'name': 'Rama', 'role': 'character', 'prompt': 'Sheet of Rama'},
+        {'name': 'Forest', 'role': 'background', 'prompt': 'Empty forest, no people'},
+        {'name': 'Sita', 'role': 'character', 'prompt': 'Sheet of Sita'},
+      ],
+    });
+    expect(draft.assets.any((a) => a.path == '/rama.png'), isTrue);
+    expect(draft.assets.any((a) => a.path == 'look:character:rama'), isFalse);
+    expect(draft.assets.any((a) => a.path == 'look:character'), isFalse);
+    expect(draft.assets.any((a) => a.path == 'look:background'), isFalse);
+    final forest = draft.assets.where((a) => a.path == 'look:background:forest').single;
+    expect(forest.prompt, 'Empty forest, no people');
+    expect(draft.assets.where((a) => a.path == 'look:character:sita').single.note, contains('Sita'));
+  });
+
+  test('on-screen speech stays in the clip and narration stays out', () {
+    final runner = WorkflowRunner();
+    final spec = WorkflowSpec.fromJson(const {
+      'id': 'narrated_story',
+      'title': 'Narrated story',
+      'blurb': 'A voiced film from a topic.',
+      'speech': 'narrator',
+    });
+    final draft = FilmDraft(
+      id: 'd',
+      workflowId: spec.id,
+      topic: 'Ramayana',
+      durationSeconds: 20,
+      aspect: '16:9',
+      assets: [
+        UserAsset(path: '/rama.png', role: 'character', note: 'Rama'),
+        UserAsset(path: '/forest.png', role: 'background', note: 'Forest'),
+      ],
+    );
+    runner.applyShots(draft, spec, [
+      ShotCard(
+        id: 'a',
+        chapter: 'Hook',
+        action: 'Rama stands in the forest',
+        durationSeconds: 8,
+        kind: 'video',
+        speaker: 'Rama',
+        line: 'I will go.',
+        lock: 'Gold cloth.',
+      ),
+      ShotCard(
+        id: 'b',
+        chapter: 'Hook',
+        action: 'The forest holds',
+        durationSeconds: 8,
+        kind: 'video',
+        speaker: 'narrator',
+        line: 'The trees wait.',
+        lock: 'Gold cloth.',
+      ),
+    ]);
+    expect(draft.shots.first.videoPrompt, contains('I will go.'));
+    expect(draft.shots.first.videoPrompt, contains('No music'));
+    expect(draft.shots.first.videoPrompt!.contains('No speech'), isFalse);
+    expect(draft.shots[1].videoPrompt, contains('No speech'));
+    expect(draft.shots[1].videoPrompt!.contains('The trees wait.'), isFalse);
+    final jobs = runner.jobsFor(draft, spec);
+    final voice = jobs.where((job) => job['model'] == 'gemini_tts').toList();
+    expect(voice, hasLength(1));
+    expect(voice.single['prompt'], 'The trees wait.');
+    expect(jobs.where((job) => (job['shotId'] as String) == 'key:a'), isNotEmpty);
+  });
+
+  test('hook is full refine, a middle shot is fast refine, and an H3 sheet shot skips the keyframe', () {
+    final runner = WorkflowRunner();
+    final spec = WorkflowSpec.fromJson(const {
+      'id': 'narrated_story',
+      'title': 'Narrated story',
+      'blurb': 'A voiced film from a topic.',
+      'speech': 'narrator',
+      'music': false,
+    });
+    final draft = FilmDraft(
+      id: 'd',
+      workflowId: spec.id,
+      topic: 'Ramayana',
+      durationSeconds: 30,
+      aspect: '16:9',
+      videoEngine: 'minimax_h3',
+      assets: [
+        UserAsset(path: '/rama.png', role: 'character', note: 'Rama', r2Key: 'r2/rama'),
+        UserAsset(path: '/forest.png', role: 'background', note: 'Forest', r2Key: 'r2/forest'),
+      ],
+      shots: [
+        ShotCard(id: 'a', chapter: 'Hook', action: 'Rama stands', durationSeconds: 6, kind: 'video', line: 'I will go.', speaker: 'Rama'),
+        ShotCard(id: 'b', chapter: 'Hook', action: 'Rama walks', durationSeconds: 6, kind: 'video', speaker: 'narrator', line: 'The trees wait.'),
+        ShotCard(id: 'c', chapter: 'Last image', action: 'Rama holds', durationSeconds: 6, kind: 'video', speaker: 'narrator', line: 'The trees wait.'),
+      ],
+    );
+    runner.applyShots(draft, spec, draft.shots);
+    expect(draft.shots[0].quality, 'full_refine');
+    expect(draft.shots[1].quality, 'fast_refine');
+    expect(draft.shots[2].quality, 'full_refine');
+    expect(draft.shots[1].videoPrompt, contains('No speech'));
+    expect(draft.shots[0].videoPrompt, contains('I will go.'));
+    final jobs = runner.jobsFor(draft, spec);
+    expect(jobs.where((job) => job['shotId'] == 'key:b'), isEmpty);
+    expect(jobs.where((job) => job['shotId'] == 'key:a'), isNotEmpty);
+    expect(draft.shots[1].continuesFrom, 'a');
+  });
+
+  test('an LTX shot still queues a keyframe', () {
+    final runner = WorkflowRunner();
+    final spec = WorkflowSpec.fromJson(const {
+      'id': 'fpv',
+      'title': 'FPV',
+      'blurb': 'One camera.',
+      'speech': 'none',
+      'music': false,
+      'chainEndFrames': true,
+    });
+    final draft = FilmDraft(
+      id: 'd',
+      workflowId: spec.id,
+      topic: 'Ridge',
+      durationSeconds: 16,
+      aspect: '16:9',
+      shots: [
+        ShotCard(id: 'a', chapter: 'Hook', action: 'The camera flies', durationSeconds: 8, kind: 'video'),
+      ],
+    );
+    runner.applyShots(draft, spec, draft.shots);
+    expect(draft.shots.single.model, 'ltx25_int8_t2v');
+    expect(runner.jobsFor(draft, spec).where((job) => job['shotId'] == 'key:a'), isNotEmpty);
+  });
+
+  test('fast refine and full refine raise the quote in the same direction as the controller', () {
+    const costs = CostTable(imageCost: 18, h3Base5: 35, ltxBase5: 40, speechCost: 12, musicCost: 15, sfxCost: 8);
+    final shot = ShotCard(
+      id: 'b',
+      chapter: 'One',
+      action: 'A clip',
+      durationSeconds: 10,
+      kind: 'video',
+      model: 'minimax_h3',
+      makeKeyframe: false,
+    );
+    final draftPrice = priceFilm(shots: [shot], costs: costs, speechTasks: 0, music: false, musicBeds: 0, sfxCount: 0).total;
+    shot.quality = 'fast_refine';
+    final fast = priceFilm(shots: [shot], costs: costs, speechTasks: 0, music: false, musicBeds: 0, sfxCount: 0).total;
+    shot.quality = 'full_refine';
+    final full = priceFilm(shots: [shot], costs: costs, speechTasks: 0, music: false, musicBeds: 0, sfxCount: 0).total;
+    expect(fast, draftPrice * 2);
+    expect(full, draftPrice * 4);
+  });
+
+  test('a continued shot waits for the previous latent and a failed shot is refined once', () async {
+    final submitted = <Map<String, dynamic>>[];
+    var n = 0;
+    final fails = <String>{};
+    final session = StudioSession(
+      submit: StudioSubmit(submitOverride: ({
+        required String model,
+        required String prompt,
+        Map<String, dynamic> params = const {},
+      }) async {
+        submitted.add({'model': model, 'prompt': prompt, ...params});
+        final id = 'job${n++}';
+        if (model == 'minimax_h3' && submitted.where((row) => row['model'] == 'minimax_h3').length == 1) {
+          fails.add(id);
+        }
+        return id;
+      }),
+      store: StudioDraftStore(saveOverride: (_) async {}),
+      jobs: StudioJobClient(
+        statusOverride: (id) async => fails.remove(id)
+            ? const JobSnapshot('failed', null)
+            : JobSnapshot('completed', 'https://example.com/clip.mp4', latentKey: 'latents/$id'),
+        downloadOverride: (url, name) async => '/frames/$name.mp4',
+      ),
+      media: StudioMedia(uploadOverride: (path) async => 'r2$path'),
+    );
+    addTearDown(session.dispose);
+    session.spec = WorkflowSpec.fromJson(const {
+      'id': 'narrated_story',
+      'title': 'Narrated story',
+      'blurb': 'A voiced film from a topic.',
+      'speech': 'none',
+      'music': false,
+    });
+    session.draft = FilmDraft(
+      id: 'd',
+      workflowId: 'narrated_story',
+      topic: 'Rama',
+      durationSeconds: 16,
+      aspect: '16:9',
+      stage: 'outline',
+      music: false,
+      videoEngine: 'minimax_h3',
+      assets: [
+        UserAsset(path: '/rama.png', role: 'character', note: 'Rama', r2Key: 'r2/rama', pinned: true),
+        UserAsset(path: '/forest.png', role: 'background', note: 'Forest', r2Key: 'r2/forest'),
+      ],
+      shots: [
+        ShotCard(id: 'a', chapter: 'Middle', action: 'Rama walks', durationSeconds: 6, kind: 'video', speaker: 'narrator', line: 'The trees wait.'),
+        ShotCard(id: 'b', chapter: 'Middle', action: 'Rama walks on', durationSeconds: 6, kind: 'video', speaker: 'narrator', line: 'The trees wait.'),
+      ],
+    );
+    session.draft!.shots[0].quality = 'fast_refine';
+    session.draft!.shots[0].makeKeyframe = false;
+    session.draft!.shots[0].model = 'minimax_h3';
+    session.draft!.shots[1].quality = 'fast_refine';
+    session.draft!.shots[1].makeKeyframe = false;
+    session.draft!.shots[1].model = 'minimax_h3';
+    session.draft!.shots[1].continuesFrom = 'a';
+    await session.make();
+    expect(submitted.where((row) => row['model'] == 'qwen2_1_i2i'), isEmpty);
+    expect(submitted.where((row) => row['model'] == 'minimax_h3'), hasLength(1));
+    expect(session.draft!.shots[1].jobId, isNull);
+
+    await session.pollOnce();
+    final videos = submitted.where((row) => row['model'] == 'minimax_h3').toList();
+    expect(videos, hasLength(2));
+    expect(videos[1]['quality'], 'full_refine');
+    expect(videos[1]['reference_image_r2_keys'], ['r2/rama', 'r2/forest']);
+    expect(session.draft!.shots[1].jobId, isNull);
+
+    await session.pollOnce();
+    final after = submitted.where((row) => row['model'] == 'minimax_h3').toList();
+    expect(after, hasLength(3));
+    expect(after[2]['continuation_latent_r2_key'], 'latents/job1');
+    expect(submitted.where((row) => row['quality'] == 'full_refine'), hasLength(1));
+  });
+
+  test('a song video writes the vocal first and locks scenes to the song', () {
+    final runner = WorkflowRunner();
+    final spec = WorkflowSpec.fromJson(const {
+      'id': 'song_video',
+      'title': 'Song video',
+      'blurb': 'A song first, then scenes cut to its lines.',
+      'speech': 'narrator',
+      'music': true,
+      'skip': ['research'],
+    });
+    final draft = FilmDraft(
+      id: 'd',
+      workflowId: spec.id,
+      topic: 'A river at night',
+      durationSeconds: 30,
+      aspect: '9:16',
+      lyrics: 'The river keeps the tune',
+      assets: [
+        UserAsset(path: '/rama.png', role: 'character', note: 'Rama', pinned: true),
+      ],
+      shots: [
+        ShotCard(id: 'intro', chapter: 'Intro', action: 'Black water', durationSeconds: 3, speaker: 'narrator', line: 'Listen.'),
+        ShotCard(id: 'verse', chapter: 'Verse', action: 'Rama sings', durationSeconds: 12, speaker: 'Rama', line: 'The river keeps the tune'),
+      ],
+    );
+    applyPicturePolicy(draft.shots, spec.id);
+    runner.applyShots(draft, spec, draft.shots);
+    expect(draft.shots.every((shot) => shot.kind == 'video'), isTrue);
+    expect(draft.shots.every((shot) => shot.durationSeconds >= 4 && shot.durationSeconds <= 10), isTrue);
+    expect(draft.shots[1].audioInSeconds, draft.shots[0].durationSeconds);
+    expect(draft.shots[1].model, 'minimax_h3');
+    final jobs = runner.jobsFor(draft, spec);
+    expect(jobs.first['model'], 'suno_music');
+    expect(jobs.first['prompt'], 'The river keeps the tune');
+    expect(jobs.where((job) => job['model'] == 'gemini_tts').single['prompt'], 'Listen.');
+    final pictures = assembleFilm(
+      draft: draft,
+      spec: spec,
+      mediaPaths: {'intro': '/a.mp4', 'verse': '/b.mp4'},
+      musicPath: '/song.mp3',
+    );
+    expect(
+      pictures.project.videoTracks.single.clips.cast<VideoClip>().every((clip) => clip.volume == 0),
+      isTrue,
+    );
   });
 }

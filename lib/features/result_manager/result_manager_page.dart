@@ -721,7 +721,7 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
               ),
               const SizedBox(height: 2),
               Text(
-                'Image and audio results stay 20 minutes. Video results stay 24 hours.',
+                'Results stay for 20 minutes. Download them before they expire.',
                 style: TextStyle(
                   color: cs.onSurfaceVariant.withOpacity(0.8),
                   fontSize: 11,
@@ -2368,7 +2368,7 @@ class _JobCardState extends State<JobCard> {
           children: [
             Text(
               'This result is no longer available in the cloud. '
-              'Image and audio results stay 20 minutes. Video results stay 24 hours.',
+              'Results stay for 20 minutes. Download them before they expire.',
               style: TextStyle(
                 color: cs.onSurfaceVariant,
                 height: 1.5,

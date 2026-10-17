@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import 'asset_use.dart';
 import 'gemini_client.dart';
+import 'studio_director.dart';
 import 'studio_jobs.dart';
 import 'studio_media.dart';
 import 'studio_store.dart';
@@ -87,16 +88,25 @@ class StudioSession extends ChangeNotifier {
     required List<String> files,
     String? carryLock,
     String videoEngine = 'auto',
+    List<({String path, String role, String label})>? labeledFiles,
+    List<UserAsset>? preparedAssets,
+    String musicNote = '',
+    String voiceHint = '',
+    String lyrics = '',
   }) async {
     final current = spec;
     if (current == null) return;
+    final paths = preparedAssets?.map((asset) => asset.path).toList() ??
+        labeledFiles?.map((file) => file.path).toList() ??
+        files;
     try {
-      _runner.ensureCanStart(current, files);
+      _runner.ensureCanStart(current, paths);
     } catch (e) {
       message = 'Add at least one clip to start.';
       notifyListeners();
       return;
     }
+    final voice = voiceHint.trim();
     draft = FilmDraft(
       id: 'film_${DateTime.now().millisecondsSinceEpoch}',
       workflowId: current.id,
@@ -107,11 +117,16 @@ class StudioSession extends ChangeNotifier {
       captions: captions,
       music: music,
       narratorOn: narratorOn,
-      filePaths: files,
+      filePaths: paths,
       lock: carryLock ?? '',
       stage: 'research',
-      assets: classifyAssets(files),
+      assets: preparedAssets ??
+          (labeledFiles == null ? classifyAssets(paths) : assetsFromLabels(labeledFiles)),
       videoEngine: videoEngine,
+      musicNote: musicNote.trim(),
+      lyrics: lyrics.trim(),
+      voiceLock: voice,
+      voicePinned: voice.isNotEmpty,
     );
     await _readAssets();
     message = null;
@@ -269,9 +284,12 @@ class StudioSession extends ChangeNotifier {
       final shots = _shotsFrom(scenes.json, film.lock);
       if (shots.isEmpty) throw StateError('The outline came back empty. Try again.');
       final voice = scenes.json['voiceLock'];
-      if (voice is String && voice.trim().isNotEmpty) film.voiceLock = voice.trim();
+      if (!film.voicePinned && voice is String && voice.trim().isNotEmpty) {
+        film.voiceLock = voice.trim();
+      }
       applyPicturePolicy(shots, current.id);
       _runner.applyShots(film, current, shots);
+      await _directCast(film, current);
       if (scenes.handedToUser) _hand(scenes.failures);
     }
     if (!current.skips('edit_plan')) {
@@ -476,6 +494,10 @@ class StudioSession extends ChangeNotifier {
       files: film?.filePaths ?? const [],
       carryLock: film?.lock,
       videoEngine: film?.videoEngine ?? 'auto',
+      preparedAssets: film?.assets.where((asset) => !asset.isMade).toList(),
+      musicNote: film?.musicNote ?? '',
+      lyrics: film?.lyrics ?? '',
+      voiceHint: (film?.voicePinned ?? false) ? (film?.voiceLock ?? '') : '',
     );
   }
 
@@ -494,7 +516,7 @@ class StudioSession extends ChangeNotifier {
         if (asset != null) await _submitAnchor(asset);
       } else if (shotId.startsWith('key:')) {
         final shot = film.shots.firstWhere((s) => s.id == shotId.substring(4));
-        if (_looksReady(film)) await _submitKeyframe(shot);
+        if (shot.makeKeyframe && _looksReady(film)) await _submitKeyframe(shot);
       } else if (shotId.startsWith('voice') || shotId.startsWith('music') || shotId == 'sfx') {
         final id = await _submit.submit(
           model: job['model'] as String,
@@ -509,6 +531,7 @@ class StudioSession extends ChangeNotifier {
         shot.jobId = await _submit.submitPicture(shot, aspect: film.aspect, guides: _guideKeys(shot));
       }
     }
+    if (_looksReady(film)) await _releaseVideos();
   }
 
   Future<void> _submitAnchor(UserAsset asset) async {
@@ -557,10 +580,13 @@ class StudioSession extends ChangeNotifier {
   }
 
   String _keyframePrompt(ShotCard shot, List<String> keys) {
-    final base = (shot.stillPrompt ?? shot.action).trim();
-    if (keys.length < 2 || base.contains('The first image is')) return base;
-    final person = spec?.id == 'creature_eye' ? 'creature' : 'character';
-    return '$base\nThe first image is the $person. The second image is the set. Keep the $person from the first image and the place from the second.';
+    final film = draft;
+    if (film == null) return (shot.stillPrompt ?? shot.action).trim();
+    final guides = guideAssets(film, shot);
+    if (guides.isEmpty && keys.isEmpty) return (shot.stillPrompt ?? shot.action).trim();
+    final composed = composeKeyframePrompt(action: shot.action, lock: shot.lock, guides: guides);
+    if (composed.trim().isNotEmpty) return composed;
+    return (shot.stillPrompt ?? shot.action).trim();
   }
 
   void _ensureWatch() {
@@ -596,11 +622,22 @@ class StudioSession extends ChangeNotifier {
       if (id == null || id.isEmpty || (shot.localPath ?? '').isNotEmpty) continue;
       final snap = await _jobs.status(id);
       if (snap.status == 'failed') {
-        message = 'One shot failed. You can make that card again.';
+        if (shot.kind == 'video' && !shot.retried) {
+          shot.retried = true;
+          shot.quality = 'full_refine';
+          shot.jobId = null;
+          changed = true;
+          message = 'Making that shot again at a finer pass.';
+        } else {
+          message = 'One shot failed. You can make that card again.';
+        }
       } else if (snap.status == 'completed' && snap.url != null) {
         final path = await _jobs.download(snap.url!, id);
         if (path != null) {
           shot.localPath = path;
+          if ((snap.latentKey ?? '').isNotEmpty) {
+            shot.continuationLatentR2Key = snap.latentKey;
+          }
           changed = true;
         }
       }
@@ -635,13 +672,27 @@ class StudioSession extends ChangeNotifier {
     for (var i = 0; i < videos.length; i++) {
       final shot = videos[i];
       if ((shot.jobId ?? '').isNotEmpty) continue;
-      if ((shot.keyframeR2Key ?? '').isEmpty) continue;
-      if (current.chainEndFrames && i < videos.length - 1) {
-        final nextKey = videos[i + 1].keyframeR2Key;
+      if (shot.makeKeyframe && (shot.keyframeR2Key ?? '').isEmpty) continue;
+      final previous = i > 0 ? videos[i - 1] : null;
+      if ((shot.continuesFrom ?? '').isNotEmpty && previous != null) {
+        final latent = (previous.continuationLatentR2Key ?? '').trim();
+        if ((previous.localPath ?? '').isEmpty && latent.isEmpty) continue;
+        if (latent.isNotEmpty) {
+          shot.continuationLatentR2Key = latent;
+        } else {
+          shot.continuesFrom = null;
+        }
+      }
+      final next = i < videos.length - 1 ? videos[i + 1] : null;
+      final wantsEnd = next != null &&
+          (next.continuesFrom ?? '').isEmpty &&
+          (current.chainEndFrames || sharesSet(film, shot, next));
+      if (wantsEnd) {
+        final nextKey = next.keyframeR2Key;
         if (nextKey == null || nextKey.isEmpty) continue;
         shot.endFrameR2Key = nextKey;
       }
-      shot.jobId = await _submit.submitPicture(shot, aspect: film.aspect);
+      shot.jobId = await _submit.submitPicture(shot, aspect: film.aspect, guides: _guideKeys(shot));
     }
   }
 
@@ -676,7 +727,7 @@ class StudioSession extends ChangeNotifier {
     if (film == null || !_looksReady(film)) return;
     for (final shot in film.shots.where((s) => !s.dropped && s.kind != 'user')) {
       if (shot.kind == 'video') {
-        await _submitKeyframe(shot);
+        if (shot.makeKeyframe) await _submitKeyframe(shot);
       } else if ((shot.jobId ?? '').isEmpty) {
         await _prepareShot(shot);
         shot.jobId = await _submit.submitPicture(shot, aspect: film.aspect, guides: _guideKeys(shot));
@@ -715,7 +766,7 @@ class StudioSession extends ChangeNotifier {
     if (model == 'gemini_tts') {
       final chapter = shotId.contains(':') ? shotId.split(':').sublist(1).join(':') : null;
       final turns = film.shots
-          .where((s) => !s.dropped && s.line.trim().isNotEmpty && (chapter == null || s.chapter == chapter))
+          .where((s) => !s.dropped && s.line.trim().isNotEmpty && isNarrationLine(s) && (chapter == null || s.chapter == chapter))
           .map((s) => {'speaker': s.speaker, 'text': s.line})
           .toList();
       return {
@@ -734,16 +785,33 @@ class StudioSession extends ChangeNotifier {
       } else if (beds > 1) {
         seconds = 360;
       }
+      final sung = spec?.id == 'song_video';
+      final lyric = film.lyrics.trim().isNotEmpty ? film.lyrics.trim() : film.topic.trim();
       return {
         'customMode': true,
-        'instrumental': true,
-        'style': musicStyle(spec?.id ?? ''),
-        'lyrics': '',
+        'instrumental': !sung,
+        'style': [
+          musicStyle(spec?.id ?? ''),
+          if ((film.musicNote).trim().isNotEmpty) film.musicNote.trim(),
+        ].join(', '),
+        'lyrics': sung ? lyric : '',
         'duration': seconds.clamp(30, 360),
         'title': film.topic,
       };
     }
     return {'duration': 4};
+  }
+
+  Future<void> _directCast(FilmDraft film, WorkflowSpec current) async {
+    if (current.id == 'cut_my_clips' || film.shots.isEmpty) return;
+    try {
+      final raw = await _director.generate(
+        step: 'cast',
+        instruction: castInstruction(film),
+      );
+      installCast(film, raw);
+      _runner.applyShots(film, current, film.shots);
+    } catch (_) {}
   }
 
   Future<void> _readAssets() async {
@@ -756,7 +824,8 @@ class StudioSession extends ChangeNotifier {
         step: 'assets',
         instruction: 'Files:\n${film.assets.map((a) => '${a.path} (${a.role})').join('\n')}\n'
             'Return {"assets":[{"path":"...","role":"character|background|product|footage|reference","note":"how this file is used across the film"}]}. '
-            'A character, set, or product is used on many shots. It is not pasted onto one card.',
+            'A character, set, or object is used on many shots. It is not pasted onto one card. '
+            'Leave any file whose note already names a character, set, object, or reference unchanged.',
       );
       applyClassified(film, raw);
     } catch (_) {}
@@ -838,8 +907,11 @@ class StudioSession extends ChangeNotifier {
         'Length: ${film.durationSeconds} seconds.\nScript: ${film.script}\nLock: ${film.lock}\n'
         'Return {"lock":"...","voiceLock":"one narrator, age and accent","shots":[{"id":"s0","chapter":"...","action":"...","durationSeconds":5,'
         '"kind":"image","line":"...","speaker":"narrator","lock":"...","onScreen":"","leadIn":false,"cites":[]}]}. '
+        'speaker is narrator only for a voice that is not on screen. When a person on screen says the line, speaker is that person\'s name. '
         'voiceLock describes the voice only, never the picture. Copy the picture lock unchanged. '
+        '${film.voicePinned ? 'Keep this voiceLock exactly: ${film.voiceLock}. ' : ''}'
         'Uploads: ${film.assets.map((a) => '${a.role}: ${a.note}').join('; ')}. '
+        'A pinned upload already has its role. Do not rename a character, set, object, or reference. '
         'Use a character, set, or product across the film. Do not turn an uploaded image into the only shot. '
         'If no character sheet or set was uploaded, describe both in the picture lock. They are created from that lock and used on every generated shot. '
         'Copy the lock unchanged. A shot is at most 15 seconds, or 20 when it must land on an end frame. '
@@ -857,8 +929,8 @@ class StudioSession extends ChangeNotifier {
   String _promptPrompt(WorkflowSpec spec, FilmDraft film) {
     return '${spec.rubric}\nLock: ${film.lock}\nShots: ${film.shots.map((s) => s.toJson()).toList()}\n'
         'Write a still prompt and, for video cards, a separate clip prompt. '
-        'Prefix the lock. Do not copy a spoken line into the clip prompt. '
-        'The clip prompt names the sound of the place and says no music.';
+        'Prefix the lock. A narrator line stays out of the clip. A person on screen says their line in the clip, with the mouth moving. '
+        'The clip names the sound of the place and says no music.';
   }
 
   Map<String, dynamic> _angle(FilmDraft film) {

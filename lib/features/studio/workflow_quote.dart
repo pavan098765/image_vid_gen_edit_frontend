@@ -1,4 +1,5 @@
 import 'workflow_models.dart';
+import 'workflow_rules.dart';
 
 class CostTable {
   final int imageCost;
@@ -77,8 +78,8 @@ FilmQuote priceFilm({
       if (shot.dropped || shot.kind == 'user') continue;
       if (shot.kind == 'video') {
         final base = shot.model.startsWith('ltx') ? costs.ltxBase5 : costs.h3Base5;
-        picture += videoGems(base, shot.durationSeconds);
-        keyframes += costs.imageCost;
+        picture += videoGems(base, shot.durationSeconds) * renderMultiplier(shot.quality);
+        if (shot.makeKeyframe) keyframes += costs.imageCost;
       } else {
         picture += costs.imageCost;
       }
@@ -94,11 +95,22 @@ FilmQuote priceFilm({
   return FilmQuote(lines);
 }
 
+int renderMultiplier(String quality) {
+  switch (quality) {
+    case 'fast_refine':
+      return 2;
+    case 'full_refine':
+      return 4;
+    default:
+      return 1;
+  }
+}
+
 int speechTaskCount(WorkflowSpec spec, FilmDraft draft) {
   if (spec.speech == 'none') return 0;
   if (spec.speech == 'optional' && !draft.narratorOn) return 0;
   final chapters = draft.shots
-      .where((s) => !s.dropped && s.line.trim().isNotEmpty)
+      .where((s) => !s.dropped && s.line.trim().isNotEmpty && isNarrationLine(s))
       .map((s) => s.chapter)
       .toSet();
   if (chapters.isEmpty) return spec.speech == 'optional' ? 0 : 1;

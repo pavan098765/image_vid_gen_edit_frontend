@@ -48,7 +48,7 @@ AssembledFilm assembleFilm({
         trimEnd: dur,
         originalDuration: dur,
         resolution: size,
-        volume: spec.clipAudioIsMain ? 1 : 0.35,
+        volume: spec.id == 'song_video' ? 0 : (spec.clipAudioIsMain ? 1 : 0.35),
         transitionIn: i == 0 || !newChapter
             ? const ClipTransition()
             : const ClipTransition(

@@ -1,4 +1,5 @@
 import 'asset_use.dart';
+import 'studio_director.dart';
 import 'workflow_models.dart';
 import 'workflow_quote.dart';
 import 'workflow_rules.dart';
@@ -76,11 +77,13 @@ class WorkflowRunner {
     }
     for (final shot in draft.shots.where((s) => !s.dropped && s.kind != 'user')) {
       if (shot.kind == 'video') {
-        jobs.add({
-          'model': 'qwen2_1_t2i',
-          'prompt': shot.stillPrompt ?? shot.action,
-          'shotId': 'key:${shot.id}',
-        });
+        if (shot.makeKeyframe) {
+          jobs.add({
+            'model': 'qwen2_1_t2i',
+            'prompt': shot.stillPrompt ?? shot.action,
+            'shotId': 'key:${shot.id}',
+          });
+        }
         jobs.add({
           'model': shot.model.startsWith('ltx') ? 'ltx25_int8_t2v' : 'minimax_h3',
           'prompt': shot.videoPrompt ?? '',
@@ -96,14 +99,15 @@ class WorkflowRunner {
     }
     if (speechTaskCount(spec, draft) > 0) {
       final chapters = draft.shots
-          .where((s) => !s.dropped && s.line.trim().isNotEmpty)
+          .where((s) => !s.dropped && s.line.trim().isNotEmpty && isNarrationLine(s))
           .map((s) => s.chapter)
           .toSet();
       for (final chapter in chapters) {
         final lines = draft.shots
-            .where((s) => !s.dropped && s.chapter == chapter && s.line.trim().isNotEmpty)
+            .where((s) => !s.dropped && s.chapter == chapter && s.line.trim().isNotEmpty && isNarrationLine(s))
             .map((s) => s.line)
             .join('\n');
+        if (lines.trim().isEmpty) continue;
         jobs.add({
           'model': 'gemini_tts',
           'prompt': lines,
@@ -112,13 +116,19 @@ class WorkflowRunner {
       }
     }
     if (draft.music && spec.music) {
-      final beds = musicBedCount(draft.durationSeconds, true);
+      final beds = spec.id == 'song_video' ? 1 : musicBedCount(draft.durationSeconds, true);
+      final musicJobs = <Map<String, dynamic>>[];
       for (var i = 0; i < beds; i++) {
-        jobs.add({
+        musicJobs.add({
           'model': 'suno_music',
-          'prompt': spec.title,
+          'prompt': spec.id == 'song_video' && draft.lyrics.trim().isNotEmpty ? draft.lyrics.trim() : spec.title,
           'shotId': i == 0 ? 'music' : 'music:${i + 1}',
         });
+      }
+      if (spec.id == 'song_video') {
+        jobs.insertAll(0, musicJobs);
+      } else {
+        jobs.addAll(musicJobs);
       }
     }
     if (spec.sfx > 0) {
@@ -130,6 +140,7 @@ class WorkflowRunner {
   void _writePrompts(FilmDraft draft, WorkflowSpec spec) {
     final speech = _hasSpeech(spec, draft);
     final live = draft.shots.where((s) => !s.dropped).toList();
+    var heard = 0;
     for (final shot in draft.shots) {
       if (shot.kind == 'user') {
         shot.stillPrompt = null;
@@ -137,22 +148,48 @@ class WorkflowRunner {
         continue;
       }
       final reference = assetPrompt(draft, shot);
+      final guides = guideAssets(draft, shot);
       final last = live.isNotEmpty && live.last.id == shot.id;
       if (shot.kind == 'video') {
-        shot.stillPrompt = [shot.lock, reference, shot.action].where((s) => s.trim().isNotEmpty).join('\n');
-        shot.videoPrompt = worldVideoPrompt(
-          lock: shot.lock,
-          action: shot.action,
-          sound: soundFor(spec.id, clipAudioIsMain: spec.clipAudioIsMain, lastShot: last),
-          speechTrack: speech,
-          reference: reference,
-        );
+        if (spec.id == 'song_video') {
+          shot.durationSeconds = shot.durationSeconds.clamp(4, 10);
+        }
         shot.model = chooseVideoModel(draft, shot, spec);
+        shot.quality = _tierFor(shot, live);
+        final index = live.indexWhere((card) => card.id == shot.id);
+        final previous = index > 0 ? live[index - 1] : null;
+        shot.continuesFrom = _continuesFrom(draft, shot, previous);
+        shot.makeKeyframe = shot.model.startsWith('ltx') || shot.quality == 'full_refine';
+        shot.stillPrompt = shot.makeKeyframe
+            ? composeKeyframePrompt(action: shot.action, lock: shot.lock, guides: guides)
+            : null;
+        shot.audioInSeconds = heard;
+        heard += shot.durationSeconds;
+        final next = index >= 0 && index + 1 < live.length ? live[index + 1] : null;
+        final arrive = next != null && next.kind == 'video' && (spec.chainEndFrames || sharesSet(draft, shot, next));
+        final sound = soundFor(spec.id, clipAudioIsMain: spec.clipAudioIsMain, lastShot: last);
+        shot.videoPrompt = isNarrationLine(shot)
+            ? worldVideoPrompt(
+                lock: shot.lock,
+                action: shot.action,
+                sound: sound,
+                speechTrack: speech,
+                reference: reference,
+              )
+            : performedClipPrompt(
+                shot: shot,
+                sound: sound,
+                reference: reference,
+                arriveOnEnd: arrive,
+              );
         if (!shot.model.startsWith('ltx') && shot.durationSeconds > 15) {
           shot.durationSeconds = 15;
         }
       } else {
-        shot.stillPrompt = [shot.lock, reference, shot.onScreen, shot.action].where((s) => s.trim().isNotEmpty).join('\n');
+        shot.stillPrompt = [
+          composeKeyframePrompt(action: shot.action, lock: shot.lock, guides: guides),
+          shot.onScreen.trim(),
+        ].where((s) => s.isNotEmpty).join('\n');
         shot.videoPrompt = null;
       }
     }
@@ -169,6 +206,24 @@ class WorkflowRunner {
     }
     final reasons = checkEditPlan(plan, draft.durationSeconds);
     if (reasons.isNotEmpty) draft.error = reasons.first;
+  }
+
+  String _tierFor(ShotCard shot, List<ShotCard> live) {
+    final index = live.indexWhere((card) => card.id == shot.id);
+    final chapter = shot.chapter.toLowerCase();
+    final hero = index <= 0 ||
+        index == live.length - 1 ||
+        chapter.contains('turn') ||
+        chapter.contains('last') ||
+        chapter.contains('claim');
+    return hero ? 'full_refine' : 'fast_refine';
+  }
+
+  String? _continuesFrom(FilmDraft draft, ShotCard shot, ShotCard? previous) {
+    if (previous == null || previous.kind != 'video' || shot.kind != 'video') return null;
+    if (previous.chapter != shot.chapter) return null;
+    if (!sharesSet(draft, previous, shot)) return null;
+    return previous.id;
   }
 
   bool _hasSpeech(WorkflowSpec spec, FilmDraft draft) {

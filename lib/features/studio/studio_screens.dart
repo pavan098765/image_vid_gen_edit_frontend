@@ -182,7 +182,10 @@ class _StudioSetupPageState extends State<StudioSetupPage> {
   bool _narrator = false;
   String _engine = 'auto';
   bool _seeded = false;
-  final List<String> _files = [];
+  bool _advanced = false;
+  final List<_Brought> _files = [];
+  final _voice = TextEditingController();
+  final _musicFeel = TextEditingController();
   String? _promptNote;
 
   @override
@@ -197,7 +200,7 @@ class _StudioSetupPageState extends State<StudioSetupPage> {
       _narrator = spec.speech == 'optional';
       final pending = StudioScope.of(context).pendingFiles;
       if (pending.isNotEmpty && _files.isEmpty) {
-        _files.addAll(pending);
+        _files.addAll(pending.map((path) => _Brought(path)));
       }
     }
   }
@@ -205,6 +208,11 @@ class _StudioSetupPageState extends State<StudioSetupPage> {
   @override
   void dispose() {
     _topic.dispose();
+    _voice.dispose();
+    _musicFeel.dispose();
+    for (final file in _files) {
+      file.label.dispose();
+    }
     super.dispose();
   }
 
@@ -285,30 +293,16 @@ class _StudioSetupPageState extends State<StudioSetupPage> {
                     ],
                   ),
                   const SizedBox(height: 18),
-                  _SwitchCard(
-                    icon: LucideIcons.captions,
-                    title: 'Captions',
-                    subtitle: 'Words sit on the picture.',
-                    value: _captions,
-                    onChanged: (v) => setState(() => _captions = v),
+                  _SoundGroup(
+                    captions: _captions,
+                    music: _music,
+                    narrator: spec.speech == 'optional' ? _narrator : null,
+                    onCaptions: (v) => setState(() => _captions = v),
+                    onMusic: (v) => setState(() => _music = v),
+                    onNarrator: (v) => setState(() => _narrator = v),
                   ),
-                  _SwitchCard(
-                    icon: LucideIcons.music,
-                    title: 'Music',
-                    subtitle: 'A bed under the film.',
-                    value: _music,
-                    onChanged: (v) => setState(() => _music = v),
-                  ),
-                  if (spec.speech == 'optional')
-                    _SwitchCard(
-                      icon: LucideIcons.mic,
-                      title: 'Narrator',
-                      subtitle: 'A voice walks the viewer through.',
-                      value: _narrator,
-                      onChanged: (v) => setState(() => _narrator = v),
-                    ),
                   if (!spec.skips('generate')) ...[
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 18),
                     const _SectionTitle('Motion', 'How the camera should feel.'),
                     const SizedBox(height: 10),
                     _MotionChoice(
@@ -321,7 +315,7 @@ class _StudioSetupPageState extends State<StudioSetupPage> {
                     'Bring something with you',
                     spec.requiresFiles
                         ? 'Add a video to cut. A photo can set the face or the place.'
-                        : 'Optional. A photo becomes the face or the place. A video is cut in as footage.',
+                        : 'Optional. A photo can be a face, a place, or an object. A video is cut in as footage.',
                   ),
                   const SizedBox(height: 10),
                   SizedBox(
@@ -333,14 +327,41 @@ class _StudioSetupPageState extends State<StudioSetupPage> {
                           Padding(
                             padding: const EdgeInsets.only(right: 8),
                             child: _AssetTile(
-                              path: _files[i],
-                              onRemove: () => setState(() => _files.removeAt(i)),
+                              path: _files[i].path,
+                              role: _files[i].role,
+                              onRemove: () {
+                                _files[i].label.dispose();
+                                setState(() => _files.removeAt(i));
+                              },
                             ),
                           ),
                         _AddAssetTile(onTap: _addFile),
                       ],
                     ),
                   ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: () => setState(() => _advanced = !_advanced),
+                      icon: Icon(_advanced ? LucideIcons.chevronUp : LucideIcons.slidersHorizontal, size: 16),
+                      label: Text(_advanced ? 'Hide labeled assets' : 'Label assets'),
+                    ),
+                  ),
+                  if (_advanced)
+                    _LabeledAssets(
+                      files: _files,
+                      showVoice: spec.speech != 'none',
+                      showMusic: _music,
+                      voice: _voice,
+                      musicFeel: _musicFeel,
+                      onAdd: _addLabeled,
+                      onRemove: (file) {
+                        file.label.dispose();
+                        setState(() => _files.remove(file));
+                      },
+                      onChanged: () => setState(() {}),
+                    ),
                   if (session.message != null) ...[
                     const SizedBox(height: 12),
                     Text(session.message!, style: TextStyle(color: cs.error)),
@@ -357,7 +378,7 @@ class _StudioSetupPageState extends State<StudioSetupPage> {
                   setState(() => _promptNote = 'One sentence is enough to begin.');
                   return;
                 }
-                if (spec.requiresFiles && !_files.any(isVideoAssetPath)) {
+                if (spec.requiresFiles && !_files.any((file) => isVideoAssetPath(file.path))) {
                   setState(() => _promptNote = 'Add a video to cut. A photo can come along as the look.');
                   return;
                 }
@@ -369,7 +390,20 @@ class _StudioSetupPageState extends State<StudioSetupPage> {
                   captions: _captions,
                   music: _music,
                   narratorOn: spec.speech == 'optional' ? _narrator : spec.speech != 'none',
-                  files: _files,
+                  files: _files.map((file) => file.path).toList(),
+                  labeledFiles: [
+                    for (final file in _files)
+                      (
+                        path: file.path,
+                        role: file.role ?? '',
+                        label: file.label.text.trim(),
+                      ),
+                  ],
+                  musicNote: _music ? _musicFeel.text : '',
+                  lyrics: spec.id == 'song_video' ? _musicFeel.text : '',
+                  voiceHint: (spec.speech == 'none' || (spec.speech == 'optional' && !_narrator))
+                      ? ''
+                      : _voice.text,
                   videoEngine: _engine,
                 );
                 if (!context.mounted || session.draft == null) return;
@@ -391,7 +425,7 @@ class _StudioSetupPageState extends State<StudioSetupPage> {
       final picked = await picker.pickMultipleMedia();
       if (!mounted || picked.isEmpty) return;
       setState(() {
-        _files.addAll(picked.map((file) => file.path));
+        _files.addAll(picked.map((file) => _Brought(file.path)));
         _promptNote = null;
       });
     } catch (_) {
@@ -407,11 +441,32 @@ class _StudioSetupPageState extends State<StudioSetupPage> {
           : await picker.pickImage(source: ImageSource.gallery);
       if (!mounted || file == null) return;
       setState(() {
-        _files.add(file.path);
+        _files.add(_Brought(file.path));
         _promptNote = null;
       });
     }
   }
+
+  Future<void> _addLabeled(String role) async {
+    final picker = ImagePicker();
+    final video = role == 'footage';
+    final file = video
+        ? await picker.pickVideo(source: ImageSource.gallery)
+        : await picker.pickImage(source: ImageSource.gallery);
+    if (!mounted || file == null) return;
+    setState(() {
+      _files.add(_Brought(file.path, role: role));
+      _promptNote = null;
+    });
+  }
+}
+
+class _Brought {
+  _Brought(this.path, {this.role}) : label = TextEditingController();
+
+  final String path;
+  final String? role;
+  final TextEditingController label;
 }
 
 String _topicHint(WorkflowSpec spec) {
@@ -925,7 +980,7 @@ String _assetLabel(String role) {
     case 'background':
       return 'Set';
     case 'product':
-      return 'Product';
+      return 'Object';
     case 'footage':
       return 'Footage';
     case 'reference':
@@ -974,49 +1029,49 @@ class _MotionChoice extends StatelessWidget {
       ('minimax_h3', 'Cinemotion Pro', 'Follows the acting.'),
       ('ltx25_int8_t2v', 'CineReal', 'Follows the camera.'),
     ];
+    final selected = choices.firstWhere((choice) => choice.$1 == engine, orElse: () => choices.first);
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (final choice in choices)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Material(
-              color: engine == choice.$1 ? cs.secondaryContainer : cs.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(16),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(16),
-                onTap: () {
-                  HapticFeedback.selectionClick();
-                  onSelected(choice.$1);
-                },
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  child: Row(
-                    children: [
-                      Icon(
-                        engine == choice.$1 ? LucideIcons.circleCheck : LucideIcons.circle,
-                        size: 18,
-                        color: engine == choice.$1 ? cs.primary : cs.onSurfaceVariant,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(choice.$2, style: const TextStyle(fontWeight: FontWeight.w700)),
-                            const SizedBox(height: 2),
-                            Text(
-                              choice.$3,
-                              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12, height: 1.3),
-                            ),
-                          ],
+        Row(
+          children: [
+            for (var i = 0; i < choices.length; i++) ...[
+              if (i > 0) const SizedBox(width: 8),
+              Expanded(
+                child: Material(
+                  color: engine == choices[i].$1 ? cs.primaryContainer : cs.surface,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    side: BorderSide(
+                      color: engine == choices[i].$1 ? cs.primary : cs.outlineVariant,
+                    ),
+                  ),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(14),
+                    onTap: () {
+                      HapticFeedback.selectionClick();
+                      onSelected(choices[i].$1);
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                      child: Text(
+                        choices[i].$2,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                          color: engine == choices[i].$1 ? cs.onPrimaryContainer : cs.onSurface,
                         ),
                       ),
-                    ],
+                    ),
                   ),
                 ),
               ),
-            ),
-          ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(selected.$3, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13, height: 1.3)),
       ],
     );
   }
@@ -1203,15 +1258,19 @@ class _SwitchCard extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Material(
-        color: cs.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(16),
+        color: cs.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: cs.outlineVariant),
+        ),
         child: SwitchListTile(
           secondary: Icon(icon, size: 18, color: cs.primary),
           title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-          subtitle: Text(subtitle),
+          subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
           value: value,
           onChanged: onChanged,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12),
         ),
       ),
     );
@@ -1219,15 +1278,16 @@ class _SwitchCard extends StatelessWidget {
 }
 
 class _AssetTile extends StatelessWidget {
-  const _AssetTile({required this.path, required this.onRemove});
+  const _AssetTile({required this.path, required this.onRemove, this.role});
 
   final String path;
+  final String? role;
   final VoidCallback onRemove;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final asset = classifyAsset(path);
+    final asset = (role == null || role!.isEmpty) ? classifyAsset(path) : UserAsset(path: path, role: role!, note: '');
     final video = isVideoAssetPath(path);
     return Tooltip(
       message: asset.note.isEmpty ? path.split(RegExp(r'[/\\]')).last : asset.note,
@@ -1284,6 +1344,223 @@ class _AssetTile extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _SoundGroup extends StatelessWidget {
+  const _SoundGroup({
+    required this.captions,
+    required this.music,
+    required this.narrator,
+    required this.onCaptions,
+    required this.onMusic,
+    required this.onNarrator,
+  });
+
+  final bool captions;
+  final bool music;
+  final bool? narrator;
+  final ValueChanged<bool> onCaptions;
+  final ValueChanged<bool> onMusic;
+  final ValueChanged<bool> onNarrator;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      color: cs.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: cs.outlineVariant),
+      ),
+      child: Column(
+        children: [
+          _soundRow(cs, LucideIcons.captions, 'Captions', 'Words sit on the picture.', captions, onCaptions),
+          Divider(height: 1, color: cs.outlineVariant),
+          _soundRow(cs, LucideIcons.music, 'Music', 'A bed under the film.', music, onMusic),
+          if (narrator != null) ...[
+            Divider(height: 1, color: cs.outlineVariant),
+            _soundRow(cs, LucideIcons.mic, 'Narrator', 'A voice walks the viewer through.', narrator!, onNarrator),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _soundRow(
+    ColorScheme cs,
+    IconData icon,
+    String title,
+    String subtitle,
+    bool value,
+    ValueChanged<bool> onChanged,
+  ) {
+    return SwitchListTile(
+      secondary: Icon(icon, size: 18, color: cs.primary),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+      subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
+      value: value,
+      onChanged: onChanged,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+    );
+  }
+}
+
+class _LabeledAssets extends StatelessWidget {
+  const _LabeledAssets({
+    required this.files,
+    required this.showVoice,
+    required this.showMusic,
+    required this.voice,
+    required this.musicFeel,
+    required this.onAdd,
+    required this.onRemove,
+    required this.onChanged,
+  });
+
+  final List<_Brought> files;
+  final bool showVoice;
+  final bool showMusic;
+  final TextEditingController voice;
+  final TextEditingController musicFeel;
+  final ValueChanged<String> onAdd;
+  final ValueChanged<_Brought> onRemove;
+  final VoidCallback onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    const slots = [
+      ('character', 'Character', 'The face that stays the same.'),
+      ('background', 'Set', 'The place the film returns to.'),
+      ('product', 'Object', 'Something that must stay recognizable.'),
+      ('footage', 'Footage', 'A video cut into the film.'),
+      ('reference', 'Other reference', 'A look that is not the character or the set.'),
+    ];
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Material(
+        color: cs.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: cs.outlineVariant),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Name each file. The writer keeps that name instead of guessing from the filename.',
+                style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13, height: 1.35),
+              ),
+              const SizedBox(height: 12),
+              for (final slot in slots) ...[
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(slot.$2, style: const TextStyle(fontWeight: FontWeight.w700)),
+                          Text(slot.$3, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                    TextButton(onPressed: () => onAdd(slot.$1), child: const Text('Add')),
+                  ],
+                ),
+                for (final file in files.where((item) => item.role == slot.$1))
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: _mini(cs, file.path),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextField(
+                            controller: file.label,
+                            decoration: const InputDecoration(
+                              isDense: true,
+                              hintText: 'Name',
+                              border: OutlineInputBorder(),
+                            ),
+                            onChanged: (_) => onChanged(),
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () => onRemove(file),
+                          icon: const Icon(LucideIcons.x, size: 16),
+                        ),
+                      ],
+                    ),
+                  ),
+                const SizedBox(height: 4),
+              ],
+              if (showVoice) ...[
+                const SizedBox(height: 8),
+                const Text('Narrator', style: TextStyle(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 4),
+                Text(
+                  'Spoken lines are written on the next screen. This only sets the voice.',
+                  style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12, height: 1.3),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: voice,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    hintText: 'A calm woman, same accent in every chapter',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+              if (showMusic) ...[
+                const SizedBox(height: 12),
+                const Text('Music bed', style: TextStyle(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 4),
+                Text(
+                  'A separate instrumental under the film. Clip sound stays with each shot.',
+                  style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12, height: 1.3),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: musicFeel,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    hintText: 'Sparse piano, no vocals',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _mini(ColorScheme cs, String path) {
+    if (isVideoAssetPath(path)) {
+      return ColoredBox(
+        color: cs.surfaceContainerHighest,
+        child: SizedBox(width: 40, height: 40, child: Icon(LucideIcons.clapperboard, size: 16, color: cs.primary)),
+      );
+    }
+    return Image.file(
+      File(path),
+      width: 40,
+      height: 40,
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) => ColoredBox(
+        color: cs.surfaceContainerHighest,
+        child: SizedBox(width: 40, height: 40, child: Icon(LucideIcons.image, size: 16, color: cs.primary)),
       ),
     );
   }

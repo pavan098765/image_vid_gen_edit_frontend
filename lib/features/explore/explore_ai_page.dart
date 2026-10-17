@@ -1170,6 +1170,17 @@ class _ExploreAIPageState extends State<ExploreAIPage>
           ),
         ),
 
+        // AI Tools Preview Section (collapsible)
+        if (_capabilitiesList.isNotEmpty)
+          SliverToBoxAdapter(
+            child: _buildAIToolsPreview(cs, isDark),
+          ),
+
+        // Hero slideshow — below Pro Tools (see _buildHeader: sale stays up top)
+        SliverToBoxAdapter(
+          child: _buildHeroBanner(cs, isDark),
+        ),
+
         SliverToBoxAdapter(
           child: ValueListenableBuilder<List<JobModel>>(
             valueListenable: jobListNotifier,
@@ -1197,17 +1208,6 @@ class _ExploreAIPageState extends State<ExploreAIPage>
               );
             },
           ),
-        ),
-
-        // AI Tools Preview Section (collapsible)
-        if (_capabilitiesList.isNotEmpty)
-          SliverToBoxAdapter(
-            child: _buildAIToolsPreview(cs, isDark),
-          ),
-
-        // Hero slideshow — below Pro Tools (see _buildHeader: sale stays up top)
-        SliverToBoxAdapter(
-          child: _buildHeroBanner(cs, isDark),
         ),
 
         SliverToBoxAdapter(

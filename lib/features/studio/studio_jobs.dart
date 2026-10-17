@@ -8,7 +8,8 @@ import 'package:path_provider/path_provider.dart';
 class JobSnapshot {
   final String status;
   final String? url;
-  const JobSnapshot(this.status, this.url);
+  final String? latentKey;
+  const JobSnapshot(this.status, this.url, {this.latentKey});
 }
 
 class StudioJobClient {
@@ -37,6 +38,7 @@ class StudioJobClient {
     if (data is! Map) return const JobSnapshot('processing', null);
     final status = (data['status'] ?? 'processing').toString().toLowerCase();
     if (status != 'completed') return JobSnapshot(status, null);
+    final latent = data['continuation_latent_r2_key']?.toString();
     final dl = await _client
         .get(Uri.parse('$_base/download_url/$jobId'), headers: headers)
         .timeout(const Duration(seconds: 15));
@@ -45,7 +47,11 @@ class StudioJobClient {
     if (url.startsWith('"') && url.endsWith('"')) {
       url = url.substring(1, url.length - 1);
     }
-    return JobSnapshot('completed', url.isEmpty ? null : url);
+    return JobSnapshot(
+      'completed',
+      url.isEmpty ? null : url,
+      latentKey: (latent == null || latent.isEmpty) ? null : latent,
+    );
   }
 
   Future<String?> download(String url, String name) async {
