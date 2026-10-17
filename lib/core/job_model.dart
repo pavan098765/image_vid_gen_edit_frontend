@@ -99,9 +99,26 @@ class JobModel {
   int? creditsCharged;
   String? parentJobId;
   String? batchId;
+  DateTime? readyAt;
 
-  /// Cloud results expire after 24 hours
-  static const int cloudExpiryHours = 24;
+  /// QuickPod results stay in the cloud for a day.
+  static const Duration cloudLifetime = Duration(hours: 24);
+
+  /// Kie download links last 20 minutes. Save the file at 17 minutes.
+  static const Duration kieCloudLifetime = Duration(minutes: 20);
+  static const Duration kieAutoSaveAfter = Duration(minutes: 17);
+
+  static const Set<String> kieModels = {
+    'qwen2_1_t2i',
+    'qwen2_1_i2i',
+    'grok_imagine_t2i',
+    'grok_imagine_edit',
+    'recraft_crisp_upscale',
+    'recraft_remove_background',
+    'gemini_tts',
+    'suno_music',
+    'suno_sfx',
+  };
 
   JobModel({
     required this.jobId,
@@ -128,11 +145,23 @@ class JobModel {
     this.creditsCharged,
     this.parentJobId,
     this.batchId,
+    this.readyAt,
   }) : createdAt = createdAt ?? DateTime.now();
 
+  bool get usesKieCloud => kieModels.contains(model);
+
+  DateTime get cloudReadyAt => readyAt ?? createdAt;
+
+  Duration get resultLifetime => usesKieCloud ? kieCloudLifetime : cloudLifetime;
+
+  void stampCloudReady() {
+    if (status == 'completed' && readyAt == null) {
+      readyAt = DateTime.now();
+    }
+  }
+
   bool get isCloudExpired {
-    final age = DateTime.now().difference(createdAt);
-    return age.inHours >= cloudExpiryHours;
+    return DateTime.now().difference(cloudReadyAt) >= resultLifetime;
   }
 
   bool get isSavedLocally {
@@ -141,9 +170,16 @@ class JobModel {
   }
 
   Duration get timeUntilExpiry {
-    final expiryTime = createdAt.add(const Duration(hours: cloudExpiryHours));
+    final expiryTime = cloudReadyAt.add(resultLifetime);
     final remaining = expiryTime.difference(DateTime.now());
     return remaining.isNegative ? Duration.zero : remaining;
+  }
+
+  /// Kie results that are still only in the cloud after 17 minutes.
+  bool get shouldAutoSave {
+    if (!usesKieCloud || status != 'completed' || isSavedLocally) return false;
+    if (isCloudExpired) return false;
+    return DateTime.now().difference(cloudReadyAt) >= kieAutoSaveAfter;
   }
 
   String get expiryTimeFormatted {
@@ -152,6 +188,8 @@ class JobModel {
       return '${remaining.inHours}h ${remaining.inMinutes % 60}m';
     } else if (remaining.inMinutes > 0) {
       return '${remaining.inMinutes}m';
+    } else if (remaining.inSeconds > 0) {
+      return '${remaining.inSeconds}s';
     } else {
       return 'Expired';
     }
@@ -176,6 +214,7 @@ class JobModel {
 
   bool get expiryCueUrgent {
     if (expiryCue == null) return false;
+    if (usesKieCloud) return timeUntilExpiry < const Duration(minutes: 5);
     return timeUntilExpiry < const Duration(hours: 2);
   }
 
@@ -204,6 +243,7 @@ class JobModel {
     int? creditsCharged,
     String? parentJobId,
     String? batchId,
+    DateTime? readyAt,
   }) {
     return JobModel(
       jobId: jobId ?? this.jobId,
@@ -230,6 +270,7 @@ class JobModel {
       creditsCharged: creditsCharged ?? this.creditsCharged,
       parentJobId: parentJobId ?? this.parentJobId,
       batchId: batchId ?? this.batchId,
+      readyAt: readyAt ?? this.readyAt,
     );
   }
 
@@ -258,6 +299,7 @@ class JobModel {
         'creditsCharged': creditsCharged,
         'parentJobId': parentJobId,
         'batchId': batchId,
+        'readyAt': readyAt?.toIso8601String(),
       };
 
   factory JobModel.fromJson(Map<String, dynamic> json) {
@@ -331,6 +373,7 @@ class JobModel {
           : null,
       parentJobId: json['parentJobId'] ?? json['parent_job_id'],
       batchId: json['batchId'] ?? json['batch_id'],
+      readyAt: DateTime.tryParse(json['readyAt']?.toString() ?? ''),
     );
   }
 

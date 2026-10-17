@@ -156,6 +156,7 @@ class FileService {
     String extension = 'png',
     bool showPreview = true,
     Uint8List? previewBytes,
+    bool documentsFallback = false,
   }) async {
     final currentHash = sha1.convert(bytes).toString();
 
@@ -226,6 +227,18 @@ class FileService {
       // =====================================================================
       final hasPermission = await Gal.requestAccess();
       if (!hasPermission) {
+        if (documentsFallback) {
+          final appDir = await getApplicationDocumentsDirectory();
+          final cacheDir = Directory('${appDir.path}/saved_results');
+          if (!await cacheDir.exists()) {
+            await cacheDir.create(recursive: true);
+          }
+          final localPath = '${cacheDir.path}/$fileName';
+          await File(localPath).writeAsBytes(bytes, flush: true);
+          _lastSavedPath = localPath;
+          debugPrint('📦 Saved without gallery access: $localPath');
+          return localPath;
+        }
         debugPrint('❌ Gallery access not granted.');
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -862,6 +875,8 @@ class FileService {
     void Function(double progress)? onProgress, // progress: 0.0 → 1.0
     int maxRetries = 3,
     String? outputType,
+    bool showPreview = true,
+    bool documentsFallback = false,
   }) async {
     // 🔐 Safety check: reject old download endpoint URLs
     if (_isOldDownloadEndpoint(url)) {
@@ -947,8 +962,9 @@ class FileService {
           context,
           fileData,
           extension: safeExt,
-          showPreview: true,
+          showPreview: showPreview,
           customFileName: cleanName,
+          documentsFallback: documentsFallback,
         );
 
         if (savedPath != null) {

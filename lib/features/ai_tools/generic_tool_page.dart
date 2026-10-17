@@ -33,6 +33,8 @@ import 'package:kala_ai_create_images_videos_with_ai/core/widgets/media_source_p
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_button.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/sign_in_prompt.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/themed_native_ad.dart';
+import 'package:kala_ai_create_images_videos_with_ai/features/ai_tools/frame_fit.dart';
+import 'package:kala_ai_create_images_videos_with_ai/features/ai_tools/expand_canvas.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/ai_tools/outpaint_canvas_page.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/ai_tools/services/on_device_inpaint_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/ai_tools/services/selfie_segmentation_service.dart';
@@ -5273,7 +5275,8 @@ class _GenericToolPageState extends State<GenericToolPage>
           _isProcessingImage = false;
         });
 
-        if (widget.config.model == "diffusers_outpaint") {
+        if (widget.config.model == "diffusers_outpaint" ||
+            widget.config.capabilityId == 'expand_scene') {
           final result = await Navigator.push<Map<String, String>>(
             context,
             MaterialPageRoute(
@@ -5397,7 +5400,8 @@ class _GenericToolPageState extends State<GenericToolPage>
         _isProcessingImage = false;
       });
 
-      if (widget.config.model == "diffusers_outpaint") {
+      if (widget.config.model == "diffusers_outpaint" ||
+          widget.config.capabilityId == 'expand_scene') {
         final result = await Navigator.push<Map<String, String>>(
           context,
           MaterialPageRoute(
@@ -8155,7 +8159,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                     }
                   },
                 ),
-              if (isImage && _isOutpaint)
+              if (isImage &&
+                  (_isOutpaint || widget.config.capabilityId == 'expand_scene'))
                 _AttachListRow(
                   icon: LucideIcons.expand,
                   label: 'Adjust placement',
@@ -16072,9 +16077,14 @@ class _GenericToolPageState extends State<GenericToolPage>
         if (useExternalApi != null) {
           resolvedParams['use_external_api'] = useExternalApi;
         }
-        if (widget.config.capabilityId == 'edit_image') {
-          // Keep the result on the source photo's canvas.
+        if (widget.config.capabilityId == 'edit_image' &&
+            (_selectedModelId ?? widget.config.model) != 'qwen2_1_i2i') {
           resolvedParams['aspect_ratio'] = 'auto';
+        }
+        if (_upscaleEnabled &&
+            widget.config.outputType == 'image' &&
+            !_isUpscalerTool) {
+          resolvedParams['scale_factor'] = _scaleFactor;
         }
 
         final filteredRootParams = filterSubmitRootParams(rootParams);
@@ -16233,6 +16243,69 @@ class _GenericToolPageState extends State<GenericToolPage>
             }
 
             if (rawImageList != null && rawImageList.isNotEmpty) {
+              if (widget.config.capabilityId == 'edit_image' &&
+                  (_selectedModelId ?? widget.config.model) == 'qwen2_1_i2i') {
+                final fit = fitImageToQwenRatio(rawImageList.first);
+                if (fit != null) {
+                  final fitted = <Uint8List>[fit.image];
+                  for (var i = 1; i < rawImageList.length; i++) {
+                    fitted.add(
+                      fitBytesToAspect(rawImageList[i], fit.aspectRatio) ??
+                          rawImageList[i],
+                    );
+                  }
+                  rawImageList = fitted;
+                  paramsForSubmit['aspect_ratio'] = fit.aspectRatio;
+                  final mask = _inputs['mask_image'];
+                  if (mask is Uint8List) {
+                    final croppedMask = cropBytesLikeFrame(mask, fit);
+                    if (croppedMask != null) {
+                      _inputs['mask_image'] = croppedMask;
+                    }
+                  }
+                }
+              }
+              if (widget.config.capabilityId == 'expand_scene') {
+                final modelId = _selectedModelId ?? widget.config.model;
+                if (modelId == 'grok_imagine_edit') {
+                  const allowed = {
+                    '1:1',
+                    '2:3',
+                    '3:2',
+                    '16:9',
+                    '9:16',
+                  };
+                  final raw = _inputs['aspect_ratio']?.toString() ?? '';
+                  if (raw.isNotEmpty && !allowed.contains(raw)) {
+                    const snap = {
+                      '4:3': '3:2',
+                      '3:4': '2:3',
+                      '21:9': '16:9',
+                      '9:21': '9:16',
+                    };
+                    _inputs['aspect_ratio'] = snap[raw] ?? '16:9';
+                  }
+                }
+                final built = buildExpandPair(rawImageList.first, _inputs);
+                if (built != null) {
+                  rawImageList = [built.canvas];
+                  if (modelId == 'qwen2_1_i2i') {
+                    _inputs['mask_image'] = built.mask;
+                  }
+                  final existing =
+                      (basePayload['prompt'] as String?)?.trim() ?? '';
+                  if (existing.isEmpty) {
+                    basePayload['prompt'] =
+                        'Continue the scene into the border. Match the lighting, perspective, and texture. Leave the original photo unchanged.';
+                  }
+                  final ratio = _inputs['aspect_ratio']?.toString();
+                  if (ratio != null &&
+                      ratio.isNotEmpty &&
+                      ratio.toLowerCase() != 'custom') {
+                    paramsForSubmit['aspect_ratio'] = ratio;
+                  }
+                }
+              }
               final imageKeys = await MediaUploadService.uploadMediaBatch(
                 files: rawImageList,
                 mediaType: "image",

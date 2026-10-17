@@ -23,6 +23,7 @@ class JobNextActions extends StatefulWidget {
 class _JobNextActionsState extends State<JobNextActions> {
   Map<String, dynamic>? _config;
   bool _busy = false;
+  bool _optionsOpen = false;
 
   @override
   void initState() {
@@ -230,7 +231,9 @@ class _JobNextActionsState extends State<JobNextActions> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'The cloud copy expired after 24 hours.',
+              widget.job.usesKieCloud
+                  ? 'The cloud copy expired after 20 minutes.'
+                  : 'The cloud copy expired after 24 hours.',
               style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
             ),
             if (_prompt != null || _sourceFile != null) ...[
@@ -379,44 +382,83 @@ class _JobNextActionsState extends State<JobNextActions> {
     }
 
     final canSaveSetup = _prompt != null && _prompt!.trim().isNotEmpty;
+    final count = free.length + paid.length;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (free.isNotEmpty) ...[
-            Text(
-              'On this phone',
-              style: TextStyle(
-                color: cs.onSurfaceVariant,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
+          Material(
+            color: cs.surfaceContainerHighest.withValues(alpha: 0.45),
+            borderRadius: BorderRadius.circular(12),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => setState(() => _optionsOpen = !_optionsOpen),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                child: Row(
+                  children: [
+                    Icon(Icons.tune_rounded, size: 18, color: cs.primary),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Options',
+                        style: TextStyle(
+                          color: cs.onSurface,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '$count',
+                      style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
+                    ),
+                    Icon(
+                      _optionsOpen
+                          ? Icons.expand_less_rounded
+                          : Icons.expand_more_rounded,
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ],
+                ),
               ),
             ),
-            const SizedBox(height: 8),
-            ...free,
-          ],
-          if (paid.isNotEmpty) ...[
-            Text(
-              'Continue',
-              style: TextStyle(
-                color: cs.onSurfaceVariant,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
+          ),
+          if (_optionsOpen) ...[
+            const SizedBox(height: 10),
+            if (free.isNotEmpty) ...[
+              Text(
+                'On this phone',
+                style: TextStyle(
+                  color: cs.onSurfaceVariant,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            ...paid,
-          ],
-          if (canSaveSetup)
-            SizedBox(
-              height: 44,
-              child: TextButton(
+              const SizedBox(height: 8),
+              Wrap(spacing: 8, runSpacing: 8, children: free),
+              const SizedBox(height: 10),
+            ],
+            if (paid.isNotEmpty) ...[
+              Text(
+                'Continue',
+                style: TextStyle(
+                  color: cs.onSurfaceVariant,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(spacing: 8, runSpacing: 8, children: paid),
+            ],
+            if (canSaveSetup)
+              TextButton(
                 onPressed: _saveSetup,
                 child: const Text('Save setup'),
               ),
-            ),
+          ],
         ],
       ),
     );
@@ -430,43 +472,34 @@ class _JobNextActionsState extends State<JobNextActions> {
     String? detail,
   }) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 0),
       child: Material(
         color: cs.surfaceContainerHighest.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(20),
         child: InkWell(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(20),
           onTap: _busy
               ? null
               : () {
                   HapticFeedback.lightImpact();
                   onTap();
                 },
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 52),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              child: Row(
-                children: [
-                  Icon(icon, size: 20, color: cs.primary),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      label,
-                      style: TextStyle(
-                        color: cs.onSurface,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                      ),
-                    ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 16, color: cs.primary),
+                const SizedBox(width: 6),
+                Text(
+                  detail == null ? label : '$label · $detail',
+                  style: TextStyle(
+                    color: cs.onSurface,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
                   ),
-                  if (detail != null)
-                    Text(
-                      detail,
-                      style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
-                    ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),

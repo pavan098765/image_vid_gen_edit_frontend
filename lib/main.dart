@@ -21,6 +21,7 @@ import 'firebase_options.dart';
 import 'core/theme/app_theme.dart';
 import 'core/app_state.dart';
 import 'core/services/notification_service.dart';
+import 'core/services/kie_result_saver.dart';
 import 'core/services/user_service.dart';
 import 'core/services/ad_service.dart';
 import 'core/services/integrity_service.dart';
@@ -1254,6 +1255,7 @@ class _AppLifecycleHandlerState extends State<AppLifecycleHandler>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    KieResultSaver.start(navigatorKey);
   }
 
   @override
@@ -1276,6 +1278,7 @@ class _AppLifecycleHandlerState extends State<AppLifecycleHandler>
       // Delayed to not block UI, and only for jobs processing > 2 minutes
       // (gives FCM time to deliver, server call is just a safety net)
       _scheduleBackupServerCheck();
+      await KieResultSaver.tick();
     }
   }
 

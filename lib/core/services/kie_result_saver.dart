@@ -1,0 +1,62 @@
+import 'dart:async';
+
+import 'package:flutter/widgets.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/services/file_service.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/services/polling_service.dart';
+
+/// Saves a Kie result onto the phone once it has been ready for 17 minutes.
+class KieResultSaver {
+  static Timer? _timer;
+  static bool _ticking = false;
+  static final Set<String> _inFlight = <String>{};
+  static GlobalKey<NavigatorState>? _navigatorKey;
+
+  static void start(GlobalKey<NavigatorState> navigatorKey) {
+    _navigatorKey = navigatorKey;
+    _timer ??= Timer.periodic(const Duration(seconds: 30), (_) {
+      unawaited(tick());
+    });
+    unawaited(tick());
+  }
+
+  static Future<void> tick() async {
+    if (_ticking) return;
+    if (_navigatorKey?.currentContext == null) return;
+    _ticking = true;
+    try {
+      final due = jobListNotifier.value.where((job) => job.shouldAutoSave).toList();
+      for (final job in due) {
+        if (_inFlight.contains(job.jobId)) continue;
+        _inFlight.add(job.jobId);
+        try {
+          await _save(job);
+        } catch (e) {
+          debugPrint('Auto-save failed for ${job.jobId}: $e');
+        } finally {
+          _inFlight.remove(job.jobId);
+        }
+      }
+    } finally {
+      _ticking = false;
+    }
+  }
+
+  static Future<void> _save(JobModel job) async {
+    final url = await PollingService.refreshDownloadUrl(job.jobId);
+    if (url == null || url.isEmpty) return;
+    job.downloadUrl = url;
+    await addOrUpdateJob(job);
+    final context = _navigatorKey?.currentContext;
+    if (context == null || !context.mounted) return;
+    await FileService.downloadFromUrl(
+      context,
+      url,
+      suggestedFileName: job.jobId,
+      maxRetries: 2,
+      outputType: job.outputType,
+      showPreview: false,
+      documentsFallback: true,
+    );
+  }
+}

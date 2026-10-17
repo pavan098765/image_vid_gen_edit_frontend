@@ -206,6 +206,7 @@ Future<void> saveJobsToPrefs() async {
 
 /// Add a new job or update existing by jobId. Persists immediately.
 Future<void> addOrUpdateJob(JobModel job) async {
+  job.stampCloudReady();
   final list = List<JobModel>.from(jobListNotifier.value);
   final idx = list.indexWhere((j) => j.jobId == job.jobId);
   if (idx >= 0) {
@@ -273,6 +274,7 @@ Future<void> updateJobFields({
       promptEnhanced: promptEnhanced,
       originalPrompt: originalPrompt,
     );
+    list[idx].stampCloudReady();
 
     if (status != null) {
       const allowed = [
@@ -291,30 +293,28 @@ Future<void> updateJobFields({
       }
     }
   } else {
-    // New fallback record
-    list.insert(
-      0,
-      JobModel(
-        jobId: jobId,
-        title: title ?? await generateFriendlyJobName(),
-        model: model ?? 'unknown',
-        outputType: outputType ?? 'image',
-        downloadUrl: (downloadUrl != null && downloadUrl.isNotEmpty)
-            ? downloadUrl
-            : null,
-        status: status ?? 'processing',
-        inputImagePath: inputImagePath,
-        localFilePath: localFilePath,
-        estimatedWaitSeconds: estimatedWaitSeconds,
-        queuePosition: queuePosition,
-        variations: variations ?? 1,
-        variationResults: variationResults,
-        allCompleted: allCompleted ?? false,
-        enhancedPrompt: enhancedPrompt,
-        promptEnhanced: promptEnhanced ?? false,
-        originalPrompt: originalPrompt,
-      ),
+    final created = JobModel(
+      jobId: jobId,
+      title: title ?? await generateFriendlyJobName(),
+      model: model ?? 'unknown',
+      outputType: outputType ?? 'image',
+      downloadUrl: (downloadUrl != null && downloadUrl.isNotEmpty)
+          ? downloadUrl
+          : null,
+      status: status ?? 'processing',
+      inputImagePath: inputImagePath,
+      localFilePath: localFilePath,
+      estimatedWaitSeconds: estimatedWaitSeconds,
+      queuePosition: queuePosition,
+      variations: variations ?? 1,
+      variationResults: variationResults,
+      allCompleted: allCompleted ?? false,
+      enhancedPrompt: enhancedPrompt,
+      promptEnhanced: promptEnhanced ?? false,
+      originalPrompt: originalPrompt,
     );
+    created.stampCloudReady();
+    list.insert(0, created);
   }
 
   jobListNotifier.value = list;

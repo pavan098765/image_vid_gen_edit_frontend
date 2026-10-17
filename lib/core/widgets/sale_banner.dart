@@ -256,7 +256,7 @@ void showSaleDetailsBottomSheet(BuildContext context, SaleState sale) {
                   const SizedBox(height: 12),
                   Text(
                     '💸 SAVE BIG on AI Tools — Daily Mega Sales!\n\n'
-                    '🔥 Discounts: Upto 20% OFF on ALL AI tools!\n\n'
+                    '🔥 Discounts: 5% - 20% OFF on ALL AI tools!\n\n'
                     '⏰ Schedule: NEW sale drops every 3 hours (8 times daily!)\n\n'
                     '⏳ Duration: Only 15 MINUTES per sale — DO NOT blink!!\n\n'
                     '⚡ Act fast! Prices revert to normal as soon as the sale ends.',

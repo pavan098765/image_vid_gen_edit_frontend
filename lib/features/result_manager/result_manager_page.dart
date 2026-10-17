@@ -721,7 +721,7 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
               ),
               const SizedBox(height: 2),
               Text(
-                'Results available for 24 hours • Save to keep forever',
+                'Image and audio results stay 20 minutes. Video results stay 24 hours.',
                 style: TextStyle(
                   color: cs.onSurfaceVariant.withOpacity(0.8),
                   fontSize: 11,
@@ -750,7 +750,7 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
         ),
         const SizedBox(width: 8),
         Text(
-          '24h cloud storage',
+          '20 min · 24h cloud',
           style: TextStyle(
             color: cs.onSurfaceVariant.withOpacity(0.7),
             fontSize: 11,
@@ -1302,8 +1302,9 @@ class _JobCardState extends State<JobCard> {
         await Future.delayed(const Duration(milliseconds: 100));
       }
 
+      widget.job.localFilePath = savedPath;
+
       try {
-        // Only precache images, not videos or text files
         final lp = savedPath.toLowerCase();
         if (!lp.endsWith('.mp4') &&
             !lp.endsWith('.mov') &&
@@ -1314,8 +1315,6 @@ class _JobCardState extends State<JobCard> {
         }
       } catch (_) {}
 
-      // Directly mutate widget.job so the current State sees the update immediately
-      widget.job.localFilePath = savedPath;
       await addOrUpdateJob(widget.job);
       await saveJobsToPrefs();
 
@@ -2369,7 +2368,7 @@ class _JobCardState extends State<JobCard> {
           children: [
             Text(
               'This result is no longer available in the cloud. '
-              'Free cloud storage keeps results for 24 hours.',
+              'Image and audio results stay 20 minutes. Video results stay 24 hours.',
               style: TextStyle(
                 color: cs.onSurfaceVariant,
                 height: 1.5,
