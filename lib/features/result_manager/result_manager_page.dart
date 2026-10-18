@@ -371,12 +371,7 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
                           prefsJob.downloadUrl != currentJob.downloadUrl);
                   final sourceJob = usePrefs ? prefsJob : currentJob;
 
-                  final mergedJob = sourceJob.copyWith(
-                    localFilePath:
-                        currentJob.localFilePath ?? sourceJob.localFilePath,
-                    inputImagePath:
-                        currentJob.inputImagePath ?? sourceJob.inputImagePath,
-                  );
+                  final mergedJob = sourceJob.mergePreservingLaunch(currentJob);
                   mergedJobs.add(mergedJob);
                 }
               } else {
@@ -388,12 +383,7 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
                   );
 
                   // Use prefsJob (has latest status/url) but preserve localFilePath if it exists
-                  final mergedJob = prefsJob.copyWith(
-                    localFilePath:
-                        currentJob.localFilePath ?? prefsJob.localFilePath,
-                    inputImagePath:
-                        currentJob.inputImagePath ?? prefsJob.inputImagePath,
-                  );
+                  final mergedJob = prefsJob.mergePreservingLaunch(currentJob);
                   mergedJobs.add(mergedJob);
                 }
               }

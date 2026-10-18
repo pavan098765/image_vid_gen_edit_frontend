@@ -28,6 +28,27 @@ Rect centerCropRect({
   return Rect.fromLTWH(left, top, cropW, cropH);
 }
 
+/// Canvas size that matches [targetRatio] while keeping every source pixel.
+/// The longer side stays, and the other side grows so the photo is padded
+/// rather than cropped.
+(int, int) containCanvasSize({
+  required int width,
+  required int height,
+  required double targetRatio,
+}) {
+  if (width <= 0 || height <= 0 || targetRatio <= 0) return (width, height);
+  final sourceRatio = width / height;
+  if ((sourceRatio - targetRatio).abs() / targetRatio <= 0.02) {
+    return (width, height);
+  }
+  if (sourceRatio > targetRatio) {
+    final canvasHeight = (width / targetRatio).round().clamp(1, 100000);
+    return (width, canvasHeight);
+  }
+  final canvasWidth = (height * targetRatio).round().clamp(1, 100000);
+  return (canvasWidth, height);
+}
+
 /// True when the source aspect is already within 2% of [targetRatio].
 bool isAlreadyTargetRatio({
   required int width,

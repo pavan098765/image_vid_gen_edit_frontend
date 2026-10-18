@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/cached_tool_config.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/job_model.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/ai_tools/ai_tools_page.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/ai_tools/generic_tool_page.dart';
 
@@ -159,6 +160,99 @@ Future<void> openTemplateInTool(
     },
     launchTemplateId: template['id'] as String?,
     launchTemplateTitle: template['title'] as String?,
+  );
+}
+
+String? _existingFile(String? path) {
+  if (path == null || path.isEmpty) return null;
+  return File(path).existsSync() ? path : null;
+}
+
+/// Every saved reference that still exists, then the original input, then
+/// the result file when the job has no saved inputs.
+List<String> launchPathsFromJob(JobModel job) {
+  final paths = <String>[];
+  void addPath(String? raw) {
+    final ok = _existingFile(raw);
+    if (ok != null && !paths.contains(ok)) paths.add(ok);
+  }
+
+  void walk(dynamic raw) {
+    if (raw is String) {
+      addPath(raw);
+    } else if (raw is List) {
+      for (final item in raw) {
+        walk(item);
+      }
+    } else if (raw is Map) {
+      for (final value in raw.values) {
+        walk(value);
+      }
+    }
+  }
+
+  final snap = job.settingsSnapshot;
+  walk(snap?['mediaPaths']);
+  if (paths.isEmpty) walk(snap?['inputPaths']);
+  final isCreate =
+      job.capabilityId == 'create_image' || job.capabilityId == 'create_video';
+  if (paths.isEmpty) addPath(job.inputImagePath);
+  if (paths.isEmpty && !isCreate) addPath(job.localFilePath);
+  return paths;
+}
+
+/// Reopens the tool that made [job], with the prompt, settings, and photos
+/// the user already had.
+Future<void> openJobForContinue(BuildContext context, JobModel job) async {
+  final snapPrompt = job.settingsSnapshot?['prompt'] as String?;
+  final prompt = (snapPrompt != null && snapPrompt.trim().isNotEmpty)
+      ? snapPrompt
+      : job.originalPrompt;
+  final settings = job.settingsSnapshot;
+  final paths = launchPathsFromJob(job);
+
+  Future<void> launch(GenericToolConfig config, String? capabilityId) async {
+    if (!context.mounted) return;
+    await openGenericTool(
+      context,
+      config: config,
+      initialLocalPaths: paths,
+      initialPrompt: prompt,
+      initialSettings: settings,
+      sourceJobId: job.jobId,
+      launchTemplateId: job.templateId,
+      launchTemplateTitle: job.templateTitle,
+    );
+  }
+
+  final capId = job.capabilityId;
+  if (capId == null || capId.isEmpty) {
+    final resolved = await resolveRecipeLaunch(
+      capabilityId: null,
+      modelId: job.model,
+    );
+    if (!context.mounted) return;
+    if (resolved == null) {
+      await showModelUnavailableDialog(context);
+      return;
+    }
+    await launch(resolved.config, resolved.config.capabilityId);
+    return;
+  }
+
+  final config = await loadCachedToolConfig();
+  if (!context.mounted) return;
+  final cap = config == null ? null : capabilityById(config, capId);
+  if (cap == null || !capabilityHasEnabledModel(cap)) {
+    await showModelUnavailableDialog(context);
+    return;
+  }
+  await launch(
+    genericConfigFromCapability(
+      cap,
+      preferredModelId: settings?['modelId'] as String? ?? job.model,
+    ),
+    capId,
   );
 }
 

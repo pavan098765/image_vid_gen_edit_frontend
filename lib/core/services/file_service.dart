@@ -144,6 +144,24 @@ class FileService {
 
   static Future<Directory> getTempDir() async => await getTemporaryDirectory();
 
+  /// Copies bytes into the app temp folder so a later reopen still has them.
+  static Future<List<String>> writeLaunchCopies(
+    List<Uint8List> files, {
+    String prefix = 'launch',
+    String extension = 'jpg',
+  }) async {
+    if (files.isEmpty) return const [];
+    final dir = await getTempDir();
+    final stamp = DateTime.now().millisecondsSinceEpoch;
+    final paths = <String>[];
+    for (var i = 0; i < files.length; i++) {
+      final file = File('${dir.path}/${prefix}_${stamp}_$i.$extension');
+      await file.writeAsBytes(files[i], flush: true);
+      paths.add(file.path);
+    }
+    return paths;
+  }
+
   /// 🚀 Save raw bytes (image/video/text) to the gallery or app-documents.
   /// Text files are saved to app-documents only (not gallery).
   /// Images/videos are saved to gallery, and localFilePath prefers the gallery

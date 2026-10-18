@@ -42,7 +42,7 @@ void main() {
     expect(tallImage.height, 220);
   });
 
-  test('a painted edit mask is black on the paint and white everywhere else', () {
+  test('a painted edit mask is white on the paint and black everywhere else', () {
     final mask = img.Image(width: 8, height: 8, numChannels: 4);
     img.fill(mask, color: img.ColorRgba8(0, 0, 0, 0));
     mask.setPixelRgba(3, 3, 255, 255, 255, 255);
@@ -55,9 +55,9 @@ void main() {
     final solid = img.decodePng(bytes!)!;
     final painted = solid.getPixel(3, 3);
     final rest = solid.getPixel(0, 0);
-    expect(painted.r.toInt(), 0);
+    expect(painted.r.toInt(), 255);
     expect(painted.a.toInt(), 255);
-    expect(rest.r.toInt(), 255);
+    expect(rest.r.toInt(), 0);
     expect(rest.a.toInt(), 255);
   });
 }

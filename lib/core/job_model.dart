@@ -60,6 +60,18 @@ Map<String, dynamic> sanitizeSettingsSnapshot(Map<String, dynamic>? raw) {
     'interpolateEnabled',
     'quality',
     'videoDuration',
+    'enhancePrompt',
+    'transparentBackground',
+    'enableUpscale',
+    'upscaleFactor',
+    'interpolateFps',
+    'loraAdapter',
+    'cineRealMotionMode',
+    'cfgScale',
+    'bulkEditEnabled',
+    'styleId',
+    'inputPaths',
+    'mediaPaths',
   };
   final out = <String, dynamic>{};
   for (final key in keys) {
@@ -216,6 +228,24 @@ class JobModel {
     if (expiryCue == null) return false;
     if (usesKieCloud) return timeUntilExpiry < const Duration(minutes: 5);
     return timeUntilExpiry < const Duration(hours: 2);
+  }
+
+  /// Keeps launch details when a status update arrives with a thinner record.
+  JobModel mergePreservingLaunch(JobModel other) {
+    return copyWith(
+      localFilePath: other.localFilePath ?? localFilePath,
+      inputImagePath: other.inputImagePath ?? inputImagePath,
+      originalPrompt: originalPrompt ?? other.originalPrompt,
+      enhancedPrompt: enhancedPrompt ?? other.enhancedPrompt,
+      capabilityId: capabilityId ?? other.capabilityId,
+      templateId: templateId ?? other.templateId,
+      templateTitle: templateTitle ?? other.templateTitle,
+      settingsSnapshot: settingsSnapshot ?? other.settingsSnapshot,
+      creditsCharged: creditsCharged ?? other.creditsCharged,
+      parentJobId: parentJobId ?? other.parentJobId,
+      batchId: batchId ?? other.batchId,
+      readyAt: readyAt ?? other.readyAt,
+    );
   }
 
   JobModel copyWith({

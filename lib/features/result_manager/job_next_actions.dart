@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/cached_tool_config.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/tool_launch.dart';
@@ -158,11 +157,10 @@ class _JobNextActionsState extends State<JobNextActions> {
         await showModelUnavailableDialog(context);
         return;
       }
-      final source = _sourceFile;
       await openGenericTool(
         context,
         config: resolved.config,
-        initialLocalPaths: source != null ? [source.path] : const [],
+        initialLocalPaths: launchPathsFromJob(widget.job),
         initialPrompt: _prompt,
         initialSettings: widget.job.settingsSnapshot,
         sourceJobId: widget.job.jobId,
@@ -175,11 +173,9 @@ class _JobNextActionsState extends State<JobNextActions> {
       return;
     }
 
-    final isCreate = capId == 'create_image' || capId == 'create_video';
-    final source = _sourceFile;
     await _openCapability(
       capId,
-      paths: isCreate ? const [] : (source != null ? [source.path] : const []),
+      paths: launchPathsFromJob(widget.job),
       prompt: _prompt,
       settings: widget.job.settingsSnapshot,
     );
@@ -257,48 +253,36 @@ class _JobNextActionsState extends State<JobNextActions> {
 
     if (result == null) return const SizedBox.shrink();
 
-    final free = <Widget>[];
-    final paid = <Widget>[];
+    final rows = <Widget>[];
 
     if (job.isImageOutput) {
-      free.add(_chip(cs, icon: Icons.text_fields_rounded, label: 'Add text', onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => EditorPage(
-              initialImage: result,
-              initialTool: ImageEditorInitialTool.text,
-              historyId: widget.job.jobId,
+      rows.add(_aiRow(
+        cs,
+        icon: Icons.edit_rounded,
+        label: 'Edit in Editor',
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => EditorPage(
+                initialImage: result,
+                historyId: widget.job.jobId,
+              ),
             ),
-          ),
-        );
-      }));
-      free.add(_chip(cs, icon: Icons.crop_rounded, label: 'Crop', onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => EditorPage(
-              initialImage: result,
-              initialTool: ImageEditorInitialTool.crop,
-              historyId: widget.job.jobId,
-            ),
-          ),
-        );
-      }));
-      free.add(_chip(cs, icon: Icons.photo_size_select_large_rounded, label: 'Save sizes', onTap: () {
-        showSaveSizeSheet(context, result);
-      }));
-      free.add(_chip(cs, icon: Icons.layers_rounded, label: 'Use as sticker', onTap: () {
-        _guard(_useAsSticker);
-      }));
-      free.add(_chip(cs, icon: Icons.movie_outlined, label: 'Place on video', onTap: () {
-        _guard(_placeOnVideo);
-      }));
+          );
+        },
+      ));
+      rows.add(_aiRow(
+        cs,
+        icon: Icons.photo_size_select_large_rounded,
+        label: 'Save sizes',
+        onTap: () => showSaveSizeSheet(context, result),
+      ));
 
       if (_capEnabled('upscale')) {
         final c = _cost('upscale');
         if (c != null) {
-          paid.add(_aiRow(cs, icon: Icons.hd_rounded, label: 'Upscale', detail: '$c gems', onTap: () {
+          rows.add(_aiRow(cs, icon: Icons.hd_rounded, label: 'Upscale', detail: '$c gems', onTap: () {
             _guard(() => _openCapability('upscale', paths: [result.path]));
           }));
         }
@@ -306,7 +290,7 @@ class _JobNextActionsState extends State<JobNextActions> {
       if (_capEnabled('remove_background')) {
         final c = _cost('remove_background');
         if (c != null) {
-          paid.add(_aiRow(cs, icon: Icons.auto_fix_high_rounded, label: 'Remove background', detail: '$c gems', onTap: () {
+          rows.add(_aiRow(cs, icon: Icons.auto_fix_high_rounded, label: 'Remove background', detail: '$c gems', onTap: () {
             _guard(() =>
                 _openCapability('remove_background', paths: [result.path]));
           }));
@@ -315,7 +299,7 @@ class _JobNextActionsState extends State<JobNextActions> {
       if (_capEnabled('animate_image')) {
         final c = _cost('animate_image');
         if (c != null) {
-          paid.add(_aiRow(cs, icon: Icons.play_circle_outline_rounded, label: 'Animate', detail: '$c gems', onTap: () {
+          rows.add(_aiRow(cs, icon: Icons.play_circle_outline_rounded, label: 'Animate', detail: '$c gems', onTap: () {
             _guard(() => _openCapability('animate_image',
                 paths: [result.path], prompt: ''));
           }));
@@ -324,7 +308,7 @@ class _JobNextActionsState extends State<JobNextActions> {
       if (_capEnabled('edit_image')) {
         final c = _cost('edit_image');
         if (c != null) {
-          paid.add(_aiRow(cs, icon: Icons.palette_outlined, label: 'Another style', detail: '$c gems', onTap: () {
+          rows.add(_aiRow(cs, icon: Icons.palette_outlined, label: 'Another style', detail: '$c gems', onTap: () {
             _guard(() => _openCapability(
                   'edit_image',
                   paths: [result.path],
@@ -334,36 +318,29 @@ class _JobNextActionsState extends State<JobNextActions> {
         }
       }
     } else if (job.isVideoOutput) {
-      free.add(_chip(cs, icon: Icons.text_fields_rounded, label: 'Add text', onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => VideoEditorPage(
-              initialVideoPath: result.path,
-              initialTool: VideoEditorInitialTool.text,
-              jobId: widget.job.jobId,
+      rows.add(_aiRow(
+        cs,
+        icon: Icons.movie_creation_outlined,
+        label: 'Edit in Editor',
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => VideoEditorPage(
+                initialVideoPath: result.path,
+                jobId: widget.job.jobId,
+              ),
             ),
-          ),
-        );
-      }));
-      free.add(_chip(cs, icon: Icons.movie_creation_outlined, label: 'Open editor', onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => VideoEditorPage(
-              initialVideoPath: result.path,
-              jobId: widget.job.jobId,
-            ),
-          ),
-        );
-      }));
+          );
+        },
+      ));
       final source = _sourceFile;
       if (source != null &&
           pathLooksLikeImage(source.path) &&
           _capEnabled('edit_image')) {
         final c = _cost('edit_image');
         if (c != null) {
-          paid.add(_aiRow(cs, icon: Icons.photo_outlined, label: 'Use the photo', detail: '$c gems', onTap: () {
+          rows.add(_aiRow(cs, icon: Icons.photo_outlined, label: 'Use the photo', detail: '$c gems', onTap: () {
             _guard(() => _openCapability('edit_image', paths: [source.path]));
           }));
         }
@@ -372,7 +349,7 @@ class _JobNextActionsState extends State<JobNextActions> {
 
     final againCost = _cost(job.capabilityId ?? '', modelId: job.model);
     if (job.capabilityId != null || job.model.isNotEmpty) {
-      paid.add(_aiRow(
+      rows.add(_aiRow(
         cs,
         icon: Icons.refresh_rounded,
         label: 'Use again',
@@ -382,7 +359,7 @@ class _JobNextActionsState extends State<JobNextActions> {
     }
 
     final canSaveSetup = _prompt != null && _prompt!.trim().isNotEmpty;
-    final count = free.length + paid.length;
+    final count = rows.length;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
@@ -403,7 +380,7 @@ class _JobNextActionsState extends State<JobNextActions> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Options',
+                        'Next actions',
                         style: TextStyle(
                           color: cs.onSurface,
                           fontWeight: FontWeight.w600,
@@ -428,31 +405,7 @@ class _JobNextActionsState extends State<JobNextActions> {
           ),
           if (_optionsOpen) ...[
             const SizedBox(height: 10),
-            if (free.isNotEmpty) ...[
-              Text(
-                'Next actions',
-                style: TextStyle(
-                  color: cs.onSurfaceVariant,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Wrap(spacing: 8, runSpacing: 8, children: free),
-              const SizedBox(height: 10),
-            ],
-            if (paid.isNotEmpty) ...[
-              Text(
-                'Continue editing with AI',
-                style: TextStyle(
-                  color: cs.onSurfaceVariant,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 8),
-              ...paid,
-            ],
+            ...rows,
             if (canSaveSetup)
               TextButton(
                 onPressed: _saveSetup,
@@ -570,35 +523,6 @@ class _JobNextActionsState extends State<JobNextActions> {
             ),
           ),
         ),
-      ),
-    );
-  }
-
-  Future<void> _useAsSticker() async {
-    final sticker = _resultFile;
-    if (sticker == null) return;
-    final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
-    if (picked == null || !mounted) return;
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => EditorPage(
-          initialImage: File(picked.path),
-          stickerImage: sticker,
-          initialTool: ImageEditorInitialTool.sticker,
-        ),
-      ),
-    );
-  }
-
-  Future<void> _placeOnVideo() async {
-    final sticker = _resultFile;
-    if (sticker == null) return;
-    if (!mounted) return;
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => VideoEditorPage(initialStickerPath: sticker.path),
       ),
     );
   }

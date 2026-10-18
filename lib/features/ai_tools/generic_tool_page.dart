@@ -2429,7 +2429,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             .toList();
       }
 
-      if (mounted) setState(() {});
+      if (mounted) setState(_restoreSelectedStyle);
 
       debugPrint(
           '✅ Loaded ${_configStyles?.length ?? 0} styles, ${_configQuickTags?.length ?? 0} quick tags from config');
@@ -2812,6 +2812,10 @@ class _GenericToolPageState extends State<GenericToolPage>
             _advancedSettings.copyWith(cineRealMotionMode: 'i2v');
       }
 
+      if (nextId != 'qwen2_1_i2i') {
+        _inputs['background'] = 'opaque';
+      }
+
       if (_isAnimateImageTool) {
         const endFrameModels = {
           _kCineRealAnimateModelId,
@@ -2996,7 +3000,13 @@ class _GenericToolPageState extends State<GenericToolPage>
     });
   }
 
-  Map<String, dynamic> _buildSettingsSnapshot() {
+  Map<String, dynamic> _buildSettingsSnapshot({
+    Map<String, List<String>>? mediaPaths,
+  }) {
+    final primary = _bulkPrimaryImageInputRef;
+    final inputPaths = primary == null
+        ? const <String>[]
+        : (mediaPaths?[primary] ?? const <String>[]);
     return sanitizeSettingsSnapshot({
       'prompt': _promptController.text,
       'modelId': _selectedModelId ?? widget.config.model,
@@ -3006,10 +3016,276 @@ class _GenericToolPageState extends State<GenericToolPage>
       'upscaleEnabled': _upscaleEnabled ||
           _advancedSettings.upscaleOutput ||
           _advancedSettings.enableUpscale,
+      'transparentBackground': _inputs['background'] == 'transparent',
       'interpolateEnabled': _advancedSettings.enableInterpolate,
       'quality': _advancedSettings.quality,
       'videoDuration': _advancedSettings.videoDuration,
+      'enhancePrompt': _advancedSettings.enhancePrompt,
+      'enableUpscale': _advancedSettings.enableUpscale,
+      'upscaleFactor': _advancedSettings.upscaleFactor,
+      'interpolateFps': _advancedSettings.interpolateFps,
+      'loraAdapter': _advancedSettings.loraAdapter,
+      'cineRealMotionMode': _advancedSettings.cineRealMotionMode,
+      'cfgScale': _advancedSettings.cfgScale,
+      'bulkEditEnabled': _advancedSettings.bulkEditEnabled,
+      if (_selectedStyle != null) 'styleId': _selectedStyle!.id,
+      if (inputPaths.isNotEmpty) 'inputPaths': inputPaths,
+      if (mediaPaths != null && mediaPaths.isNotEmpty) 'mediaPaths': mediaPaths,
     });
+  }
+
+  String? get _typedPrompt {
+    final typed = _promptController.text.trim();
+    if (typed.isNotEmpty) return typed;
+    final stored = _inputs['prompt'];
+    if (stored is String && stored.trim().isNotEmpty) return stored.trim();
+    return null;
+  }
+
+  List<Uint8List> _bytesOf(dynamic raw) {
+    if (raw is Uint8List && raw.isNotEmpty) return [raw];
+    if (raw is List) {
+      return raw.whereType<Uint8List>().where((b) => b.isNotEmpty).toList();
+    }
+    return const [];
+  }
+
+  List<String> _pathsOf(dynamic raw) {
+    if (raw is String && raw.isNotEmpty && File(raw).existsSync()) return [raw];
+    if (raw is List) {
+      return raw
+          .whereType<String>()
+          .where((p) => p.isNotEmpty && File(p).existsSync())
+          .toList();
+    }
+    return const [];
+  }
+
+  Future<Map<String, List<String>>> _mediaPathsFromInputs() async {
+    final media = <String, List<String>>{};
+    for (final raw in widget.config.inputs) {
+      if (raw is! Map) continue;
+      final id = raw['id'] as String?;
+      final type = raw['type'] as String?;
+      if (id == null || type == null) continue;
+      if (type != 'image' &&
+          type != 'image_upload' &&
+          type != 'video' &&
+          type != 'video_upload' &&
+          type != 'audio_upload' &&
+          type != 'file_upload') {
+        continue;
+      }
+      final bytes = _bytesOf(_inputs[id]);
+      if (bytes.isNotEmpty) {
+        final ext = type.startsWith('video')
+            ? 'mp4'
+            : (type == 'audio_upload' ? 'm4a' : 'jpg');
+        media[id] = await FileService.writeLaunchCopies(
+          bytes,
+          prefix: 'launch_$id',
+          extension: ext,
+        );
+        continue;
+      }
+      final paths = _pathsOf(_inputs['${id}_path']);
+      if (paths.isNotEmpty) media[id] = paths;
+    }
+    final mask = _bytesOf(_inputs['mask_image']);
+    if (mask.isNotEmpty && media['mask_image'] == null) {
+      media['mask_image'] = await FileService.writeLaunchCopies(
+        mask,
+        prefix: 'launch_mask',
+        extension: 'png',
+      );
+    }
+    return media;
+  }
+
+  Future<
+      ({
+        String? primaryPath,
+        List<String> bulkPrimaryPaths,
+        List<Map<String, List<String>>> perJobMedia,
+      })> _saveLaunchMedia({required bool isBulkEdit}) async {
+    try {
+      final shared = await _mediaPathsFromInputs();
+      if (isBulkEdit && _bulkImageJobs.isNotEmpty) {
+        final primary = _bulkPrimaryImageInputRef ?? 'init_image';
+        final groups = <Map<String, List<String>>>[];
+        final thumbs = <String>[];
+        for (final jobImages in _bulkImageJobs) {
+          final paths = await FileService.writeLaunchCopies(
+            jobImages,
+            prefix: 'launch_bulk',
+          );
+          if (paths.isEmpty) continue;
+          thumbs.add(paths.first);
+          groups.add({
+            for (final entry in shared.entries)
+              if (entry.key != primary) entry.key: entry.value,
+            primary: paths,
+          });
+        }
+        return (
+          primaryPath: thumbs.isEmpty ? null : thumbs.first,
+          bulkPrimaryPaths: thumbs,
+          perJobMedia: groups,
+        );
+      }
+      if (_supportsBulkVideoEdit && _bulkVideoPaths.isNotEmpty) {
+        final videoId = _bulkPrimaryVideoInputRef ?? 'input_video';
+        final groups = <Map<String, List<String>>>[];
+        final thumbs = <String>[];
+        for (final path in _bulkVideoPaths) {
+          if (!File(path).existsSync()) continue;
+          thumbs.add(path);
+          groups.add({
+            for (final entry in shared.entries)
+              if (entry.key != videoId) entry.key: entry.value,
+            videoId: [path],
+          });
+        }
+        return (
+          primaryPath: thumbs.isEmpty ? null : thumbs.first,
+          bulkPrimaryPaths: thumbs,
+          perJobMedia: groups,
+        );
+      }
+      final primary = _bulkPrimaryImageInputRef;
+      final primaryPaths = primary == null
+          ? const <String>[]
+          : (shared[primary] ?? const <String>[]);
+      return (
+        primaryPath: primaryPaths.isEmpty ? null : primaryPaths.first,
+        bulkPrimaryPaths: const <String>[],
+        perJobMedia: [shared],
+      );
+    } catch (e) {
+      debugPrint('⚠️ Could not save launch media: $e');
+      return (
+        primaryPath: null,
+        bulkPrimaryPaths: const <String>[],
+        perJobMedia: const <Map<String, List<String>>>[],
+      );
+    }
+  }
+
+  Map<String, dynamic> _snapshotForSaved(
+    ({
+      String? primaryPath,
+      List<String> bulkPrimaryPaths,
+      List<Map<String, List<String>>> perJobMedia,
+    }) saved,
+    int imageIndex,
+  ) {
+    if (saved.perJobMedia.isEmpty) return _buildSettingsSnapshot();
+    final index = imageIndex.clamp(0, saved.perJobMedia.length - 1);
+    return _buildSettingsSnapshot(mediaPaths: saved.perJobMedia[index]);
+  }
+
+  void _restoreSelectedStyle() {
+    final id = widget.initialSettings?['styleId'] as String?;
+    if (id == null || id.isEmpty) return;
+    for (final style in _currentStyles) {
+      if (style.id == id) {
+        _selectedStyle = style;
+        return;
+      }
+    }
+  }
+
+  int _snapInt(dynamic value, int fallback) =>
+      value is num ? value.toInt() : fallback;
+
+  double _snapDouble(dynamic value, double fallback) =>
+      value is num ? value.toDouble() : fallback;
+
+  String? _inputTypeOf(String id) {
+    for (final raw in widget.config.inputs) {
+      if (raw is Map && raw['id'] == id) return raw['type'] as String?;
+    }
+    return null;
+  }
+
+  bool _isImageLaunchPath(String path) {
+    final lower = path.toLowerCase();
+    return lower.endsWith('.jpg') ||
+        lower.endsWith('.jpeg') ||
+        lower.endsWith('.png') ||
+        lower.endsWith('.webp') ||
+        lower.endsWith('.heic') ||
+        lower.endsWith('.heif');
+  }
+
+  Future<void> _loadImagePaths(String id, List<String> paths,
+      {bool asMask = false}) async {
+    final bytes = <Uint8List>[];
+    for (final path in paths) {
+      try {
+        final raw = await File(path).readAsBytes();
+        bytes.add(asMask ? raw : await _resizeImageSafe(raw));
+      } catch (_) {}
+    }
+    if (bytes.isEmpty || !mounted) return;
+    setState(() {
+      _inputs[id] = asMask && bytes.length == 1 ? bytes.first : bytes;
+      if (!asMask) _inputs['${id}_path'] = paths.first;
+    });
+  }
+
+  Future<bool> _restoreSavedMedia(dynamic raw) async {
+    if (raw is! Map) return false;
+    final known = <String>{
+      for (final input in widget.config.inputs)
+        if (input is Map && input['id'] is String) input['id'] as String,
+    };
+    final leftoverImages = <String>[];
+    var loaded = false;
+    for (final entry in raw.entries) {
+      final id = entry.key.toString();
+      final paths = _pathsOf(entry.value);
+      if (paths.isEmpty) continue;
+      final type = _inputTypeOf(id);
+      final knownInput = known.contains(id) || id == 'mask_image';
+      if (!knownInput) {
+        leftoverImages.addAll(paths.where(_isImageLaunchPath));
+        continue;
+      }
+      if (id == 'mask_image' ||
+          type == 'image' ||
+          type == 'image_upload') {
+        await _loadImagePaths(id, paths, asMask: id == 'mask_image');
+        if (_inputs[id] != null) loaded = true;
+      } else if (type == 'video' || type == 'video_upload') {
+        if (_supportsBulkVideoEdit && id == _bulkPrimaryVideoInputRef) {
+          for (final path in paths) {
+            try {
+              await _appendBulkVideoFromPath(path);
+            } catch (e) {
+              debugPrint('Could not restore video $path: $e');
+            }
+          }
+          loaded = _bulkVideoPaths.isNotEmpty;
+        }
+        if (!mounted || paths.isEmpty) continue;
+        setState(() => _inputs['${id}_path'] = paths.first);
+        loaded = true;
+      } else {
+        try {
+          final bytes = await File(paths.first).readAsBytes();
+          if (!mounted) continue;
+          setState(() => _inputs[id] = bytes);
+          loaded = true;
+        } catch (_) {}
+      }
+    }
+    final primary = _bulkPrimaryImageInputRef;
+    if (primary != null && _inputs[primary] == null && leftoverImages.isNotEmpty) {
+      await _loadImagePaths(primary, leftoverImages);
+      loaded = _inputs[primary] != null;
+    }
+    return loaded;
   }
 
   Future<void> _applyLaunchPrefill() async {
@@ -3019,33 +3295,54 @@ class _GenericToolPageState extends State<GenericToolPage>
       final aspect = snapshot['aspectRatio'] as String?;
       final quality = snapshot['quality'] as String?;
       final duration = snapshot['videoDuration'];
-      final upscale = snapshot['upscaleEnabled'] == true;
+      final upscale = snapshot['upscaleEnabled'] == true ||
+          snapshot['enableUpscale'] == true;
       final interpolate = snapshot['interpolateEnabled'] == true;
       final modelId = snapshot['modelId'] as String?;
+      final variations = snapshot['variations'];
       setState(() {
-        if (aspect != null) {
-          _advancedSettings = _advancedSettings.copyWith(
-            aspectRatio: AdvancedSettings.normalizeAspectRatio(aspect),
-          );
-        }
-        if (quality is String) {
-          _advancedSettings = _advancedSettings.copyWith(quality: quality);
-        }
-        if (duration is num) {
-          _advancedSettings = _advancedSettings.copyWith(
-            videoDuration: duration.toInt(),
-          );
-        }
+        _advancedSettings = _advancedSettings.copyWith(
+          aspectRatio: aspect == null
+              ? null
+              : AdvancedSettings.normalizeAspectRatio(aspect),
+          quality: quality,
+          videoDuration: duration is num ? duration.toInt() : null,
+          enhancePrompt: snapshot.containsKey('enhancePrompt')
+              ? snapshot['enhancePrompt'] == true
+              : null,
+          enableInterpolate: snapshot.containsKey('interpolateEnabled')
+              ? interpolate
+              : null,
+          interpolateFps: snapshot.containsKey('interpolateFps')
+              ? _snapInt(snapshot['interpolateFps'], 2)
+              : null,
+          cfgScale: snapshot.containsKey('cfgScale')
+              ? _snapDouble(snapshot['cfgScale'], _advancedSettings.cfgScale)
+              : null,
+          loraAdapter: snapshot['loraAdapter'] as String?,
+          cineRealMotionMode: snapshot['cineRealMotionMode'] as String?,
+          bulkEditEnabled: snapshot.containsKey('bulkEditEnabled')
+              ? snapshot['bulkEditEnabled'] == true
+              : null,
+          variations: variations is num
+              ? variations.toInt().clamp(1, getMaxVariations()).toInt()
+              : null,
+        );
         if (upscale) {
+          final savedFactor = _isVideoTool
+              ? _snapInt(
+                  snapshot['upscaleFactor'] ?? snapshot['scaleFactor'],
+                  2,
+                )
+              : 2;
           _upscaleEnabled = true;
+          _scaleFactor = savedFactor;
+          _inputs['scale_factor'] = savedFactor.toDouble();
           _advancedSettings = _advancedSettings.copyWith(
             upscaleOutput: true,
-            enableUpscale: _isVideoUpscalerTool,
+            upscaleFactor: savedFactor,
+            enableUpscale: _isVideoTool || snapshot['enableUpscale'] == true,
           );
-        }
-        if (interpolate) {
-          _advancedSettings =
-              _advancedSettings.copyWith(enableInterpolate: true);
         }
         if (modelId != null && widget.config.models != null) {
           final match = widget.config.models!.where((m) => m['id'] == modelId);
@@ -3056,17 +3353,24 @@ class _GenericToolPageState extends State<GenericToolPage>
             _selectedModelData = match.first;
           }
         }
-        final prior = snapshot['variations'];
-        if (prior is int && prior > 1) {
-          _priorVariationCount = prior;
+        final activeModel = _selectedModelId ?? widget.config.model;
+        if (snapshot['transparentBackground'] == true &&
+            activeModel == 'qwen2_1_i2i') {
+          _inputs['background'] = 'transparent';
         }
+        _restoreSelectedStyle();
       });
     }
 
-    if (widget.initialPrompt != null) {
-      _promptController.text = widget.initialPrompt!;
-      _inputs['prompt'] = widget.initialPrompt;
+    final prompt = widget.initialPrompt ??
+        (snapshot?['prompt'] is String ? snapshot!['prompt'] as String : null);
+    if (prompt != null) {
+      _promptController.text = prompt;
+      _inputs['prompt'] = prompt;
     }
+
+    final restoredMedia = await _restoreSavedMedia(snapshot?['mediaPaths']);
+    if (restoredMedia) return;
 
     final wantsImage = _bulkPrimaryImageInputRef != null;
     final wantsVideo = widget.config.inputs
@@ -3087,21 +3391,11 @@ class _GenericToolPageState extends State<GenericToolPage>
     if (wantsImage) {
       final id = _bulkPrimaryImageInputRef;
       if (id == null) return;
-      try {
-        final bytes =
-            await _resizeImageSafe(await File(matching.first).readAsBytes());
-        if (!mounted) return;
-        setState(() {
-          _inputs[id] = [bytes];
-          _inputs['${id}_path'] = matching.first;
-        });
-      } catch (_) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-                content: Text("This file can't be used for this tool")),
-          );
-        }
+      await _loadImagePaths(id, matching);
+      if (_inputs[id] == null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("This file can't be used for this tool")),
+        );
       }
     } else if (wantsVideo) {
       final videoInputs = widget.config.inputs
@@ -3111,10 +3405,17 @@ class _GenericToolPageState extends State<GenericToolPage>
       final id =
           videoInputs.isNotEmpty ? videoInputs.first['id'] as String? : null;
       if (id == null) return;
+      if (_supportsBulkVideoEdit) {
+        for (final path in matching) {
+          try {
+            await _appendBulkVideoFromPath(path);
+          } catch (e) {
+            debugPrint('Could not restore video $path: $e');
+          }
+        }
+      }
       if (!mounted) return;
-      setState(() {
-        _inputs['${id}_path'] = matching.first;
-      });
+      setState(() => _inputs['${id}_path'] = matching.first);
     }
   }
 
@@ -3283,28 +3584,42 @@ class _GenericToolPageState extends State<GenericToolPage>
                                       setSheetState(() {
                                         setState(() {
                                           _advancedSettings = _advancedSettings
-                                              .copyWith(upscaleOutput: v);
+                                              .copyWith(
+                                            upscaleOutput: v,
+                                            upscaleFactor: 2,
+                                          );
                                           _upscaleEnabled = v;
-                                          _inputs["scale_factor"] =
-                                              v ? _scaleFactor : 1.0;
+                                          _scaleFactor = v ? 2 : 1;
+                                          _inputs["scale_factor"] = v ? 2.0 : 1.0;
                                         });
                                       });
                                     },
                             ),
 
-                            // Upscale Factor Selector (2x/4x) - shown when upscale is enabled
-                            AnimatedSize(
-                              duration: const Duration(milliseconds: 200),
-                              child: _advancedSettings.upscaleOutput
-                                  ? Padding(
-                                      padding: const EdgeInsets.only(
-                                          top: 12, left: 8, right: 8),
-                                      child: _buildUpscaleFactorSelector(
-                                          cs, setSheetState),
-                                    )
-                                  : const SizedBox.shrink(),
-                            ),
-                            const SizedBox(height: 16),
+                            const SizedBox(height: 12),
+                            if (widget.config.capabilityId == 'edit_image' &&
+                                (_selectedModelId ?? widget.config.model) ==
+                                    'qwen2_1_i2i') ...[
+                              _buildSettingToggle(
+                                cs: cs,
+                                icon: LucideIcons.eraser,
+                                title: 'Transparent Background',
+                                subtitle:
+                                    'Describe only the subject. A painted area is cleared.',
+                                value: _inputs['background'] == 'transparent',
+                                onChanged: (v) {
+                                  setSheetState(() {
+                                    setState(() {
+                                      _inputs['background'] =
+                                          v ? 'transparent' : 'opaque';
+                                      if (v) _inputs.remove('mask_image');
+                                    });
+                                  });
+                                },
+                              ),
+                              const SizedBox(height: 12),
+                            ],
+                            const SizedBox(height: 4),
                           ],
 
                           // Aspect Ratio Selector (hidden for edit_image, expand scene, upscale, inpaint/erase, remove background tools)
@@ -4043,77 +4358,6 @@ class _GenericToolPageState extends State<GenericToolPage>
           }).toList(),
         ),
       ],
-    );
-  }
-
-  /// Build upscale factor selector (2x/4x) for advanced settings
-  Widget _buildUpscaleFactorSelector(
-      ColorScheme cs, StateSetter setSheetState) {
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: cs.outlineVariant.withOpacity(0.2)),
-      ),
-      child: Row(
-        children: [2, 4].map((scale) {
-          final isSelected = _scaleFactor == scale;
-          return Expanded(
-            child: GestureDetector(
-              onTap: () {
-                setSheetState(() {
-                  setState(() {
-                    _scaleFactor = scale;
-                    _inputs["scale_factor"] = scale;
-                    _syncFaceEnhancerFixedParams();
-                  });
-                });
-              },
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(
-                  color: isSelected ? cs.primary : Colors.transparent,
-                  borderRadius: BorderRadius.circular(9),
-                  boxShadow: isSelected
-                      ? [
-                          BoxShadow(
-                            color: cs.primary.withOpacity(0.3),
-                            blurRadius: 6,
-                            offset: const Offset(0, 2),
-                          ),
-                        ]
-                      : null,
-                ),
-                child: Center(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        LucideIcons.maximize2,
-                        size: 16,
-                        color: isSelected ? cs.onPrimary : cs.onSurfaceVariant,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        '${scale}x',
-                        style: TextStyle(
-                          color:
-                              isSelected ? cs.onPrimary : cs.onSurfaceVariant,
-                          fontWeight:
-                              isSelected ? FontWeight.w600 : FontWeight.w500,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          );
-        }).toList(),
-      ),
     );
   }
 
@@ -6441,7 +6685,6 @@ class _GenericToolPageState extends State<GenericToolPage>
               ],
               if (widget.config.capabilityId == 'edit_image') ...[
                 _buildEditBrushRow(cs, attachments),
-                _buildQwenBackgroundChoice(cs),
                 const SizedBox(height: 8),
               ],
 
@@ -16085,7 +16328,7 @@ class _GenericToolPageState extends State<GenericToolPage>
         if (_upscaleEnabled &&
             widget.config.outputType == 'image' &&
             !_isUpscalerTool) {
-          resolvedParams['scale_factor'] = _scaleFactor;
+          resolvedParams['scale_factor'] = 2;
         }
 
         final filteredRootParams = filterSubmitRootParams(rootParams);
@@ -16592,43 +16835,22 @@ class _GenericToolPageState extends State<GenericToolPage>
             throw Exception("No job IDs returned for on-device request");
           }
 
-          final tmpDir = await FileService.getTempDir();
-          final timestamp = DateTime.now().millisecondsSinceEpoch;
-          String? singleInputPath;
-          final List<String> bulkInputPaths = [];
-          if (isBulkEdit) {
-            for (int imgIdx = 0; imgIdx < _bulkImageJobs.length; imgIdx++) {
-              final thumbFile =
-                  File('${tmpDir.path}/bulk_thumb_${timestamp}_$imgIdx.jpg');
-              await thumbFile.writeAsBytes(_bulkImageJobs[imgIdx].first,
-                  flush: true);
-              bulkInputPaths.add(thumbFile.path);
-            }
-          } else {
-            final singleBytes = await _extractSingleInputImageBytes();
-            if (singleBytes != null) {
-              final thumbFile = File('${tmpDir.path}/thumb_$timestamp.jpg');
-              await thumbFile.writeAsBytes(singleBytes, flush: true);
-              singleInputPath = thumbFile.path;
-            }
-          }
-
-          final String? originalPrompt = _inputs["prompt"] as String?;
+          final saved = await _saveLaunchMedia(isBulkEdit: isBulkEdit);
+          final String? originalPrompt = _typedPrompt;
           final List<JobModel> localJobs = [];
           final String? onDeviceBatchId = jobIds.length > 1
               ? 'batch_${DateTime.now().microsecondsSinceEpoch}'
               : null;
-          final snapshot = _buildSettingsSnapshot();
           final perJobCredits = jobIds.isEmpty
               ? _calculateTotalCost()
               : (_calculateTotalCost() / jobIds.length).round();
           for (int i = 0; i < jobIds.length; i++) {
             final imageIndex = isBulkEdit ? (i ~/ requestedVariations) : 0;
             final inputPath = isBulkEdit
-                ? (imageIndex < bulkInputPaths.length
-                    ? bulkInputPaths[imageIndex]
+                ? (imageIndex < saved.bulkPrimaryPaths.length
+                    ? saved.bulkPrimaryPaths[imageIndex]
                     : null)
-                : singleInputPath;
+                : saved.primaryPath;
             final job = JobModel(
               jobId: jobIds[i],
               title: await generateFriendlyJobName(),
@@ -16644,7 +16866,7 @@ class _GenericToolPageState extends State<GenericToolPage>
               templateId: widget.launchTemplateId,
               templateTitle: widget.launchTemplateTitle,
               capabilityId: widget.config.capabilityId,
-              settingsSnapshot: snapshot,
+              settingsSnapshot: _snapshotForSaved(saved, imageIndex),
               creditsCharged: perJobCredits,
               parentJobId: widget.sourceJobId,
               batchId: onDeviceBatchId,
@@ -16690,52 +16912,8 @@ class _GenericToolPageState extends State<GenericToolPage>
           return;
         }
 
-        // Save input preview(s) - for bulk edit, save each image separately
-        String? inputImageLocalPath;
-        List<String> bulkImagePaths = [];
-
-        try {
-          final tmpDir = await FileService.getTempDir();
-          final timestamp = DateTime.now().millisecondsSinceEpoch;
-
-          if (isBulkEdit && _hasBulkInput) {
-            // For bulk edit: save each bulk image to disk for preview
-            for (int imgIdx = 0; imgIdx < _bulkImageJobs.length; imgIdx++) {
-              final thumbFile =
-                  File('${tmpDir.path}/bulk_thumb_${timestamp}_$imgIdx.jpg');
-              await thumbFile.writeAsBytes(_bulkImageJobs[imgIdx].first,
-                  flush: true);
-              bulkImagePaths.add(thumbFile.path);
-            }
-            debugPrint("📷 Saved ${bulkImagePaths.length} bulk image previews");
-          } else {
-            // For single image: save the input image
-            final imageInput = widget.config.inputs
-                .firstWhere((i) => i["type"] == "image", orElse: () => {});
-            if (imageInput.isNotEmpty) {
-              final id = imageInput["id"];
-              final dat = _inputs[id];
-              if (dat != null &&
-                  dat is List &&
-                  dat.isNotEmpty &&
-                  dat.first is Uint8List) {
-                final thumbFile = File('${tmpDir.path}/thumb_$timestamp.jpg');
-                await thumbFile.writeAsBytes(dat.first as Uint8List,
-                    flush: true);
-                inputImageLocalPath = thumbFile.path;
-              } else {
-                final existingPath = _inputs["${id}_path"];
-                if (existingPath != null && File(existingPath).existsSync()) {
-                  inputImageLocalPath = existingPath;
-                }
-              }
-            }
-          }
-        } catch (e) {
-          debugPrint("⚠️ Could not save stable input preview: $e");
-        }
-
-        final String? originalPrompt = _inputs["prompt"] as String?;
+        final saved = await _saveLaunchMedia(isBulkEdit: isBulkEdit && _hasBulkInput);
+        final String? originalPrompt = _typedPrompt;
         final List<JobModel> createdJobs = [];
 
         debugPrint(
@@ -16815,7 +16993,6 @@ class _GenericToolPageState extends State<GenericToolPage>
         final String? submitBatchId = jobIds.length > 1
             ? 'batch_${DateTime.now().microsecondsSinceEpoch}'
             : null;
-        final snapshot = _buildSettingsSnapshot();
         final perJobCredits =
             jobIds.isEmpty ? totalCost : (totalCost / jobIds.length).round();
 
@@ -16825,18 +17002,12 @@ class _GenericToolPageState extends State<GenericToolPage>
           final jobId = jobIds[i];
           final downloadUrl = i < downloadUrls.length ? downloadUrls[i] : null;
 
-          // Determine which input image this job corresponds to
-          String? jobInputImagePath;
-          if (isBulkEdit && bulkImagePaths.isNotEmpty) {
-            // Calculate which bulk image this job belongs to
-            // Server creates jobs in order: img0_var0, img0_var1, img1_var0, img1_var1, ...
-            final imageIndex = i ~/ requestedVariations;
-            if (imageIndex < bulkImagePaths.length) {
-              jobInputImagePath = bulkImagePaths[imageIndex];
-            }
-          } else {
-            jobInputImagePath = inputImageLocalPath;
-          }
+          final imageIndex = isBulkEdit ? i ~/ requestedVariations : 0;
+          final String? jobInputImagePath = isBulkEdit
+              ? (imageIndex < saved.bulkPrimaryPaths.length
+                  ? saved.bulkPrimaryPaths[imageIndex]
+                  : null)
+              : saved.primaryPath;
 
           final String title = await generateFriendlyJobName();
           // Use selected model ID if available, otherwise fall back to config default
@@ -16857,7 +17028,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             templateId: widget.launchTemplateId,
             templateTitle: widget.launchTemplateTitle,
             capabilityId: widget.config.capabilityId,
-            settingsSnapshot: snapshot,
+            settingsSnapshot: _snapshotForSaved(saved, imageIndex),
             creditsCharged: perJobCredits,
             parentJobId: widget.sourceJobId,
             batchId: submitBatchId,
@@ -17051,95 +17222,6 @@ class _GenericToolPageState extends State<GenericToolPage>
     } catch (e) {
       debugPrint('⚠️ Failed to refresh credits after on-device processing: $e');
     }
-  }
-
-  Widget _buildQwenBackgroundChoice(ColorScheme cs) {
-    if ((_selectedModelId ?? widget.config.model) != 'qwen2_1_i2i') {
-      return const SizedBox.shrink();
-    }
-    final transparent = _inputs['background'] == 'transparent';
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Background',
-            style: TextStyle(
-              color: cs.onSurface,
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              _backgroundChoice(cs, 'Opaque', !transparent, () {
-                setState(() => _inputs['background'] = 'opaque');
-              }),
-              const SizedBox(width: 8),
-              _backgroundChoice(cs, 'Transparent', transparent, () {
-                setState(() {
-                  _inputs['background'] = 'transparent';
-                  _inputs.remove('mask_image');
-                });
-              }),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            transparent
-                ? 'Describe only the subject. A painted area is cleared, because a transparent background cannot be combined with one.'
-                : 'The result is a PNG with a solid background.',
-            style: TextStyle(
-              color: cs.onSurfaceVariant,
-              fontSize: 12,
-              height: 1.35,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _backgroundChoice(
-    ColorScheme cs,
-    String label,
-    bool selected,
-    VoidCallback onTap,
-  ) {
-    return Semantics(
-      button: true,
-      selected: selected,
-      label: '$label background',
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(AppStyles.radiusFull),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-          decoration: BoxDecoration(
-            gradient: selected
-                ? const LinearGradient(colors: KalaColors.brandGradient)
-                : null,
-            color: selected ? null : cs.surfaceContainerHigh.withOpacity(0.55),
-            borderRadius: BorderRadius.circular(AppStyles.radiusFull),
-            border: Border.all(
-              color: selected
-                  ? Colors.transparent
-                  : cs.outlineVariant.withOpacity(0.25),
-            ),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              color: selected ? Colors.white : cs.onSurfaceVariant,
-              fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-              fontSize: 12.5,
-            ),
-          ),
-        ),
-      ),
-    );
   }
 
   bool _qwenEditBrush(List<_ComposerAttachment> attachments) {

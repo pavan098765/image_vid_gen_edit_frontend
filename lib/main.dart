@@ -76,7 +76,7 @@ Future<void> _mergeAndPersistJobMap(Map<String, dynamic> jobMap) async {
       // Job exists - update it
       final old = existing[idx];
       existing[idx] = {
-        'jobId': jobId,
+        ...old,
         'title': old['title'] ?? jobMap['title'] ?? jobId,
         'model': old['model'] ?? jobMap['model'] ?? 'unknown',
         'outputType': old['outputType'] ?? jobMap['outputType'] ?? 'image',
@@ -84,8 +84,6 @@ Future<void> _mergeAndPersistJobMap(Map<String, dynamic> jobMap) async {
             downloadUrl.isNotEmpty ? downloadUrl : (old['downloadUrl']),
         'status': status.isNotEmpty ? status : (old['status'] ?? 'processing'),
         'createdAt': old['createdAt'] ?? DateTime.now().toIso8601String(),
-        'localFilePath': old['localFilePath'],
-        'inputImagePath': old['inputImagePath'],
       };
     } else if (deletedJobIds.contains(jobId)) {
       // 🛡️ Job was deleted - don't recreate it
@@ -172,10 +170,7 @@ Future<void> _reloadJobsToNotifier({bool retryOnEmpty = true}) async {
                                 (prefsJob.downloadUrl != null && prefsJob.downloadUrl != currentJob.downloadUrl);
                 final sourceJob = usePrefs ? prefsJob : currentJob;
                 
-                final mergedJob = sourceJob.copyWith(
-                  localFilePath: currentJob.localFilePath ?? sourceJob.localFilePath,
-                  inputImagePath: currentJob.inputImagePath ?? sourceJob.inputImagePath,
-                );
+                final mergedJob = sourceJob.mergePreservingLaunch(currentJob);
                 mergedJobs.add(mergedJob);
               }
             } else {
@@ -187,10 +182,7 @@ Future<void> _reloadJobsToNotifier({bool retryOnEmpty = true}) async {
                 );
                 
                 // Use prefsJob (has latest status/url) but preserve localFilePath if it exists
-                final mergedJob = prefsJob.copyWith(
-                  localFilePath: currentJob.localFilePath ?? prefsJob.localFilePath,
-                  inputImagePath: currentJob.inputImagePath ?? prefsJob.inputImagePath,
-                );
+      final mergedJob = prefsJob.mergePreservingLaunch(currentJob);
                 mergedJobs.add(mergedJob);
               }
             }
@@ -386,7 +378,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       final preservedLocalPath = old['localFilePath'];
 
       existing[idx] = {
-        'jobId': jobId,
+        ...old,
         'title': old['title'] ?? title,
         'model': old['model'] ?? model,
         'outputType': old['outputType'] ?? outputType,
@@ -396,8 +388,6 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
             ? normalizedStatus
             : (old['status'] ?? 'processing'),
         'createdAt': old['createdAt'] ?? DateTime.now().toIso8601String(),
-
-        // ✅ Preserve file paths even if isolate didn't have them
         'localFilePath': preservedLocalPath,
         'inputImagePath': preservedInputImagePath,
       };

@@ -23,6 +23,7 @@ import 'package:kala_ai_create_images_videos_with_ai/features/explore/explore_ne
 import 'package:kala_ai_create_images_videos_with_ai/features/explore/explore_outcome_chips.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/explore/explore_personal_section.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/auth_service.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/services/file_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/user_service.dart'
     hide
         userCreditsNotifier,
@@ -47,6 +48,62 @@ import 'package:video_player/video_player.dart';
 // Explore submit: build params + fetch FCM/auth tokens in parallel with the
 // heavy-tier rewarded ad (same idea as generic_tool_page _runJob).
 // -----------------------------------------------------------------------------
+
+Future<({Map<String, dynamic> snapshot, String? primaryPath})>
+    saveExploreContinueMedia({
+  required String prompt,
+  required String? modelId,
+  required bool upscaleEnabled,
+  int scaleFactor = 2,
+  bool interpolateEnabled = false,
+  int interpolateFps = 2,
+  bool enableUpscale = false,
+  int upscaleFactor = 2,
+  String? loraAdapter,
+  String? aspectRatio,
+  List<Uint8List>? images,
+  List<String>? imagePaths,
+  String? videoPath,
+}) async {
+  final media = <String, List<String>>{};
+  if (images != null && images.isNotEmpty) {
+    media['init_image'] = await FileService.writeLaunchCopies(
+      images,
+      prefix: 'explore_launch',
+    );
+  } else if (imagePaths != null) {
+    final live = imagePaths.where((path) => File(path).existsSync()).toList();
+    if (live.isNotEmpty) media['init_image'] = live;
+  }
+  if (videoPath != null &&
+      videoPath.isNotEmpty &&
+      File(videoPath).existsSync()) {
+    media['input_video'] = [videoPath];
+  }
+  final inputPaths = media['init_image'] ?? const <String>[];
+  return (
+    primaryPath: inputPaths.isNotEmpty
+        ? inputPaths.first
+        : (videoPath != null && File(videoPath).existsSync() ? videoPath : null),
+    snapshot: sanitizeSettingsSnapshot({
+      'prompt': prompt,
+      'modelId': modelId,
+      'scaleFactor': scaleFactor,
+      'variations': 1,
+      'upscaleEnabled': upscaleEnabled,
+      'interpolateEnabled': interpolateEnabled,
+      'interpolateFps': interpolateFps,
+      'enableUpscale': enableUpscale,
+      'upscaleFactor': upscaleFactor,
+      if (loraAdapter != null && loraAdapter.isNotEmpty)
+        'loraAdapter': loraAdapter,
+      if (aspectRatio != null && aspectRatio.isNotEmpty)
+        'aspectRatio': aspectRatio,
+      if (inputPaths.isNotEmpty) 'inputPaths': inputPaths,
+      if (media.isNotEmpty) 'mediaPaths': media,
+    }),
+  );
+}
 
 class _ExploreSubmitPrepBundle {
   final Map<String, dynamic> modelParams;
@@ -792,12 +849,22 @@ class _ExploreAIPageState extends State<ExploreAIPage>
       initialPrompt: record.prompt,
       initialSettings: {
         'modelId': record.modelId,
+        'prompt': record.prompt,
         'aspectRatio': record.settings['aspectRatio'],
         'quality': record.settings['quality'],
         'videoDuration': record.settings['videoDuration'],
+        'variations': record.settings['variations'],
+        'enhancePrompt': record.settings['enhancePrompt'] == true,
+        'cfgScale': record.settings['cfgScale'],
+        'loraAdapter': record.settings['loraAdapter'],
+        'cineRealMotionMode': record.settings['cineRealMotionMode'],
         'upscaleEnabled': record.settings['enableUpscale'] == true ||
             record.settings['upscaleOutput'] == true,
+        'enableUpscale': record.settings['enableUpscale'] == true,
+        'upscaleFactor': record.settings['upscaleFactor'],
         'interpolateEnabled': record.settings['enableInterpolate'] == true,
+        'interpolateFps': record.settings['interpolateFps'],
+        'bulkEditEnabled': record.settings['bulkEditEnabled'] == true,
       },
     );
   }
@@ -1196,13 +1263,7 @@ class _ExploreAIPageState extends State<ExploreAIPage>
                   );
                 },
                 onOpenJob: (job) {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          ResultManagerPage(initialJobId: job.jobId),
-                    ),
-                  );
+                  openJobForContinue(context, job);
                 },
                 onOpenShortcut: _openShortcut,
               );
@@ -2785,6 +2846,21 @@ class _ExploreAIPageState extends State<ExploreAIPage>
       debugPrint('✅ Job submitted: $jobId');
 
       final title = await generateFriendlyJobName();
+      final aspect = modelParams['aspect_ratio'] ?? modelParams['aspectRatio'];
+      final saved = await saveExploreContinueMedia(
+        prompt: prompt,
+        modelId: modelId,
+        upscaleEnabled: upscaleEnabled,
+        scaleFactor: scaleFactor,
+        interpolateEnabled: enableInterpolate,
+        interpolateFps: interpolateFps,
+        enableUpscale: enableVideoEnhanceUpscale,
+        upscaleFactor: videoEnhanceUpscaleFactor,
+        aspectRatio: aspect is String ? aspect : null,
+        images: rawImages,
+        imagePaths: imagePath == null ? const [] : [imagePath],
+        videoPath: videoPath,
+      );
       final newJob = JobModel(
         jobId: jobId,
         title: title,
@@ -2792,21 +2868,14 @@ class _ExploreAIPageState extends State<ExploreAIPage>
         outputType: outputType,
         downloadUrl: downloadUrl,
         status: 'processing',
-        inputImagePath: imagePath ?? videoPath,
+        inputImagePath: saved.primaryPath ?? imagePath ?? videoPath,
         variations: 1,
         allCompleted: false,
         originalPrompt: prompt.isNotEmpty ? prompt : null,
         templateId: template['id'] as String?,
         templateTitle: template['title'] as String?,
         capabilityId: capabilityId,
-        settingsSnapshot: sanitizeSettingsSnapshot({
-          'prompt': prompt,
-          'modelId': modelId,
-          'scaleFactor': scaleFactor,
-          'variations': 1,
-          'upscaleEnabled': upscaleEnabled,
-          'interpolateEnabled': enableInterpolate,
-        }),
+        settingsSnapshot: saved.snapshot,
         creditsCharged: totalCost,
         parentJobId: parentJobId,
         batchId: batchId,
@@ -3957,16 +4026,6 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
             ),
           ),
 
-          // Scale factor selector
-          if (_upscaleEnabled) ...[
-            Container(
-              height: 40,
-              width: 1,
-              margin: const EdgeInsets.symmetric(horizontal: 8),
-              color: cs.outlineVariant.withValues(alpha: 0.3),
-            ),
-            _buildCompactScaleSelector(cs),
-          ],
         ],
       ),
     );
@@ -4244,44 +4303,6 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
             ],
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildCompactScaleSelector(ColorScheme cs) {
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [2, 4].map((scale) {
-          final isSelected = _scaleFactor == scale;
-          return GestureDetector(
-            onTap: () {
-              HapticFeedback.lightImpact();
-              setState(() => _scaleFactor = scale);
-            },
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 150),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              decoration: BoxDecoration(
-                color: isSelected ? cs.primary : Colors.transparent,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                '${scale}x',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: isSelected ? cs.onPrimary : cs.onSurfaceVariant,
-                ),
-              ),
-            ),
-          );
-        }).toList(),
       ),
     );
   }
@@ -5552,6 +5573,22 @@ class _CategoryTemplatesPageState extends State<_CategoryTemplatesPage> {
       if (jobId == null) throw Exception('No job_id returned');
 
       final title = await generateFriendlyJobName();
+      final aspect = modelParams['aspect_ratio'] ?? modelParams['aspectRatio'];
+      final saved = await saveExploreContinueMedia(
+        prompt: prompt,
+        modelId: modelId,
+        upscaleEnabled: upscaleEnabled,
+        scaleFactor: result.scaleFactor,
+        interpolateEnabled: result.enableInterpolate,
+        interpolateFps: result.interpolateFps,
+        enableUpscale: result.enableUpscale,
+        upscaleFactor: result.upscaleFactor,
+        loraAdapter: result.loraAdapter,
+        aspectRatio: aspect is String ? aspect : null,
+        images: result.selectedImages,
+        imagePaths: result.selectedImagePaths,
+        videoPath: result.selectedVideoPath,
+      );
       final newJob = JobModel(
         jobId: jobId,
         title: title,
@@ -5559,22 +5596,16 @@ class _CategoryTemplatesPageState extends State<_CategoryTemplatesPage> {
         outputType: outputType,
         downloadUrl: downloadUrl,
         status: 'processing',
-        inputImagePath:
-            result.selectedImagePaths?.first ?? result.selectedVideoPath,
+        inputImagePath: saved.primaryPath ??
+            result.selectedImagePaths?.first ??
+            result.selectedVideoPath,
         variations: 1,
         allCompleted: false,
         originalPrompt: prompt.isNotEmpty ? prompt : null,
         templateId: template['id'] as String?,
         templateTitle: template['title'] as String?,
         capabilityId: capabilityId,
-        settingsSnapshot: sanitizeSettingsSnapshot({
-          'prompt': prompt,
-          'modelId': modelId,
-          'scaleFactor': result.scaleFactor,
-          'variations': 1,
-          'upscaleEnabled': upscaleEnabled,
-          'interpolateEnabled': result.enableInterpolate,
-        }),
+        settingsSnapshot: saved.snapshot,
         creditsCharged: totalCost,
         batchId: batchId,
       );

@@ -68,10 +68,10 @@ Uint8List? fitBytesToAspect(Uint8List source, String aspectRatio) {
   return fitted?.image;
 }
 
-/// Brush export is white paint on a transparent sheet. Kie local-edit kept
-/// that painted region and edited the clear area, so a shirt recolor changed
-/// every other person. The file Kie receives is opaque black on the painted
-/// pixels and opaque white everywhere else, the same size as the fitted photo.
+/// Brush export is white paint on a transparent sheet. Kie local-edit treats
+/// white as the area to change and black as the area to keep. The file it
+/// receives is opaque white on the painted pixels and opaque black everywhere
+/// else, the same size as the fitted photo.
 Uint8List? qwenLocalEditMask(
   Uint8List painted, {
   int? width,
@@ -84,7 +84,7 @@ Uint8List? qwenLocalEditMask(
     for (var x = 0; x < decoded.width; x++) {
       final pixel = decoded.getPixel(x, y);
       final isPaint = pixel.a.toInt() > 16;
-      final value = isPaint ? 0 : 255;
+      final value = isPaint ? 255 : 0;
       solid.setPixelRgba(x, y, value, value, value, 255);
     }
   }

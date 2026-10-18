@@ -96,20 +96,25 @@ Future<void> appendUserTemplateRecord(UserTemplateRecord record) async {
 
 Map<String, dynamic> settingsFromJobSnapshot(Map<String, dynamic>? snapshot) {
   final s = snapshot ?? const <String, dynamic>{};
+  int asInt(dynamic value, int fallback) =>
+      value is num ? value.toInt() : fallback;
+  double asDouble(dynamic value, double fallback) =>
+      value is num ? value.toDouble() : fallback;
   return {
-    'enhancePrompt': false,
+    'enhancePrompt': s['enhancePrompt'] == true,
     'upscaleOutput': s['upscaleEnabled'] == true,
     'quality': s['quality'] as String? ?? 'High',
     'aspectRatio': s['aspectRatio'] as String? ?? '1:1',
-    'variations': 1,
-    'videoDuration': s['videoDuration'] as int? ?? 5,
-    'cfgScale': 1.0,
-    'bulkEditEnabled': false,
+    'variations': asInt(s['variations'], 1),
+    'videoDuration': asInt(s['videoDuration'], 5),
+    'cfgScale': asDouble(s['cfgScale'], 1.0),
+    'bulkEditEnabled': s['bulkEditEnabled'] == true,
     'enableInterpolate': s['interpolateEnabled'] == true,
-    'interpolateFps': 2,
-    'enableUpscale': s['upscaleEnabled'] == true,
-    'upscaleFactor': (s['scaleFactor'] as num?)?.toInt() ?? 2,
-    'loraAdapter': 'None',
-    'cineRealMotionMode': 'i2v',
+    'interpolateFps': asInt(s['interpolateFps'], 2),
+    'enableUpscale':
+        s['enableUpscale'] == true || s['upscaleEnabled'] == true,
+    'upscaleFactor': asInt(s['upscaleFactor'] ?? s['scaleFactor'], 2),
+    'loraAdapter': s['loraAdapter'] as String? ?? 'None',
+    'cineRealMotionMode': s['cineRealMotionMode'] as String? ?? 'i2v',
   };
 }

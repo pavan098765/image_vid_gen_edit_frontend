@@ -68,6 +68,7 @@ class _EditorPageState extends State<EditorPage>
   late String _historyId;
   Uint8List? _originalBytes;
   bool _holdingBeforeAfter = false;
+  bool _allowRoutePop = false;
   bool _historyReady = false;
   String _frameGuide = 'off';
   ImageSaveFormat _saveFormat = ImageSaveFormat.jpeg;
@@ -402,14 +403,37 @@ class _EditorPageState extends State<EditorPage>
         false;
   }
 
+  Future<void> _leaveEditor() async {
+    if (!mounted) return;
+    _stopExportGlow();
+    if (Navigator.of(context).canPop()) {
+      _allowRoutePop = true;
+      Navigator.of(context).pop();
+      return;
+    }
+    setState(() {
+      _selectedImage = null;
+      _exportedImage = null;
+      _lastEditCompleteAt = null;
+    });
+  }
+
   Future<bool> _handleSystemBack() async {
-    // Show confirmation dialog when pressing back
+    if (_allowRoutePop) return true;
+    if (Navigator.of(context).canPop()) {
+      if (_selectedImage != null && _exportedImage == null) {
+        final ok = await _confirmExitEditing();
+        if (!ok) return false;
+      }
+      _stopExportGlow();
+      _allowRoutePop = true;
+      return true;
+    }
     final ok = await _confirmExitApp();
     if (ok) {
-      // User confirmed exit - actually exit the app
       SystemNavigator.pop();
     }
-    return false; // Always prevent default back navigation
+    return false;
   }
 
   Future<bool> _confirmExitApp() async {
@@ -764,31 +788,15 @@ class _EditorPageState extends State<EditorPage>
                     if (_exportedImage != null) {
                       debugPrint(
                           'pro_image_editor: onCloseEditor after editing complete — closing without extra dialog.');
-                      if (mounted) {
-                        _stopExportGlow();
-                        setState(() {
-                          _selectedImage = null;
-                          _exportedImage = null;
-                          _lastEditCompleteAt = null;
-                        });
-                      }
+                      await _leaveEditor();
                       return;
                     }
 
-                    // Otherwise it's a user-initiated close (❌) before editing complete.
-                    // Show our confirm dialog.
                     debugPrint(
                         'pro_image_editor: onCloseEditor triggered by user — showing confirm dialog.');
                     final ok = await _confirmExitEditing();
                     if (ok) {
-                      if (mounted) {
-                        _stopExportGlow();
-                        setState(() {
-                          _selectedImage = null;
-                          _exportedImage = null;
-                          _lastEditCompleteAt = null;
-                        });
-                      }
+                      await _leaveEditor();
                     } else {
                       debugPrint('❌ User cancelled exit from editor.');
                     }

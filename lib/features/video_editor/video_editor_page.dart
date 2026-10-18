@@ -80,6 +80,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
   VideoPlayerController? _videoController;
   bool _isInitializing = false;
   bool _editorOpen = false;
+  bool _allowRoutePop = false;
   bool _openedInitialTool = false;
 
   // ─── Export state ──────────────────────────────────────────────────────────
@@ -953,9 +954,22 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: false,
+      canPop: _allowRoutePop,
       onPopInvokedWithResult: (didPop, _) async {
-        if (didPop) return;
+        if (didPop || _allowRoutePop) return;
+        if (Navigator.of(context).canPop()) {
+          if (_editorOpen) {
+            final ok = await _confirmExitEditing();
+            if (!ok || !mounted) return;
+            await _closeProject(leaveRoute: false);
+          }
+          if (!mounted) return;
+          setState(() => _allowRoutePop = true);
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) Navigator.of(context).pop();
+          });
+          return;
+        }
         final ok = await _confirmExitApp();
         if (ok && mounted) SystemNavigator.pop();
       },
@@ -1163,6 +1177,11 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
     final ok = await _confirmExitEditing();
     if (!ok || !mounted) return;
     await _closeProject(leaveRoute: false);
+    if (!mounted || !Navigator.of(context).canPop()) return;
+    setState(() => _allowRoutePop = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) Navigator.of(context).pop();
+    });
   }
 
   /// Clears the open project and returns to the empty editor.

@@ -15,6 +15,11 @@ void main() {
           'prompt': 'softer light',
           'modelId': 'flux_klein',
           'variations': 1,
+          'transparentBackground': true,
+          'inputPaths': ['a.jpg', 'b.jpg'],
+          'mediaPaths': {
+            'init_image': ['a.jpg', 'b.jpg'],
+          },
           'secret': 'drop-me',
         }),
         creditsCharged: 18,
@@ -29,6 +34,12 @@ void main() {
     expect(restored.templateTitle, 'Glow Up Photo');
     expect(restored.capabilityId, 'edit_image');
     expect(restored.settingsSnapshot?['prompt'], 'softer light');
+    expect(restored.settingsSnapshot?['transparentBackground'], isTrue);
+    expect(restored.settingsSnapshot?['inputPaths'], ['a.jpg', 'b.jpg']);
+    expect(
+      (restored.settingsSnapshot?['mediaPaths'] as Map)['init_image'],
+      ['a.jpg', 'b.jpg'],
+    );
     expect(restored.settingsSnapshot?.containsKey('secret'), isFalse);
     expect(restored.creditsCharged, 18);
     expect(restored.parentJobId, 'job-0');
@@ -48,6 +59,22 @@ void main() {
     expect(restored.parentJobId, isNull);
     expect(restored.creditsCharged, isNull);
     expect(restored.batchId, isNull);
+  });
+
+  test('status merge keeps launch details from either record', () {
+    final thin = JobModel(
+      jobId: 'job-1',
+      title: 'Sunset',
+      model: 'flux_klein',
+      outputType: 'image',
+      status: 'completed',
+    );
+    final merged = thin.mergePreservingLaunch(sample());
+    expect(merged.status, 'completed');
+    expect(merged.settingsSnapshot?['prompt'], 'softer light');
+    expect(merged.originalPrompt, isNull);
+    expect(merged.capabilityId, 'edit_image');
+    expect(merged.templateId, 'glow_up_photo');
   });
 
   test('copyWith status-only update keeps lineage', () {

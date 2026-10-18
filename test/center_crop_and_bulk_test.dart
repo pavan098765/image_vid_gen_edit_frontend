@@ -18,6 +18,12 @@ void main() {
     expect(rect.left, 0);
   });
 
+  test('a wide photo is padded to 9:16 without losing width', () {
+    final size = containCanvasSize(width: 1920, height: 1080, targetRatio: 9 / 16);
+    expect(size.$1, 1920);
+    expect(size.$2, greaterThan(1080));
+  });
+
   test('near-square is already 1:1 within 2 percent', () {
     expect(
       isAlreadyTargetRatio(width: 1000, height: 990, targetRatio: 1),

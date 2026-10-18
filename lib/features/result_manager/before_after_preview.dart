@@ -19,6 +19,20 @@ class BeforeAfterPreviewPage extends StatefulWidget {
 
 class _BeforeAfterPreviewPageState extends State<BeforeAfterPreviewPage> {
   bool _showOriginal = false;
+  int? _heldPointer;
+
+  void _press(PointerDownEvent event) {
+    _heldPointer = event.pointer;
+    if (_showOriginal) return;
+    setState(() => _showOriginal = true);
+  }
+
+  void _release(PointerEvent event) {
+    if (event.pointer != _heldPointer) return;
+    _heldPointer = null;
+    if (!_showOriginal) return;
+    setState(() => _showOriginal = false);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -30,65 +44,41 @@ class _BeforeAfterPreviewPageState extends State<BeforeAfterPreviewPage> {
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         title: Text(_showOriginal ? 'Original' : 'Result'),
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-                child: Stack(
-                  children: [
-                    Positioned.fill(
-                      child: Semantics(
-                        image: true,
-                        label: label,
-                        child: Image.file(
-                          file,
-                          key: ValueKey<String>(file.path + label),
-                          fit: BoxFit.contain,
-                          width: double.infinity,
-                          height: double.infinity,
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      right: 4,
-                      bottom: 4,
-                      child: Tooltip(
-                        message: 'Hold to see original',
-                        child: Semantics(
-                          button: true,
-                          label: 'Hold to see the original photo',
-                          child: GestureDetector(
-                            onTapDown: (_) => setState(() => _showOriginal = true),
-                            onTapUp: (_) => setState(() => _showOriginal = false),
-                            onTapCancel: () => setState(() => _showOriginal = false),
-                            child: Material(
-                              color: _showOriginal
-                                  ? Colors.white
-                                  : const Color(0xCC1A1A1A),
-                              shape: const CircleBorder(),
-                              elevation: 2,
-                              child: SizedBox(
-                                width: 48,
-                                height: 48,
-                                child: Icon(
-                                  LucideIcons.eye,
-                                  color: _showOriginal ? Colors.black : Colors.white,
-                                  size: 22,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+        actions: [
+          Tooltip(
+            message: 'Hold to see original',
+            child: Semantics(
+              button: true,
+              label: 'Hold to see the original photo',
+              child: Listener(
+                behavior: HitTestBehavior.opaque,
+                onPointerDown: _press,
+                onPointerUp: _release,
+                onPointerCancel: _release,
+                child: const SizedBox(
+                  width: 48,
+                  height: 48,
+                  child: Icon(LucideIcons.eye, color: Colors.white),
                 ),
               ),
             ),
-          ],
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+          child: Semantics(
+            image: true,
+            label: label,
+            child: Image.file(
+              file,
+              key: ValueKey<String>(file.path + label),
+              fit: BoxFit.contain,
+              width: double.infinity,
+              height: double.infinity,
+            ),
+          ),
         ),
       ),
     );

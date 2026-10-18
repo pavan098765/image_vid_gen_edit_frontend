@@ -52,7 +52,7 @@ Future<void> showSaveSizeSheet(BuildContext context, File source) async {
               ),
               const SizedBox(height: 8),
               Text(
-                'This crops the photo. It does not add detail. 0 credits.',
+                'The whole photo stays. Empty space is filled to match the shape. 0 credits.',
                 style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
               ),
               const SizedBox(height: 16),
@@ -71,7 +71,10 @@ Future<void> showSaveSizeSheet(BuildContext context, File source) async {
                       width: 56,
                       child: AspectRatio(
                         aspectRatio: p.ratio,
-                        child: Image.memory(bytes, fit: BoxFit.cover),
+                        child: ColoredBox(
+                          color: _padUiColor(decoded),
+                          child: Image.memory(bytes, fit: BoxFit.contain),
+                        ),
                       ),
                     ),
                   ),
@@ -79,7 +82,7 @@ Future<void> showSaveSizeSheet(BuildContext context, File source) async {
                   subtitle: already ? const Text('Already this shape') : null,
                   onTap: () async {
                     Navigator.pop(ctx);
-                    await _saveCroppedCopy(context, source, decoded, bytes, p);
+                    await _saveFittedCopy(context, source, decoded, bytes, p);
                   },
                 );
               }),
@@ -91,7 +94,62 @@ Future<void> showSaveSizeSheet(BuildContext context, File source) async {
   );
 }
 
-Future<void> _saveCroppedCopy(
+Color _padUiColor(imglib.Image image) {
+  final pixel = _padColor(image);
+  return Color.fromARGB(255, pixel.r.toInt(), pixel.g.toInt(), pixel.b.toInt());
+}
+
+imglib.Color _padColor(imglib.Image image) {
+  final corners = [
+    image.getPixel(0, 0),
+    image.getPixel(image.width - 1, 0),
+    image.getPixel(0, image.height - 1),
+    image.getPixel(image.width - 1, image.height - 1),
+  ];
+  var r = 0;
+  var g = 0;
+  var b = 0;
+  for (final pixel in corners) {
+    r += pixel.r.toInt();
+    g += pixel.g.toInt();
+    b += pixel.b.toInt();
+  }
+  final n = corners.length;
+  return imglib.ColorRgb8(r ~/ n, g ~/ n, b ~/ n);
+}
+
+imglib.Image fitImageOnCanvas(imglib.Image source, double targetRatio) {
+  final size = containCanvasSize(
+    width: source.width,
+    height: source.height,
+    targetRatio: targetRatio,
+  );
+  if (size.$1 == source.width && size.$2 == source.height) return source;
+  final canvas = imglib.Image(width: size.$1, height: size.$2);
+  imglib.fill(canvas, color: _padColor(source));
+  final scaleW = size.$1 / source.width;
+  final scaleH = size.$2 / source.height;
+  final scale = scaleW < scaleH ? scaleW : scaleH;
+  final fittedW = (source.width * scale).round().clamp(1, size.$1);
+  final fittedH = (source.height * scale).round().clamp(1, size.$2);
+  final fitted = (fittedW == source.width && fittedH == source.height)
+      ? source
+      : imglib.copyResize(
+          source,
+          width: fittedW,
+          height: fittedH,
+          interpolation: imglib.Interpolation.cubic,
+        );
+  imglib.compositeImage(
+    canvas,
+    fitted,
+    dstX: ((size.$1 - fitted.width) / 2).round(),
+    dstY: ((size.$2 - fitted.height) / 2).round(),
+  );
+  return canvas;
+}
+
+Future<void> _saveFittedCopy(
   BuildContext context,
   File source,
   imglib.Image decoded,
@@ -107,22 +165,11 @@ Future<void> _saveCroppedCopy(
   if (already) {
     outBytes = originalBytes;
   } else {
-    final rect = centerCropRect(
-      width: decoded.width,
-      height: decoded.height,
-      targetRatio: preset.ratio,
-    );
-    final cropped = imglib.copyCrop(
-      decoded,
-      x: rect.left.round().clamp(0, decoded.width - 1),
-      y: rect.top.round().clamp(0, decoded.height - 1),
-      width: rect.width.round().clamp(1, decoded.width),
-      height: rect.height.round().clamp(1, decoded.height),
-    );
+    final fitted = fitImageOnCanvas(decoded, preset.ratio);
     final lower = source.path.toLowerCase();
     outBytes = lower.endsWith('.png')
-        ? Uint8List.fromList(imglib.encodePng(cropped))
-        : Uint8List.fromList(imglib.encodeJpg(cropped, quality: 92));
+        ? Uint8List.fromList(imglib.encodePng(fitted))
+        : Uint8List.fromList(imglib.encodeJpg(fitted, quality: 92));
   }
 
   if (!context.mounted) return;
