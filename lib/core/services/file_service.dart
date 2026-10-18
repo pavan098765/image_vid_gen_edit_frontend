@@ -1001,6 +1001,7 @@ class FileService {
           if (idx != -1) {
             final job = jobs[idx];
             job.localFilePath = savedPath;
+            job.autoDownloaded = true;
             jobs[idx] = job;
             jobListNotifier.value = jobs;
             await saveJobsToPrefs();

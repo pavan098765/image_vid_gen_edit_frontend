@@ -114,10 +114,16 @@ class JobModel {
   String? batchId;
   DateTime? readyAt;
 
+  /// One automatic gallery save already happened, or the user already kept a copy.
+  /// Deleting that file, or a later job update, does not download the result again.
+  bool autoDownloaded;
+
   /// QuickPod results stay in the cloud for a day.
   static const Duration cloudLifetime = Duration(hours: 24);
 
-  /// Kie download links last 20 minutes. Save the file at 17 minutes.
+  /// Kie temporary download links last 20 minutes. The result file itself stays
+  /// on Kie for 14 days, and /download_url mints a new 20-minute link from it.
+  /// The phone saves once, at 17 minutes, if the user has not kept a copy.
   static const Duration kieCloudLifetime = Duration(minutes: 20);
   static const Duration kieAutoSaveAfter = Duration(minutes: 17);
 
@@ -159,6 +165,7 @@ class JobModel {
     this.parentJobId,
     this.batchId,
     this.readyAt,
+    this.autoDownloaded = false,
   }) : createdAt = createdAt ?? DateTime.now();
 
   bool get usesKieCloud => kieModels.contains(model);
@@ -188,10 +195,21 @@ class JobModel {
     return remaining.isNegative ? Duration.zero : remaining;
   }
 
+  /// A gallery or documents copy, not the temporary preview cache.
+  bool get hasKeptResult => _keptResultPath(localFilePath);
+
+  static bool _keptResultPath(String? path) {
+    if (path == null || path.isEmpty) return false;
+    final name = path.split(RegExp(r'[\\/]')).last.toLowerCase();
+    return !name.startsWith('preview_');
+  }
+
   /// Kie results that are still only in the cloud after 17 minutes.
-  /// Saving continues after the cloud link times out, until the file is on the phone.
+  /// Runs once. A kept copy, a deleted copy, or a later edit does not start it again.
   bool get shouldAutoSave {
-    if (!usesKieCloud || status != 'completed' || isSavedLocally) return false;
+    if (!usesKieCloud || status != 'completed' || autoDownloaded || hasKeptResult) {
+      return false;
+    }
     return DateTime.now().difference(cloudReadyAt) >= kieAutoSaveAfter;
   }
 
@@ -251,6 +269,7 @@ class JobModel {
       parentJobId: parentJobId ?? other.parentJobId,
       batchId: batchId ?? other.batchId,
       readyAt: readyAt ?? other.readyAt,
+      autoDownloaded: autoDownloaded || other.autoDownloaded,
     );
   }
 
@@ -280,6 +299,7 @@ class JobModel {
     String? parentJobId,
     String? batchId,
     DateTime? readyAt,
+    bool? autoDownloaded,
   }) {
     return JobModel(
       jobId: jobId ?? this.jobId,
@@ -307,6 +327,7 @@ class JobModel {
       parentJobId: parentJobId ?? this.parentJobId,
       batchId: batchId ?? this.batchId,
       readyAt: readyAt ?? this.readyAt,
+      autoDownloaded: autoDownloaded ?? this.autoDownloaded,
     );
   }
 
@@ -336,6 +357,7 @@ class JobModel {
         'parentJobId': parentJobId,
         'batchId': batchId,
         'readyAt': readyAt?.toIso8601String(),
+        'autoDownloaded': autoDownloaded,
       };
 
   factory JobModel.fromJson(Map<String, dynamic> json) {
@@ -410,6 +432,8 @@ class JobModel {
       parentJobId: json['parentJobId'] ?? json['parent_job_id'],
       batchId: json['batchId'] ?? json['batch_id'],
       readyAt: DateTime.tryParse(json['readyAt']?.toString() ?? ''),
+      autoDownloaded: json['autoDownloaded'] == true ||
+          _keptResultPath(json['localFilePath']?.toString()),
     );
   }
 

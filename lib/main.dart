@@ -28,6 +28,7 @@ import 'core/services/integrity_service.dart';
 import 'core/services/model_cache_service.dart';
 import 'core/services/sale_service.dart';
 
+import 'features/media_editor/editor_tab_launch.dart';
 import 'features/media_editor/media_editor_page.dart';
 import 'features/ai_tools/generic_tool_page.dart';
 import 'features/explore/explore_ai_page.dart';
@@ -896,6 +897,7 @@ Future<void> initializeApp() async {
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
+  openResultManagerPage = _openOrReplaceResultManager;
 
   // 🟢 Run the app IMMEDIATELY to show splash screen
   // Heavy initialization happens in the background while splash is visible
@@ -962,8 +964,7 @@ void _openJobFromNotification(String jobId, GenericToolConfig? config) async {
 
   debugPrint("🚀 Handling notification tap for job=$jobId");
 
-  // ✅ Optional: Highlight Results tab or reset to home
-  selectedIndexNotifier.value = 0;
+  selectedIndexNotifier.value = AppTabs.creations;
   // ✅ Simplify route handling (next section)
   _openOrReplaceResultManager();
 }
@@ -976,27 +977,26 @@ void _openResultManager() async {
     return;
   }
 
-  await _refreshJobsAfterNotification(); // 🆕 Force refresh
-  selectedIndexNotifier.value = 1; // AI Explore tab
-  _openOrReplaceResultManager();
+  await _refreshJobsAfterNotification();
+  selectedIndexNotifier.value = AppTabs.creations;
 }
 
-void _openOrReplaceResultManager() {
+ModalRoute<void>? _openOrReplaceResultManager({String? initialJobId}) {
   final nav = navigatorKey.currentState;
-  if (nav == null) return;
+  if (nav == null) return null;
 
   if (isResultManagerOpen) {
     debugPrint("🔁 ResultManagerPage already open — skipping navigation");
-    return;
+    return null;
   }
 
   debugPrint("➡️ Opening new ResultManagerPage");
-  nav.push(
-    MaterialPageRoute(
-      builder: (_) => const ResultManagerPage(),
-      settings: const RouteSettings(name: 'ResultManagerPage'),
-    ),
+  final route = MaterialPageRoute<void>(
+    builder: (_) => ResultManagerPage(initialJobId: initialJobId),
+    settings: const RouteSettings(name: 'ResultManagerPage'),
   );
+  nav.push(route);
+  return route;
 }
 
 // ----------------------------------------------------
@@ -1012,13 +1012,13 @@ class KalaAIApp extends StatefulWidget {
 class _KalaAIAppState extends State<KalaAIApp> {
   bool _showSplash = true;
 
-  // Navigation: Editor, AI Explore, Studio, Store, Settings
+  // Navigation: Editor, AI Explore, Studio, Creations, Store
   final List<Widget> _pages = const [
     MediaEditorPage(),
     ExploreAIPage(),
     StudioPage(),
+    ResultManagerPage(asTab: true),
     CreditsPage(),
-    SettingsPage(),
   ];
 
   void _onSplashComplete() {
@@ -1086,6 +1086,11 @@ class _MainAppScaffold extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
     return Scaffold(
+      key: appShellKey,
+      drawer: Drawer(
+        width: MediaQuery.sizeOf(context).width * 0.88,
+        child: const SettingsPage(inDrawer: true),
+      ),
       body: SafeArea(
         child: ValueListenableBuilder<int>(
           valueListenable: selectedIndexNotifier,
@@ -1135,8 +1140,8 @@ class _ModernBottomNav extends StatelessWidget {
       const _NavItem(icon: LucideIcons.palette, label: 'Editor'),
       const _NavItem(icon: LucideIcons.sparkles, label: 'AI Explore'),
       const _NavItem(icon: LucideIcons.film, label: 'Studio'),
+      const _NavItem(icon: LucideIcons.galleryVertical, label: 'Creations'),
       const _NavItem(icon: LucideIcons.gem, label: 'Store'),
-      const _NavItem(icon: LucideIcons.settings, label: 'Settings'),
     ];
 
     return Container(
@@ -1224,7 +1229,12 @@ class _ModernBottomNav extends StatelessWidget {
                                 ? cs.primary 
                                 : cs.onSurfaceVariant.withValues(alpha: 0.7),
                           ),
-                          child: Text(item.label),
+                          child: Text(
+                            item.label,
+                            maxLines: 1,
+                            softWrap: false,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ],
                     ),

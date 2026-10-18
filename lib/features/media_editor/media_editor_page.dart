@@ -3,8 +3,10 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/app_menu_button.dart';
 import '../image_editor/image_editor_page.dart';
 import '../video_editor/video_editor_page.dart';
+import 'editor_tab_launch.dart';
 
 /// Unified Media Editor page that intelligently handles both photos and videos.
 /// Users can toggle between photo and video editing modes.
@@ -19,6 +21,32 @@ class _MediaEditorPageState extends State<MediaEditorPage>
     with SingleTickerProviderStateMixin {
   /// 0 = Photo, 1 = Video
   int _selectedMode = 0;
+  int _seenLaunchId = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    editorTabLaunchNotifier.addListener(_onEditorTabLaunch);
+  }
+
+  @override
+  void dispose() {
+    editorTabLaunchNotifier.removeListener(_onEditorTabLaunch);
+    super.dispose();
+  }
+
+  void _onEditorTabLaunch() {
+    final launch = editorTabLaunchNotifier.value;
+    if (launch == null || launch.id == _seenLaunchId) return;
+    _seenLaunchId = launch.id;
+    final nextMode = launch.image != null
+        ? 0
+        : launch.videoPath != null
+            ? 1
+            : _selectedMode;
+    if (nextMode == _selectedMode || !mounted) return;
+    setState(() => _selectedMode = nextMode);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -27,6 +55,7 @@ class _MediaEditorPageState extends State<MediaEditorPage>
 
     return Scaffold(
       appBar: AppBar(
+        leading: const AppMenuButton(),
         title: const KalaLogoWithIcon(logoHeight: 30, fontSize: 22),
         backgroundColor: cs.surface,
         elevation: 0,
@@ -38,10 +67,15 @@ class _MediaEditorPageState extends State<MediaEditorPage>
       ),
       body: IndexedStack(
         index: _selectedMode,
-        children: const [
-          // Pass showAppBar: false to avoid double AppBars
-          EditorPage(showAppBar: false),
-          VideoEditorPage(showAppBar: false),
+        children: [
+          EditorPage(
+            showAppBar: false,
+            handlesSystemBack: _selectedMode == 0,
+          ),
+          VideoEditorPage(
+            showAppBar: false,
+            handlesSystemBack: _selectedMode == 1,
+          ),
         ],
       ),
     );

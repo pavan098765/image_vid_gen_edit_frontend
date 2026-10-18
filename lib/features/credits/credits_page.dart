@@ -12,6 +12,7 @@ import 'package:kala_ai_create_images_videos_with_ai/core/services/purchase_serv
 import 'package:kala_ai_create_images_videos_with_ai/core/services/user_service.dart'
     hide userCreditsNotifier, currentUserNotifier, isLoadingUserNotifier, UserData;
 import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/app_menu_button.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_button.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/sign_in_prompt.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/credits/offerwall_screen.dart';
@@ -1118,6 +1119,7 @@ class _CreditsPageState extends State<CreditsPage> {
       onWillPop: _handleSystemBack,
       child: Scaffold(
       appBar: AppBar(
+        leading: const AppMenuButton(),
         title: const KalaLogoWithIcon(logoHeight: 30, fontSize: 22),
         backgroundColor: cs.surface,
         elevation: 0,

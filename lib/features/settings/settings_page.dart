@@ -17,7 +17,10 @@ import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class SettingsPage extends StatefulWidget {
-  const SettingsPage({super.key});
+  /// True when this page is the side menu, not a bottom-nav tab.
+  final bool inDrawer;
+
+  const SettingsPage({super.key, this.inDrawer = false});
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -161,9 +164,9 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _deleteAllJobs() async {
     final confirmed = await _showConfirmDialog(
-      title: 'Delete All Jobs',
+      title: 'Delete all creations',
       message:
-          'This will permanently delete all your job history. Downloaded files in your gallery will not be affected. This action cannot be undone.',
+          'This will permanently delete your creation history. Downloaded files in your gallery will not be affected. This action cannot be undone.',
       isDangerous: true,
     );
     if (confirmed != true) return;
@@ -178,13 +181,13 @@ class _SettingsPageState extends State<SettingsPage> {
       await _calculateCacheSize();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('All jobs deleted')),
+          const SnackBar(content: Text('All creations deleted')),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to delete jobs: $e')),
+          SnackBar(content: Text('Failed to delete creations: $e')),
         );
       }
     }
@@ -857,15 +860,22 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return WillPopScope(
-      onWillPop: _handleSystemBack,
-      child: Scaffold(
+    final page = Scaffold(
       backgroundColor: cs.surface,
       appBar: AppBar(
-        title: const KalaLogoWithIcon(logoHeight: 30, fontSize: 22),
+        title: widget.inDrawer
+            ? Text(
+                'Settings',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: cs.onSurface,
+                ),
+              )
+            : const KalaLogoWithIcon(logoHeight: 30, fontSize: 22),
         backgroundColor: cs.surface,
         elevation: 0,
         surfaceTintColor: Colors.transparent,
+        automaticallyImplyLeading: !widget.inDrawer,
       ),
       body: StreamBuilder<User?>(
         stream: _authService.authStateChanges,
@@ -988,8 +998,8 @@ class _SettingsPageState extends State<SettingsPage> {
                   _buildSettingsTile(
                     context,
                     icon: LucideIcons.trash,
-                    title: 'Delete All Jobs',
-                    subtitle: 'Permanently delete all job history',
+                    title: 'Delete all creations',
+                    subtitle: 'Permanently delete your creation history',
                     onTap: _deleteAllJobs,
                     iconColor: cs.error,
                   ),
@@ -1105,7 +1115,11 @@ class _SettingsPageState extends State<SettingsPage> {
           );
         },
       ),
-      ),
+    );
+    if (widget.inDrawer) return page;
+    return WillPopScope(
+      onWillPop: _handleSystemBack,
+      child: page,
     );
   }
 

@@ -7,12 +7,14 @@ import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/ad_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/file_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/polling_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/thumbnail_service.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/app_menu_button.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_button.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/studio/studio_job_page.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/studio/studio_page.dart';
@@ -181,7 +183,11 @@ Future<bool> _showDownloadRewardedAd(BuildContext context) async {
 
 class ResultManagerPage extends StatefulWidget {
   final String? initialJobId;
-  const ResultManagerPage({super.key, this.initialJobId});
+
+  /// True when this page is the bottom-nav tab, so a pushed copy can still open.
+  final bool asTab;
+
+  const ResultManagerPage({super.key, this.initialJobId, this.asTab = false});
 
   @override
   State<ResultManagerPage> createState() => _ResultManagerPageState();
@@ -206,7 +212,7 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
   @override
   void initState() {
     super.initState();
-    isResultManagerOpen = true;
+    if (!widget.asTab) isResultManagerOpen = true;
     if (widget.initialJobId != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         final ctx = _initialJobKey.currentContext;
@@ -310,7 +316,7 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
   @override
   void dispose() {
     _searchController.dispose();
-    isResultManagerOpen = false;
+    if (!widget.asTab) isResultManagerOpen = false;
     super.dispose();
   }
 
@@ -566,7 +572,7 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'This will remove selected jobs from your list and delete related files.',
+                  'This will remove the selected creations from your list and delete related files.',
                   style: TextStyle(
                     color: cs.onSurfaceVariant,
                     height: 1.4,
@@ -715,7 +721,7 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
               ),
               const SizedBox(height: 2),
               Text(
-                'Results stay for 20 minutes. Download them before they expire.',
+                'Results stay for 14 days on server then deleted. Download them before they expire.',
                 style: TextStyle(
                   color: cs.onSurfaceVariant.withValues(alpha: 0.8),
                   fontSize: 11,
@@ -744,7 +750,7 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
         ),
         const SizedBox(width: 8),
         Text(
-          '20 min · 24h cloud',
+          '14 days · server',
           style: TextStyle(
             color: cs.onSurfaceVariant.withValues(alpha: 0.7),
             fontSize: 11,
@@ -761,13 +767,44 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
     );
   }
 
+  Future<bool> _handleSystemBack() async {
+    final leave = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Leave Kala AI?'),
+            content: const Text('Your creations stay saved on this device.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Stay'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('Leave'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (leave) SystemNavigator.pop();
+    return false;
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return Scaffold(
+    return PopScope(
+      canPop: !widget.asTab,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop || !widget.asTab) return;
+        _handleSystemBack();
+      },
+      child: Scaffold(
       backgroundColor: cs.surface,
       appBar: AppBar(
+        leading: widget.asTab ? const AppMenuButton() : null,
+        automaticallyImplyLeading: !widget.asTab,
         title: _isSelectionMode
             ? Text(
                 '${_selectedJobIds.length} selected',
@@ -777,7 +814,7 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
                 ),
               )
             : Text(
-                'My AI Jobs',
+                'Creations',
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
                   color: cs.onSurface,
@@ -910,7 +947,7 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
               controller: _searchController,
               decoration: AppStyles.inputDecoration(
                 cs,
-                hintText: 'Search jobs...',
+                hintText: 'Search creations...',
                 prefixIcon: Icons.search,
                 suffixIcon: _searchQuery.isNotEmpty
                     ? IconButton(
@@ -939,8 +976,8 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
                     return Center(
                       child: Text(
                         _searchQuery.isNotEmpty
-                            ? 'No jobs found matching "$_searchQuery"'
-                            : 'No jobs yet.',
+                            ? 'No creations found matching "$_searchQuery"'
+                            : 'No creations yet.',
                         style: TextStyle(
                           color: cs.onSurfaceVariant,
                           fontSize: 15,
@@ -1033,6 +1070,7 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
           ),
         ],
       ),
+    ),
     );
   }
 }
@@ -1139,11 +1177,13 @@ class _JobCardState extends State<JobCard> {
     }
   }
 
-  Future<void> _download(BuildContext context) async {
+  Future<void> _download(BuildContext context, {bool fromCloud = false}) async {
     if (_isDownloading) return;
 
-    // If file already exists locally, just save to gallery
-    if (widget.job.localFilePath != null &&
+    // A file already on the phone can be copied into the gallery.
+    // Download again skips that and fetches a fresh cloud link.
+    if (!fromCloud &&
+        widget.job.localFilePath != null &&
         File(widget.job.localFilePath!).existsSync()) {
       final success = await FileService.saveExistingToGallery(
         context,
@@ -1350,16 +1390,13 @@ class _JobCardState extends State<JobCard> {
     final isExpired = job.showsCloudExpiry;
     final isSaved = job.isSavedLocally;
 
-    final downloadColor = isSaved
-        ? Colors.green
-        : isExpired
-            ? cs.outline
-            : cs.primary;
-    final downloadIcon = isSaved
-        ? Icons.check_circle
-        : isExpired
-            ? Icons.cloud_off_rounded
-            : Icons.download;
+    final canDownloadAgain = isSaved || job.autoDownloaded;
+    final downloadColor = isExpired
+        ? cs.outline
+        : cs.primary;
+    final downloadIcon = isExpired
+        ? Icons.cloud_off_rounded
+        : Icons.download;
 
     return InkWell(
       onTap: widget.isSelectionMode
@@ -1476,14 +1513,17 @@ class _JobCardState extends State<JobCard> {
                                   : Icon(downloadIcon, color: downloadColor),
                               tooltip: isExpired
                                   ? 'Cloud result expired'
-                                  : isSaved
-                                      ? 'Already saved'
+                                  : canDownloadAgain
+                                      ? 'Download again'
                                       : 'Save to device',
-                              onPressed: _isDownloading || isExpired || isSaved
+                              onPressed: _isDownloading || isExpired
                                   ? (isExpired
                                       ? () => _showExpiredDialog(context, cs)
                                       : null)
-                                  : () => _download(context),
+                                  : () => _download(
+                                        context,
+                                        fromCloud: canDownloadAgain,
+                                      ),
                             ),
                           IconButton(
                             icon: Icon(Icons.delete_outline,
@@ -2364,7 +2404,7 @@ class _JobCardState extends State<JobCard> {
           children: [
             Text(
               'This result is no longer available in the cloud. '
-              'Results stay for 20 minutes. Download them before they expire.',
+              'Results stay for 14 days on server then deleted. Download them before they expire.',
               style: TextStyle(
                 color: cs.onSurfaceVariant,
                 height: 1.5,

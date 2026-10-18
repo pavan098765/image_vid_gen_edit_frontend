@@ -25,7 +25,16 @@ class KieResultSaver {
     if (_navigatorKey?.currentContext == null) return;
     _ticking = true;
     try {
-      final due = jobListNotifier.value.where((job) => job.shouldAutoSave).toList();
+      final due = <JobModel>[];
+      var remembered = false;
+      for (final job in jobListNotifier.value) {
+        if (job.hasKeptResult && !job.autoDownloaded) {
+          job.autoDownloaded = true;
+          remembered = true;
+        }
+        if (job.shouldAutoSave) due.add(job);
+      }
+      if (remembered) await saveJobsToPrefs();
       for (final job in due) {
         if (_inFlight.contains(job.jobId)) continue;
         _inFlight.add(job.jobId);

@@ -176,8 +176,15 @@ class AppTabs {
   static const int editor = 0;
   static const int explore = 1;
   static const int studio = 2;
-  static const int credits = 3;
-  static const int settings = 4;
+  static const int creations = 3;
+  static const int credits = 4;
+}
+
+/// Shell scaffold. The menu button opens its drawer.
+final GlobalKey<ScaffoldState> appShellKey = GlobalKey<ScaffoldState>();
+
+void openAppMenu() {
+  appShellKey.currentState?.openDrawer();
 }
 
 /// Global list of jobs

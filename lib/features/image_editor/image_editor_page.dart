@@ -24,6 +24,7 @@ import 'package:kala_ai_create_images_videos_with_ai/features/image_editor/image
 import 'package:kala_ai_create_images_videos_with_ai/features/image_editor/image_layer_list_sheet.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/image_editor/image_text_style_store.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/image_editor/kala_image_editor_configs.dart';
+import 'package:kala_ai_create_images_videos_with_ai/features/media_editor/editor_tab_launch.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/video_editor/video_editor_page.dart';
 
 enum ImageEditorInitialTool { none, text, crop, sticker }
@@ -36,6 +37,10 @@ class EditorPage extends StatefulWidget {
   final ImageEditorInitialTool initialTool;
   final String? historyId;
 
+  /// When false, this page is the hidden side of the photo/video toggle and
+  /// must not answer the system back button.
+  final bool handlesSystemBack;
+
   const EditorPage({
     super.key,
     this.showAppBar = true,
@@ -43,6 +48,7 @@ class EditorPage extends StatefulWidget {
     this.stickerImage,
     this.initialTool = ImageEditorInitialTool.none,
     this.historyId,
+    this.handlesSystemBack = true,
   });
 
   @override
@@ -70,6 +76,11 @@ class _EditorPageState extends State<EditorPage>
   bool _holdingBeforeAfter = false;
   bool _allowRoutePop = false;
   bool _historyReady = false;
+  bool _returnToResultManager = false;
+  String? _returnJobId;
+  int _restoreTabIndex = 0;
+  int _seenLaunchId = 0;
+  int _openGeneration = 0;
   String _frameGuide = 'off';
   ImageSaveFormat _saveFormat = ImageSaveFormat.jpeg;
   int _maxEdge = 0;
@@ -93,6 +104,7 @@ class _EditorPageState extends State<EditorPage>
     );
     // Listen for ad-free status changes to hide/show native ads
     isAdFreeNotifier.addListener(_onAdFreeStatusChanged);
+    editorTabLaunchNotifier.addListener(_onEditorTabLaunch);
     _historyId = widget.historyId ??
         ImageHistoryStore.historyIdFor(image: widget.initialImage);
     _historyReady = widget.initialImage == null;
@@ -170,10 +182,59 @@ class _EditorPageState extends State<EditorPage>
     );
   }
 
+  void _onEditorTabLaunch() {
+    final launch = editorTabLaunchNotifier.value;
+    if (launch == null || launch.id == _seenLaunchId) return;
+    _seenLaunchId = launch.id;
+    final image = launch.image;
+    if (image == null || !image.existsSync()) {
+      _returnToResultManager = false;
+      return;
+    }
+    _returnToResultManager = launch.returnToResultManager;
+    _returnJobId = launch.jobId;
+    _restoreTabIndex = launch.restoreTabIndex;
+    _historyId = launch.historyId ?? ImageHistoryStore.historyIdFor(image: image);
+    _stopExportGlow();
+    setState(() {
+      _selectedImage = image;
+      _exportedImage = null;
+      _lastEditCompleteAt = null;
+      _openedInitialTool = false;
+      _placedSticker = false;
+      _historyReady = false;
+      _originalBytes = null;
+      _importHistory = null;
+    });
+    _loadOpenedImage(image);
+  }
+
+  Future<void> _loadOpenedImage(File image) async {
+    final generation = ++_openGeneration;
+    Uint8List? bytes;
+    ImportStateHistory? history;
+    try {
+      bytes = await image.readAsBytes();
+      history = await ImageHistoryStore.load(
+        _historyId,
+        widgetLoader: ImageHistoryStore.widgetLoader,
+      );
+    } catch (e) {
+      debugPrint('Image editor open failed: $e');
+    }
+    if (!mounted || generation != _openGeneration) return;
+    setState(() {
+      _originalBytes = bytes;
+      _importHistory = history;
+      _historyReady = true;
+    });
+  }
+
   @override
   void dispose() {
     _holdTimer?.cancel();
     _exportGlow.dispose();
+    editorTabLaunchNotifier.removeListener(_onEditorTabLaunch);
     isAdFreeNotifier.removeListener(_onAdFreeStatusChanged);
     super.dispose();
   }
@@ -403,23 +464,52 @@ class _EditorPageState extends State<EditorPage>
         false;
   }
 
+  void _clearOpenImage() {
+    if (!mounted) return;
+    _stopExportGlow();
+    setState(() {
+      _selectedImage = null;
+      _exportedImage = null;
+      _lastEditCompleteAt = null;
+      _historyReady = true;
+    });
+  }
+
   Future<void> _leaveEditor() async {
     if (!mounted) return;
     _stopExportGlow();
+    if (_returnToResultManager) {
+      final jobId = _returnJobId;
+      final tab = _restoreTabIndex;
+      _returnToResultManager = false;
+      _returnJobId = null;
+      returnEditorSessionToResultManager(
+        jobId: jobId,
+        restoreTabIndex: tab,
+        onCovered: _clearOpenImage,
+      );
+      return;
+    }
     if (Navigator.of(context).canPop()) {
       _allowRoutePop = true;
       Navigator.of(context).pop();
       return;
     }
-    setState(() {
-      _selectedImage = null;
-      _exportedImage = null;
-      _lastEditCompleteAt = null;
-    });
+    _clearOpenImage();
   }
 
   Future<bool> _handleSystemBack() async {
-    if (_allowRoutePop) return true;
+    if (!widget.handlesSystemBack || _allowRoutePop) return true;
+    if (selectedIndexNotifier.value == AppTabs.editor &&
+        _returnToResultManager &&
+        _selectedImage != null) {
+      if (_exportedImage == null) {
+        final ok = await _confirmExitEditing();
+        if (!ok) return false;
+      }
+      await _leaveEditor();
+      return false;
+    }
     if (Navigator.of(context).canPop()) {
       if (_selectedImage != null && _exportedImage == null) {
         final ok = await _confirmExitEditing();
@@ -705,7 +795,7 @@ class _EditorPageState extends State<EditorPage>
           children: [
             if (_selectedImage == null)
               _buildEmptyStateWithAd(context)
-            else if (!_historyReady && widget.initialImage != null)
+            else if (!_historyReady)
               const Center(child: CircularProgressIndicator())
             else
               Listener(

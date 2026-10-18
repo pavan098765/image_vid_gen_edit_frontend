@@ -6,9 +6,7 @@ import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/cached_tool_config.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/tool_launch.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/user_template_store.dart';
-import 'package:kala_ai_create_images_videos_with_ai/features/image_editor/image_editor_page.dart';
-import 'package:kala_ai_create_images_videos_with_ai/features/result_manager/save_size_sheet.dart';
-import 'package:kala_ai_create_images_videos_with_ai/features/video_editor/video_editor_page.dart';
+import 'package:kala_ai_create_images_videos_with_ai/features/media_editor/editor_tab_launch.dart';
 
 class JobNextActions extends StatefulWidget {
   final JobModel job;
@@ -228,8 +226,8 @@ class _JobNextActionsState extends State<JobNextActions> {
           children: [
             Text(
               widget.job.usesKieCloud
-                  ? 'The cloud copy expired after 20 minutes.'
-                  : 'The cloud copy expired after 24 hours.',
+                  ? 'The cloud copy expired after 14 days on server then deleted.'
+                  : 'The cloud copy expired after 14 days on server then deleted.',
               style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
             ),
             if (_prompt != null || _sourceFile != null) ...[
@@ -240,7 +238,7 @@ class _JobNextActionsState extends State<JobNextActions> {
               _chip(
                 cs,
                 icon: Icons.refresh_rounded,
-                label: 'Use again',
+                label: 'Regenerate',
                 detail:
                     '${_cost(job.capabilityId ?? '', modelId: job.model) ?? '—'} gems',
                 onTap: () => _guard(() => _useAgain(afterFailure: false)),
@@ -260,23 +258,7 @@ class _JobNextActionsState extends State<JobNextActions> {
         cs,
         icon: Icons.edit_rounded,
         label: 'Edit in Editor',
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => EditorPage(
-                initialImage: result,
-                historyId: widget.job.jobId,
-              ),
-            ),
-          );
-        },
-      ));
-      rows.add(_aiRow(
-        cs,
-        icon: Icons.photo_size_select_large_rounded,
-        label: 'Save sizes',
-        onTap: () => showSaveSizeSheet(context, result),
+        onTap: () => _openInEditorTab(image: result),
       ));
 
       if (_capEnabled('upscale')) {
@@ -322,17 +304,7 @@ class _JobNextActionsState extends State<JobNextActions> {
         cs,
         icon: Icons.movie_creation_outlined,
         label: 'Edit in Editor',
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => VideoEditorPage(
-                initialVideoPath: result.path,
-                jobId: widget.job.jobId,
-              ),
-            ),
-          );
-        },
+        onTap: () => _openInEditorTab(videoPath: result.path),
       ));
       final source = _sourceFile;
       if (source != null &&
@@ -352,14 +324,13 @@ class _JobNextActionsState extends State<JobNextActions> {
       rows.add(_aiRow(
         cs,
         icon: Icons.refresh_rounded,
-        label: 'Use again',
+        label: 'Regenerate',
         detail: againCost != null ? '$againCost gems' : null,
         onTap: () => _guard(() => _useAgain(afterFailure: false)),
       ));
     }
 
     final canSaveSetup = _prompt != null && _prompt!.trim().isNotEmpty;
-    final count = rows.length;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
@@ -387,10 +358,6 @@ class _JobNextActionsState extends State<JobNextActions> {
                           fontSize: 14,
                         ),
                       ),
-                    ),
-                    Text(
-                      '$count',
-                      style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
                     ),
                     Icon(
                       _optionsOpen
@@ -525,6 +492,20 @@ class _JobNextActionsState extends State<JobNextActions> {
         ),
       ),
     );
+  }
+
+  void _openInEditorTab({File? image, String? videoPath}) {
+    final previousTab = selectedIndexNotifier.value;
+    requestEditorTabLaunch(
+      image: image,
+      videoPath: videoPath,
+      historyId: widget.job.jobId,
+      jobId: widget.job.jobId,
+      returnToResultManager: true,
+      restoreTabIndex: previousTab,
+    );
+    selectedIndexNotifier.value = AppTabs.editor;
+    Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
   Future<void> _saveSetup() async {

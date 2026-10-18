@@ -15,6 +15,7 @@ import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/api/submit_payload_helpers.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/app_menu_button.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/center_crop.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/explore_favorites.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/tool_launch.dart';
@@ -2016,7 +2017,13 @@ class _ExploreAIPageState extends State<ExploreAIPage>
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const KalaLogoWithIcon(logoHeight: 30, fontSize: 22),
+              const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AppMenuButton(),
+                  KalaLogoWithIcon(logoHeight: 30, fontSize: 22),
+                ],
+              ),
               Row(
                 children: [
                   _buildCreditsChip(cs, isDark),
@@ -2306,11 +2313,7 @@ class _ExploreAIPageState extends State<ExploreAIPage>
                   onTap: () {
                     HapticFeedback.lightImpact();
                     markAllCompletedJobsAsSeen();
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => const ResultManagerPage()),
-                    );
+                    selectedIndexNotifier.value = AppTabs.creations;
                   },
                   child: Container(
                     width: 44,

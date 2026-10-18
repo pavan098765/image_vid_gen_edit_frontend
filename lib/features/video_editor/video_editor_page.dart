@@ -28,6 +28,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:media_kit/media_kit.dart' hide Track;
 import 'package:pro_video_editor/pro_video_editor.dart';
 import 'package:video_player/video_player.dart';
+import 'package:kala_ai_create_images_videos_with_ai/features/media_editor/editor_tab_launch.dart';
 
 import 'models/clip_model.dart' hide Clip;
 import 'models/project_model.dart';
@@ -55,6 +56,10 @@ class VideoEditorPage extends ConsumerStatefulWidget {
   final bool useExistingProject;
   final String? jobId;
 
+  /// When false, this page is the hidden side of the photo/video toggle and
+  /// must not answer the system back button.
+  final bool handlesSystemBack;
+
   const VideoEditorPage({
     super.key,
     this.showAppBar = true,
@@ -64,6 +69,7 @@ class VideoEditorPage extends ConsumerStatefulWidget {
     this.initialExport,
     this.useExistingProject = false,
     this.jobId,
+    this.handlesSystemBack = true,
   });
 
   @override
@@ -82,6 +88,11 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
   bool _editorOpen = false;
   bool _allowRoutePop = false;
   bool _openedInitialTool = false;
+  bool _returnToResultManager = false;
+  String? _returnJobId;
+  String? _sessionJobId;
+  int _restoreTabIndex = 0;
+  int _seenLaunchId = 0;
 
   // ─── Export state ──────────────────────────────────────────────────────────
   String? _outputPath;
@@ -105,6 +116,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
     WidgetsBinding.instance.addObserver(this);
     MediaKit.ensureInitialized();
     isAdFreeNotifier.addListener(_onAdFreeStatusChanged);
+    editorTabLaunchNotifier.addListener(_onEditorTabLaunch);
     final path = widget.initialVideoPath;
     if (path != null && path.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -192,6 +204,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
       final picked = await ImagePicker().pickVideo(source: source);
       if (picked == null) return;
 
+      _sessionJobId = null;
       await _disposeControllers();
 
       setState(() {
@@ -243,7 +256,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
       await _videoController!.setVolume(1.0); // start with full volume
 
       if (!skipCreateProject) {
-        final jobId = widget.jobId;
+        final jobId = _activeJobId;
         VideoProject? restored;
         if (jobId != null && jobId.isNotEmpty) {
           restored = await VideoProjectStore.loadForJob(jobId);
@@ -954,9 +967,15 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: _allowRoutePop,
+      canPop: _allowRoutePop || !widget.handlesSystemBack,
       onPopInvokedWithResult: (didPop, _) async {
-        if (didPop || _allowRoutePop) return;
+        if (!widget.handlesSystemBack || didPop || _allowRoutePop) return;
+        if (selectedIndexNotifier.value == AppTabs.editor &&
+            _returnToResultManager &&
+            _videoFile != null) {
+          await _onCloseEditor();
+          return;
+        }
         if (Navigator.of(context).canPop()) {
           if (_editorOpen) {
             final ok = await _confirmExitEditing();
@@ -1176,6 +1195,21 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
   Future<void> _onCloseEditor() async {
     final ok = await _confirmExitEditing();
     if (!ok || !mounted) return;
+    if (_returnToResultManager) {
+      final jobId = _returnJobId;
+      final tab = _restoreTabIndex;
+      _returnToResultManager = false;
+      _returnJobId = null;
+      _sessionJobId = null;
+      returnEditorSessionToResultManager(
+        jobId: jobId,
+        restoreTabIndex: tab,
+        onCovered: () {
+          if (mounted) _closeProject(leaveRoute: false);
+        },
+      );
+      return;
+    }
     await _closeProject(leaveRoute: false);
     if (!mounted || !Navigator.of(context).canPop()) return;
     setState(() => _allowRoutePop = true);
@@ -1646,7 +1680,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
   Future<void> _autosave({bool notify = false}) async {
     final project = ref.read(projectProvider);
     if (project == null) return;
-    final id = widget.jobId ?? project.id;
+    final id = _activeJobId ?? project.id;
     try {
       await VideoProjectStore.save(project.copyWith(id: id));
       if (notify && mounted) {
@@ -1688,10 +1722,40 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
     ref.read(playbackProvider.notifier).setTotalDuration(loaded.totalDuration);
   }
 
+  String? get _activeJobId {
+    final session = _sessionJobId;
+    if (session != null && session.isNotEmpty) return session;
+    return widget.jobId;
+  }
+
+  void _onEditorTabLaunch() {
+    final launch = editorTabLaunchNotifier.value;
+    if (launch == null || launch.id == _seenLaunchId) return;
+    _seenLaunchId = launch.id;
+    final path = launch.videoPath;
+    if (path == null || path.isEmpty) {
+      _returnToResultManager = false;
+      return;
+    }
+    _returnToResultManager = launch.returnToResultManager;
+    _returnJobId = launch.jobId;
+    _sessionJobId = launch.jobId;
+    _restoreTabIndex = launch.restoreTabIndex;
+    _openedInitialTool = false;
+    _openLaunchedVideo(path);
+  }
+
+  Future<void> _openLaunchedVideo(String path) async {
+    await _disposeControllers();
+    if (!mounted) return;
+    await _openInitialVideo(path);
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _autosave();
+    editorTabLaunchNotifier.removeListener(_onEditorTabLaunch);
     isAdFreeNotifier.removeListener(_onAdFreeStatusChanged);
     _positionTimer?.cancel();
     // Close all Riverpod subscriptions created via listenManual

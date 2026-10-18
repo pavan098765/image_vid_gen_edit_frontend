@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/app_menu_button.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/video_editor/state/editor_providers.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/video_editor/video_editor_page.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -40,8 +41,12 @@ class StudioShelf extends StatelessWidget {
       body: SafeArea(
         child: CustomScrollView(
           slivers: [
+            const SliverPadding(
+              padding: EdgeInsets.fromLTRB(4, 8, 24, 0),
+              sliver: SliverToBoxAdapter(child: AppMenuButton()),
+            ),
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(24, 28, 24, 8),
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
               sliver: SliverToBoxAdapter(
                 child: Text(
                   'What will you make?',
