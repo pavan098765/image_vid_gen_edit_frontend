@@ -383,7 +383,7 @@ class _PreviewOverlayState extends ConsumerState<PreviewOverlay> {
                         fontStyle: clip.isItalic ? FontStyle.italic : FontStyle.normal,
                         shadows: [
                           Shadow(
-                            color: Colors.black.withOpacity(0.7),
+                            color: Colors.black.withValues(alpha: 0.7),
                             blurRadius: 4,
                             offset: const Offset(1, 1),
                           ),
@@ -513,7 +513,7 @@ class _PreviewOverlayState extends ConsumerState<PreviewOverlay> {
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(clip.borderRadius),
                   border: Border.all(
-                    color: Colors.white.withOpacity(0.4),
+                    color: Colors.white.withValues(alpha: 0.4),
                     width: 1.5,
                   ),
                 ),

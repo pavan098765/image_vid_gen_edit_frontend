@@ -64,7 +64,7 @@ class _TransitionPanelState extends ConsumerState<TransitionPanel> {
           Text(
             'Select a video clip, then choose a transition',
             style: TextStyle(
-              color: cs.onSurface.withOpacity(0.4),
+              color: cs.onSurface.withValues(alpha: 0.4),
               fontSize: 12,
             ),
           ),
@@ -89,13 +89,13 @@ class _TransitionPanelState extends ConsumerState<TransitionPanel> {
                 child: Container(
                   decoration: BoxDecoration(
                     color: selected
-                        ? cs.primary.withOpacity(0.15)
+                        ? cs.primary.withValues(alpha: 0.15)
                         : cs.surfaceContainerHigh,
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
                       color: selected
                           ? cs.primary
-                          : cs.onSurface.withOpacity(0.08),
+                          : cs.onSurface.withValues(alpha: 0.08),
                       width: selected ? 2 : 1,
                     ),
                   ),
@@ -106,7 +106,7 @@ class _TransitionPanelState extends ConsumerState<TransitionPanel> {
                         type.icon,
                         style: TextStyle(
                           fontSize: 20,
-                          color: selected ? cs.primary : cs.onSurface.withOpacity(0.5),
+                          color: selected ? cs.primary : cs.onSurface.withValues(alpha: 0.5),
                         ),
                       ),
                       const SizedBox(height: 4),
@@ -114,7 +114,7 @@ class _TransitionPanelState extends ConsumerState<TransitionPanel> {
                         type.label,
                         style: TextStyle(
                           fontSize: 9,
-                          color: selected ? cs.primary : cs.onSurface.withOpacity(0.5),
+                          color: selected ? cs.primary : cs.onSurface.withValues(alpha: 0.5),
                           fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
                         ),
                         textAlign: TextAlign.center,
@@ -134,7 +134,7 @@ class _TransitionPanelState extends ConsumerState<TransitionPanel> {
                 'Duration',
                 style: TextStyle(
                   fontSize: 12,
-                  color: cs.onSurface.withOpacity(0.6),
+                  color: cs.onSurface.withValues(alpha: 0.6),
                 ),
               ),
               Expanded(
@@ -153,7 +153,7 @@ class _TransitionPanelState extends ConsumerState<TransitionPanel> {
                 '${(_durationMs / 1000).toStringAsFixed(1)}s',
                 style: TextStyle(
                   fontSize: 11,
-                  color: cs.onSurface.withOpacity(0.7),
+                  color: cs.onSurface.withValues(alpha: 0.7),
                 ),
               ),
             ],

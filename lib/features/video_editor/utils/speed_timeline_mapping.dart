@@ -47,7 +47,7 @@ double integrateSpeedDenominator(SpeedEffect e) {
 
 double _integrateSpeedFromTo(SpeedEffect e, double ua, double ub) {
   if (ub <= ua) return 0.0;
-  final n = _kIntegrationSteps;
+  const n = _kIntegrationSteps;
   double sum = 0.0;
   final h = (ub - ua) / n;
   for (int i = 0; i < n; i++) {

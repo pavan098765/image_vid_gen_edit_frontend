@@ -294,7 +294,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
     return Material(
       color:
-          isSelected ? cs.primaryContainer.withOpacity(0.3) : Colors.transparent,
+          isSelected ? cs.primaryContainer.withValues(alpha: 0.3) : Colors.transparent,
       borderRadius: BorderRadius.circular(AppStyles.radiusMd),
       child: InkWell(
         onTap: () async {
@@ -710,7 +710,7 @@ class _SettingsPageState extends State<SettingsPage> {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: cs.onSurfaceVariant.withOpacity(0.3),
+                color: cs.onSurfaceVariant.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -742,7 +742,7 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
             
-            Divider(color: cs.outlineVariant.withOpacity(0.3), height: 1),
+            Divider(color: cs.outlineVariant.withValues(alpha: 0.3), height: 1),
             
             // Content
             Expanded(
@@ -1085,7 +1085,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     Text(
                       'Create Images & Videos with AI',
                       style: TextStyle(
-                        color: cs.onSurfaceVariant.withOpacity(0.5),
+                        color: cs.onSurfaceVariant.withValues(alpha: 0.5),
                         fontSize: 12,
                       ),
                     ),
@@ -1093,7 +1093,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     Text(
                       'Made with ❤️',
                       style: TextStyle(
-                        color: cs.onSurfaceVariant.withOpacity(0.4),
+                        color: cs.onSurfaceVariant.withValues(alpha: 0.4),
                         fontSize: 11,
                       ),
                     ),
@@ -1156,7 +1156,7 @@ class _SettingsPageState extends State<SettingsPage> {
     return Divider(
       height: 1,
       thickness: 1,
-      color: cs.outlineVariant.withOpacity(0.15),
+      color: cs.outlineVariant.withValues(alpha: 0.15),
     );
   }
 
@@ -1198,7 +1198,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 Text(
                   userEmail,
                   style: TextStyle(
-                    color: cs.onSurfaceVariant.withOpacity(0.7),
+                    color: cs.onSurfaceVariant.withValues(alpha: 0.7),
                     fontSize: 14,
                   ),
                   maxLines: 1,
@@ -1212,7 +1212,7 @@ class _SettingsPageState extends State<SettingsPage> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: Colors.green.withOpacity(0.15),
+              color: Colors.green.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Row(
@@ -1310,7 +1310,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     Text(
                       userEmail,
                       style: TextStyle(
-                        color: cs.onSurfaceVariant.withOpacity(0.7),
+                        color: cs.onSurfaceVariant.withValues(alpha: 0.7),
                         fontSize: 14,
                       ),
                       maxLines: 1,
@@ -1324,7 +1324,7 @@ class _SettingsPageState extends State<SettingsPage> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.orange.withOpacity(0.15),
+                  color: Colors.orange.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
@@ -1351,9 +1351,9 @@ class _SettingsPageState extends State<SettingsPage> {
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: KalaColors.gold.withOpacity(0.1),
+              color: KalaColors.gold.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(AppStyles.radiusMd),
-              border: Border.all(color: KalaColors.gold.withOpacity(0.3)),
+              border: Border.all(color: KalaColors.gold.withValues(alpha: 0.3)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1453,7 +1453,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         Text(
                           'Tap to refresh',
                           style: TextStyle(
-                            color: cs.onSurfaceVariant.withOpacity(0.7),
+                            color: cs.onSurfaceVariant.withValues(alpha: 0.7),
                             fontSize: 13,
                           ),
                         ),
@@ -1577,7 +1577,7 @@ class _SettingsPageState extends State<SettingsPage> {
               Container(
                 padding: const EdgeInsets.all(AppStyles.spacing10),
                 decoration: BoxDecoration(
-                  color: (iconColor ?? cs.primary).withOpacity(0.12),
+                  color: (iconColor ?? cs.primary).withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(AppStyles.radiusSm),
                 ),
                 child: Icon(icon, size: 20, color: iconColor ?? cs.primary),
@@ -1599,7 +1599,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     Text(
                       subtitle,
                       style: TextStyle(
-                        color: cs.onSurfaceVariant.withOpacity(0.7),
+                        color: cs.onSurfaceVariant.withValues(alpha: 0.7),
                         fontSize: 13,
                       ),
                     ),
@@ -1610,7 +1610,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   Icon(
                     LucideIcons.chevronRight,
                     size: 20,
-                    color: cs.onSurfaceVariant.withOpacity(0.5),
+                    color: cs.onSurfaceVariant.withValues(alpha: 0.5),
                   ),
             ],
           ),
@@ -1634,7 +1634,7 @@ class _SettingsPageState extends State<SettingsPage> {
           Container(
             padding: const EdgeInsets.all(AppStyles.spacing10),
             decoration: BoxDecoration(
-              color: cs.primary.withOpacity(0.12),
+              color: cs.primary.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(AppStyles.radiusSm),
             ),
             child: Icon(icon, size: 20, color: cs.primary),
@@ -1680,7 +1680,7 @@ class _SettingsPageState extends State<SettingsPage> {
           Container(
             padding: const EdgeInsets.all(AppStyles.spacing10),
             decoration: BoxDecoration(
-              color: cs.primary.withOpacity(0.12),
+              color: cs.primary.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(AppStyles.radiusSm),
             ),
             child: Icon(icon, size: 20, color: cs.primary),
@@ -1702,7 +1702,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 Text(
                   subtitle,
                   style: TextStyle(
-                    color: cs.onSurfaceVariant.withOpacity(0.7),
+                    color: cs.onSurfaceVariant.withValues(alpha: 0.7),
                     fontSize: 13,
                   ),
                 ),
@@ -1738,7 +1738,7 @@ class _ConfirmExitAppDialog extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: cs.primaryContainer.withOpacity(0.3),
+              color: cs.primaryContainer.withValues(alpha: 0.3),
               shape: BoxShape.circle,
             ),
             child: Icon(
@@ -2143,7 +2143,7 @@ class _AuthSheetState extends State<_AuthSheet> {
                           child: LinearProgressIndicator(
                             minHeight: 3,
                             color: Colors.white,
-                            backgroundColor: Colors.white.withOpacity(0.25),
+                            backgroundColor: Colors.white.withValues(alpha: 0.25),
                           ),
                         ),
                       )
@@ -2234,7 +2234,7 @@ class _GoogleSignInButton extends StatelessWidget {
                     child: LinearProgressIndicator(
                       minHeight: 3,
                       color: cs.primary,
-                      backgroundColor: cs.primary.withOpacity(0.15),
+                      backgroundColor: cs.primary.withValues(alpha: 0.15),
                     ),
                   ),
                 )

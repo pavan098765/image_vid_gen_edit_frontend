@@ -65,7 +65,7 @@ class _TrimPanelState extends ConsumerState<TrimPanel> {
               'Tap a clip on the timeline to edit it.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: cs.onSurface.withOpacity(0.55),
+                color: cs.onSurface.withValues(alpha: 0.55),
                 fontSize: 13,
               ),
             ),
@@ -135,7 +135,7 @@ class _TrimPanelState extends ConsumerState<TrimPanel> {
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: cs.onSurface.withOpacity(0.6),
+                color: cs.onSurface.withValues(alpha: 0.6),
               ),
             ),
             const SizedBox(height: 8),
@@ -156,7 +156,7 @@ class _TrimPanelState extends ConsumerState<TrimPanel> {
             style: TextStyle(
               fontSize: 11,
               height: 1.3,
-              color: cs.onSurface.withOpacity(0.5),
+              color: cs.onSurface.withValues(alpha: 0.5),
             ),
           ),
         ],
@@ -305,7 +305,7 @@ class _TrimPanelState extends ConsumerState<TrimPanel> {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 3),
         child: Material(
-          color: selected ? cs.primary.withOpacity(0.16) : cs.surfaceContainerHigh,
+          color: selected ? cs.primary.withValues(alpha: 0.16) : cs.surfaceContainerHigh,
           borderRadius: BorderRadius.circular(10),
           child: InkWell(
             borderRadius: BorderRadius.circular(10),
@@ -325,7 +325,7 @@ class _TrimPanelState extends ConsumerState<TrimPanel> {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
-                  color: selected ? cs.primary : cs.onSurface.withOpacity(0.08),
+                  color: selected ? cs.primary : cs.onSurface.withValues(alpha: 0.08),
                   width: selected ? 1.5 : 1,
                 ),
               ),
@@ -334,7 +334,7 @@ class _TrimPanelState extends ConsumerState<TrimPanel> {
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                  color: selected ? cs.primary : cs.onSurface.withOpacity(0.75),
+                  color: selected ? cs.primary : cs.onSurface.withValues(alpha: 0.75),
                 ),
               ),
             ),
@@ -420,7 +420,7 @@ class _ActionButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final active = enabled && onTap != null;
     return Material(
-      color: color.withOpacity(active ? 0.12 : 0.05),
+      color: color.withValues(alpha: active ? 0.12 : 0.05),
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         onTap: active ? onTap : null,
@@ -429,13 +429,13 @@ class _ActionButton extends StatelessWidget {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: color.withOpacity(active ? 0.28 : 0.1)),
+            border: Border.all(color: color.withValues(alpha: active ? 0.28 : 0.1)),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 20, color: color.withOpacity(active ? 1 : 0.35)),
+              Icon(icon, size: 20, color: color.withValues(alpha: active ? 1 : 0.35)),
               const SizedBox(height: 6),
               Text(
                 label,
@@ -443,7 +443,7 @@ class _ActionButton extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: color.withOpacity(active ? 1 : 0.35),
+                  color: color.withValues(alpha: active ? 1 : 0.35),
                   fontSize: 10,
                   fontWeight: FontWeight.w600,
                 ),

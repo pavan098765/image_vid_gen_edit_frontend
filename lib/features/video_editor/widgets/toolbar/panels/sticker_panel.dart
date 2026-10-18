@@ -81,9 +81,9 @@ class _StickerPanelState extends ConsumerState<StickerPanel> {
             child: Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: cs.primary.withOpacity(0.08),
+                color: cs.primary.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: cs.primary.withOpacity(0.2)),
+                border: Border.all(color: cs.primary.withValues(alpha: 0.2)),
               ),
               child: Row(
                 children: [
@@ -96,7 +96,7 @@ class _StickerPanelState extends ConsumerState<StickerPanel> {
                     child: Text(
                       'Tap a new emoji below to change',
                       style: TextStyle(
-                        color: cs.onSurface.withOpacity(0.6),
+                        color: cs.onSurface.withValues(alpha: 0.6),
                         fontSize: 12,
                       ),
                     ),
@@ -124,11 +124,11 @@ class _StickerPanelState extends ConsumerState<StickerPanel> {
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   decoration: BoxDecoration(
                     color: selected
-                        ? cs.primary.withOpacity(0.15)
+                        ? cs.primary.withValues(alpha: 0.15)
                         : cs.surfaceContainerHigh,
                     borderRadius: BorderRadius.circular(6),
                     border: selected
-                        ? Border.all(color: cs.primary.withOpacity(0.4))
+                        ? Border.all(color: cs.primary.withValues(alpha: 0.4))
                         : null,
                   ),
                   alignment: Alignment.center,
@@ -136,7 +136,7 @@ class _StickerPanelState extends ConsumerState<StickerPanel> {
                     _categories[i].name,
                     style: TextStyle(
                       fontSize: 12,
-                      color: selected ? cs.primary : cs.onSurface.withOpacity(0.6),
+                      color: selected ? cs.primary : cs.onSurface.withValues(alpha: 0.6),
                       fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
                     ),
                   ),
@@ -171,7 +171,7 @@ class _StickerPanelState extends ConsumerState<StickerPanel> {
                 child: Container(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(8),
-                    color: cs.surfaceContainerHigh.withOpacity(0.5),
+                    color: cs.surfaceContainerHigh.withValues(alpha: 0.5),
                   ),
                   alignment: Alignment.center,
                   child: Text(emoji, style: const TextStyle(fontSize: 22)),

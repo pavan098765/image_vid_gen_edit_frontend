@@ -114,7 +114,7 @@ class KalaLogo extends StatelessWidget {
             style: GoogleFonts.inter(
               fontSize: fontSize * 0.4,
               fontWeight: FontWeight.w500,
-              color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.7),
+              color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
               letterSpacing: 0.3,
             ),
           ),
@@ -225,8 +225,8 @@ class AppTheme {
 
       // Typography
       textTheme: GoogleFonts.interTextTheme().apply(
-        bodyColor: Colors.white.withOpacity(0.95),
-        displayColor: Colors.white.withOpacity(0.95),
+        bodyColor: Colors.white.withValues(alpha: 0.95),
+        displayColor: Colors.white.withValues(alpha: 0.95),
       ),
 
       // AppBar
@@ -281,7 +281,7 @@ class AppTheme {
           ),
           overlayColor: WidgetStateProperty.resolveWith(
             (states) => states.contains(WidgetState.pressed)
-                ? Colors.white.withOpacity(0.05)
+                ? Colors.white.withValues(alpha: 0.05)
                 : null,
           ),
         ),
@@ -295,8 +295,8 @@ class AppTheme {
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide.none,
         ),
-        hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
-        labelStyle: TextStyle(color: Colors.white.withOpacity(0.7)),
+        hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
+        labelStyle: TextStyle(color: Colors.white.withValues(alpha: 0.7)),
       ),
 
       // Cards
@@ -316,18 +316,18 @@ class AppTheme {
         ),
         tileColor: const Color(0xFF1B1B24),
         iconColor: Colors.white70,
-        textColor: Colors.white.withOpacity(0.95),
+        textColor: Colors.white.withValues(alpha: 0.95),
       ),
 
       // Switches / Checkbox
       switchTheme: SwitchThemeData(
         thumbColor: WidgetStateProperty.all(seedPrimary),
-        trackColor: WidgetStateProperty.all(seedPrimary.withOpacity(0.4)),
+        trackColor: WidgetStateProperty.all(seedPrimary.withValues(alpha: 0.4)),
       ),
 
       // Divider
       dividerTheme: DividerThemeData(
-        color: Colors.white.withOpacity(0.08),
+        color: Colors.white.withValues(alpha: 0.08),
         thickness: 1,
       ),
 
@@ -344,7 +344,7 @@ class AppTheme {
           fontWeight: FontWeight.bold,
         ),
         contentTextStyle: GoogleFonts.inter(
-          color: Colors.white.withOpacity(0.9),
+          color: Colors.white.withValues(alpha: 0.9),
           fontSize: 16,
         ),
       ),
@@ -444,10 +444,10 @@ class AppTheme {
       ),
       switchTheme: SwitchThemeData(
         thumbColor: WidgetStateProperty.all(seedPrimary),
-        trackColor: WidgetStateProperty.all(seedPrimary.withOpacity(0.4)),
+        trackColor: WidgetStateProperty.all(seedPrimary.withValues(alpha: 0.4)),
       ),
       dividerTheme: DividerThemeData(
-        color: Colors.black.withOpacity(0.06),
+        color: Colors.black.withValues(alpha: 0.06),
         thickness: 1,
       ),
       dialogTheme: DialogThemeData(

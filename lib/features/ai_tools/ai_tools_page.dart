@@ -377,14 +377,14 @@ class _AiToolsPageState extends State<AiToolsPage>
                               shape: BoxShape.circle,
                               boxShadow: [
                                 BoxShadow(
-                                  color: cs.primary.withOpacity(glowIntensity),
+                                  color: cs.primary.withValues(alpha: glowIntensity),
                                   blurRadius: 12 + (_glowController.value * 8),
                                   spreadRadius:
                                       2 + (_glowController.value * 2),
                                 ),
                                 BoxShadow(
                                   color: cs.secondary
-                                      .withOpacity(glowIntensity * 0.7),
+                                      .withValues(alpha: glowIntensity * 0.7),
                                   blurRadius: 8 + (_glowController.value * 4),
                                   spreadRadius: 1,
                                 ),
@@ -398,11 +398,11 @@ class _AiToolsPageState extends State<AiToolsPage>
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             color: hasUnseen
-                                ? cs.primaryContainer.withOpacity(0.3)
+                                ? cs.primaryContainer.withValues(alpha: 0.3)
                                 : Colors.transparent,
                             border: hasUnseen
                                 ? Border.all(
-                                    color: cs.primary.withOpacity(0.4),
+                                    color: cs.primary.withValues(alpha: 0.4),
                                     width: 1.5,
                                   )
                                 : null,
@@ -452,7 +452,7 @@ class _AiToolsPageState extends State<AiToolsPage>
                                   ),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: cs.error.withOpacity(0.5),
+                                      color: cs.error.withValues(alpha: 0.5),
                                       blurRadius: 4,
                                       spreadRadius: 1,
                                     ),
@@ -512,7 +512,7 @@ class _AiToolsPageState extends State<AiToolsPage>
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(Icons.cloud_off,
-                size: 64, color: cs.onSurface.withOpacity(0.50)),
+                size: 64, color: cs.onSurface.withValues(alpha: 0.50)),
             const SizedBox(height: 12),
             Text(
               "Unable to load tools",
@@ -680,19 +680,19 @@ class _CapabilityCardState extends State<_CapabilityCard> {
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: _hover
-                  ? accent.withOpacity(0.6)
-                  : cs.outline.withOpacity(0.2),
+                  ? accent.withValues(alpha: 0.6)
+                  : cs.outline.withValues(alpha: 0.2),
               width: _hover ? 1.5 : 1,
             ),
             gradient: LinearGradient(
               colors: _hover
                   ? [
-                      accent.withOpacity(0.12),
-                      cs.surfaceContainerHighest.withOpacity(0.06)
+                      accent.withValues(alpha: 0.12),
+                      cs.surfaceContainerHighest.withValues(alpha: 0.06)
                     ]
                   : [
-                      cs.surfaceContainerHighest.withOpacity(0.04),
-                      cs.surface.withOpacity(0.02)
+                      cs.surfaceContainerHighest.withValues(alpha: 0.04),
+                      cs.surface.withValues(alpha: 0.02)
                     ],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
@@ -700,7 +700,7 @@ class _CapabilityCardState extends State<_CapabilityCard> {
             boxShadow: _hover
                 ? [
                     BoxShadow(
-                      color: accent.withOpacity(0.2),
+                      color: accent.withValues(alpha: 0.2),
                       offset: const Offset(0, 6),
                       blurRadius: 16,
                     )
@@ -749,7 +749,7 @@ class _CapabilityCardState extends State<_CapabilityCard> {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: accent.withOpacity(0.12),
+                      color: accent.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(14),
                     ),
                     child: Icon(
@@ -778,7 +778,7 @@ class _CapabilityCardState extends State<_CapabilityCard> {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: tt.bodySmall?.copyWith(
-                      color: cs.onSurfaceVariant.withOpacity(0.8),
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.8),
                       height: 1.3,
                     ),
                   ),
@@ -794,7 +794,7 @@ class _CapabilityCardState extends State<_CapabilityCard> {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
-                            color: accent.withOpacity(0.1),
+                            color: accent.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Row(
@@ -820,7 +820,7 @@ class _CapabilityCardState extends State<_CapabilityCard> {
                             ? LucideIcons.film
                             : LucideIcons.image,
                         size: 16,
-                        color: cs.onSurfaceVariant.withOpacity(0.5),
+                        color: cs.onSurfaceVariant.withValues(alpha: 0.5),
                       ),
                     ],
                   ),
@@ -839,17 +839,17 @@ class _CapabilityCardState extends State<_CapabilityCard> {
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  cs.surface.withOpacity(0.95),
-                  cs.surfaceContainerHighest.withOpacity(0.9)
+                  cs.surface.withValues(alpha: 0.95),
+                  cs.surfaceContainerHighest.withValues(alpha: 0.9)
                 ],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: accent.withOpacity(0.4), width: 0.8),
+              border: Border.all(color: accent.withValues(alpha: 0.4), width: 0.8),
               boxShadow: [
                 BoxShadow(
-                  color: accent.withOpacity(0.15),
+                  color: accent.withValues(alpha: 0.15),
                   blurRadius: 6,
                   offset: const Offset(0, 2),
                 ),

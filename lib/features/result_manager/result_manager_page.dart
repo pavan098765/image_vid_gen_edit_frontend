@@ -658,15 +658,15 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [
-              cs.primaryContainer.withOpacity(_isBannerExpanded ? 0.4 : 0.25),
-              cs.secondaryContainer.withOpacity(_isBannerExpanded ? 0.3 : 0.15),
+              cs.primaryContainer.withValues(alpha: _isBannerExpanded ? 0.4 : 0.25),
+              cs.secondaryContainer.withValues(alpha: _isBannerExpanded ? 0.3 : 0.15),
             ],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: cs.primary.withOpacity(_isBannerExpanded ? 0.2 : 0.1),
+            color: cs.primary.withValues(alpha: _isBannerExpanded ? 0.2 : 0.1),
           ),
         ),
         child: AnimatedCrossFade(
@@ -687,7 +687,7 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: cs.primary.withOpacity(0.15),
+            color: cs.primary.withValues(alpha: 0.15),
             shape: BoxShape.circle,
           ),
           child: Icon(
@@ -713,7 +713,7 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
               Text(
                 'Results stay for 20 minutes. Download them before they expire.',
                 style: TextStyle(
-                  color: cs.onSurfaceVariant.withOpacity(0.8),
+                  color: cs.onSurfaceVariant.withValues(alpha: 0.8),
                   fontSize: 11,
                 ),
               ),
@@ -723,7 +723,7 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
         Icon(
           Icons.keyboard_arrow_up_rounded,
           size: 20,
-          color: cs.onSurfaceVariant.withOpacity(0.5),
+          color: cs.onSurfaceVariant.withValues(alpha: 0.5),
         ),
       ],
     );
@@ -736,13 +736,13 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
         Icon(
           Icons.cloud_queue_rounded,
           size: 14,
-          color: cs.primary.withOpacity(0.7),
+          color: cs.primary.withValues(alpha: 0.7),
         ),
         const SizedBox(width: 8),
         Text(
           '20 min · 24h cloud',
           style: TextStyle(
-            color: cs.onSurfaceVariant.withOpacity(0.7),
+            color: cs.onSurfaceVariant.withValues(alpha: 0.7),
             fontSize: 11,
             fontWeight: FontWeight.w500,
           ),
@@ -751,7 +751,7 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
         Icon(
           Icons.keyboard_arrow_down_rounded,
           size: 16,
-          color: cs.onSurfaceVariant.withOpacity(0.5),
+          color: cs.onSurfaceVariant.withValues(alpha: 0.5),
         ),
       ],
     );
@@ -1377,9 +1377,9 @@ class _JobCardState extends State<JobCard> {
         child: Card(
           margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           color: widget.isSelected
-              ? cs.primaryContainer.withOpacity(0.3)
+              ? cs.primaryContainer.withValues(alpha: 0.3)
               : isExpired
-                  ? cs.surfaceContainerHigh.withOpacity(0.5)
+                  ? cs.surfaceContainerHigh.withValues(alpha: 0.5)
                   : cs.surfaceContainerHigh,
           elevation: widget.isSelected ? 2 : 0,
           shape: RoundedRectangleBorder(
@@ -1387,7 +1387,7 @@ class _JobCardState extends State<JobCard> {
             side: widget.isSelected
                 ? BorderSide(color: cs.primary, width: 2)
                 : isExpired
-                    ? BorderSide(color: cs.outline.withOpacity(0.3), width: 1)
+                    ? BorderSide(color: cs.outline.withValues(alpha: 0.3), width: 1)
                     : BorderSide.none,
           ),
           child: Column(
@@ -1414,7 +1414,7 @@ class _JobCardState extends State<JobCard> {
                     fontWeight: FontWeight.w600,
                     height: 1.15,
                     color: isExpired
-                        ? cs.onSurface.withOpacity(0.7)
+                        ? cs.onSurface.withValues(alpha: 0.7)
                         : cs.onSurface,
                   ),
                 ),
@@ -1568,9 +1568,9 @@ class _JobCardState extends State<JobCard> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: badgeColor.withOpacity(0.12),
+        color: badgeColor.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: badgeColor.withOpacity(0.3)),
+        border: Border.all(color: badgeColor.withValues(alpha: 0.3)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1601,9 +1601,9 @@ class _JobCardState extends State<JobCard> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
-          color: Colors.purple.withOpacity(0.12),
+          color: Colors.purple.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.purple.withOpacity(0.3)),
+          border: Border.all(color: Colors.purple.withValues(alpha: 0.3)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -1638,9 +1638,9 @@ class _JobCardState extends State<JobCard> {
         margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: Colors.purple.withOpacity(0.06),
+          color: Colors.purple.withValues(alpha: 0.06),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.purple.withOpacity(0.15)),
+          border: Border.all(color: Colors.purple.withValues(alpha: 0.15)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1663,7 +1663,7 @@ class _JobCardState extends State<JobCard> {
             Text(
               job.enhancedPrompt!,
               style: TextStyle(
-                color: cs.onSurface.withOpacity(0.85),
+                color: cs.onSurface.withValues(alpha: 0.85),
                 fontSize: 13,
                 height: 1.4,
               ),
@@ -1674,7 +1674,7 @@ class _JobCardState extends State<JobCard> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: cs.surfaceContainerHigh.withOpacity(0.5),
+                  color: cs.surfaceContainerHigh.withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Column(
@@ -1683,7 +1683,7 @@ class _JobCardState extends State<JobCard> {
                     Text(
                       'Original prompt:',
                       style: TextStyle(
-                        color: cs.onSurfaceVariant.withOpacity(0.6),
+                        color: cs.onSurfaceVariant.withValues(alpha: 0.6),
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
                       ),
@@ -1692,7 +1692,7 @@ class _JobCardState extends State<JobCard> {
                     Text(
                       job.originalPrompt!,
                       style: TextStyle(
-                        color: cs.onSurfaceVariant.withOpacity(0.7),
+                        color: cs.onSurfaceVariant.withValues(alpha: 0.7),
                         fontSize: 12,
                         fontStyle: FontStyle.italic,
                       ),
@@ -1759,7 +1759,7 @@ class _JobCardState extends State<JobCard> {
                   child: Icon(
                     Icons.image_not_supported_outlined,
                     size: 20,
-                    color: cs.onSurfaceVariant.withOpacity(0.5),
+                    color: cs.onSurfaceVariant.withValues(alpha: 0.5),
                   ),
                 );
               },
@@ -1773,7 +1773,7 @@ class _JobCardState extends State<JobCard> {
                     end: Alignment.bottomCenter,
                     colors: [
                       Colors.transparent,
-                      Colors.black.withOpacity(0.05),
+                      Colors.black.withValues(alpha: 0.05),
                     ],
                   ),
                 ),
@@ -1799,7 +1799,7 @@ class _JobCardState extends State<JobCard> {
                 child: Center(
                   child: Icon(
                     Icons.videocam_rounded,
-                    color: cs.primary.withOpacity(0.7),
+                    color: cs.primary.withValues(alpha: 0.7),
                     size: 24,
                   ),
                 ),
@@ -1812,7 +1812,7 @@ class _JobCardState extends State<JobCard> {
               child: Container(
                 padding: const EdgeInsets.all(2),
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.6),
+                  color: Colors.black.withValues(alpha: 0.6),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: const Icon(
@@ -1833,7 +1833,7 @@ class _JobCardState extends State<JobCard> {
         child: Center(
           child: Icon(
             Icons.text_snippet_rounded,
-            color: cs.primary.withOpacity(0.7),
+            color: cs.primary.withValues(alpha: 0.7),
             size: 24,
           ),
         ),
@@ -1858,12 +1858,12 @@ class _JobCardState extends State<JobCard> {
             border: isProcessing
                 ? null
                 : Border.all(
-                    color: cs.outline.withOpacity(0.15),
+                    color: cs.outline.withValues(alpha: 0.15),
                     width: 1,
                   ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.08),
+                color: Colors.black.withValues(alpha: 0.08),
                 blurRadius: 8,
                 offset: const Offset(0, 2),
               ),
@@ -1942,13 +1942,13 @@ class _JobCardState extends State<JobCard> {
               cacheHeight: 116,
             ),
           ),
-          Container(color: Colors.black.withOpacity(0.1)),
+          Container(color: Colors.black.withValues(alpha: 0.1)),
           if (isProcessing)
             Positioned.fill(
               child: Shimmer.fromColors(
-                baseColor: cs.primary.withOpacity(0.15),
-                highlightColor: cs.primary.withOpacity(0.45),
-                child: Container(color: cs.primary.withOpacity(0.10)),
+                baseColor: cs.primary.withValues(alpha: 0.15),
+                highlightColor: cs.primary.withValues(alpha: 0.45),
+                child: Container(color: cs.primary.withValues(alpha: 0.10)),
               ),
             ),
         ],
@@ -1973,7 +1973,7 @@ class _JobCardState extends State<JobCard> {
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
               child: Container(
-                color: Colors.black.withOpacity(0.15),
+                color: Colors.black.withValues(alpha: 0.15),
               ),
             ),
           ),
@@ -1981,8 +1981,8 @@ class _JobCardState extends State<JobCard> {
         if (isProcessing)
           Positioned.fill(
             child: Shimmer.fromColors(
-              baseColor: Colors.white.withOpacity(0.08),
-              highlightColor: Colors.white.withOpacity(0.25),
+              baseColor: Colors.white.withValues(alpha: 0.08),
+              highlightColor: Colors.white.withValues(alpha: 0.25),
               child: Container(color: Colors.transparent),
             ),
           ),
@@ -1991,13 +1991,13 @@ class _JobCardState extends State<JobCard> {
           child: Icon(
             _getPlaceholderIcon(job.outputType, job.model),
             color: isProcessing
-                ? Colors.white.withOpacity(0.95)
-                : Colors.white.withOpacity(0.7),
+                ? Colors.white.withValues(alpha: 0.95)
+                : Colors.white.withValues(alpha: 0.7),
             size: 24,
             shadows: isProcessing
                 ? [
                     Shadow(
-                      color: Colors.black.withOpacity(0.3),
+                      color: Colors.black.withValues(alpha: 0.3),
                       blurRadius: 8,
                     ),
                   ]
@@ -2209,7 +2209,7 @@ class _JobCardState extends State<JobCard> {
           Text(
             "• Ready",
             style: TextStyle(
-              color: cs.onSurfaceVariant.withOpacity(0.6),
+              color: cs.onSurfaceVariant.withValues(alpha: 0.6),
               fontSize: 12,
             ),
           ),
@@ -2341,7 +2341,7 @@ class _JobCardState extends State<JobCard> {
         icon: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: cs.errorContainer.withOpacity(0.3),
+            color: cs.errorContainer.withValues(alpha: 0.3),
             shape: BoxShape.circle,
           ),
           child: Icon(
@@ -2374,7 +2374,7 @@ class _JobCardState extends State<JobCard> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: cs.primaryContainer.withOpacity(0.3),
+                color: cs.primaryContainer.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
@@ -2614,7 +2614,7 @@ class _RotatingBorderPainter extends CustomPainter {
       ..shader = gradient.createShader(rect)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.0
-      ..color = Colors.white.withOpacity(0.5 * pulseValue);
+      ..color = Colors.white.withValues(alpha: 0.5 * pulseValue);
     canvas.drawPath(path, highlightPaint);
   }
 

@@ -72,14 +72,14 @@ class _FilterPanelState extends ConsumerState<FilterPanel> {
             style: TextStyle(
               fontSize: 11,
               height: 1.3,
-              color: cs.onSurface.withOpacity(0.55),
+              color: cs.onSurface.withValues(alpha: 0.55),
             ),
           ),
           const SizedBox(height: 12),
           if (selectedClip is VideoClip) ...[
             Text('Looks',
                 style: TextStyle(
-                    fontSize: 12, color: cs.onSurface.withOpacity(0.6))),
+                    fontSize: 12, color: cs.onSurface.withValues(alpha: 0.6))),
             const SizedBox(height: 8),
             SizedBox(
               height: 40,
@@ -126,7 +126,7 @@ class _FilterPanelState extends ConsumerState<FilterPanel> {
                       border: Border.all(
                         color: selected
                             ? cs.primary
-                            : cs.onSurface.withOpacity(0.1),
+                            : cs.onSurface.withValues(alpha: 0.1),
                         width: selected ? 2 : 1,
                       ),
                     ),
@@ -154,7 +154,7 @@ class _FilterPanelState extends ConsumerState<FilterPanel> {
                             fontSize: 9,
                             color: selected
                                 ? cs.primary
-                                : cs.onSurface.withOpacity(0.6),
+                                : cs.onSurface.withValues(alpha: 0.6),
                             fontWeight:
                                 selected ? FontWeight.w600 : FontWeight.normal,
                           ),
@@ -220,7 +220,7 @@ class _FilterPanelState extends ConsumerState<FilterPanel> {
             label,
             style: TextStyle(
               fontSize: 12,
-              color: cs.onSurface.withOpacity(0.6),
+              color: cs.onSurface.withValues(alpha: 0.6),
             ),
           ),
         ),
@@ -238,7 +238,7 @@ class _FilterPanelState extends ConsumerState<FilterPanel> {
             value.toStringAsFixed(1),
             style: TextStyle(
               fontSize: 11,
-              color: cs.onSurface.withOpacity(0.7),
+              color: cs.onSurface.withValues(alpha: 0.7),
             ),
             textAlign: TextAlign.right,
           ),

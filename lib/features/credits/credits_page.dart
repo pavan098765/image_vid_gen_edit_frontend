@@ -787,7 +787,7 @@ class _CreditsPageState extends State<CreditsPage> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: cs.primaryContainer.withOpacity(0.3),
+                  color: cs.primaryContainer.withValues(alpha: 0.3),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
@@ -819,7 +819,7 @@ class _CreditsPageState extends State<CreditsPage> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   decoration: BoxDecoration(
-                    color: cs.primaryContainer.withOpacity(0.2),
+                    color: cs.primaryContainer.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Row(
@@ -870,7 +870,7 @@ class _CreditsPageState extends State<CreditsPage> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.orange.shade100.withOpacity(0.4),
+                  color: Colors.orange.shade100.withValues(alpha: 0.4),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
@@ -902,9 +902,9 @@ class _CreditsPageState extends State<CreditsPage> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: BoxDecoration(
-                  color: cs.surfaceContainerHighest.withOpacity(0.5),
+                  color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: cs.outline.withOpacity(0.2)),
+                  border: Border.all(color: cs.outline.withValues(alpha: 0.2)),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -1034,7 +1034,7 @@ class _CreditsPageState extends State<CreditsPage> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: cs.primaryContainer.withOpacity(0.15),
+                  color: cs.primaryContainer.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Row(
@@ -1158,8 +1158,8 @@ class _CreditsPageState extends State<CreditsPage> {
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  KalaColors.purple.withOpacity(0.15),
-                  KalaColors.cyan.withOpacity(0.1),
+                  KalaColors.purple.withValues(alpha: 0.15),
+                  KalaColors.cyan.withValues(alpha: 0.1),
                 ],
               ),
               shape: BoxShape.circle,
@@ -1200,9 +1200,9 @@ class _CreditsPageState extends State<CreditsPage> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(
-              color: KalaColors.gold.withOpacity(0.15),
+              color: KalaColors.gold.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: KalaColors.gold.withOpacity(0.3)),
+              border: Border.all(color: KalaColors.gold.withValues(alpha: 0.3)),
             ),
             child: const Row(
               mainAxisSize: MainAxisSize.min,
@@ -1269,7 +1269,7 @@ class _CreditsPageState extends State<CreditsPage> {
         Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: cs.primaryContainer.withOpacity(0.3),
+            color: cs.primaryContainer.withValues(alpha: 0.3),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Icon(icon, size: 22, color: cs.primary),
@@ -1364,7 +1364,7 @@ class _CreditsPageState extends State<CreditsPage> {
                 child: Text(
                   'Terms of Service',
                   style: TextStyle(
-                    color: cs.onSurfaceVariant.withOpacity(0.7),
+                    color: cs.onSurfaceVariant.withValues(alpha: 0.7),
                     fontSize: 11,
                   ),
                 ),
@@ -1372,7 +1372,7 @@ class _CreditsPageState extends State<CreditsPage> {
               Text(
                 '•',
                 style: TextStyle(
-                  color: cs.onSurfaceVariant.withOpacity(0.5),
+                  color: cs.onSurfaceVariant.withValues(alpha: 0.5),
                   fontSize: 11,
                 ),
               ),
@@ -1389,7 +1389,7 @@ class _CreditsPageState extends State<CreditsPage> {
                 child: Text(
                   'Privacy Policy',
                   style: TextStyle(
-                    color: cs.onSurfaceVariant.withOpacity(0.7),
+                    color: cs.onSurfaceVariant.withValues(alpha: 0.7),
                     fontSize: 11,
                   ),
                 ),
@@ -1403,7 +1403,7 @@ class _CreditsPageState extends State<CreditsPage> {
           Text(
             'Gems never expire. Use them anytime for AI generation.',
             style: TextStyle(
-              color: cs.onSurfaceVariant.withOpacity(0.6),
+              color: cs.onSurfaceVariant.withValues(alpha: 0.6),
               fontSize: 12,
             ),
             textAlign: TextAlign.center,
@@ -1438,14 +1438,14 @@ class _CreditsPageState extends State<CreditsPage> {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            KalaColors.purple.withOpacity(0.12),
-            KalaColors.cyan.withOpacity(0.08),
+            KalaColors.purple.withValues(alpha: 0.12),
+            KalaColors.cyan.withValues(alpha: 0.08),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: KalaColors.purple.withOpacity(0.2)),
+        border: Border.all(color: KalaColors.purple.withValues(alpha: 0.2)),
       ),
       child: Row(
         children: [
@@ -1507,7 +1507,7 @@ class _CreditsPageState extends State<CreditsPage> {
                     borderRadius: BorderRadius.circular(8),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.amber.withOpacity(0.3),
+                        color: Colors.amber.withValues(alpha: 0.3),
                         blurRadius: 8,
                       ),
                     ],
@@ -1532,7 +1532,7 @@ class _CreditsPageState extends State<CreditsPage> {
               return Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  color: cs.surfaceContainerHighest.withOpacity(0.5),
+                  color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(
@@ -1618,10 +1618,10 @@ class _CreditsPageState extends State<CreditsPage> {
       child: Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-          color: cs.primaryContainer.withOpacity(0.12),
+          color: cs.primaryContainer.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: offerwallColors[0].withOpacity(0.4),
+            color: offerwallColors[0].withValues(alpha: 0.4),
           ),
       ),
       child: Row(
@@ -1694,17 +1694,17 @@ class _CreditsPageState extends State<CreditsPage> {
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: showCountdown 
-              ? Colors.green.withOpacity(0.08)
+              ? Colors.green.withValues(alpha: 0.08)
               : isActive 
-                  ? cs.primaryContainer.withOpacity(0.12)
-                  : cs.surfaceContainerHighest.withOpacity(0.3),
+                  ? cs.primaryContainer.withValues(alpha: 0.12)
+                  : cs.surfaceContainerHighest.withValues(alpha: 0.3),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: showCountdown 
-                ? Colors.green.withOpacity(0.3)
+                ? Colors.green.withValues(alpha: 0.3)
                 : isActive 
-                    ? cs.primary.withOpacity(0.4)
-                    : cs.outline.withOpacity(0.15),
+                    ? cs.primary.withValues(alpha: 0.4)
+                    : cs.outline.withValues(alpha: 0.15),
           ),
         ),
         child: Column(
@@ -1719,7 +1719,7 @@ class _CreditsPageState extends State<CreditsPage> {
                         ? const LinearGradient(colors: KalaColors.brandGradient)
                         : null,
                     color: showCountdown 
-                        ? Colors.green.withOpacity(0.12)
+                        ? Colors.green.withValues(alpha: 0.12)
                         : isActive ? null : cs.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(8),
                   ),
@@ -1792,17 +1792,17 @@ class _CreditsPageState extends State<CreditsPage> {
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: hasReachedLimit 
-              ? Colors.green.withOpacity(0.08)
+              ? Colors.green.withValues(alpha: 0.08)
               : isActive 
-                  ? cs.primaryContainer.withOpacity(0.12)
-                  : cs.surfaceContainerHighest.withOpacity(0.3),
+                  ? cs.primaryContainer.withValues(alpha: 0.12)
+                  : cs.surfaceContainerHighest.withValues(alpha: 0.3),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: hasReachedLimit 
-                ? Colors.green.withOpacity(0.3)
+                ? Colors.green.withValues(alpha: 0.3)
                 : isActive 
-                    ? cs.primary.withOpacity(0.4)
-                    : cs.outline.withOpacity(0.15),
+                    ? cs.primary.withValues(alpha: 0.4)
+                    : cs.outline.withValues(alpha: 0.15),
           ),
         ),
         child: Column(
@@ -1817,7 +1817,7 @@ class _CreditsPageState extends State<CreditsPage> {
                         ? const LinearGradient(colors: KalaColors.brandGradient)
                         : null,
                     color: hasReachedLimit 
-                        ? Colors.green.withOpacity(0.12)
+                        ? Colors.green.withValues(alpha: 0.12)
                         : isActive ? null : cs.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(8),
                   ),
@@ -1894,8 +1894,8 @@ class _CreditsPageState extends State<CreditsPage> {
                         color: progressToNextGem > i ? cs.primary : cs.surfaceContainerHighest,
                       border: Border.all(
                           color: progressToNextGem > i 
-                              ? cs.primary.withOpacity(0.5)
-                              : cs.outline.withOpacity(0.3),
+                              ? cs.primary.withValues(alpha: 0.5)
+                              : cs.outline.withValues(alpha: 0.3),
                         width: 1.5,
                       ),
                     ),
@@ -1967,23 +1967,23 @@ class _CreditsPageState extends State<CreditsPage> {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: isAdFree 
-                    ? [Colors.green.shade600.withOpacity(0.15), Colors.green.shade700.withOpacity(0.08)]
+                    ? [Colors.green.shade600.withValues(alpha: 0.15), Colors.green.shade700.withValues(alpha: 0.08)]
                     : isDark
-                        ? [removeAdColors[0].withOpacity(0.15), removeAdColors[1].withOpacity(0.08)]
-                        : [removeAdColors[0].withOpacity(0.1), removeAdColors[1].withOpacity(0.05)],
+                        ? [removeAdColors[0].withValues(alpha: 0.15), removeAdColors[1].withValues(alpha: 0.08)]
+                        : [removeAdColors[0].withValues(alpha: 0.1), removeAdColors[1].withValues(alpha: 0.05)],
               ),
               borderRadius: BorderRadius.circular(14),
             border: Border.all(
               color: isAdFree 
-                    ? Colors.green.withOpacity(0.4)
-                    : removeAdColors[0].withOpacity(0.4),
+                    ? Colors.green.withValues(alpha: 0.4)
+                    : removeAdColors[0].withValues(alpha: 0.4),
                 width: 1.5,
               ),
               boxShadow: [
                 BoxShadow(
                   color: isAdFree 
-                      ? Colors.green.withOpacity(0.15)
-                      : removeAdColors[0].withOpacity(0.15),
+                      ? Colors.green.withValues(alpha: 0.15)
+                      : removeAdColors[0].withValues(alpha: 0.15),
                   blurRadius: 8,
                   spreadRadius: 0,
                   offset: const Offset(0, 2),
@@ -2007,8 +2007,8 @@ class _CreditsPageState extends State<CreditsPage> {
                     boxShadow: [
                       BoxShadow(
                   color: isAdFree 
-                            ? Colors.green.withOpacity(0.3)
-                            : removeAdColors[0].withOpacity(0.4),
+                            ? Colors.green.withValues(alpha: 0.3)
+                            : removeAdColors[0].withValues(alpha: 0.4),
                         blurRadius: 8,
                       ),
                     ],
@@ -2073,7 +2073,7 @@ class _CreditsPageState extends State<CreditsPage> {
                       borderRadius: BorderRadius.circular(10),
                       boxShadow: [
                         BoxShadow(
-                          color: KalaColors.brandGradient[0].withOpacity(0.4),
+                          color: KalaColors.brandGradient[0].withValues(alpha: 0.4),
                           blurRadius: 8,
                           offset: const Offset(0, 2),
                         ),
@@ -2092,7 +2092,7 @@ class _CreditsPageState extends State<CreditsPage> {
                   Container(
                     padding: const EdgeInsets.all(6),
                     decoration: BoxDecoration(
-                      color: Colors.green.withOpacity(0.15),
+                      color: Colors.green.withValues(alpha: 0.15),
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(LucideIcons.check, color: Colors.green, size: 18),
@@ -2140,9 +2140,9 @@ class _CreditsPageState extends State<CreditsPage> {
       return Container(
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-          color: cs.errorContainer.withOpacity(0.2),
+          color: cs.errorContainer.withValues(alpha: 0.2),
           borderRadius: BorderRadius.circular(AppStyles.radiusMd),
-          border: Border.all(color: cs.error.withOpacity(0.3)),
+          border: Border.all(color: cs.error.withValues(alpha: 0.3)),
         ),
         child: Column(
           children: [
@@ -2241,31 +2241,31 @@ class _CreditsPageState extends State<CreditsPage> {
             end: Alignment.bottomRight,
             colors: isSelected
                 ? [
-                    KalaColors.brandGradient[0].withOpacity(0.25),
-                    KalaColors.brandGradient[1].withOpacity(0.15),
+                    KalaColors.brandGradient[0].withValues(alpha: 0.25),
+                    KalaColors.brandGradient[1].withValues(alpha: 0.15),
                   ]
                 : isDark
                     ? [cs.surface, cs.surface]
-                    : [Colors.white, cs.surfaceContainerHighest.withOpacity(0.5)],
+                    : [Colors.white, cs.surfaceContainerHighest.withValues(alpha: 0.5)],
           ),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: isSelected 
                 ? KalaColors.brandGradient[0]
-                : cs.outlineVariant.withOpacity(0.3),
+                : cs.outlineVariant.withValues(alpha: 0.3),
             width: isSelected ? 2 : 1,
           ),
           boxShadow: [
             if (isSelected)
               BoxShadow(
-                color: KalaColors.brandGradient[0].withOpacity(0.3),
+                color: KalaColors.brandGradient[0].withValues(alpha: 0.3),
                 blurRadius: 16,
                 spreadRadius: 0,
                 offset: const Offset(0, 4),
               )
             else
               BoxShadow(
-                color: Colors.black.withOpacity(0.05),
+                color: Colors.black.withValues(alpha: 0.05),
                 blurRadius: 10,
                 offset: const Offset(0, 2),
               ),
@@ -2286,7 +2286,7 @@ class _CreditsPageState extends State<CreditsPage> {
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
-                    color: KalaColors.brandGradient[0].withOpacity(0.4),
+                    color: KalaColors.brandGradient[0].withValues(alpha: 0.4),
                     blurRadius: 12,
                     spreadRadius: 0,
                   ),
@@ -2303,7 +2303,7 @@ class _CreditsPageState extends State<CreditsPage> {
                     child: Icon(
                       LucideIcons.sparkles,
                       size: 14,
-                      color: Colors.white.withOpacity(0.8),
+                      color: Colors.white.withValues(alpha: 0.8),
                     ),
                   ),
                 ],
@@ -2482,19 +2482,19 @@ class _CreditsPageState extends State<CreditsPage> {
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: isSelected
-                ? [tierColors[0].withOpacity(0.2), tierColors[1].withOpacity(0.1)]
+                ? [tierColors[0].withValues(alpha: 0.2), tierColors[1].withValues(alpha: 0.1)]
                 : isDark
                     ? [cs.surfaceContainerHigh, cs.surface]
-                    : [Colors.white, cs.surfaceContainerHighest.withOpacity(0.5)],
+                    : [Colors.white, cs.surfaceContainerHighest.withValues(alpha: 0.5)],
           ),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: isSelected ? tierColors[0] : cs.outlineVariant.withOpacity(0.3),
+            color: isSelected ? tierColors[0] : cs.outlineVariant.withValues(alpha: 0.3),
             width: isSelected ? 2 : 1,
           ),
           boxShadow: isSelected ? [
             BoxShadow(
-              color: tierColors[0].withOpacity(0.25),
+              color: tierColors[0].withValues(alpha: 0.25),
               blurRadius: 8,
               spreadRadius: 0,
             ),
@@ -2517,7 +2517,7 @@ class _CreditsPageState extends State<CreditsPage> {
                       borderRadius: BorderRadius.circular(4),
                       boxShadow: [
                         BoxShadow(
-                          color: tierColors[0].withOpacity(0.4),
+                          color: tierColors[0].withValues(alpha: 0.4),
                           blurRadius: 4,
                         ),
                       ],
@@ -2553,7 +2553,7 @@ class _CreditsPageState extends State<CreditsPage> {
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
-                            color: tierColors[0].withOpacity(0.3),
+                            color: tierColors[0].withValues(alpha: 0.3),
                             blurRadius: 6,
                           ),
                         ],
@@ -2599,7 +2599,7 @@ class _CreditsPageState extends State<CreditsPage> {
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
                     color: isSelected 
-                        ? tierColors[0].withOpacity(0.15)
+                        ? tierColors[0].withValues(alpha: 0.15)
                         : cs.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(6),
                   ),
@@ -2665,12 +2665,12 @@ class _CreditsPageState extends State<CreditsPage> {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            tierColors[0].withOpacity(0.15),
-            tierColors[1].withOpacity(0.08),
+            tierColors[0].withValues(alpha: 0.15),
+            tierColors[1].withValues(alpha: 0.08),
           ],
         ),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: tierColors[0].withOpacity(0.3)),
+        border: Border.all(color: tierColors[0].withValues(alpha: 0.3)),
       ),
       child: Column(
         children: [
@@ -2680,7 +2680,7 @@ class _CreditsPageState extends State<CreditsPage> {
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  tierColors[0].withOpacity(0.1),
+                  tierColors[0].withValues(alpha: 0.1),
                   Colors.transparent,
                 ],
               ),
@@ -2696,7 +2696,7 @@ class _CreditsPageState extends State<CreditsPage> {
                     borderRadius: BorderRadius.circular(10),
                     boxShadow: [
                       BoxShadow(
-                        color: tierColors[0].withOpacity(0.4),
+                        color: tierColors[0].withValues(alpha: 0.4),
                         blurRadius: 8,
                       ),
                     ],
@@ -2774,7 +2774,7 @@ class _CreditsPageState extends State<CreditsPage> {
                   decoration: BoxDecoration(
                     color: cs.surface,
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: tierColors[0].withOpacity(0.3)),
+                    border: Border.all(color: tierColors[0].withValues(alpha: 0.3)),
                   ),
                   child: Text(
                     product.price,
@@ -2802,7 +2802,7 @@ class _CreditsPageState extends State<CreditsPage> {
                       borderRadius: BorderRadius.circular(12),
                       boxShadow: [
                         BoxShadow(
-                          color: tierColors[0].withOpacity(0.4),
+                          color: tierColors[0].withValues(alpha: 0.4),
                           blurRadius: 8,
                           offset: const Offset(0, 2),
                         ),
@@ -2840,7 +2840,7 @@ class _CreditsPageState extends State<CreditsPage> {
                       borderRadius: BorderRadius.circular(12),
                       boxShadow: [
                         BoxShadow(
-                          color: tierColors[0].withOpacity(0.4),
+                          color: tierColors[0].withValues(alpha: 0.4),
                           blurRadius: 8,
                           offset: const Offset(0, 2),
                         ),
@@ -3044,7 +3044,7 @@ class _CreditsPageState extends State<CreditsPage> {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: cs.onSurfaceVariant.withOpacity(0.3),
+                color: cs.onSurfaceVariant.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -3076,7 +3076,7 @@ class _CreditsPageState extends State<CreditsPage> {
               ),
             ),
             
-            Divider(color: cs.outlineVariant.withOpacity(0.3), height: 1),
+            Divider(color: cs.outlineVariant.withValues(alpha: 0.3), height: 1),
             
             // Content
             Expanded(
@@ -3342,9 +3342,9 @@ class _CreditsPageState extends State<CreditsPage> {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            Colors.amber.shade700.withOpacity(0.15),
-            Colors.orange.shade800.withOpacity(0.08),
-            Colors.amber.shade600.withOpacity(0.12),
+            Colors.amber.shade700.withValues(alpha: 0.15),
+            Colors.orange.shade800.withValues(alpha: 0.08),
+            Colors.amber.shade600.withValues(alpha: 0.12),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -3352,12 +3352,12 @@ class _CreditsPageState extends State<CreditsPage> {
         ),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Colors.amber.shade600.withOpacity(0.4),
+          color: Colors.amber.shade600.withValues(alpha: 0.4),
           width: 1.5,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.amber.withOpacity(0.15),
+            color: Colors.amber.withValues(alpha: 0.15),
             blurRadius: 12,
             spreadRadius: 0,
             offset: const Offset(0, 4),
@@ -3372,7 +3372,7 @@ class _CreditsPageState extends State<CreditsPage> {
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  Colors.amber.shade600.withOpacity(0.1),
+                  Colors.amber.shade600.withValues(alpha: 0.1),
                   Colors.transparent,
                 ],
                 begin: Alignment.topCenter,
@@ -3398,7 +3398,7 @@ class _CreditsPageState extends State<CreditsPage> {
                         borderRadius: BorderRadius.circular(10),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.amber.withOpacity(0.4),
+                            color: Colors.amber.withValues(alpha: 0.4),
                             blurRadius: 10,
                             spreadRadius: 0,
                           ),
@@ -3477,7 +3477,7 @@ class _CreditsPageState extends State<CreditsPage> {
                           borderRadius: BorderRadius.circular(8),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.amber.withOpacity(0.3),
+                              color: Colors.amber.withValues(alpha: 0.3),
                               blurRadius: 6,
                             ),
                           ],
@@ -3528,9 +3528,9 @@ class _CreditsPageState extends State<CreditsPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: Colors.amber.withOpacity(0.1),
+        color: Colors.amber.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.amber.withOpacity(0.3)),
+        border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -3577,15 +3577,15 @@ class _CreditsPageState extends State<CreditsPage> {
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [
-                Colors.amber.shade700.withOpacity(0.08),
-                Colors.orange.shade800.withOpacity(0.04),
+                Colors.amber.shade700.withValues(alpha: 0.08),
+                Colors.orange.shade800.withValues(alpha: 0.04),
               ],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: Colors.amber.shade600.withOpacity(0.25),
+              color: Colors.amber.shade600.withValues(alpha: 0.25),
               width: 1,
             ),
           ),
@@ -3598,7 +3598,7 @@ class _CreditsPageState extends State<CreditsPage> {
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
-                      Colors.amber.shade600.withOpacity(0.08),
+                      Colors.amber.shade600.withValues(alpha: 0.08),
                       Colors.transparent,
                     ],
                     begin: Alignment.topCenter,
@@ -3620,7 +3620,7 @@ class _CreditsPageState extends State<CreditsPage> {
                         borderRadius: BorderRadius.circular(12),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.amber.withOpacity(0.35),
+                            color: Colors.amber.withValues(alpha: 0.35),
                             blurRadius: 10,
                             spreadRadius: 0,
                           ),
@@ -3700,9 +3700,9 @@ class _CreditsPageState extends State<CreditsPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.amber.withOpacity(0.08),
+        color: Colors.amber.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: Colors.amber.withOpacity(0.2)),
+        border: Border.all(color: Colors.amber.withValues(alpha: 0.2)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -3745,21 +3745,21 @@ class _CreditsPageState extends State<CreditsPage> {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: isPopular 
-                  ? [vipColors[0].withOpacity(0.15), vipColors[1].withOpacity(0.08)]
+                  ? [vipColors[0].withValues(alpha: 0.15), vipColors[1].withValues(alpha: 0.08)]
                   : isDark
-                      ? [vipColors[0].withOpacity(0.08), vipColors[1].withOpacity(0.04)]
-                      : [vipColors[0].withOpacity(0.06), vipColors[1].withOpacity(0.03)],
+                      ? [vipColors[0].withValues(alpha: 0.08), vipColors[1].withValues(alpha: 0.04)]
+                      : [vipColors[0].withValues(alpha: 0.06), vipColors[1].withValues(alpha: 0.03)],
             ),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
               color: isPopular 
-                  ? vipColors[0].withOpacity(0.5)
-                  : vipColors[0].withOpacity(0.25),
+                  ? vipColors[0].withValues(alpha: 0.5)
+                  : vipColors[0].withValues(alpha: 0.25),
               width: isPopular ? 1.5 : 1,
             ),
             boxShadow: isPopular ? [
               BoxShadow(
-                color: vipColors[0].withOpacity(0.15),
+                color: vipColors[0].withValues(alpha: 0.15),
                 blurRadius: 8,
                 spreadRadius: 0,
                 offset: const Offset(0, 2),
@@ -3775,14 +3775,14 @@ class _CreditsPageState extends State<CreditsPage> {
                   gradient: LinearGradient(
                     colors: isPopular 
                         ? vipColors
-                        : [vipColors[0].withOpacity(0.8), vipColors[1].withOpacity(0.8)],
+                        : [vipColors[0].withValues(alpha: 0.8), vipColors[1].withValues(alpha: 0.8)],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
                   borderRadius: BorderRadius.circular(8),
                   boxShadow: [
                     BoxShadow(
-                      color: vipColors[0].withOpacity(isPopular ? 0.4 : 0.2),
+                      color: vipColors[0].withValues(alpha: isPopular ? 0.4 : 0.2),
                       blurRadius: 6,
                     ),
                   ],
@@ -3863,7 +3863,7 @@ class _CreditsPageState extends State<CreditsPage> {
                   borderRadius: BorderRadius.circular(10),
                   boxShadow: [
                     BoxShadow(
-                      color: vipColors[0].withOpacity(0.4),
+                      color: vipColors[0].withValues(alpha: 0.4),
                       blurRadius: 8,
                       offset: const Offset(0, 2),
                     ),
@@ -4114,12 +4114,12 @@ class _CreditsPageState extends State<CreditsPage> {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: isDark
-                  ? [vipColors[0].withOpacity(0.1), vipColors[1].withOpacity(0.05)]
-                  : [vipColors[0].withOpacity(0.08), vipColors[1].withOpacity(0.04)],
+                  ? [vipColors[0].withValues(alpha: 0.1), vipColors[1].withValues(alpha: 0.05)]
+                  : [vipColors[0].withValues(alpha: 0.08), vipColors[1].withValues(alpha: 0.04)],
             ),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: vipColors[0].withOpacity(0.3),
+              color: vipColors[0].withValues(alpha: 0.3),
               width: 1,
             ),
           ),
@@ -4133,7 +4133,7 @@ class _CreditsPageState extends State<CreditsPage> {
                   borderRadius: BorderRadius.circular(10),
                   boxShadow: [
                     BoxShadow(
-                      color: vipColors[0].withOpacity(0.3),
+                      color: vipColors[0].withValues(alpha: 0.3),
                       blurRadius: 6,
                     ),
                   ],
@@ -4200,7 +4200,7 @@ class _CreditsPageState extends State<CreditsPage> {
                   borderRadius: BorderRadius.circular(10),
                   boxShadow: [
                     BoxShadow(
-                      color: vipColors[0].withOpacity(0.4),
+                      color: vipColors[0].withValues(alpha: 0.4),
                       blurRadius: 8,
                       offset: const Offset(0, 2),
                     ),
@@ -4257,7 +4257,7 @@ class _ConfirmExitAppDialog extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: cs.primaryContainer.withOpacity(0.3),
+              color: cs.primaryContainer.withValues(alpha: 0.3),
               shape: BoxShape.circle,
             ),
             child: Icon(
@@ -4748,7 +4748,7 @@ class _DailySpinnerPageState extends State<DailySpinnerPage>
                                     shape: BoxShape.circle,
                                     boxShadow: [
                                       BoxShadow(
-                                        color: KalaColors.purple.withOpacity(0.4),
+                                        color: KalaColors.purple.withValues(alpha: 0.4),
                                         blurRadius: 15,
                                         offset: const Offset(0, 5),
                                       ),
@@ -4798,10 +4798,10 @@ class _DailySpinnerPageState extends State<DailySpinnerPage>
                                 vertical: 20,
                               ),
                               decoration: BoxDecoration(
-                                color: cs.surfaceContainerHighest.withOpacity(0.5),
+                                color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
                                 borderRadius: BorderRadius.circular(16),
                                 border: Border.all(
-                                  color: cs.outline.withOpacity(0.2),
+                                  color: cs.outline.withValues(alpha: 0.2),
                                 ),
                               ),
                               child: Column(
@@ -4835,8 +4835,8 @@ class _DailySpinnerPageState extends State<DailySpinnerPage>
                                     decoration: BoxDecoration(
                                       gradient: LinearGradient(
                                         colors: [
-                                          cs.primary.withOpacity(0.1),
-                                          cs.secondary.withOpacity(0.1),
+                                          cs.primary.withValues(alpha: 0.1),
+                                          cs.secondary.withValues(alpha: 0.1),
                                         ],
                                       ),
                                       borderRadius: BorderRadius.circular(12),
@@ -4878,7 +4878,7 @@ class _DailySpinnerPageState extends State<DailySpinnerPage>
                   Container(
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
-                      color: cs.surfaceContainerHighest.withOpacity(0.3),
+                      color: cs.surfaceContainerHighest.withValues(alpha: 0.3),
                       borderRadius: const BorderRadius.vertical(
                         top: Radius.circular(20),
                       ),
@@ -4905,10 +4905,10 @@ class _DailySpinnerPageState extends State<DailySpinnerPage>
                                 vertical: 6,
                               ),
                               decoration: BoxDecoration(
-                                color: r.color.withOpacity(0.15),
+                                color: r.color.withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(20),
                                 border: Border.all(
-                                  color: r.color.withOpacity(0.3),
+                                  color: r.color.withValues(alpha: 0.3),
                                 ),
                               ),
                               child: Row(
@@ -4973,7 +4973,7 @@ class SpinnerWheelPainter extends CustomPainter {
       
       // Segment border
       final borderPaint = Paint()
-        ..color = Colors.white.withOpacity(0.3)
+        ..color = Colors.white.withValues(alpha: 0.3)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2;
       
@@ -5034,7 +5034,7 @@ class SpinnerWheelPainter extends CustomPainter {
     
     // Draw inner circle
     final innerPaint = Paint()
-      ..color = Colors.white.withOpacity(0.1)
+      ..color = Colors.white.withValues(alpha: 0.1)
       ..style = PaintingStyle.fill;
     
     canvas.drawCircle(center, radius * 0.2, innerPaint);

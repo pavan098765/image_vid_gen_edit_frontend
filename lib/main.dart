@@ -1019,7 +1019,7 @@ class _KalaAIAppState extends State<KalaAIApp> {
       builder: (context, themeMode, _) {
         return MaterialApp(
           title: 'Kala AI',
-          localizationsDelegates: [
+          localizationsDelegates: const [
             ...material_ui.GlobalMaterialLocalizations.delegates,
           ],
 

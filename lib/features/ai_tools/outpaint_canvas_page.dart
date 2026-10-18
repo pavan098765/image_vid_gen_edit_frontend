@@ -110,9 +110,9 @@ class _OutpaintCanvasPageState extends State<OutpaintCanvasPage> {
               child: Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: cs.primaryContainer.withOpacity(0.3),
+                  color: cs.primaryContainer.withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: cs.primary.withOpacity(0.2)),
+                  border: Border.all(color: cs.primary.withValues(alpha: 0.2)),
                 ),
                 child: Row(
                   children: [
@@ -124,7 +124,7 @@ class _OutpaintCanvasPageState extends State<OutpaintCanvasPage> {
                             ? "Pinch to resize • Drag to position"
                             : "Drag image to set expansion direction",
                         style: TextStyle(
-                          color: cs.onSurface.withOpacity(0.8),
+                          color: cs.onSurface.withValues(alpha: 0.8),
                           fontSize: 13,
                         ),
                       ),
@@ -144,12 +144,12 @@ class _OutpaintCanvasPageState extends State<OutpaintCanvasPage> {
                     child: Container(
                       decoration: BoxDecoration(
                         border: Border.all(
-                          color: cs.outline.withOpacity(0.3),
+                          color: cs.outline.withValues(alpha: 0.3),
                           width: 2,
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.2),
+                            color: Colors.black.withValues(alpha: 0.2),
                             blurRadius: 20,
                             offset: const Offset(0, 8),
                           ),
@@ -324,7 +324,7 @@ class _OutpaintCanvasPageState extends State<OutpaintCanvasPage> {
                 width: 4,
                 height: 60,
                 decoration: BoxDecoration(
-                  color: Colors.greenAccent.withOpacity(0.8),
+                  color: Colors.greenAccent.withValues(alpha: 0.8),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -341,7 +341,7 @@ class _OutpaintCanvasPageState extends State<OutpaintCanvasPage> {
                 width: 4,
                 height: 60,
                 decoration: BoxDecoration(
-                  color: Colors.greenAccent.withOpacity(0.8),
+                  color: Colors.greenAccent.withValues(alpha: 0.8),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -358,7 +358,7 @@ class _OutpaintCanvasPageState extends State<OutpaintCanvasPage> {
                 width: 60,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.greenAccent.withOpacity(0.8),
+                  color: Colors.greenAccent.withValues(alpha: 0.8),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -375,7 +375,7 @@ class _OutpaintCanvasPageState extends State<OutpaintCanvasPage> {
                 width: 60,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.greenAccent.withOpacity(0.8),
+                  color: Colors.greenAccent.withValues(alpha: 0.8),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -440,13 +440,13 @@ class _OutpaintCanvasPageState extends State<OutpaintCanvasPage> {
                         border: Border.all(
                           color: selected
                               ? cs.primary
-                              : cs.outline.withOpacity(0.2),
+                              : cs.outline.withValues(alpha: 0.2),
                           width: 1.5,
                         ),
                         boxShadow: selected
                             ? [
                                 BoxShadow(
-                                  color: cs.primary.withOpacity(0.3),
+                                  color: cs.primary.withValues(alpha: 0.3),
                                   blurRadius: 8,
                                   offset: const Offset(0, 2),
                                 ),

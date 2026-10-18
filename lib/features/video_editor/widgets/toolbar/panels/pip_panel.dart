@@ -97,7 +97,7 @@ class _PipPanelState extends ConsumerState<PipPanel> {
 
           if (selectedClip is PipClip) ...[
             // Position presets
-            Text('Position', style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(0.6))),
+            Text('Position', style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: 0.6))),
             const SizedBox(height: 6),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -133,7 +133,7 @@ class _PipPanelState extends ConsumerState<PipPanel> {
               child: Text(
                 'Import a video to add PiP overlay',
                 style: TextStyle(
-                  color: cs.onSurface.withOpacity(0.4),
+                  color: cs.onSurface.withValues(alpha: 0.4),
                   fontSize: 13,
                 ),
               ),
@@ -158,10 +158,10 @@ class _PipPanelState extends ConsumerState<PipPanel> {
         width: 36,
         height: 28,
         decoration: BoxDecoration(
-          color: selected ? cs.primary.withOpacity(0.15) : cs.surfaceContainerHigh,
+          color: selected ? cs.primary.withValues(alpha: 0.15) : cs.surfaceContainerHigh,
           borderRadius: BorderRadius.circular(6),
           border: Border.all(
-            color: selected ? cs.primary : cs.onSurface.withOpacity(0.1),
+            color: selected ? cs.primary : cs.onSurface.withValues(alpha: 0.1),
           ),
         ),
         alignment: Alignment.center,
@@ -170,7 +170,7 @@ class _PipPanelState extends ConsumerState<PipPanel> {
           style: TextStyle(
             fontSize: 10,
             fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
-            color: selected ? cs.primary : cs.onSurface.withOpacity(0.5),
+            color: selected ? cs.primary : cs.onSurface.withValues(alpha: 0.5),
           ),
         ),
       ),
@@ -185,7 +185,7 @@ class _PipPanelState extends ConsumerState<PipPanel> {
         SizedBox(
           width: 60,
           child: Text(label,
-              style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(0.6))),
+              style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: 0.6))),
         ),
         Expanded(
           child: Slider(
@@ -199,7 +199,7 @@ class _PipPanelState extends ConsumerState<PipPanel> {
           width: 36,
           child: Text(
             value.toStringAsFixed(1),
-            style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(0.7)),
+            style: TextStyle(fontSize: 11, color: cs.onSurface.withValues(alpha: 0.7)),
             textAlign: TextAlign.right,
           ),
         ),

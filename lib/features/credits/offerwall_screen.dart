@@ -206,8 +206,8 @@ class _OfferwallScreenState extends State<OfferwallScreen> {
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    KalaColors.purple.withOpacity(0.1),
-                    KalaColors.cyan.withOpacity(0.05),
+                    KalaColors.purple.withValues(alpha: 0.1),
+                    KalaColors.cyan.withValues(alpha: 0.05),
                   ],
                 ),
               ),
@@ -283,7 +283,7 @@ class _OfferwallScreenState extends State<OfferwallScreen> {
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: cs.errorContainer.withOpacity(0.3),
+                color: cs.errorContainer.withValues(alpha: 0.3),
                 shape: BoxShape.circle,
               ),
               child: Icon(

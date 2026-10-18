@@ -189,7 +189,7 @@ class _AudioPanelState extends ConsumerState<AudioPanel> {
           width: 60,
           child: Text(
             label,
-            style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(0.6)),
+            style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: 0.6)),
           ),
         ),
         Expanded(
@@ -205,7 +205,7 @@ class _AudioPanelState extends ConsumerState<AudioPanel> {
           width: 40,
           child: Text(
             displayValue,
-            style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(0.7)),
+            style: TextStyle(fontSize: 11, color: cs.onSurface.withValues(alpha: 0.7)),
             textAlign: TextAlign.right,
           ),
         ),

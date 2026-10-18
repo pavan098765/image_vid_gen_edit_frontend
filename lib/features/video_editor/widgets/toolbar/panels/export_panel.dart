@@ -45,7 +45,7 @@ class ExportPanel extends ConsumerWidget {
 
           Text('Shape',
               style: TextStyle(
-                  fontSize: 12, color: cs.onSurface.withOpacity(0.6))),
+                  fontSize: 12, color: cs.onSurface.withValues(alpha: 0.6))),
           const SizedBox(height: 8),
           Row(
             children: [
@@ -92,7 +92,7 @@ class ExportPanel extends ConsumerWidget {
           // Quality presets
           Text('Quality',
               style: TextStyle(
-                  fontSize: 12, color: cs.onSurface.withOpacity(0.6))),
+                  fontSize: 12, color: cs.onSurface.withValues(alpha: 0.6))),
           const SizedBox(height: 8),
           Row(
             children: ExportQuality.values.map((q) {
@@ -107,13 +107,13 @@ class ExportPanel extends ConsumerWidget {
                     padding: const EdgeInsets.symmetric(vertical: 10),
                     decoration: BoxDecoration(
                       color: selected
-                          ? cs.primary.withOpacity(0.15)
+                          ? cs.primary.withValues(alpha: 0.15)
                           : cs.surfaceContainerHigh,
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
                         color: selected
                             ? cs.primary
-                            : cs.onSurface.withOpacity(0.08),
+                            : cs.onSurface.withValues(alpha: 0.08),
                         width: selected ? 2 : 1,
                       ),
                     ),
@@ -126,7 +126,7 @@ class ExportPanel extends ConsumerWidget {
                             selected ? FontWeight.w700 : FontWeight.normal,
                         color: selected
                             ? cs.primary
-                            : cs.onSurface.withOpacity(0.6),
+                            : cs.onSurface.withValues(alpha: 0.6),
                       ),
                     ),
                   ),
@@ -139,7 +139,7 @@ class ExportPanel extends ConsumerWidget {
           // Aspect ratio
           Text('Aspect Ratio',
               style: TextStyle(
-                  fontSize: 12, color: cs.onSurface.withOpacity(0.6))),
+                  fontSize: 12, color: cs.onSurface.withValues(alpha: 0.6))),
           const SizedBox(height: 8),
           SizedBox(
             height: 58,
@@ -158,13 +158,13 @@ class ExportPanel extends ConsumerWidget {
                     width: 72,
                     decoration: BoxDecoration(
                       color: selected
-                          ? cs.primary.withOpacity(0.15)
+                          ? cs.primary.withValues(alpha: 0.15)
                           : cs.surfaceContainerHigh,
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
                         color: selected
                             ? cs.primary
-                            : cs.onSurface.withOpacity(0.08),
+                            : cs.onSurface.withValues(alpha: 0.08),
                         width: selected ? 2 : 1,
                       ),
                     ),
@@ -179,7 +179,7 @@ class ExportPanel extends ConsumerWidget {
                                 selected ? FontWeight.w700 : FontWeight.w500,
                             color: selected
                                 ? cs.primary
-                                : cs.onSurface.withOpacity(0.7),
+                                : cs.onSurface.withValues(alpha: 0.7),
                           ),
                         ),
                         const SizedBox(height: 2),
@@ -188,8 +188,8 @@ class ExportPanel extends ConsumerWidget {
                           style: TextStyle(
                             fontSize: 9,
                             color: selected
-                                ? cs.primary.withOpacity(0.7)
-                                : cs.onSurface.withOpacity(0.4),
+                                ? cs.primary.withValues(alpha: 0.7)
+                                : cs.onSurface.withValues(alpha: 0.4),
                           ),
                         ),
                       ],
@@ -212,7 +212,7 @@ class ExportPanel extends ConsumerWidget {
                     Text('Format',
                         style: TextStyle(
                             fontSize: 12,
-                            color: cs.onSurface.withOpacity(0.6))),
+                            color: cs.onSurface.withValues(alpha: 0.6))),
                     const SizedBox(height: 6),
                     Row(
                       children: ['mp4', 'mov'].map((f) {
@@ -228,13 +228,13 @@ class ExportPanel extends ConsumerWidget {
                               padding: const EdgeInsets.symmetric(vertical: 8),
                               decoration: BoxDecoration(
                                 color: selected
-                                    ? cs.primary.withOpacity(0.15)
+                                    ? cs.primary.withValues(alpha: 0.15)
                                     : cs.surfaceContainerHigh,
                                 borderRadius: BorderRadius.circular(8),
                                 border: Border.all(
                                   color: selected
                                       ? cs.primary
-                                      : cs.onSurface.withOpacity(0.08),
+                                      : cs.onSurface.withValues(alpha: 0.08),
                                 ),
                               ),
                               alignment: Alignment.center,
@@ -247,7 +247,7 @@ class ExportPanel extends ConsumerWidget {
                                       : FontWeight.normal,
                                   color: selected
                                       ? cs.primary
-                                      : cs.onSurface.withOpacity(0.6),
+                                      : cs.onSurface.withValues(alpha: 0.6),
                                 ),
                               ),
                             ),
@@ -267,7 +267,7 @@ class ExportPanel extends ConsumerWidget {
                     Text('FPS',
                         style: TextStyle(
                             fontSize: 12,
-                            color: cs.onSurface.withOpacity(0.6))),
+                            color: cs.onSurface.withValues(alpha: 0.6))),
                     const SizedBox(height: 6),
                     Row(
                       children: [24, 30, 60].map((fps) {
@@ -283,13 +283,13 @@ class ExportPanel extends ConsumerWidget {
                               padding: const EdgeInsets.symmetric(vertical: 8),
                               decoration: BoxDecoration(
                                 color: selected
-                                    ? cs.primary.withOpacity(0.15)
+                                    ? cs.primary.withValues(alpha: 0.15)
                                     : cs.surfaceContainerHigh,
                                 borderRadius: BorderRadius.circular(8),
                                 border: Border.all(
                                   color: selected
                                       ? cs.primary
-                                      : cs.onSurface.withOpacity(0.08),
+                                      : cs.onSurface.withValues(alpha: 0.08),
                                 ),
                               ),
                               alignment: Alignment.center,
@@ -302,7 +302,7 @@ class ExportPanel extends ConsumerWidget {
                                       : FontWeight.normal,
                                   color: selected
                                       ? cs.primary
-                                      : cs.onSurface.withOpacity(0.6),
+                                      : cs.onSurface.withValues(alpha: 0.6),
                                 ),
                               ),
                             ),
@@ -360,7 +360,7 @@ class ExportPanel extends ConsumerWidget {
         padding: const EdgeInsets.symmetric(horizontal: 3),
         child: Material(
           color:
-              selected ? cs.primary.withOpacity(0.15) : cs.surfaceContainerHigh,
+              selected ? cs.primary.withValues(alpha: 0.15) : cs.surfaceContainerHigh,
           borderRadius: BorderRadius.circular(10),
           child: InkWell(
             borderRadius: BorderRadius.circular(10),
@@ -372,7 +372,7 @@ class ExportPanel extends ConsumerWidget {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
-                  color: selected ? cs.primary : cs.onSurface.withOpacity(0.08),
+                  color: selected ? cs.primary : cs.onSurface.withValues(alpha: 0.08),
                   width: selected ? 2 : 1,
                 ),
               ),
@@ -381,7 +381,7 @@ class ExportPanel extends ConsumerWidget {
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                  color: selected ? cs.primary : cs.onSurface.withOpacity(0.7),
+                  color: selected ? cs.primary : cs.onSurface.withValues(alpha: 0.7),
                 ),
               ),
             ),

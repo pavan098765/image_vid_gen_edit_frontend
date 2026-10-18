@@ -101,11 +101,11 @@ class _SpeedPanelState extends ConsumerState<SpeedPanel> {
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                     decoration: BoxDecoration(
                       color: selected
-                          ? cs.primary.withOpacity(0.15)
+                          ? cs.primary.withValues(alpha: 0.15)
                           : cs.surfaceContainerHigh,
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
-                        color: selected ? cs.primary : cs.onSurface.withOpacity(0.1),
+                        color: selected ? cs.primary : cs.onSurface.withValues(alpha: 0.1),
                       ),
                     ),
                     child: Text(
@@ -113,7 +113,7 @@ class _SpeedPanelState extends ConsumerState<SpeedPanel> {
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
-                        color: selected ? cs.primary : cs.onSurface.withOpacity(0.7),
+                        color: selected ? cs.primary : cs.onSurface.withValues(alpha: 0.7),
                       ),
                     ),
                   ),
@@ -125,7 +125,7 @@ class _SpeedPanelState extends ConsumerState<SpeedPanel> {
             // Custom slider
             Row(
               children: [
-                Text('Custom', style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(0.6))),
+                Text('Custom', style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: 0.6))),
                 Expanded(
                   child: Slider(
                     value: _speed.clamp(EditorConstants.minSpeed, EditorConstants.maxSpeed),
@@ -137,7 +137,7 @@ class _SpeedPanelState extends ConsumerState<SpeedPanel> {
                 ),
                 Text(
                   '${_speed.toStringAsFixed(2)}x',
-                  style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(0.7)),
+                  style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: 0.7)),
                 ),
               ],
             ),
@@ -186,10 +186,10 @@ class _SpeedPanelState extends ConsumerState<SpeedPanel> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
         decoration: BoxDecoration(
-          color: selected ? cs.primary.withOpacity(0.15) : cs.surfaceContainerHigh,
+          color: selected ? cs.primary.withValues(alpha: 0.15) : cs.surfaceContainerHigh,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: selected ? cs.primary : cs.onSurface.withOpacity(0.1),
+            color: selected ? cs.primary : cs.onSurface.withValues(alpha: 0.1),
           ),
         ),
         child: Text(
@@ -197,7 +197,7 @@ class _SpeedPanelState extends ConsumerState<SpeedPanel> {
           style: TextStyle(
             fontSize: 13,
             fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
-            color: selected ? cs.primary : cs.onSurface.withOpacity(0.7),
+            color: selected ? cs.primary : cs.onSurface.withValues(alpha: 0.7),
           ),
         ),
       ),
@@ -211,7 +211,7 @@ class _SpeedPanelState extends ConsumerState<SpeedPanel> {
       children: [
         SizedBox(
           width: 80,
-          child: Text(label, style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(0.6))),
+          child: Text(label, style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: 0.6))),
         ),
         Expanded(
           child: Slider(
@@ -224,7 +224,7 @@ class _SpeedPanelState extends ConsumerState<SpeedPanel> {
         ),
         Text(
           '${value.toStringAsFixed(1)}x',
-          style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(0.7)),
+          style: TextStyle(fontSize: 11, color: cs.onSurface.withValues(alpha: 0.7)),
         ),
       ],
     );
@@ -318,7 +318,7 @@ class _SpeedCurvePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = color.withOpacity(0.6)
+      ..color = color.withValues(alpha: 0.6)
       ..strokeWidth = 2
       ..style = PaintingStyle.stroke;
 
@@ -340,7 +340,7 @@ class _SpeedCurvePainter extends CustomPainter {
     // 1x reference line
     final refY = size.height - (1.0 / maxSpeed * size.height);
     final refPaint = Paint()
-      ..color = color.withOpacity(0.2)
+      ..color = color.withValues(alpha: 0.2)
       ..strokeWidth = 1;
     canvas.drawLine(Offset(0, refY), Offset(size.width, refY), refPaint);
   }

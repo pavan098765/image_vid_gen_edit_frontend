@@ -141,12 +141,12 @@ class GradientButton extends StatelessWidget {
             ? null
             : [
                 BoxShadow(
-                  color: KalaColors.purple.withOpacity(0.4),
+                  color: KalaColors.purple.withValues(alpha: 0.4),
                   blurRadius: 16,
                   offset: const Offset(0, 4),
                 ),
                 BoxShadow(
-                  color: KalaColors.cyan.withOpacity(0.2),
+                  color: KalaColors.cyan.withValues(alpha: 0.2),
                   blurRadius: 24,
                   offset: const Offset(0, 8),
       ),
@@ -175,7 +175,7 @@ class GradientButton extends StatelessWidget {
         ? cs.surfaceContainerHighest
         : cs.primaryContainer;
     final fgColor = isDisabled
-        ? cs.onSurfaceVariant.withOpacity(0.5)
+        ? cs.onSurfaceVariant.withValues(alpha: 0.5)
         : cs.primary;
 
     return Container(
@@ -184,7 +184,7 @@ class GradientButton extends StatelessWidget {
         color: bgColor,
         borderRadius: BorderRadius.circular(_getBorderRadius()),
         border: Border.all(
-          color: isDisabled ? Colors.transparent : cs.primary.withOpacity(0.3),
+          color: isDisabled ? Colors.transparent : cs.primary.withValues(alpha: 0.3),
         ),
       ),
       child: Material(
@@ -207,10 +207,10 @@ class GradientButton extends StatelessWidget {
   /// Outline button
   Widget _buildOutlineButton(BuildContext context, ColorScheme cs, bool isDisabled) {
     final borderColor = isDisabled
-        ? cs.outlineVariant.withOpacity(0.3)
-        : cs.primary.withOpacity(0.5);
+        ? cs.outlineVariant.withValues(alpha: 0.3)
+        : cs.primary.withValues(alpha: 0.5);
     final fgColor = isDisabled
-        ? cs.onSurfaceVariant.withOpacity(0.5)
+        ? cs.onSurfaceVariant.withValues(alpha: 0.5)
         : cs.primary;
 
     return Container(
@@ -240,7 +240,7 @@ class GradientButton extends StatelessWidget {
   /// Ghost/transparent button
   Widget _buildGhostButton(BuildContext context, ColorScheme cs, bool isDisabled) {
     final fgColor = isDisabled
-        ? cs.onSurfaceVariant.withOpacity(0.4)
+        ? cs.onSurfaceVariant.withValues(alpha: 0.4)
         : cs.onSurfaceVariant;
 
     return SizedBox(
@@ -275,7 +275,7 @@ class GradientButton extends StatelessWidget {
             ? null
             : [
                 BoxShadow(
-                  color: successColor.withOpacity(0.35),
+                  color: successColor.withValues(alpha: 0.35),
                   blurRadius: 12,
                   offset: const Offset(0, 4),
                 ),
@@ -311,7 +311,7 @@ class GradientButton extends StatelessWidget {
             ? null
             : [
                 BoxShadow(
-                  color: dangerColor.withOpacity(0.35),
+                  color: dangerColor.withValues(alpha: 0.35),
                   blurRadius: 12,
                   offset: const Offset(0, 4),
                 ),
@@ -344,7 +344,7 @@ class GradientButton extends StatelessWidget {
                         if (icon != null) ...[
           Icon(
             icon,
-            color: color.withOpacity(isDisabled ? 0.5 : 1.0),
+            color: color.withValues(alpha: isDisabled ? 0.5 : 1.0),
             size: _getIconSize(),
           ),
           if (label != null) SizedBox(width: size == ButtonSize.small ? 6 : 8),
@@ -354,7 +354,7 @@ class GradientButton extends StatelessWidget {
             label!,
                           textAlign: TextAlign.center,
                           style: GoogleFonts.inter(
-              color: color.withOpacity(isDisabled ? 0.5 : 1.0),
+              color: color.withValues(alpha: isDisabled ? 0.5 : 1.0),
               fontSize: _getFontSize(),
                             fontWeight: FontWeight.w600,
                           ),
@@ -403,33 +403,33 @@ class AppStyles {
     return BoxDecoration(
       gradient: LinearGradient(
         colors: [
-          cs.surfaceContainerHighest.withOpacity(0.12),
-          cs.surfaceContainerHigh.withOpacity(0.06),
+          cs.surfaceContainerHighest.withValues(alpha: 0.12),
+          cs.surfaceContainerHigh.withValues(alpha: 0.06),
         ],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
       borderRadius: BorderRadius.circular(radiusLg),
       border: Border.all(
-        color: cs.outlineVariant.withOpacity(0.25),
+        color: cs.outlineVariant.withValues(alpha: 0.25),
         width: 1,
       ),
       boxShadow: elevated
           ? [
               BoxShadow(
-                color: cs.shadow.withOpacity(0.12),
+                color: cs.shadow.withValues(alpha: 0.12),
                 blurRadius: 16,
                 offset: const Offset(0, 6),
               ),
               BoxShadow(
-                color: cs.primary.withOpacity(0.04),
+                color: cs.primary.withValues(alpha: 0.04),
                 blurRadius: 24,
                 offset: const Offset(0, 8),
               ),
             ]
           : [
               BoxShadow(
-                color: cs.shadow.withOpacity(0.06),
+                color: cs.shadow.withValues(alpha: 0.06),
                 blurRadius: 8,
                 offset: const Offset(0, 2),
               ),
@@ -449,7 +449,7 @@ class AppStyles {
     return InputDecoration(
       hintText: hintText,
       hintStyle: TextStyle(
-        color: cs.onSurfaceVariant.withOpacity(0.6),
+        color: cs.onSurfaceVariant.withValues(alpha: 0.6),
         fontSize: 15,
       ),
       prefixIcon: prefixIcon != null
@@ -457,7 +457,7 @@ class AppStyles {
           : null,
       suffixIcon: suffixIcon,
       filled: true,
-      fillColor: cs.surfaceContainerHigh.withOpacity(0.5),
+      fillColor: cs.surfaceContainerHigh.withValues(alpha: 0.5),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(radiusMd),
         borderSide: BorderSide.none,
@@ -465,21 +465,21 @@ class AppStyles {
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(radiusMd),
         borderSide: BorderSide(
-          color: cs.outlineVariant.withOpacity(0.2),
+          color: cs.outlineVariant.withValues(alpha: 0.2),
           width: 1,
         ),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(radiusMd),
         borderSide: BorderSide(
-          color: cs.primary.withOpacity(0.5),
+          color: cs.primary.withValues(alpha: 0.5),
           width: 1.5,
         ),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(radiusMd),
         borderSide: BorderSide(
-          color: cs.error.withOpacity(0.5),
+          color: cs.error.withValues(alpha: 0.5),
           width: 1.5,
         ),
       ),
@@ -508,7 +508,7 @@ class AppStyles {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: (iconColor ?? cs.primary).withOpacity(0.12),
+                color: (iconColor ?? cs.primary).withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(radiusSm),
               ),
               child: Icon(icon, size: 18, color: iconColor ?? cs.primary),
@@ -548,10 +548,10 @@ class AppStyles {
           width: size,
           height: size,
           decoration: BoxDecoration(
-            color: backgroundColor ?? cs.primaryContainer.withOpacity(0.3),
+            color: backgroundColor ?? cs.primaryContainer.withValues(alpha: 0.3),
             shape: BoxShape.circle,
             border: Border.all(
-              color: cs.primary.withOpacity(0.2),
+              color: cs.primary.withValues(alpha: 0.2),
             ),
           ),
           child: Icon(
@@ -606,10 +606,10 @@ class AppStyles {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: selected ? chipColor : chipColor.withOpacity(0.12),
+        color: selected ? chipColor : chipColor.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(radiusSm),
         border: Border.all(
-          color: selected ? chipColor : chipColor.withOpacity(0.3),
+          color: selected ? chipColor : chipColor.withValues(alpha: 0.3),
         ),
       ),
       child: Row(
@@ -652,27 +652,27 @@ class AppStyles {
     
     switch (type) {
       case StatusType.success:
-        bgColor = Colors.green.withOpacity(0.15);
+        bgColor = Colors.green.withValues(alpha: 0.15);
         fgColor = Colors.green.shade400;
         icon = Icons.check_circle_rounded;
         break;
       case StatusType.warning:
-        bgColor = Colors.orange.withOpacity(0.15);
+        bgColor = Colors.orange.withValues(alpha: 0.15);
         fgColor = Colors.orange.shade400;
         icon = Icons.warning_rounded;
         break;
       case StatusType.error:
-        bgColor = cs.error.withOpacity(0.15);
+        bgColor = cs.error.withValues(alpha: 0.15);
         fgColor = cs.error;
         icon = Icons.error_rounded;
         break;
       case StatusType.info:
-        bgColor = cs.primary.withOpacity(0.15);
+        bgColor = cs.primary.withValues(alpha: 0.15);
         fgColor = cs.primary;
         icon = Icons.info_rounded;
         break;
       case StatusType.processing:
-        bgColor = cs.primary.withOpacity(0.15);
+        bgColor = cs.primary.withValues(alpha: 0.15);
         fgColor = cs.primary;
         icon = Icons.hourglass_top_rounded;
         break;
@@ -683,7 +683,7 @@ class AppStyles {
       decoration: BoxDecoration(
         color: bgColor,
         borderRadius: BorderRadius.circular(radiusSm),
-        border: Border.all(color: fgColor.withOpacity(0.3)),
+        border: Border.all(color: fgColor.withValues(alpha: 0.3)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

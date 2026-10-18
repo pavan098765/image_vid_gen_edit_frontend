@@ -85,7 +85,7 @@ class TimelineTrackRow extends StatelessWidget {
               color: cs.surface,
               border: Border(
                 right: BorderSide(
-                  color: cs.onSurface.withOpacity(0.08),
+                  color: cs.onSurface.withValues(alpha: 0.08),
                 ),
               ),
             ),
@@ -95,7 +95,7 @@ class TimelineTrackRow extends StatelessWidget {
                 Icon(
                   _trackIcon,
                   size: 14,
-                  color: _trackColor.withOpacity(track.isVisible ? 1 : 0.3),
+                  color: _trackColor.withValues(alpha: track.isVisible ? 1 : 0.3),
                 ),
                 const SizedBox(height: 1),
                 Text(
@@ -104,7 +104,7 @@ class TimelineTrackRow extends StatelessWidget {
                       : track.name,
                   style: TextStyle(
                     fontSize: 8,
-                    color: cs.onSurface.withOpacity(0.5),
+                    color: cs.onSurface.withValues(alpha: 0.5),
                     fontWeight: FontWeight.w500,
                   ),
                   overflow: TextOverflow.ellipsis,
@@ -119,7 +119,7 @@ class TimelineTrackRow extends StatelessWidget {
                             ? LucideIcons.eye
                             : LucideIcons.eyeOff,
                         size: 10,
-                        color: cs.onSurface.withOpacity(0.6),
+                        color: cs.onSurface.withValues(alpha: 0.6),
                       ),
                     ),
                     const SizedBox(width: 4),
@@ -128,7 +128,7 @@ class TimelineTrackRow extends StatelessWidget {
                       child: Icon(
                         track.isLocked ? LucideIcons.lock : LucideIcons.unlock,
                         size: 10,
-                        color: cs.onSurface.withOpacity(0.6),
+                        color: cs.onSurface.withValues(alpha: 0.6),
                       ),
                     ),
                     const SizedBox(width: 4),
@@ -137,7 +137,7 @@ class TimelineTrackRow extends StatelessWidget {
                       child: Icon(
                         track.isMuted ? LucideIcons.volumeX : LucideIcons.volume2,
                         size: 10,
-                        color: cs.onSurface.withOpacity(0.6),
+                        color: cs.onSurface.withValues(alpha: 0.6),
                       ),
                     ),
                   ],
@@ -152,7 +152,7 @@ class TimelineTrackRow extends StatelessWidget {
               decoration: BoxDecoration(
                 border: Border(
                   bottom: BorderSide(
-                    color: cs.onSurface.withOpacity(0.06),
+                    color: cs.onSurface.withValues(alpha: 0.06),
                   ),
                 ),
               ),
@@ -161,7 +161,7 @@ class TimelineTrackRow extends StatelessWidget {
                   // Background
                   Positioned.fill(
                     child: Container(
-                      color: _trackColor.withOpacity(0.04),
+                      color: _trackColor.withValues(alpha: 0.04),
                     ),
                   ),
 

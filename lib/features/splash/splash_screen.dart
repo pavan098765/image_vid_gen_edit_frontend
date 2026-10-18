@@ -214,12 +214,12 @@ class _SplashScreenState extends State<SplashScreen>
             Positioned(
               top: -100,
               right: -100,
-              child: _buildGradientOrb(200, KalaColors.purple.withOpacity(0.15)),
+              child: _buildGradientOrb(200, KalaColors.purple.withValues(alpha: 0.15)),
             ),
             Positioned(
               bottom: -150,
               left: -150,
-              child: _buildGradientOrb(300, KalaColors.cyan.withOpacity(0.1)),
+              child: _buildGradientOrb(300, KalaColors.cyan.withValues(alpha: 0.1)),
             ),
             
             // Main content
@@ -303,12 +303,12 @@ class _SplashScreenState extends State<SplashScreen>
         shape: BoxShape.circle,
         boxShadow: [
           BoxShadow(
-            color: KalaColors.purple.withOpacity(0.4),
+            color: KalaColors.purple.withValues(alpha: 0.4),
             blurRadius: 40,
             spreadRadius: 10,
           ),
           BoxShadow(
-            color: KalaColors.cyan.withOpacity(0.3),
+            color: KalaColors.cyan.withValues(alpha: 0.3),
             blurRadius: 60,
             spreadRadius: 5,
           ),
@@ -321,12 +321,12 @@ class _SplashScreenState extends State<SplashScreen>
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              KalaColors.purple.withOpacity(0.2),
-              KalaColors.cyan.withOpacity(0.1),
+              KalaColors.purple.withValues(alpha: 0.2),
+              KalaColors.cyan.withValues(alpha: 0.1),
             ],
           ),
           border: Border.all(
-            color: Colors.white.withOpacity(0.1),
+            color: Colors.white.withValues(alpha: 0.1),
             width: 2,
           ),
         ),
@@ -374,7 +374,7 @@ class _SplashScreenState extends State<SplashScreen>
         fontSize: 16,
         fontWeight: FontWeight.w400,
         letterSpacing: 1.5,
-        color: Colors.white.withOpacity(0.6),
+        color: Colors.white.withValues(alpha: 0.6),
       ),
     );
   }
@@ -391,7 +391,7 @@ class _SplashScreenState extends State<SplashScreen>
             return LinearProgressIndicator(
               value: value,
               minHeight: 3,
-              backgroundColor: Colors.white.withOpacity(0.1),
+              backgroundColor: Colors.white.withValues(alpha: 0.1),
               valueColor: AlwaysStoppedAnimation<Color>(
                 Color.lerp(KalaColors.purple, KalaColors.cyan, value)!,
               ),
@@ -409,7 +409,7 @@ class _SplashScreenState extends State<SplashScreen>
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         gradient: RadialGradient(
-          colors: [color, color.withOpacity(0)],
+          colors: [color, color.withValues(alpha: 0)],
         ),
       ),
     );
@@ -454,7 +454,7 @@ class _ParticlePainter extends CustomPainter {
           KalaColors.purple,
           KalaColors.cyan,
           particle.x,
-        )!.withOpacity(particle.opacity * 0.6)
+        )!.withValues(alpha: particle.opacity * 0.6)
         ..style = PaintingStyle.fill;
       
       canvas.drawCircle(

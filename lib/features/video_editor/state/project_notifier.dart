@@ -1,7 +1,6 @@
 // lib/features/video_editor/state/project_notifier.dart
 
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' show Size;
 
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';

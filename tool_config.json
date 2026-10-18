@@ -1205,7 +1205,7 @@
           "costUpscale": 0,
           "offer": 0,
           "enabled": true,
-          "maxDuration": 5,
+          "maxDuration": 15,
           "params": {
             "seconds": 5
           },
@@ -1404,7 +1404,7 @@
           "costUpscale": 0,
           "offer": 0,
           "enabled": true,
-          "maxDuration": 5,
+          "maxDuration": 15,
           "params": {
             "init_image": "{{init_image}}",
             "seconds": 5

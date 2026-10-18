@@ -354,7 +354,7 @@ class _CachedThumbnailState extends State<CachedThumbnail> {
             height: 16,
             child: CircularProgressIndicator(
               strokeWidth: 2,
-              color: cs.primary.withOpacity(0.5),
+              color: cs.primary.withValues(alpha: 0.5),
             ),
           ),
         ),
@@ -369,7 +369,7 @@ class _CachedThumbnailState extends State<CachedThumbnail> {
         child: Icon(
           Icons.image_not_supported_outlined,
           size: 20,
-          color: cs.onSurfaceVariant.withOpacity(0.5),
+          color: cs.onSurfaceVariant.withValues(alpha: 0.5),
         ),
       );
     }

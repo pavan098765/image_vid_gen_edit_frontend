@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -19,16 +20,29 @@ const _presets = [
   _SizePreset('Thumbnail', 16 / 9),
 ];
 
+/// Longest edge kept when padding a copy. Phone photos stay sharp enough
+/// for a post, and the canvas no longer grows into a multi-second encode.
+const int _kSaveSizeLongEdge = 2048;
+
 Future<void> showSaveSizeSheet(BuildContext context, File source) async {
   final bytes = await source.readAsBytes();
-  final decoded = imglib.decodeImage(bytes);
+  final preview = await Isolate.run(() => buildSaveSizePreview(bytes));
   if (!context.mounted) return;
-  if (decoded == null) {
+  if (preview == null) {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Could not read that photo.')),
     );
     return;
   }
+  final width = preview['width']! as int;
+  final height = preview['height']! as int;
+  final thumb = preview['thumb']! as Uint8List;
+  final pad = Color.fromARGB(
+    255,
+    preview['r']! as int,
+    preview['g']! as int,
+    preview['b']! as int,
+  );
 
   await showModalBottomSheet<void>(
     context: context,
@@ -58,8 +72,8 @@ Future<void> showSaveSizeSheet(BuildContext context, File source) async {
               const SizedBox(height: 16),
               ..._presets.map((p) {
                 final already = isAlreadyTargetRatio(
-                  width: decoded.width,
-                  height: decoded.height,
+                  width: width,
+                  height: height,
                   targetRatio: p.ratio,
                 );
                 return ListTile(
@@ -72,8 +86,8 @@ Future<void> showSaveSizeSheet(BuildContext context, File source) async {
                       child: AspectRatio(
                         aspectRatio: p.ratio,
                         child: ColoredBox(
-                          color: _padUiColor(decoded),
-                          child: Image.memory(bytes, fit: BoxFit.contain),
+                          color: pad,
+                          child: Image.memory(thumb, fit: BoxFit.contain),
                         ),
                       ),
                     ),
@@ -82,7 +96,13 @@ Future<void> showSaveSizeSheet(BuildContext context, File source) async {
                   subtitle: already ? const Text('Already this shape') : null,
                   onTap: () async {
                     Navigator.pop(ctx);
-                    await _saveFittedCopy(context, source, decoded, bytes, p);
+                    await _saveFittedCopy(
+                      context,
+                      source,
+                      bytes,
+                      p,
+                      already: already,
+                    );
                   },
                 );
               }),
@@ -94,9 +114,50 @@ Future<void> showSaveSizeSheet(BuildContext context, File source) async {
   );
 }
 
-Color _padUiColor(imglib.Image image) {
-  final pixel = _padColor(image);
-  return Color.fromARGB(255, pixel.r.toInt(), pixel.g.toInt(), pixel.b.toInt());
+Map<String, Object>? buildSaveSizePreview(Uint8List bytes) {
+  final decoded = imglib.decodeImage(bytes);
+  if (decoded == null) return null;
+  final thumb = _limitLongEdge(decoded, 480);
+  final pixel = _padColor(decoded);
+  return {
+    'width': decoded.width,
+    'height': decoded.height,
+    'r': pixel.r.toInt(),
+    'g': pixel.g.toInt(),
+    'b': pixel.b.toInt(),
+    'thumb': Uint8List.fromList(imglib.encodeJpg(thumb, quality: 70)),
+  };
+}
+
+Uint8List encodeSaveSizeCopy(Map<String, Object> args) {
+  final bytes = args['bytes']! as Uint8List;
+  final ratio = (args['ratio']! as num).toDouble();
+  final png = args['png']! as bool;
+  final decoded = imglib.decodeImage(bytes);
+  if (decoded == null) return bytes;
+  if (isAlreadyTargetRatio(
+    width: decoded.width,
+    height: decoded.height,
+    targetRatio: ratio,
+  )) {
+    return bytes;
+  }
+  final fitted = fitImageOnCanvas(_limitLongEdge(decoded, _kSaveSizeLongEdge), ratio);
+  return png
+      ? Uint8List.fromList(imglib.encodePng(fitted))
+      : Uint8List.fromList(imglib.encodeJpg(fitted, quality: 90));
+}
+
+imglib.Image _limitLongEdge(imglib.Image source, int longEdge) {
+  final long = source.width > source.height ? source.width : source.height;
+  if (long <= longEdge) return source;
+  final scale = longEdge / long;
+  return imglib.copyResize(
+    source,
+    width: (source.width * scale).round().clamp(1, longEdge),
+    height: (source.height * scale).round().clamp(1, longEdge),
+    interpolation: imglib.Interpolation.linear,
+  );
 }
 
 imglib.Color _padColor(imglib.Image image) {
@@ -138,7 +199,7 @@ imglib.Image fitImageOnCanvas(imglib.Image source, double targetRatio) {
           source,
           width: fittedW,
           height: fittedH,
-          interpolation: imglib.Interpolation.cubic,
+          interpolation: imglib.Interpolation.linear,
         );
   imglib.compositeImage(
     canvas,
@@ -152,24 +213,29 @@ imglib.Image fitImageOnCanvas(imglib.Image source, double targetRatio) {
 Future<void> _saveFittedCopy(
   BuildContext context,
   File source,
-  imglib.Image decoded,
   Uint8List originalBytes,
-  _SizePreset preset,
-) async {
-  final already = isAlreadyTargetRatio(
-    width: decoded.width,
-    height: decoded.height,
-    targetRatio: preset.ratio,
-  );
-  Uint8List outBytes;
+  _SizePreset preset, {
+  required bool already,
+}) async {
+  final png = source.path.toLowerCase().endsWith('.png');
+  final Uint8List outBytes;
   if (already) {
     outBytes = originalBytes;
   } else {
-    final fitted = fitImageOnCanvas(decoded, preset.ratio);
-    final lower = source.path.toLowerCase();
-    outBytes = lower.endsWith('.png')
-        ? Uint8List.fromList(imglib.encodePng(fitted))
-        : Uint8List.fromList(imglib.encodeJpg(fitted, quality: 92));
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Preparing your copy...')),
+      );
+    }
+    final payload = <String, Object>{
+      'bytes': originalBytes,
+      'ratio': preset.ratio,
+      'png': png,
+    };
+    outBytes = await Isolate.run(() => encodeSaveSizeCopy(payload));
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    }
   }
 
   if (!context.mounted) return;

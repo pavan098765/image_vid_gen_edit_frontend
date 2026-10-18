@@ -68,18 +68,18 @@ class TimelineClipWidget extends StatelessWidget {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 120),
           decoration: BoxDecoration(
-            color: _trackColor.withOpacity(isSelected ? 0.9 : 0.7),
+            color: _trackColor.withValues(alpha: isSelected ? 0.9 : 0.7),
             borderRadius: BorderRadius.circular(EditorConstants.clipBorderRadius),
             border: Border.all(
               color: isSelected
-                  ? Colors.white.withOpacity(0.9)
-                  : Colors.white.withOpacity(0.15),
+                  ? Colors.white.withValues(alpha: 0.9)
+                  : Colors.white.withValues(alpha: 0.15),
               width: isSelected ? 2 : 0.5,
             ),
             boxShadow: isSelected
                 ? [
                     BoxShadow(
-                      color: _trackColor.withOpacity(0.4),
+                      color: _trackColor.withValues(alpha: 0.4),
                       blurRadius: 6,
                       spreadRadius: 1,
                     ),
@@ -104,7 +104,7 @@ class TimelineClipWidget extends StatelessWidget {
                       onHorizontalDragUpdate: (d) => onResizeLeft?.call(d.delta.dx),
                       child: Container(
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.3),
+                          color: Colors.white.withValues(alpha: 0.3),
                           borderRadius: const BorderRadius.horizontal(
                             left: Radius.circular(EditorConstants.clipBorderRadius),
                           ),
@@ -114,7 +114,7 @@ class TimelineClipWidget extends StatelessWidget {
                             width: 3,
                             height: 20,
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.6),
+                              color: Colors.white.withValues(alpha: 0.6),
                               borderRadius: BorderRadius.circular(2),
                             ),
                           ),
@@ -134,7 +134,7 @@ class TimelineClipWidget extends StatelessWidget {
                       onHorizontalDragUpdate: (d) => onResizeRight?.call(d.delta.dx),
                       child: Container(
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.3),
+                          color: Colors.white.withValues(alpha: 0.3),
                           borderRadius: const BorderRadius.horizontal(
                             right: Radius.circular(EditorConstants.clipBorderRadius),
                           ),
@@ -144,7 +144,7 @@ class TimelineClipWidget extends StatelessWidget {
                             width: 3,
                             height: 20,
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.6),
+                              color: Colors.white.withValues(alpha: 0.6),
                               borderRadius: BorderRadius.circular(2),
                             ),
                           ),
@@ -281,7 +281,7 @@ class TimelineClipWidget extends StatelessWidget {
       margin: const EdgeInsets.only(left: 2),
       padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.6),
+        color: Colors.black.withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(3),
       ),
       child: Row(
@@ -313,7 +313,7 @@ class TimelineClipWidget extends StatelessWidget {
             child: CustomPaint(
               painter: _WaveformMiniPainter(
                 samples: waveform,
-                color: Colors.white.withOpacity(0.5),
+                color: Colors.white.withValues(alpha: 0.5),
               ),
             ),
           ),

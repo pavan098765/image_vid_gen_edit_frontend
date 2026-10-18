@@ -138,7 +138,7 @@ class _ThemedNativeAdState extends State<ThemedNativeAd> {
         size: 14,
       ),
       tertiaryTextStyle: NativeTemplateTextStyle(
-        textColor: secondaryTextColor.withOpacity(0.7),
+        textColor: secondaryTextColor.withValues(alpha: 0.7),
         backgroundColor: backgroundColor,
         style: NativeTemplateFontStyle.normal,
         size: 12,
@@ -162,15 +162,15 @@ class _ThemedNativeAdState extends State<ThemedNativeAd> {
       height: _isAdLoaded ? widget.height : (widget.useSmallTemplate ? 100 : 160),
       decoration: BoxDecoration(
         color: isDark 
-            ? cs.surfaceContainerHigh.withOpacity(0.5)
-            : cs.surface.withOpacity(0.8),
+            ? cs.surfaceContainerHigh.withValues(alpha: 0.5)
+            : cs.surface.withValues(alpha: 0.8),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: cs.outlineVariant.withOpacity(0.2),
+          color: cs.outlineVariant.withValues(alpha: 0.2),
         ),
         boxShadow: [
           BoxShadow(
-            color: cs.shadow.withOpacity(0.08),
+            color: cs.shadow.withValues(alpha: 0.08),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),

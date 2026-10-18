@@ -153,7 +153,7 @@ class _TimelinePanelState extends ConsumerState<TimelinePanel> {
       decoration: BoxDecoration(
         color: cs.surface,
         border: Border(
-          top: BorderSide(color: cs.onSurface.withOpacity(0.1)),
+          top: BorderSide(color: cs.onSurface.withValues(alpha: 0.1)),
         ),
       ),
       child: Column(
@@ -707,7 +707,7 @@ class _TimelinePanelState extends ConsumerState<TimelinePanel> {
                     width: 40,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: cs.onSurface.withOpacity(0.2),
+                      color: cs.onSurface.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -785,7 +785,7 @@ class _TimelinePanelState extends ConsumerState<TimelinePanel> {
     return ListTile(
       leading: CircleAvatar(
         radius: 18,
-        backgroundColor: color.withOpacity(0.15),
+        backgroundColor: color.withValues(alpha: 0.15),
         child: Icon(icon, size: 18, color: color),
       ),
       title: Text(

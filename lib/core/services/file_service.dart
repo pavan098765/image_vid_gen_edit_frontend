@@ -1156,17 +1156,17 @@ class FileService {
             ),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: cs.outlineVariant.withOpacity(0.3),
+              color: cs.outlineVariant.withValues(alpha: 0.3),
               width: 1,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.15),
+                color: Colors.black.withValues(alpha: 0.15),
                 blurRadius: 20,
                 offset: const Offset(0, 8),
               ),
               BoxShadow(
-                color: cs.primary.withOpacity(0.08),
+                color: cs.primary.withValues(alpha: 0.08),
                 blurRadius: 30,
                 offset: const Offset(0, 4),
               ),
@@ -1181,12 +1181,12 @@ class FileService {
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
-                      color: Colors.green.withOpacity(0.4),
+                      color: Colors.green.withValues(alpha: 0.4),
                       width: 2,
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.green.withOpacity(0.2),
+                        color: Colors.green.withValues(alpha: 0.2),
                         blurRadius: 8,
                         offset: const Offset(0, 2),
                       ),
@@ -1237,10 +1237,10 @@ class FileService {
                           vertical: 4,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.green.withOpacity(0.15),
+                          color: Colors.green.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(
-                            color: Colors.green.withOpacity(0.3),
+                            color: Colors.green.withValues(alpha: 0.3),
                           ),
                         ),
                         child: Row(
@@ -1282,7 +1282,7 @@ class FileService {
                 
                 // Open button
                 Material(
-                  color: cs.primary.withOpacity(0.12),
+                  color: cs.primary.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
                   child: InkWell(
                     onTap: () async => await OpenFilex.open(filePath),
@@ -1545,8 +1545,8 @@ class _ProgressiveImagePreviewState extends State<_ProgressiveImagePreview>
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [
-                        Colors.black.withOpacity(0.7),
-                        Colors.black.withOpacity(0.4),
+                        Colors.black.withValues(alpha: 0.7),
+                        Colors.black.withValues(alpha: 0.4),
                         Colors.transparent,
                       ],
                       stops: const [0.0, 0.7, 1.0],
@@ -1592,8 +1592,8 @@ class _ProgressiveImagePreviewState extends State<_ProgressiveImagePreview>
                       begin: Alignment.bottomCenter,
                       end: Alignment.topCenter,
                       colors: [
-                        Colors.black.withOpacity(0.8),
-                        Colors.black.withOpacity(0.5),
+                        Colors.black.withValues(alpha: 0.8),
+                        Colors.black.withValues(alpha: 0.5),
                         Colors.transparent,
                       ],
                       stops: const [0.0, 0.6, 1.0],
@@ -1685,10 +1685,10 @@ class _ProgressiveImagePreviewState extends State<_ProgressiveImagePreview>
           child: Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.15),
+              color: Colors.white.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
-                color: Colors.white.withOpacity(0.1),
+                color: Colors.white.withValues(alpha: 0.1),
                 width: 1,
               ),
             ),
@@ -1734,7 +1734,7 @@ class _ProgressiveImagePreviewState extends State<_ProgressiveImagePreview>
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.1),
+              color: Colors.white.withValues(alpha: 0.1),
               shape: BoxShape.circle,
             ),
             child: const Icon(
@@ -1790,10 +1790,10 @@ class _ProgressiveImagePreviewState extends State<_ProgressiveImagePreview>
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.6),
+                    color: Colors.black.withValues(alpha: 0.6),
                     borderRadius: BorderRadius.circular(24),
                     border: Border.all(
-                      color: Colors.white.withOpacity(0.1),
+                      color: Colors.white.withValues(alpha: 0.1),
                     ),
                   ),
                   child: Row(
@@ -1804,14 +1804,14 @@ class _ProgressiveImagePreviewState extends State<_ProgressiveImagePreview>
                         height: 16,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          color: Colors.white.withOpacity(0.8),
+                          color: Colors.white.withValues(alpha: 0.8),
                         ),
                       ),
                       const SizedBox(width: 10),
                       Text(
                         'Loading full resolution...',
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.8),
+                          color: Colors.white.withValues(alpha: 0.8),
                           fontSize: 13,
                           fontWeight: FontWeight.w500,
                         ),
@@ -1847,7 +1847,7 @@ class _ProgressiveImagePreviewState extends State<_ProgressiveImagePreview>
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: Colors.red.withOpacity(0.1),
+                color: Colors.red.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
@@ -1860,7 +1860,7 @@ class _ProgressiveImagePreviewState extends State<_ProgressiveImagePreview>
             Text(
               'Failed to load image',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.7),
+                color: Colors.white.withValues(alpha: 0.7),
                 fontSize: 14,
               ),
             ),
@@ -2009,8 +2009,8 @@ class _SwipeableMediaPreviewState extends State<_SwipeableMediaPreview>
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [
-                        Colors.black.withOpacity(0.7),
-                        Colors.black.withOpacity(0.4),
+                        Colors.black.withValues(alpha: 0.7),
+                        Colors.black.withValues(alpha: 0.4),
                         Colors.transparent,
                       ],
                       stops: const [0.0, 0.7, 1.0],
@@ -2022,7 +2022,7 @@ class _SwipeableMediaPreviewState extends State<_SwipeableMediaPreview>
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.15),
+                          color: Colors.white.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: Text(
@@ -2059,7 +2059,7 @@ class _SwipeableMediaPreviewState extends State<_SwipeableMediaPreview>
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.5),
+                    color: Colors.black.withValues(alpha: 0.5),
                     borderRadius: BorderRadius.circular(24),
                   ),
                   child: Row(
@@ -2100,7 +2100,7 @@ class _SwipeableMediaPreviewState extends State<_SwipeableMediaPreview>
                                   margin: const EdgeInsets.symmetric(horizontal: 3),
                                   decoration: BoxDecoration(
                                     shape: BoxShape.circle,
-                                    color: Colors.white.withOpacity(0.3),
+                                    color: Colors.white.withValues(alpha: 0.3),
                                   ),
                                 );
                               }
@@ -2115,7 +2115,7 @@ class _SwipeableMediaPreviewState extends State<_SwipeableMediaPreview>
                                 borderRadius: BorderRadius.circular(4),
                                 color: isActive
                                     ? Colors.white
-                                    : Colors.white.withOpacity(0.4),
+                                    : Colors.white.withValues(alpha: 0.4),
                               ),
                             );
                           },
@@ -2192,10 +2192,10 @@ class _SwipeableMediaPreviewState extends State<_SwipeableMediaPreview>
           child: Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.15),
+              color: Colors.white.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
-                color: Colors.white.withOpacity(0.1),
+                color: Colors.white.withValues(alpha: 0.1),
                 width: 1,
               ),
             ),
@@ -2476,10 +2476,10 @@ class _VideoPreviewItemState extends State<_VideoPreviewItem> {
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    Colors.black.withOpacity(0.6),
+                    Colors.black.withValues(alpha: 0.6),
                     Colors.transparent,
                     Colors.transparent,
-                    Colors.black.withOpacity(0.7),
+                    Colors.black.withValues(alpha: 0.7),
                   ],
                   stops: const [0.0, 0.2, 0.7, 1.0],
                 ),
@@ -2511,10 +2511,10 @@ class _VideoPreviewItemState extends State<_VideoPreviewItem> {
                           child: Container(
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(0.6),
+                              color: Colors.black.withValues(alpha: 0.6),
                               shape: BoxShape.circle,
                               border: Border.all(
-                                color: Colors.white.withOpacity(0.4),
+                                color: Colors.white.withValues(alpha: 0.4),
                                 width: 2,
                               ),
                             ),
@@ -2619,7 +2619,7 @@ class _VideoPreviewItemState extends State<_VideoPreviewItem> {
                   height: 4,
                   width: constraints.maxWidth,
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
+                    color: Colors.white.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -2643,7 +2643,7 @@ class _VideoPreviewItemState extends State<_VideoPreviewItem> {
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.3),
+                          color: Colors.black.withValues(alpha: 0.3),
                           blurRadius: 4,
                           offset: const Offset(0, 2),
                         ),
@@ -2663,10 +2663,10 @@ class _VideoPreviewItemState extends State<_VideoPreviewItem> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.4),
+        color: Colors.black.withValues(alpha: 0.4),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: Colors.white.withOpacity(0.1),
+          color: Colors.white.withValues(alpha: 0.1),
           width: 1,
         ),
       ),
@@ -2707,18 +2707,18 @@ class _VideoPreviewItemState extends State<_VideoPreviewItem> {
         Icon(
           icon,
           size: 14,
-          color: Colors.white.withOpacity(0.8),
+          color: Colors.white.withValues(alpha: 0.8),
         ),
         const SizedBox(width: 6),
         Text(
           label,
           style: TextStyle(
-            color: Colors.white.withOpacity(0.9),
+            color: Colors.white.withValues(alpha: 0.9),
             fontSize: 12,
             fontWeight: FontWeight.w500,
             shadows: [
               Shadow(
-                color: Colors.black.withOpacity(0.5),
+                color: Colors.black.withValues(alpha: 0.5),
                 blurRadius: 2,
               ),
             ],
@@ -2825,7 +2825,7 @@ class _TextFilePreviewState extends State<_TextFilePreview> {
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [
-                        Colors.black.withOpacity(0.7),
+                        Colors.black.withValues(alpha: 0.7),
                         Colors.transparent,
                       ],
                     ),
@@ -2876,10 +2876,10 @@ class _TextFilePreviewState extends State<_TextFilePreview> {
                           )
                         : Container(
                             decoration: BoxDecoration(
-                              color: cs.surfaceContainerHighest.withOpacity(0.3),
+                              color: cs.surfaceContainerHighest.withValues(alpha: 0.3),
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                color: Colors.white.withOpacity(0.1),
+                                color: Colors.white.withValues(alpha: 0.1),
                               ),
                             ),
                             padding: const EdgeInsets.all(16),
@@ -2911,7 +2911,7 @@ class _TextFilePreviewState extends State<_TextFilePreview> {
                       begin: Alignment.bottomCenter,
                       end: Alignment.topCenter,
                       colors: [
-                        Colors.black.withOpacity(0.7),
+                        Colors.black.withValues(alpha: 0.7),
                         Colors.transparent,
                       ],
                     ),
@@ -2920,7 +2920,7 @@ class _TextFilePreviewState extends State<_TextFilePreview> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Material(
-                        color: cs.primary.withOpacity(0.2),
+                        color: cs.primary.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(12),
                         child: InkWell(
                           onTap: () async {

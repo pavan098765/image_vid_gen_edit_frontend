@@ -92,7 +92,7 @@ class _KeyframePanelState extends ConsumerState<KeyframePanel> {
             'Move the playhead to the desired time, set a value, then tap "Add".',
             style: TextStyle(
               fontSize: 11,
-              color: cs.onSurface.withOpacity(0.5),
+              color: cs.onSurface.withValues(alpha: 0.5),
               height: 1.4,
             ),
           ),
@@ -105,11 +105,11 @@ class _KeyframePanelState extends ConsumerState<KeyframePanel> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(LucideIcons.diamond, size: 32, color: cs.onSurface.withOpacity(0.2)),
+                    Icon(LucideIcons.diamond, size: 32, color: cs.onSurface.withValues(alpha: 0.2)),
                     const SizedBox(height: 8),
                     Text(
                       'Select a clip to add keyframes',
-                      style: TextStyle(color: cs.onSurface.withOpacity(0.4), fontSize: 13),
+                      style: TextStyle(color: cs.onSurface.withValues(alpha: 0.4), fontSize: 13),
                     ),
                   ],
                 ),
@@ -135,11 +135,11 @@ class _KeyframePanelState extends ConsumerState<KeyframePanel> {
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       decoration: BoxDecoration(
                         color: selected
-                            ? cs.primary.withOpacity(0.15)
+                            ? cs.primary.withValues(alpha: 0.15)
                             : cs.surfaceContainerHigh,
                         borderRadius: BorderRadius.circular(6),
                         border: selected
-                            ? Border.all(color: cs.primary.withOpacity(0.4))
+                            ? Border.all(color: cs.primary.withValues(alpha: 0.4))
                             : null,
                       ),
                       alignment: Alignment.center,
@@ -148,7 +148,7 @@ class _KeyframePanelState extends ConsumerState<KeyframePanel> {
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
-                          color: selected ? cs.primary : cs.onSurface.withOpacity(0.6),
+                          color: selected ? cs.primary : cs.onSurface.withValues(alpha: 0.6),
                         ),
                       ),
                     ),
@@ -161,11 +161,11 @@ class _KeyframePanelState extends ConsumerState<KeyframePanel> {
             // Current time indicator
             Row(
               children: [
-                Icon(LucideIcons.clock, size: 12, color: cs.onSurface.withOpacity(0.5)),
+                Icon(LucideIcons.clock, size: 12, color: cs.onSurface.withValues(alpha: 0.5)),
                 const SizedBox(width: 4),
                 Text(
                   'Time: ${TimeUtils.formatDurationMs(playback.position - selectedClip.startTime)}',
-                  style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(0.6)),
+                  style: TextStyle(fontSize: 11, color: cs.onSurface.withValues(alpha: 0.6)),
                 ),
               ],
             ),
@@ -178,7 +178,7 @@ class _KeyframePanelState extends ConsumerState<KeyframePanel> {
                   width: 48,
                   child: Text(
                     _propLabel(_selectedProp),
-                    style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(0.6)),
+                    style: TextStyle(fontSize: 11, color: cs.onSurface.withValues(alpha: 0.6)),
                   ),
                 ),
                 Expanded(
@@ -193,7 +193,7 @@ class _KeyframePanelState extends ConsumerState<KeyframePanel> {
                   width: 40,
                   child: Text(
                     _currentValue.toStringAsFixed(2),
-                    style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(0.7)),
+                    style: TextStyle(fontSize: 11, color: cs.onSurface.withValues(alpha: 0.7)),
                     textAlign: TextAlign.right,
                   ),
                 ),
@@ -202,7 +202,7 @@ class _KeyframePanelState extends ConsumerState<KeyframePanel> {
 
             // Easing picker
             const SizedBox(height: 8),
-            Text('Easing', style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(0.6))),
+            Text('Easing', style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: 0.6))),
             const SizedBox(height: 6),
             Wrap(
               spacing: 6,
@@ -214,17 +214,17 @@ class _KeyframePanelState extends ConsumerState<KeyframePanel> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(
-                      color: selected ? cs.primary.withOpacity(0.15) : cs.surfaceContainerHigh,
+                      color: selected ? cs.primary.withValues(alpha: 0.15) : cs.surfaceContainerHigh,
                       borderRadius: BorderRadius.circular(6),
                       border: Border.all(
-                        color: selected ? cs.primary : cs.onSurface.withOpacity(0.1),
+                        color: selected ? cs.primary : cs.onSurface.withValues(alpha: 0.1),
                       ),
                     ),
                     child: Text(
                       e.name,
                       style: TextStyle(
                         fontSize: 11,
-                        color: selected ? cs.primary : cs.onSurface.withOpacity(0.6),
+                        color: selected ? cs.primary : cs.onSurface.withValues(alpha: 0.6),
                         fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
                       ),
                     ),
@@ -251,7 +251,7 @@ class _KeyframePanelState extends ConsumerState<KeyframePanel> {
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Text(
           'No keyframes for ${_propLabel(_selectedProp)}',
-          style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(0.4)),
+          style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: 0.4)),
         ),
       );
     }
@@ -262,7 +262,7 @@ class _KeyframePanelState extends ConsumerState<KeyframePanel> {
       children: [
         Text(
           'Keyframes (${kfTrack.keyframes.length})',
-          style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(0.6), fontWeight: FontWeight.w600),
+          style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: 0.6), fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 4),
         ...kfTrack.keyframes.map((kf) => Padding(
@@ -281,14 +281,14 @@ class _KeyframePanelState extends ConsumerState<KeyframePanel> {
                       TimeUtils.formatDurationMs(kf.time),
                       style: TextStyle(
                         fontSize: 11,
-                        color: cs.onSurface.withOpacity(0.7),
+                        color: cs.onSurface.withValues(alpha: 0.7),
                         fontFamily: 'monospace',
                       ),
                     ),
                     const SizedBox(width: 8),
                     Text(
                       '${kf.value.toStringAsFixed(2)} (${kf.easing.name})',
-                      style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(0.5)),
+                      style: TextStyle(fontSize: 11, color: cs.onSurface.withValues(alpha: 0.5)),
                     ),
                     const Spacer(),
                     GestureDetector(
@@ -296,7 +296,7 @@ class _KeyframePanelState extends ConsumerState<KeyframePanel> {
                       child: Icon(
                         LucideIcons.trash2,
                         size: 14,
-                        color: Colors.redAccent.withOpacity(0.6),
+                        color: Colors.redAccent.withValues(alpha: 0.6),
                       ),
                     ),
                   ],

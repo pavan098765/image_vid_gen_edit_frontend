@@ -32,7 +32,7 @@ class TimelineControls extends StatelessWidget {
       decoration: BoxDecoration(
         color: cs.surface,
         border: Border(
-          top: BorderSide(color: cs.onSurface.withOpacity(0.08)),
+          top: BorderSide(color: cs.onSurface.withValues(alpha: 0.08)),
         ),
       ),
       child: Row(
@@ -57,7 +57,7 @@ class TimelineControls extends StatelessWidget {
               '${(zoom * 100).round()}%',
               style: TextStyle(
                 fontSize: 11,
-                color: cs.onSurface.withOpacity(0.7),
+                color: cs.onSurface.withValues(alpha: 0.7),
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -118,8 +118,8 @@ class _ControlButton extends StatelessWidget {
             icon,
             size: 16,
             color: enabled
-                ? cs.onSurface.withOpacity(0.7)
-                : cs.onSurface.withOpacity(0.2),
+                ? cs.onSurface.withValues(alpha: 0.7)
+                : cs.onSurface.withValues(alpha: 0.2),
           ),
         ),
       ),

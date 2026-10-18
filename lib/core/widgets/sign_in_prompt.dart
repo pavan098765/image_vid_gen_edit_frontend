@@ -32,15 +32,15 @@ class SignInPromptCard extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            KalaColors.purple.withOpacity(0.15),
-            KalaColors.cyan.withOpacity(0.1),
+            KalaColors.purple.withValues(alpha: 0.15),
+            KalaColors.cyan.withValues(alpha: 0.1),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(AppStyles.radiusLg),
         border: Border.all(
-          color: KalaColors.purple.withOpacity(0.3),
+          color: KalaColors.purple.withValues(alpha: 0.3),
           width: 1,
         ),
       ),
@@ -154,7 +154,7 @@ class _BenefitRow extends StatelessWidget {
         Text(
           text,
           style: TextStyle(
-            color: cs.onSurface.withOpacity(0.8),
+            color: cs.onSurface.withValues(alpha: 0.8),
             fontSize: 13,
           ),
         ),
@@ -390,8 +390,8 @@ class _SignInRequiredScreenState extends State<SignInRequiredScreen> {
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [
-                KalaColors.purple.withOpacity(0.2),
-                KalaColors.cyan.withOpacity(0.1),
+                KalaColors.purple.withValues(alpha: 0.2),
+                KalaColors.cyan.withValues(alpha: 0.1),
               ],
             ),
             shape: BoxShape.circle,
@@ -433,9 +433,9 @@ class _SignInRequiredScreenState extends State<SignInRequiredScreen> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           decoration: BoxDecoration(
-            color: KalaColors.gold.withOpacity(0.15),
+            color: KalaColors.gold.withValues(alpha: 0.15),
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: KalaColors.gold.withOpacity(0.3)),
+            border: Border.all(color: KalaColors.gold.withValues(alpha: 0.3)),
           ),
           child: const Row(
             mainAxisSize: MainAxisSize.min,
@@ -509,7 +509,7 @@ class _SignInRequiredScreenState extends State<SignInRequiredScreen> {
         Container(
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            color: KalaColors.cyan.withOpacity(0.15),
+            color: KalaColors.cyan.withValues(alpha: 0.15),
             shape: BoxShape.circle,
           ),
           child: const Icon(
@@ -535,9 +535,9 @@ class _SignInRequiredScreenState extends State<SignInRequiredScreen> {
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: KalaColors.gold.withOpacity(0.1),
+            color: KalaColors.gold.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(AppStyles.radiusMd),
-            border: Border.all(color: KalaColors.gold.withOpacity(0.3)),
+            border: Border.all(color: KalaColors.gold.withValues(alpha: 0.3)),
           ),
           child: Row(
             children: [
@@ -654,9 +654,9 @@ class _SignInRequiredScreenState extends State<SignInRequiredScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: Colors.green.withOpacity(0.15),
+              color: Colors.green.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.green.withOpacity(0.3)),
+              border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -768,7 +768,7 @@ class _GoogleSignInButton extends StatelessWidget {
                     child: LinearProgressIndicator(
                       minHeight: 3,
                       color: cs.primary,
-                      backgroundColor: cs.primary.withOpacity(0.15),
+                      backgroundColor: cs.primary.withValues(alpha: 0.15),
                     ),
                   ),
                 )
@@ -1025,7 +1025,7 @@ class _EmailAuthSheetState extends State<_EmailAuthSheet> {
                           child: LinearProgressIndicator(
                             minHeight: 3,
                             color: Colors.white,
-                            backgroundColor: Colors.white.withOpacity(0.25),
+                            backgroundColor: Colors.white.withValues(alpha: 0.25),
                           ),
                         ),
                       )

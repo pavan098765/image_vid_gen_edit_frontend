@@ -38,11 +38,11 @@ class BottomToolbar extends ConsumerWidget {
       decoration: BoxDecoration(
         color: cs.surface,
         border: Border(
-          top: BorderSide(color: cs.onSurface.withOpacity(0.1)),
+          top: BorderSide(color: cs.onSurface.withValues(alpha: 0.1)),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.15),
+            color: Colors.black.withValues(alpha: 0.15),
             blurRadius: 8,
             offset: const Offset(0, -2),
           ),
@@ -84,10 +84,10 @@ class BottomToolbar extends ConsumerWidget {
           duration: const Duration(milliseconds: 180),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            color: isActive ? cs.primary.withOpacity(0.15) : Colors.transparent,
+            color: isActive ? cs.primary.withValues(alpha: 0.15) : Colors.transparent,
             borderRadius: BorderRadius.circular(10),
             border: isActive
-                ? Border.all(color: cs.primary.withOpacity(0.3))
+                ? Border.all(color: cs.primary.withValues(alpha: 0.3))
                 : null,
           ),
           child: Column(
@@ -97,7 +97,7 @@ class BottomToolbar extends ConsumerWidget {
               Icon(
                 icon,
                 size: 20,
-                color: isActive ? cs.primary : cs.onSurface.withOpacity(0.6),
+                color: isActive ? cs.primary : cs.onSurface.withValues(alpha: 0.6),
               ),
               const SizedBox(height: 4),
               Text(
@@ -105,7 +105,7 @@ class BottomToolbar extends ConsumerWidget {
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
-                  color: isActive ? cs.primary : cs.onSurface.withOpacity(0.72),
+                  color: isActive ? cs.primary : cs.onSurface.withValues(alpha: 0.72),
                 ),
               ),
             ],
@@ -170,7 +170,7 @@ class BottomToolbar extends ConsumerWidget {
                         width: 40,
                         height: 4,
                         decoration: BoxDecoration(
-                          color: cs.onSurface.withOpacity(0.22),
+                          color: cs.onSurface.withValues(alpha: 0.22),
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),
@@ -372,7 +372,7 @@ class _MoreTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Material(
-      color: color.withOpacity(0.1),
+      color: color.withValues(alpha: 0.1),
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         onTap: onTap,
@@ -381,7 +381,7 @@ class _MoreTile extends StatelessWidget {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: color.withOpacity(0.22)),
+            border: Border.all(color: color.withValues(alpha: 0.22)),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
           child: Column(

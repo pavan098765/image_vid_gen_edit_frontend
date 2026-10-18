@@ -19,10 +19,10 @@ ProImageEditorConfigs kalaImageEditorConfigs(
   return ProImageEditorConfigs(
     theme: mui.ThemeData(
       brightness: mui.Brightness.dark,
-      colorScheme: mui.ColorScheme.dark(
-        primary: const mui.Color(0xFF7B5EFF),
-        secondary: const mui.Color(0xFF00D4FF),
-        surface: const mui.Color(0xFF1A1A2E),
+      colorScheme: const mui.ColorScheme.dark(
+        primary: mui.Color(0xFF7B5EFF),
+        secondary: mui.Color(0xFF00D4FF),
+        surface: mui.Color(0xFF1A1A2E),
       ),
     ),
     designMode: ImageEditorDesignMode.material,

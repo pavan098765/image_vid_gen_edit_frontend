@@ -1310,6 +1310,26 @@ class _GenericToolPageState extends State<GenericToolPage>
 
   bool get _isComfyVideoWorker => _isLtx25Model || _isMinimaxH3Model;
 
+  /// 2× motion and 2× resolution post-process for older video engines.
+  /// CineReal and Cinemotion Pro render the frame themselves, so this
+  /// control stays hidden for those models and for tools that only offer them.
+  bool get _showsVideoEnhancement {
+    if (widget.config.outputType != 'video') return false;
+    if (_isVideoUpscalerTool) return true;
+    if (_isComfyVideoWorker) return false;
+    final models = widget.config.models;
+    if (models == null || models.isEmpty) return false;
+    for (final model in models) {
+      if (model['enabled'] == false) continue;
+      final id = (model['id']?.toString() ?? '').toLowerCase();
+      if (id.startsWith('ltx25_int8') || id == _kCinemotionProModelId) {
+        continue;
+      }
+      return true;
+    }
+    return false;
+  }
+
   /// Backend model id when config uses per-mode UI ids (`submitModelId`).
   String get _submitModelIdForRequest {
     final raw = _selectedModelData?['submitModelId'];
@@ -1793,15 +1813,11 @@ class _GenericToolPageState extends State<GenericToolPage>
     return (_selectedModelData?['maxDuration'] as num?)?.toInt() ?? 8;
   }
 
-  /// Cinemotion Pro snaps seconds up onto the 17k+5 frame grid (1s through 5s).
-  /// LTX and other models stay on 5s steps when max duration is at least 5s.
+  /// Create Video and Animate Image share 5s steps. Cinemotion Pro stops at
+  /// 15s (5, 10, 15). CineReal stops at 20s (5, 10, 15, 20).
   List<int> _allowedVideoGenDurationSeconds() {
     final maxD = _maxVideoGenDurationSeconds();
     if (maxD < 1) return const [1];
-    if (_isMinimaxH3Model) {
-      final cap = maxD.clamp(1, 5);
-      return List<int>.generate(cap, (i) => i + 1);
-    }
     if (maxD < _kMinVideoGenDurationSeconds) {
       return List<int>.generate(maxD, (i) => i + 1);
     }
@@ -2290,6 +2306,10 @@ class _GenericToolPageState extends State<GenericToolPage>
     // Initialize selected model
     _initializeSelectedModel();
     _syncFaceEnhancerFixedParams();
+    if (_isVideoTool && !_isVideoUpscalerTool) {
+      _advancedSettings = _advancedSettings.copyWith(aspectRatio: '9:16');
+      _inputs['aspect_ratio'] = '9:16';
+    }
     if (_isUpscalerTool) {
       _inputs['scale_factor'] ??= _scaleFactor;
     }
@@ -2592,7 +2612,6 @@ class _GenericToolPageState extends State<GenericToolPage>
 
     // Aspect Ratio: Only apply if not hidden for this tool category
     if (!_isEditImageTool &&
-        !_isAnimateImageTool &&
         !_isExpandSceneTool &&
         !_isUpscalerTool &&
         !_isInpaintEraseTool &&
@@ -2685,6 +2704,9 @@ class _GenericToolPageState extends State<GenericToolPage>
             filteredSettings.copyWith(cineRealMotionMode: 'flf2v');
       }
       _advancedSettings = filteredSettings;
+      if (_isVideoTool && !_isVideoUpscalerTool) {
+        _inputs['aspect_ratio'] = filteredSettings.aspectRatio;
+      }
 
       // Update upscale-related state (only if upscale is compatible)
       if (!_isVideoTool) {
@@ -2777,13 +2799,15 @@ class _GenericToolPageState extends State<GenericToolPage>
 
       // Use default model if specified, otherwise first enabled model
       final defaultId = widget.config.defaultModel ?? widget.config.model;
-      _selectedModelId = defaultId;
       _selectedModelData = enabledModels.firstWhere(
         (m) =>
             m['id'] == defaultId &&
             (m['enabled'] == null || m['enabled'] == true),
         orElse: () => enabledModels.first,
       );
+      final resolvedId = _selectedModelData?['id']?.toString();
+      _selectedModelId =
+          (resolvedId != null && resolvedId.isNotEmpty) ? resolvedId : defaultId;
 
       // Clamp video duration (min 5s when model allows) for video generation tools
       if (widget.config.outputType == 'video' &&
@@ -3342,6 +3366,10 @@ class _GenericToolPageState extends State<GenericToolPage>
               ? variations.toInt().clamp(1, getMaxVariations()).toInt()
               : null,
         );
+        if (aspect != null && aspect.trim().isNotEmpty) {
+          _inputs['aspect_ratio'] =
+              AdvancedSettings.normalizeAspectRatio(aspect);
+        }
         if (upscale) {
           final savedFactor = _isVideoTool
               ? _snapInt(
@@ -3497,7 +3525,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                     width: 40,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: cs.outlineVariant.withOpacity(0.5),
+                      color: cs.outlineVariant.withValues(alpha: 0.5),
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -3516,7 +3544,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                             Container(
                               padding: const EdgeInsets.all(10),
                               decoration: BoxDecoration(
-                                color: cs.primary.withOpacity(0.1),
+                                color: cs.primary.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Icon(LucideIcons.settings,
@@ -3586,8 +3614,9 @@ class _GenericToolPageState extends State<GenericToolPage>
                                   : (() {
                                       final extraCost =
                                           _currentModelUpscaleCost;
-                                      if (isVipUser())
+                                      if (isVipUser()) {
                                         return 'Higher resolution result (FREE for VIP)';
+                                      }
                                       if (extraCost > 0) {
                                         return 'Higher resolution result (+$extraCost credits) - Free for VIP users';
                                       }
@@ -3667,9 +3696,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                             const SizedBox(height: 16),
                           ],
 
-                          // Video enhancement settings (not used by CineReal / Cinemotion Pro Comfy workers)
-                          if (widget.config.outputType == 'video' &&
-                              !_isComfyVideoWorker) ...[
+                          // Older video engines only. CineReal and Cinemotion Pro hide this.
+                          if (_showsVideoEnhancement) ...[
                             _buildVideoUpscaleSettings(cs, setSheetState),
                             const SizedBox(height: 16),
                           ],
@@ -3687,7 +3715,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                 ),
 
                 // Done button (fixed at bottom with safe area)
-                Divider(height: 1, color: cs.outlineVariant.withOpacity(0.35)),
+                Divider(height: 1, color: cs.outlineVariant.withValues(alpha: 0.35)),
                 SafeArea(
                   top: false,
                   minimum: EdgeInsets.fromLTRB(
@@ -3754,7 +3782,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                   Text(
                     '2K costs twice the 1K price.',
                     style: TextStyle(
-                      color: cs.onSurfaceVariant.withOpacity(0.7),
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.7),
                       fontSize: 12,
                     ),
                   ),
@@ -3799,13 +3827,13 @@ class _GenericToolPageState extends State<GenericToolPage>
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: value
-            ? cs.primaryContainer.withOpacity(0.3)
+            ? cs.primaryContainer.withValues(alpha: 0.3)
             : cs.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: value
-              ? cs.primary.withOpacity(0.3)
-              : cs.outlineVariant.withOpacity(0.2),
+              ? cs.primary.withValues(alpha: 0.3)
+              : cs.outlineVariant.withValues(alpha: 0.2),
         ),
       ),
       child: Row(
@@ -3814,7 +3842,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               color: value
-                  ? cs.primary.withOpacity(0.15)
+                  ? cs.primary.withValues(alpha: 0.15)
                   : cs.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(10),
             ),
@@ -3845,7 +3873,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                 Text(
                   subtitle,
                   style: TextStyle(
-                    color: cs.onSurfaceVariant.withOpacity(0.7),
+                    color: cs.onSurfaceVariant.withValues(alpha: 0.7),
                     fontSize: 12,
                   ),
                 ),
@@ -3896,7 +3924,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                   Text(
                     'Output frame shape',
                     style: TextStyle(
-                      color: cs.onSurfaceVariant.withOpacity(0.7),
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.7),
                       fontSize: 12,
                     ),
                   ),
@@ -3968,7 +3996,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                             ? 'VIP: up to 4 variations'
                             : 'Up to 2 variations (VIP: 4)',
                     style: TextStyle(
-                      color: cs.onSurfaceVariant.withOpacity(0.7),
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.7),
                       fontSize: 12,
                     ),
                   ),
@@ -4004,7 +4032,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     );
   }
 
-  /// Duration chips. Cinemotion Pro uses 1–5s; other models use 5s steps.
+  /// Duration chips in 5s steps, up to the selected model's max.
   Widget _buildDurationChipSelector(ColorScheme cs, StateSetter setSheetState) {
     final maxDuration = _maxVideoGenDurationSeconds();
     final values = _allowedVideoGenDurationSeconds();
@@ -4033,7 +4061,34 @@ class _GenericToolPageState extends State<GenericToolPage>
           ],
         ),
         const SizedBox(height: 10),
-        SegmentedButton<int>(
+        if (values.length > 5)
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                for (final seconds in values)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: ChoiceChip(
+                      label: Text('${seconds}s'),
+                      selected: current == seconds,
+                      onSelected: (_) {
+                        setSheetState(() {
+                          setState(() {
+                            _advancedSettings = _advancedSettings.copyWith(
+                              videoDuration:
+                                  _clampVideoGenDurationSeconds(seconds),
+                            );
+                          });
+                        });
+                      },
+                    ),
+                  ),
+              ],
+            ),
+          )
+        else
+          SegmentedButton<int>(
           segments: values
               .map(
                 (v) => ButtonSegment<int>(
@@ -4058,7 +4113,7 @@ class _GenericToolPageState extends State<GenericToolPage>
         const SizedBox(height: 8),
         Row(
           children: [
-            Icon(LucideIcons.gem, size: 14, color: cs.primary.withOpacity(0.8)),
+            Icon(LucideIcons.gem, size: 14, color: cs.primary.withValues(alpha: 0.8)),
             const SizedBox(width: 6),
             Text(
               'Est. cost: ${_calculateTotalCost()} credits',
@@ -4108,10 +4163,10 @@ class _GenericToolPageState extends State<GenericToolPage>
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withOpacity(0.5),
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: cs.outlineVariant.withOpacity(0.2),
+          color: cs.outlineVariant.withValues(alpha: 0.2),
         ),
       ),
       child: Column(
@@ -4134,7 +4189,7 @@ class _GenericToolPageState extends State<GenericToolPage>
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: cs.primary.withOpacity(0.1),
+                  color: cs.primary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
@@ -4179,13 +4234,13 @@ class _GenericToolPageState extends State<GenericToolPage>
                         horizontal: 12, vertical: 10),
                     decoration: BoxDecoration(
                       color: isSelected
-                          ? cs.primary.withOpacity(0.12)
-                          : cs.surfaceContainerHigh.withOpacity(0.5),
+                          ? cs.primary.withValues(alpha: 0.12)
+                          : cs.surfaceContainerHigh.withValues(alpha: 0.5),
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
                         color: isSelected
-                            ? cs.primary.withOpacity(0.5)
-                            : cs.outlineVariant.withOpacity(0.15),
+                            ? cs.primary.withValues(alpha: 0.5)
+                            : cs.outlineVariant.withValues(alpha: 0.15),
                         width: isSelected ? 1.5 : 1,
                       ),
                     ),
@@ -4202,7 +4257,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                             border: Border.all(
                               color: isSelected
                                   ? cs.primary
-                                  : cs.outlineVariant.withOpacity(0.4),
+                                  : cs.outlineVariant.withValues(alpha: 0.4),
                               width: 2,
                             ),
                           ),
@@ -4233,7 +4288,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                                   description,
                                   style: TextStyle(
                                     fontSize: 11,
-                                    color: cs.onSurfaceVariant.withOpacity(0.6),
+                                    color: cs.onSurfaceVariant.withValues(alpha: 0.6),
                                   ),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
@@ -4415,7 +4470,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                       border: Border.all(
                         color: isSelected
                             ? cs.primary
-                            : cs.outlineVariant.withOpacity(0.3),
+                            : cs.outlineVariant.withValues(alpha: 0.3),
                         width: isSelected ? 2 : 1,
                       ),
                     ),
@@ -4472,7 +4527,7 @@ class _GenericToolPageState extends State<GenericToolPage>
         Text(
           'Choose the AI engine for this task',
           style: TextStyle(
-            color: cs.onSurfaceVariant.withOpacity(0.7),
+            color: cs.onSurfaceVariant.withValues(alpha: 0.7),
             fontSize: 12,
           ),
         ),
@@ -4535,19 +4590,19 @@ class _GenericToolPageState extends State<GenericToolPage>
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
           color: isSelected
-              ? cs.primary.withOpacity(0.12)
+              ? cs.primary.withValues(alpha: 0.12)
               : cs.surfaceContainerHigh,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: isSelected
-                ? cs.primary.withOpacity(0.5)
-                : cs.outlineVariant.withOpacity(0.2),
+                ? cs.primary.withValues(alpha: 0.5)
+                : cs.outlineVariant.withValues(alpha: 0.2),
             width: isSelected ? 1.5 : 1,
           ),
           boxShadow: isSelected
               ? [
                   BoxShadow(
-                    color: cs.primary.withOpacity(0.15),
+                    color: cs.primary.withValues(alpha: 0.15),
                     blurRadius: 8,
                     offset: const Offset(0, 2),
                   ),
@@ -4611,7 +4666,7 @@ class _GenericToolPageState extends State<GenericToolPage>
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: cs.onSurfaceVariant.withOpacity(0.8),
+                color: cs.onSurfaceVariant.withValues(alpha: 0.8),
                 fontSize: 10,
                 height: 1.2,
               ),
@@ -4628,7 +4683,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                   Text(
                     '$cost',
                     style: TextStyle(
-                      color: cs.onSurfaceVariant.withOpacity(0.5),
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.5),
                       fontSize: 11,
                       fontWeight: FontWeight.w500,
                       decoration: TextDecoration.lineThrough,
@@ -4648,7 +4703,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                     padding:
                         const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                     decoration: BoxDecoration(
-                      color: Colors.green.withOpacity(0.15),
+                      color: Colors.green.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
@@ -5204,13 +5259,13 @@ class _GenericToolPageState extends State<GenericToolPage>
                         horizontal: 14, vertical: 10),
                     decoration: BoxDecoration(
                       color: _isProcessingImage
-                          ? cs.primaryContainer.withOpacity(0.3)
-                          : cs.errorContainer.withOpacity(0.3),
+                          ? cs.primaryContainer.withValues(alpha: 0.3)
+                          : cs.errorContainer.withValues(alpha: 0.3),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
                         color: _isProcessingImage
-                            ? cs.primary.withOpacity(0.2)
-                            : cs.error.withOpacity(0.2),
+                            ? cs.primary.withValues(alpha: 0.2)
+                            : cs.error.withValues(alpha: 0.2),
                       ),
                     ),
                     child: Row(
@@ -5222,14 +5277,14 @@ class _GenericToolPageState extends State<GenericToolPage>
                             height: 16,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              color: cs.primary.withOpacity(0.8),
+                              color: cs.primary.withValues(alpha: 0.8),
                             ),
                           )
                         else
                           Icon(
                             LucideIcons.alertCircle,
                             size: 16,
-                            color: cs.error.withOpacity(0.8),
+                            color: cs.error.withValues(alpha: 0.8),
                           ),
                         const SizedBox(width: 8),
                         Flexible(
@@ -5239,8 +5294,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                                 : "Add ${missingInputs.join(' & ')} to continue",
                             style: TextStyle(
                               color: _isProcessingImage
-                                  ? cs.primary.withOpacity(0.9)
-                                  : cs.error.withOpacity(0.9),
+                                  ? cs.primary.withValues(alpha: 0.9)
+                                  : cs.error.withValues(alpha: 0.9),
                               fontSize: 13,
                               fontWeight: FontWeight.w500,
                             ),
@@ -5263,8 +5318,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                   colors: isEnabled
                       ? KalaColors.brandGradient
                       : [
-                          cs.onSurfaceVariant.withOpacity(0.4),
-                          cs.onSurfaceVariant.withOpacity(0.3)
+                          cs.onSurfaceVariant.withValues(alpha: 0.4),
+                          cs.onSurfaceVariant.withValues(alpha: 0.3)
                         ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
@@ -5272,12 +5327,12 @@ class _GenericToolPageState extends State<GenericToolPage>
                 boxShadow: isEnabled
                     ? [
                         BoxShadow(
-                          color: KalaColors.purple.withOpacity(0.4),
+                          color: KalaColors.purple.withValues(alpha: 0.4),
                           blurRadius: 20,
                           offset: const Offset(0, 6),
                         ),
                         BoxShadow(
-                          color: KalaColors.cyan.withOpacity(0.2),
+                          color: KalaColors.cyan.withValues(alpha: 0.2),
                           blurRadius: 28,
                           offset: const Offset(0, 10),
                         ),
@@ -5317,7 +5372,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                           margin: const EdgeInsets.symmetric(horizontal: 14),
                           height: 24,
                           width: 1,
-                          color: Colors.white.withOpacity(0.3),
+                          color: Colors.white.withValues(alpha: 0.3),
                         ),
 
                         // Right: Cost display
@@ -5325,7 +5380,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                           padding: const EdgeInsets.symmetric(
                               horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
+                            color: Colors.white.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Row(
@@ -5334,18 +5389,18 @@ class _GenericToolPageState extends State<GenericToolPage>
                               Icon(
                                 LucideIcons.gem,
                                 size: 16,
-                                color: Colors.white.withOpacity(0.9),
+                                color: Colors.white.withValues(alpha: 0.9),
                               ),
                               const SizedBox(width: 6),
                               if (offer > 0) ...[
                                 Text(
                                   "$baseTotal",
                                   style: TextStyle(
-                                    color: Colors.white.withOpacity(0.6),
+                                    color: Colors.white.withValues(alpha: 0.6),
                                     fontSize: 14,
                                     decoration: TextDecoration.lineThrough,
                                     decorationColor:
-                                        Colors.white.withOpacity(0.6),
+                                        Colors.white.withValues(alpha: 0.6),
                                   ),
                                 ),
                                 const SizedBox(width: 4),
@@ -5366,7 +5421,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                                     vertical: 2,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: Colors.greenAccent.withOpacity(0.25),
+                                    color: Colors.greenAccent.withValues(alpha: 0.25),
                                     borderRadius: BorderRadius.circular(4),
                                   ),
                                   child: Text(
@@ -5402,13 +5457,13 @@ class _GenericToolPageState extends State<GenericToolPage>
                   Icon(
                     LucideIcons.maximize2,
                     size: 14,
-                    color: cs.primary.withOpacity(0.7),
+                    color: cs.primary.withValues(alpha: 0.7),
                   ),
                   const SizedBox(width: 6),
                   Text(
                     "${_scaleFactor}x upscale (+$_currentModelUpscaleCost credits)",
                     style: TextStyle(
-                      color: cs.onSurfaceVariant.withOpacity(0.7),
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.7),
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
                     ),
@@ -5436,7 +5491,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             Container(
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
-                color: cs.primary.withOpacity(0.10),
+                color: cs.primary.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(
@@ -5475,10 +5530,10 @@ class _GenericToolPageState extends State<GenericToolPage>
                 padding:
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(
-                  color: cs.primaryContainer.withOpacity(0.28),
+                  color: cs.primaryContainer.withValues(alpha: 0.28),
                   borderRadius: BorderRadius.circular(AppStyles.radiusFull),
                   border: Border.all(
-                    color: cs.primary.withOpacity(0.18),
+                    color: cs.primary.withValues(alpha: 0.18),
                   ),
                 ),
                 child: Row(
@@ -6110,8 +6165,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
                             color: _requiresMask && !hasMask
-                                ? cs.error.withOpacity(0.5)
-                                : cs.primary.withOpacity(0.3),
+                                ? cs.error.withValues(alpha: 0.5)
+                                : cs.primary.withValues(alpha: 0.3),
                             width: 1.5,
                           ),
                         ),
@@ -6128,7 +6183,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                               if (hasMask)
                                 ColorFiltered(
                                   colorFilter: ColorFilter.mode(
-                                    Colors.red.withOpacity(0.3),
+                                    Colors.red.withValues(alpha: 0.3),
                                     BlendMode.srcATop,
                                   ),
                                   child: Image.memory(
@@ -6168,7 +6223,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                           padding: const EdgeInsets.symmetric(
                               horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
-                            color: cs.surface.withOpacity(0.9),
+                            color: cs.surface.withValues(alpha: 0.9),
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
@@ -6191,8 +6246,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                                 horizontal: 4, vertical: 2),
                             decoration: BoxDecoration(
                               color: (hasMask || hasOutpaintConfig)
-                                  ? Colors.green.withOpacity(0.9)
-                                  : cs.error.withOpacity(0.9),
+                                  ? Colors.green.withValues(alpha: 0.9)
+                                  : cs.error.withValues(alpha: 0.9),
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Icon(
@@ -6217,8 +6272,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                       padding: const EdgeInsets.symmetric(vertical: 4),
                       decoration: BoxDecoration(
                         color: (hasMask || hasOutpaintConfig)
-                            ? cs.primaryContainer.withOpacity(0.5)
-                            : cs.errorContainer.withOpacity(0.5),
+                            ? cs.primaryContainer.withValues(alpha: 0.5)
+                            : cs.errorContainer.withValues(alpha: 0.5),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Row(
@@ -6315,9 +6370,9 @@ class _GenericToolPageState extends State<GenericToolPage>
           child: Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: cs.surfaceContainerHighest.withOpacity(0.35),
+              color: cs.surfaceContainerHighest.withValues(alpha: 0.35),
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: cs.outlineVariant.withOpacity(0.35)),
+              border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.35)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -6375,7 +6430,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                                 decoration: BoxDecoration(
                                   borderRadius: BorderRadius.circular(12),
                                   border: Border.all(
-                                      color: cs.primary.withOpacity(0.35),
+                                      color: cs.primary.withValues(alpha: 0.35),
                                       width: 1.5),
                                 ),
                                 child: ClipRRect(
@@ -6392,7 +6447,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 5, vertical: 2),
                                 decoration: BoxDecoration(
-                                  color: cs.surface.withOpacity(0.92),
+                                  color: cs.surface.withValues(alpha: 0.92),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: Text(
@@ -6426,7 +6481,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                         );
                       }
                       return Material(
-                        color: cs.surfaceContainerHigh.withOpacity(0.6),
+                        color: cs.surfaceContainerHigh.withValues(alpha: 0.6),
                         borderRadius: BorderRadius.circular(12),
                         child: InkWell(
                           onTap: () => _pickMoreForBulkTask(taskIdx),
@@ -6470,7 +6525,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     if (slotIndex < 0 || slotIndex >= job.length) return;
     showDialog(
       context: context,
-      barrierColor: Colors.black.withOpacity(0.9),
+      barrierColor: Colors.black.withValues(alpha: 0.9),
       barrierDismissible: false,
       builder: (context) => GestureDetector(
         onTap: () => Navigator.of(context).pop(),
@@ -6499,7 +6554,7 @@ class _GenericToolPageState extends State<GenericToolPage>
 
     showDialog(
       context: context,
-      barrierColor: Colors.black.withOpacity(0.9),
+      barrierColor: Colors.black.withValues(alpha: 0.9),
       barrierDismissible: false,
       builder: (context) => GestureDetector(
         onTap: () => Navigator.of(context).pop(),
@@ -6618,6 +6673,9 @@ class _GenericToolPageState extends State<GenericToolPage>
       case "seed_input":
         return _buildSeedInput(ref);
       case "aspect_ratio":
+        if (_isVideoTool && !_isVideoUpscalerTool) {
+          return const SizedBox.shrink();
+        }
         return _buildAspectRatio(ref);
       case "color_picker":
         return _buildColorPicker(ref);
@@ -6702,7 +6760,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                   center: const Alignment(0, -0.2),
                   radius: 1.2,
                   colors: [
-                    KalaColors.purple.withOpacity(0.10),
+                    KalaColors.purple.withValues(alpha: 0.10),
                     Colors.transparent,
                   ],
                 ),
@@ -6718,18 +6776,18 @@ class _GenericToolPageState extends State<GenericToolPage>
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                cs.surfaceContainerHighest.withOpacity(0.35),
-                cs.surfaceContainerHigh.withOpacity(0.18),
+                cs.surfaceContainerHighest.withValues(alpha: 0.35),
+                cs.surfaceContainerHigh.withValues(alpha: 0.18),
               ],
             ),
             borderRadius: BorderRadius.circular(AppStyles.radiusLg),
             border: Border.all(
-              color: cs.outlineVariant.withOpacity(0.22),
+              color: cs.outlineVariant.withValues(alpha: 0.22),
               width: 1,
             ),
             boxShadow: [
               BoxShadow(
-                color: KalaColors.purple.withOpacity(0.06),
+                color: KalaColors.purple.withValues(alpha: 0.06),
                 blurRadius: 18,
                 offset: const Offset(0, 6),
               ),
@@ -6798,7 +6856,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                           ? hintLabel
                           : null,
                       hintStyle: TextStyle(
-                        color: cs.onSurfaceVariant.withOpacity(0.55),
+                        color: cs.onSurfaceVariant.withValues(alpha: 0.55),
                         fontSize: 15,
                       ),
                       filled: false,
@@ -6811,7 +6869,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                               icon: Icon(
                                 LucideIcons.x,
                                 size: 16,
-                                color: cs.onSurfaceVariant.withOpacity(0.6),
+                                color: cs.onSurfaceVariant.withValues(alpha: 0.6),
                               ),
                               onPressed: () {
                                 _promptController.clear();
@@ -6834,7 +6892,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                             examples: hintExamples,
                             active: showStreamingHint,
                             textStyle: TextStyle(
-                              color: cs.onSurfaceVariant.withOpacity(0.55),
+                              color: cs.onSurfaceVariant.withValues(alpha: 0.55),
                               fontSize: 15,
                               height: 1.45,
                             ),
@@ -6849,7 +6907,7 @@ class _GenericToolPageState extends State<GenericToolPage>
               const SizedBox(height: 6),
               Container(
                 height: 1,
-                color: cs.outlineVariant.withOpacity(0.15),
+                color: cs.outlineVariant.withValues(alpha: 0.15),
               ),
               const SizedBox(height: 8),
 
@@ -6923,7 +6981,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                     child: Text(
                       '$promptLength',
                       style: TextStyle(
-                        color: cs.onSurfaceVariant.withOpacity(0.55),
+                        color: cs.onSurfaceVariant.withValues(alpha: 0.55),
                         fontSize: 11,
                         fontWeight: FontWeight.w500,
                       ),
@@ -6975,19 +7033,19 @@ class _GenericToolPageState extends State<GenericToolPage>
         height: 62,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: cs.surfaceContainerHigh.withOpacity(0.35),
+          color: cs.surfaceContainerHigh.withValues(alpha: 0.35),
           borderRadius: BorderRadius.circular(AppStyles.radiusMd),
-          border: Border.all(color: cs.outlineVariant.withOpacity(0.28)),
+          border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.28)),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 22, color: cs.primary.withOpacity(0.65)),
+            Icon(icon, size: 22, color: cs.primary.withValues(alpha: 0.65)),
             const SizedBox(width: 10),
             Text(
               line,
               style: TextStyle(
-                color: cs.onSurfaceVariant.withOpacity(0.9),
+                color: cs.onSurfaceVariant.withValues(alpha: 0.9),
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
               ),
@@ -7029,7 +7087,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                   center: const Alignment(0, -0.2),
                   radius: 1.2,
                   colors: [
-                    KalaColors.purple.withOpacity(0.10),
+                    KalaColors.purple.withValues(alpha: 0.10),
                     Colors.transparent,
                   ],
                 ),
@@ -7045,18 +7103,18 @@ class _GenericToolPageState extends State<GenericToolPage>
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                cs.surfaceContainerHighest.withOpacity(0.35),
-                cs.surfaceContainerHigh.withOpacity(0.18),
+                cs.surfaceContainerHighest.withValues(alpha: 0.35),
+                cs.surfaceContainerHigh.withValues(alpha: 0.18),
               ],
             ),
             borderRadius: BorderRadius.circular(AppStyles.radiusLg),
             border: Border.all(
-              color: cs.outlineVariant.withOpacity(0.22),
+              color: cs.outlineVariant.withValues(alpha: 0.22),
               width: 1,
             ),
             boxShadow: [
               BoxShadow(
-                color: KalaColors.purple.withOpacity(0.06),
+                color: KalaColors.purple.withValues(alpha: 0.06),
                 blurRadius: 18,
                 offset: const Offset(0, 6),
               ),
@@ -7095,7 +7153,7 @@ class _GenericToolPageState extends State<GenericToolPage>
               const SizedBox(height: 4),
               Container(
                 height: 1,
-                color: cs.outlineVariant.withOpacity(0.15),
+                color: cs.outlineVariant.withValues(alpha: 0.15),
               ),
               const SizedBox(height: 8),
               Row(
@@ -7362,7 +7420,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     if (!mounted) return;
     if (bytes == null || bytes.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
+        const SnackBar(
           content: Text(
             kIsWeb
                 ? 'Add an image to auto-fill the prompt.'
@@ -7499,18 +7557,18 @@ class _GenericToolPageState extends State<GenericToolPage>
       child: DottedRoundedContainer(
         width: 62,
         height: 62,
-        color: cs.outlineVariant.withOpacity(0.5),
+        color: cs.outlineVariant.withValues(alpha: 0.5),
         radius: AppStyles.radiusMd,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(LucideIcons.plus,
-                size: 20, color: cs.onSurfaceVariant.withOpacity(0.85)),
+                size: 20, color: cs.onSurfaceVariant.withValues(alpha: 0.85)),
             const SizedBox(height: 2),
             Text(
               'Task',
               style: TextStyle(
-                color: cs.onSurfaceVariant.withOpacity(0.75),
+                color: cs.onSurfaceVariant.withValues(alpha: 0.75),
                 fontSize: 10,
                 fontWeight: FontWeight.w500,
               ),
@@ -7555,7 +7613,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     if (useVideoThumb) {
       return _BulkVideoStripThumb(
         videoPath: path,
-        placeholderColor: cs.onSurfaceVariant.withOpacity(0.55),
+        placeholderColor: cs.onSurfaceVariant.withValues(alpha: 0.55),
       );
     }
 
@@ -7589,7 +7647,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             if (maskOv != null)
               ColorFiltered(
                 colorFilter: ColorFilter.mode(
-                  Colors.red.withOpacity(0.32),
+                  Colors.red.withValues(alpha: 0.32),
                   BlendMode.srcATop,
                 ),
                 child: Image.memory(
@@ -7612,7 +7670,7 @@ class _GenericToolPageState extends State<GenericToolPage>
           if (maskOv != null)
             ColorFiltered(
               colorFilter: ColorFilter.mode(
-                Colors.red.withOpacity(0.32),
+                Colors.red.withValues(alpha: 0.32),
                 BlendMode.srcATop,
               ),
               child: Image.memory(
@@ -7629,7 +7687,7 @@ class _GenericToolPageState extends State<GenericToolPage>
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Icon(fallbackIcon,
-            size: 20, color: cs.onSurfaceVariant.withOpacity(0.85)),
+            size: 20, color: cs.onSurfaceVariant.withValues(alpha: 0.85)),
         const SizedBox(height: 4),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -7638,7 +7696,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: cs.onSurfaceVariant.withOpacity(0.85),
+              color: cs.onSurfaceVariant.withValues(alpha: 0.85),
               fontSize: 9,
               fontWeight: FontWeight.w500,
             ),
@@ -7701,9 +7759,9 @@ class _GenericToolPageState extends State<GenericToolPage>
             width: tileWidth,
             height: 62,
             decoration: BoxDecoration(
-              color: cs.surfaceContainerHigh.withOpacity(0.55),
+              color: cs.surfaceContainerHigh.withValues(alpha: 0.55),
               borderRadius: BorderRadius.circular(AppStyles.radiusMd),
-              border: Border.all(color: cs.outlineVariant.withOpacity(0.25)),
+              border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.25)),
             ),
             clipBehavior: Clip.antiAlias,
             child: linkedCineKeyframes && a.thumbBytes != null
@@ -7718,7 +7776,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                       ),
                       Container(
                         width: 12,
-                        color: Colors.black.withOpacity(0.42),
+                        color: Colors.black.withValues(alpha: 0.42),
                         alignment: Alignment.center,
                         child: const Icon(
                           LucideIcons.moveRight,
@@ -7744,7 +7802,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             Positioned.fill(
               child: Container(
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.18),
+                  color: Colors.black.withValues(alpha: 0.18),
                   borderRadius: BorderRadius.circular(AppStyles.radiusMd),
                 ),
                 alignment: Alignment.center,
@@ -7770,7 +7828,7 @@ class _GenericToolPageState extends State<GenericToolPage>
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.55),
+                  color: Colors.black.withValues(alpha: 0.55),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
@@ -7797,10 +7855,10 @@ class _GenericToolPageState extends State<GenericToolPage>
                   color: cs.surface,
                   shape: BoxShape.circle,
                   border: Border.all(
-                      color: cs.outlineVariant.withOpacity(0.4), width: 1),
+                      color: cs.outlineVariant.withValues(alpha: 0.4), width: 1),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.12),
+                      color: Colors.black.withValues(alpha: 0.12),
                       blurRadius: 4,
                       offset: const Offset(0, 1),
                     ),
@@ -7844,7 +7902,7 @@ class _GenericToolPageState extends State<GenericToolPage>
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
         decoration: BoxDecoration(
-          color: (good ? cs.primary : cs.error).withOpacity(0.9),
+          color: (good ? cs.primary : cs.error).withValues(alpha: 0.9),
           borderRadius: BorderRadius.circular(4),
         ),
         child: Text(
@@ -7983,7 +8041,7 @@ class _GenericToolPageState extends State<GenericToolPage>
               borderRadius:
                   const BorderRadius.vertical(top: Radius.circular(24)),
               border: Border(
-                top: BorderSide(color: cs.outlineVariant.withOpacity(0.2)),
+                top: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.2)),
               ),
             ),
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
@@ -7996,7 +8054,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                   height: 4,
                   margin: const EdgeInsets.only(bottom: 12),
                   decoration: BoxDecoration(
-                    color: cs.outlineVariant.withOpacity(0.5),
+                    color: cs.outlineVariant.withValues(alpha: 0.5),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -8128,7 +8186,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 10),
                     child: Divider(
-                        color: cs.outlineVariant.withOpacity(0.25), height: 1),
+                        color: cs.outlineVariant.withValues(alpha: 0.25), height: 1),
                   ),
                 // Secondary list: video when tool also has image inputs (big row is image-only).
                 if (hasVideo &&
@@ -8361,9 +8419,9 @@ class _GenericToolPageState extends State<GenericToolPage>
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
         decoration: BoxDecoration(
-          color: cs.surfaceContainerHigh.withOpacity(0.5),
+          color: cs.surfaceContainerHigh.withValues(alpha: 0.5),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: cs.outlineVariant.withOpacity(0.2)),
+          border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.2)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -8371,7 +8429,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             Icon(
               bulk ? LucideIcons.layers : LucideIcons.image,
               size: 13,
-              color: cs.onSurfaceVariant.withOpacity(0.88),
+              color: cs.onSurfaceVariant.withValues(alpha: 0.88),
             ),
             const SizedBox(width: 4),
             Text(
@@ -8380,7 +8438,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
                 letterSpacing: -0.2,
-                color: cs.onSurface.withOpacity(0.78),
+                color: cs.onSurface.withValues(alpha: 0.78),
               ),
             ),
           ],
@@ -8436,7 +8494,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                 height: 4,
                 margin: const EdgeInsets.only(bottom: 12),
                 decoration: BoxDecoration(
-                  color: cs.outlineVariant.withOpacity(0.5),
+                  color: cs.outlineVariant.withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -8907,9 +8965,9 @@ class _GenericToolPageState extends State<GenericToolPage>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: cs.primary.withOpacity(0.14),
+        color: cs.primary.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(AppStyles.radiusFull),
-        border: Border.all(color: cs.primary.withOpacity(0.3)),
+        border: Border.all(color: cs.primary.withValues(alpha: 0.3)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -8966,7 +9024,7 @@ class _GenericToolPageState extends State<GenericToolPage>
         key: _textInputKey,
       ));
     }
-    if (hasType('aspect_ratio')) {
+    if (hasType('aspect_ratio') && !(_isVideoTool && !_isVideoUpscalerTool)) {
       shortcuts.add(_ShortcutEntry(
         id: 'ratio',
         icon: LucideIcons.maximize,
@@ -9041,9 +9099,9 @@ class _GenericToolPageState extends State<GenericToolPage>
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
           decoration: BoxDecoration(
-            color: cs.surfaceContainerHigh.withOpacity(0.55),
+            color: cs.surfaceContainerHigh.withValues(alpha: 0.55),
             borderRadius: BorderRadius.circular(AppStyles.radiusFull),
-            border: Border.all(color: cs.outlineVariant.withOpacity(0.22)),
+            border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.22)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -9055,7 +9113,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                     width: 1,
                     height: 18,
                     margin: const EdgeInsets.symmetric(horizontal: 2),
-                    color: cs.outlineVariant.withOpacity(0.2),
+                    color: cs.outlineVariant.withValues(alpha: 0.2),
                   ),
               ],
             ],
@@ -9087,7 +9145,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             entry.icon,
             size: 16,
             color:
-                isActive ? Colors.white : cs.onSurfaceVariant.withOpacity(0.85),
+                isActive ? Colors.white : cs.onSurfaceVariant.withValues(alpha: 0.85),
           ),
         ),
       ),
@@ -9161,7 +9219,7 @@ class _GenericToolPageState extends State<GenericToolPage>
           Row(
             children: [
               Icon(LucideIcons.mic,
-                  size: 14, color: cs.onSurfaceVariant.withOpacity(0.8)),
+                  size: 14, color: cs.onSurfaceVariant.withValues(alpha: 0.8)),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
@@ -9177,7 +9235,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                 Text(
                   'Required',
                   style: TextStyle(
-                    color: cs.error.withOpacity(0.8),
+                    color: cs.error.withValues(alpha: 0.8),
                     fontSize: 11,
                     fontWeight: FontWeight.w500,
                   ),
@@ -9189,9 +9247,9 @@ class _GenericToolPageState extends State<GenericToolPage>
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
-                color: cs.primaryContainer.withOpacity(0.35),
+                color: cs.primaryContainer.withValues(alpha: 0.35),
                 borderRadius: BorderRadius.circular(AppStyles.radiusMd),
-                border: Border.all(color: cs.primary.withOpacity(0.25)),
+                border: Border.all(color: cs.primary.withValues(alpha: 0.25)),
               ),
               child: Row(
                 children: [
@@ -9215,7 +9273,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                         Text(
                           '$sizeKb KB',
                           style: TextStyle(
-                            color: cs.onSurfaceVariant.withOpacity(0.7),
+                            color: cs.onSurfaceVariant.withValues(alpha: 0.7),
                             fontSize: 11,
                           ),
                         ),
@@ -9225,7 +9283,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                   IconButton(
                     tooltip: 'Remove',
                     icon: Icon(LucideIcons.trash2,
-                        size: 16, color: cs.error.withOpacity(0.8)),
+                        size: 16, color: cs.error.withValues(alpha: 0.8)),
                     onPressed: () {
                       setState(() {
                         _inputs.remove(ref);
@@ -9333,7 +9391,7 @@ class _GenericToolPageState extends State<GenericToolPage>
           Row(
             children: [
               Icon(LucideIcons.fileUp,
-                  size: 14, color: cs.onSurfaceVariant.withOpacity(0.8)),
+                  size: 14, color: cs.onSurfaceVariant.withValues(alpha: 0.8)),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
@@ -9349,7 +9407,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                 Text(
                   'Required',
                   style: TextStyle(
-                    color: cs.error.withOpacity(0.8),
+                    color: cs.error.withValues(alpha: 0.8),
                     fontSize: 11,
                     fontWeight: FontWeight.w500,
                   ),
@@ -9361,9 +9419,9 @@ class _GenericToolPageState extends State<GenericToolPage>
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: cs.surfaceContainerHigh.withOpacity(0.6),
+                color: cs.surfaceContainerHigh.withValues(alpha: 0.6),
                 borderRadius: BorderRadius.circular(AppStyles.radiusMd),
-                border: Border.all(color: cs.outlineVariant.withOpacity(0.3)),
+                border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.3)),
               ),
               child: Row(
                 children: [
@@ -9387,7 +9445,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                         Text(
                           '$sizeKb KB${mime != null ? ' · $mime' : ''}',
                           style: TextStyle(
-                            color: cs.onSurfaceVariant.withOpacity(0.7),
+                            color: cs.onSurfaceVariant.withValues(alpha: 0.7),
                             fontSize: 11,
                           ),
                         ),
@@ -9397,7 +9455,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                   IconButton(
                     tooltip: 'Remove',
                     icon: Icon(LucideIcons.trash2,
-                        size: 16, color: cs.error.withOpacity(0.8)),
+                        size: 16, color: cs.error.withValues(alpha: 0.8)),
                     onPressed: () {
                       setState(() {
                         _inputs.remove(ref);
@@ -9540,11 +9598,11 @@ class _GenericToolPageState extends State<GenericToolPage>
               isDense: true,
               hintText: placeholder,
               hintStyle: TextStyle(
-                color: cs.onSurfaceVariant.withOpacity(0.55),
+                color: cs.onSurfaceVariant.withValues(alpha: 0.55),
                 fontSize: 14,
               ),
               filled: true,
-              fillColor: cs.surfaceContainerHigh.withOpacity(0.45),
+              fillColor: cs.surfaceContainerHigh.withValues(alpha: 0.45),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(AppStyles.radiusMd),
                 borderSide: BorderSide.none,
@@ -9552,12 +9610,12 @@ class _GenericToolPageState extends State<GenericToolPage>
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(AppStyles.radiusMd),
                 borderSide:
-                    BorderSide(color: cs.outlineVariant.withOpacity(0.22)),
+                    BorderSide(color: cs.outlineVariant.withValues(alpha: 0.22)),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(AppStyles.radiusMd),
                 borderSide:
-                    BorderSide(color: cs.primary.withOpacity(0.5), width: 1.5),
+                    BorderSide(color: cs.primary.withValues(alpha: 0.5), width: 1.5),
               ),
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -9612,9 +9670,9 @@ class _GenericToolPageState extends State<GenericToolPage>
             constraints: const BoxConstraints(minWidth: 60),
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
-              color: cs.surfaceContainerHigh.withOpacity(0.5),
+              color: cs.surfaceContainerHigh.withValues(alpha: 0.5),
               borderRadius: BorderRadius.circular(AppStyles.radiusMd),
-              border: Border.all(color: cs.outlineVariant.withOpacity(0.2)),
+              border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.2)),
             ),
             child: Text(
               isInt
@@ -9650,8 +9708,8 @@ class _GenericToolPageState extends State<GenericToolPage>
         height: 30,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: cs.surfaceContainerHigh.withOpacity(0.7),
-          border: Border.all(color: cs.outlineVariant.withOpacity(0.25)),
+          color: cs.surfaceContainerHigh.withValues(alpha: 0.7),
+          border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.25)),
         ),
         child: Icon(icon, size: 14, color: cs.onSurfaceVariant),
       ),
@@ -9677,7 +9735,7 @@ class _GenericToolPageState extends State<GenericToolPage>
       child: Row(
         children: [
           Icon(LucideIcons.sprout,
-              size: 14, color: cs.onSurfaceVariant.withOpacity(0.8)),
+              size: 14, color: cs.onSurfaceVariant.withValues(alpha: 0.8)),
           const SizedBox(width: 6),
           Expanded(
             child: Text(
@@ -9705,7 +9763,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                 contentPadding:
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                 filled: true,
-                fillColor: cs.surfaceContainerHigh.withOpacity(0.5),
+                fillColor: cs.surfaceContainerHigh.withValues(alpha: 0.5),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(AppStyles.radiusMd),
                   borderSide: BorderSide.none,
@@ -9733,7 +9791,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             icon: Icon(
               locked ? LucideIcons.lock : LucideIcons.unlock,
               size: 16,
-              color: locked ? cs.primary : cs.onSurfaceVariant.withOpacity(0.7),
+              color: locked ? cs.primary : cs.onSurfaceVariant.withValues(alpha: 0.7),
             ),
             onPressed: () {
               setState(() => _inputs['${ref}_locked'] = !locked);
@@ -9910,7 +9968,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                 Text(
                   hex.toUpperCase(),
                   style: TextStyle(
-                    color: cs.onSurfaceVariant.withOpacity(0.75),
+                    color: cs.onSurfaceVariant.withValues(alpha: 0.75),
                     fontSize: 11.5,
                     fontFeatures: const [FontFeature.tabularFigures()],
                   ),
@@ -9927,7 +9985,7 @@ class _GenericToolPageState extends State<GenericToolPage>
               decoration: BoxDecoration(
                 color: color,
                 borderRadius: BorderRadius.circular(AppStyles.radiusMd),
-                border: Border.all(color: cs.outlineVariant.withOpacity(0.35)),
+                border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.35)),
               ),
             ),
           ),
@@ -10005,7 +10063,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                           borderRadius:
                               BorderRadius.circular(AppStyles.radiusMd),
                           border: Border.all(
-                              color: cs.outlineVariant.withOpacity(0.3)),
+                              color: cs.outlineVariant.withValues(alpha: 0.3)),
                         ),
                       ),
                     );
@@ -10020,7 +10078,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   String _colorToHex(Color c) {
-    final value = c.value & 0xFFFFFF;
+    final value = c.toARGB32() & 0xFFFFFF;
     return '#${value.toRadixString(16).padLeft(6, '0').toUpperCase()}';
   }
 
@@ -10062,7 +10120,7 @@ class _GenericToolPageState extends State<GenericToolPage>
               Text(
                 '${selected.length}${maxSel != null ? " / $maxSel" : ""}',
                 style: TextStyle(
-                  color: cs.onSurfaceVariant.withOpacity(0.7),
+                  color: cs.onSurfaceVariant.withValues(alpha: 0.7),
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
                 ),
@@ -10096,13 +10154,13 @@ class _GenericToolPageState extends State<GenericToolPage>
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                   decoration: BoxDecoration(
                     color: isOn
-                        ? cs.primary.withOpacity(0.14)
-                        : cs.surfaceContainerHigh.withOpacity(0.5),
+                        ? cs.primary.withValues(alpha: 0.14)
+                        : cs.surfaceContainerHigh.withValues(alpha: 0.5),
                     borderRadius: BorderRadius.circular(AppStyles.radiusFull),
                     border: Border.all(
                       color: isOn
-                          ? cs.primary.withOpacity(0.55)
-                          : cs.outlineVariant.withOpacity(0.25),
+                          ? cs.primary.withValues(alpha: 0.55)
+                          : cs.outlineVariant.withValues(alpha: 0.25),
                       width: isOn ? 1.5 : 1,
                     ),
                   ),
@@ -10114,7 +10172,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                         size: 12,
                         color: isOn
                             ? cs.primary
-                            : cs.onSurfaceVariant.withOpacity(0.7),
+                            : cs.onSurfaceVariant.withValues(alpha: 0.7),
                       ),
                       const SizedBox(width: 5),
                       Text(
@@ -10122,7 +10180,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                         style: TextStyle(
                           color: isOn
                               ? cs.primary
-                              : cs.onSurfaceVariant.withOpacity(0.9),
+                              : cs.onSurfaceVariant.withValues(alpha: 0.9),
                           fontSize: 12.5,
                           fontWeight: isOn ? FontWeight.w600 : FontWeight.w500,
                         ),
@@ -10186,9 +10244,9 @@ class _GenericToolPageState extends State<GenericToolPage>
           SliderTheme(
             data: SliderTheme.of(context).copyWith(
               activeTrackColor: cs.primary,
-              inactiveTrackColor: cs.outlineVariant.withOpacity(0.25),
+              inactiveTrackColor: cs.outlineVariant.withValues(alpha: 0.25),
               thumbColor: cs.primary,
-              overlayColor: cs.primary.withOpacity(0.12),
+              overlayColor: cs.primary.withValues(alpha: 0.12),
               trackHeight: 4,
               rangeThumbShape:
                   const RoundRangeSliderThumbShape(enabledThumbRadius: 8),
@@ -10240,9 +10298,9 @@ class _GenericToolPageState extends State<GenericToolPage>
       margin: const EdgeInsets.symmetric(vertical: 6),
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: BoxDecoration(
-        color: tint.withOpacity(0.08),
+        color: tint.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(AppStyles.radiusLg),
-        border: Border.all(color: tint.withOpacity(0.28)),
+        border: Border.all(color: tint.withValues(alpha: 0.28)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -10268,7 +10326,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                   Text(
                     body,
                     style: TextStyle(
-                      color: cs.onSurfaceVariant.withOpacity(0.85),
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.85),
                       fontSize: 12.5,
                       height: 1.35,
                     ),
@@ -10306,7 +10364,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             Text(
               subtitle,
               style: TextStyle(
-                color: cs.onSurfaceVariant.withOpacity(0.65),
+                color: cs.onSurfaceVariant.withValues(alpha: 0.65),
                 fontSize: 12,
               ),
             ),
@@ -10365,13 +10423,13 @@ class _GenericToolPageState extends State<GenericToolPage>
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [
-                        KalaColors.purple.withOpacity(0.15),
-                        KalaColors.magenta.withOpacity(0.15),
+                        KalaColors.purple.withValues(alpha: 0.15),
+                        KalaColors.magenta.withValues(alpha: 0.15),
                       ],
                     ),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: KalaColors.purple.withOpacity(0.3),
+                      color: KalaColors.purple.withValues(alpha: 0.3),
                     ),
                   ),
                   child: const Row(
@@ -10404,10 +10462,10 @@ class _GenericToolPageState extends State<GenericToolPage>
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: cs.primaryContainer.withOpacity(0.3),
+                color: cs.primaryContainer.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
-                  color: cs.primary.withOpacity(0.3),
+                  color: cs.primary.withValues(alpha: 0.3),
                 ),
               ),
               child: Row(
@@ -10460,11 +10518,11 @@ class _GenericToolPageState extends State<GenericToolPage>
             decoration: InputDecoration(
               hintText: 'Describe what you want to create...',
               hintStyle: TextStyle(
-                color: cs.onSurfaceVariant.withOpacity(0.5),
+                color: cs.onSurfaceVariant.withValues(alpha: 0.5),
                 fontSize: 15,
               ),
               filled: true,
-              fillColor: cs.surfaceContainerHigh.withOpacity(0.5),
+              fillColor: cs.surfaceContainerHigh.withValues(alpha: 0.5),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
                 borderSide: BorderSide.none,
@@ -10472,14 +10530,14 @@ class _GenericToolPageState extends State<GenericToolPage>
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
                 borderSide: BorderSide(
-                  color: cs.outlineVariant.withOpacity(0.2),
+                  color: cs.outlineVariant.withValues(alpha: 0.2),
                   width: 1,
                 ),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
                 borderSide: BorderSide(
-                  color: cs.primary.withOpacity(0.5),
+                  color: cs.primary.withValues(alpha: 0.5),
                   width: 1.5,
                 ),
               ),
@@ -10492,7 +10550,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                       icon: Icon(
                         LucideIcons.x,
                         size: 18,
-                        color: cs.onSurfaceVariant.withOpacity(0.6),
+                        color: cs.onSurfaceVariant.withValues(alpha: 0.6),
                       ),
                       onPressed: () {
                         _promptController.clear();
@@ -10522,7 +10580,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                 child: Text(
                   'e.g. "Anime portrait, cinematic lighting, dramatic pose"',
                   style: TextStyle(
-                    color: cs.onSurfaceVariant.withOpacity(0.5),
+                    color: cs.onSurfaceVariant.withValues(alpha: 0.5),
                     fontSize: 12,
                     fontStyle: FontStyle.italic,
                   ),
@@ -10542,7 +10600,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                   child: Text(
                     '$promptLength',
                     style: TextStyle(
-                      color: cs.onSurfaceVariant.withOpacity(0.6),
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.6),
                       fontSize: 11,
                       fontWeight: FontWeight.w500,
                     ),
@@ -10568,10 +10626,10 @@ class _GenericToolPageState extends State<GenericToolPage>
 
     return Container(
       decoration: BoxDecoration(
-        color: cs.surfaceContainerHigh.withOpacity(0.3),
+        color: cs.surfaceContainerHigh.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: cs.outlineVariant.withOpacity(0.15),
+          color: cs.outlineVariant.withValues(alpha: 0.15),
         ),
       ),
       child: Column(
@@ -10582,8 +10640,8 @@ class _GenericToolPageState extends State<GenericToolPage>
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  KalaColors.purple.withOpacity(0.08),
-                  KalaColors.magenta.withOpacity(0.05),
+                  KalaColors.purple.withValues(alpha: 0.08),
+                  KalaColors.magenta.withValues(alpha: 0.05),
                 ],
               ),
               borderRadius: const BorderRadius.vertical(
@@ -10610,7 +10668,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                       padding: const EdgeInsets.symmetric(
                           horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
-                        color: cs.primary.withOpacity(0.15),
+                        color: cs.primary.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Row(
@@ -10645,13 +10703,13 @@ class _GenericToolPageState extends State<GenericToolPage>
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
-                          KalaColors.purple.withOpacity(0.15),
-                          KalaColors.magenta.withOpacity(0.15),
+                          KalaColors.purple.withValues(alpha: 0.15),
+                          KalaColors.magenta.withValues(alpha: 0.15),
                         ],
                       ),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: KalaColors.purple.withOpacity(0.3),
+                        color: KalaColors.purple.withValues(alpha: 0.3),
                       ),
                     ),
                     child: const Row(
@@ -10728,13 +10786,13 @@ class _GenericToolPageState extends State<GenericToolPage>
           padding: const EdgeInsets.symmetric(vertical: 10),
           decoration: BoxDecoration(
             color: isSelected
-                ? cs.primary.withOpacity(0.12)
-                : cs.surfaceContainerHigh.withOpacity(0.5),
+                ? cs.primary.withValues(alpha: 0.12)
+                : cs.surfaceContainerHigh.withValues(alpha: 0.5),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: isSelected
-                  ? cs.primary.withOpacity(0.4)
-                  : cs.outlineVariant.withOpacity(0.15),
+                  ? cs.primary.withValues(alpha: 0.4)
+                  : cs.outlineVariant.withValues(alpha: 0.15),
               width: isSelected ? 1.5 : 1,
             ),
           ),
@@ -10746,7 +10804,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                 size: 14,
                 color: isSelected
                     ? cs.primary
-                    : cs.onSurfaceVariant.withOpacity(0.7),
+                    : cs.onSurfaceVariant.withValues(alpha: 0.7),
               ),
               const SizedBox(width: 6),
               Text(
@@ -10754,7 +10812,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                 style: TextStyle(
                   color: isSelected
                       ? cs.primary
-                      : cs.onSurfaceVariant.withOpacity(0.8),
+                      : cs.onSurfaceVariant.withValues(alpha: 0.8),
                   fontSize: 12,
                   fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                 ),
@@ -10764,8 +10822,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                 padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                 decoration: BoxDecoration(
                   color: isSelected
-                      ? cs.primary.withOpacity(0.2)
-                      : cs.onSurfaceVariant.withOpacity(0.1),
+                      ? cs.primary.withValues(alpha: 0.2)
+                      : cs.onSurfaceVariant.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
@@ -10773,7 +10831,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                   style: TextStyle(
                     color: isSelected
                         ? cs.primary
-                        : cs.onSurfaceVariant.withOpacity(0.6),
+                        : cs.onSurfaceVariant.withValues(alpha: 0.6),
                     fontSize: 10,
                     fontWeight: FontWeight.w600,
                   ),
@@ -10818,16 +10876,16 @@ class _GenericToolPageState extends State<GenericToolPage>
                       decoration: BoxDecoration(
                         color: isSelected
                             ? (isFavorites
-                                ? Colors.red.withOpacity(0.15)
-                                : cs.secondary.withOpacity(0.15))
+                                ? Colors.red.withValues(alpha: 0.15)
+                                : cs.secondary.withValues(alpha: 0.15))
                             : cs.surfaceContainerHigh,
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
                           color: isSelected
                               ? (isFavorites
-                                  ? Colors.red.withOpacity(0.4)
-                                  : cs.secondary.withOpacity(0.4))
-                              : cs.outlineVariant.withOpacity(0.2),
+                                  ? Colors.red.withValues(alpha: 0.4)
+                                  : cs.secondary.withValues(alpha: 0.4))
+                              : cs.outlineVariant.withValues(alpha: 0.2),
                         ),
                       ),
                       child: Row(
@@ -10839,7 +10897,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                               size: 12,
                               color: isSelected
                                   ? Colors.red
-                                  : cs.onSurfaceVariant.withOpacity(0.6),
+                                  : cs.onSurfaceVariant.withValues(alpha: 0.6),
                             ),
                             const SizedBox(width: 4),
                           ],
@@ -10848,7 +10906,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                             style: TextStyle(
                               color: isSelected
                                   ? (isFavorites ? Colors.red : cs.secondary)
-                                  : cs.onSurfaceVariant.withOpacity(0.8),
+                                  : cs.onSurfaceVariant.withValues(alpha: 0.8),
                               fontSize: 12,
                               fontWeight: isSelected
                                   ? FontWeight.w600
@@ -10875,13 +10933,13 @@ class _GenericToolPageState extends State<GenericToolPage>
                     Icon(
                       LucideIcons.heart,
                       size: 28,
-                      color: cs.onSurfaceVariant.withOpacity(0.3),
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.3),
                     ),
                     const SizedBox(height: 8),
                     Text(
                       'No favorites yet',
                       style: TextStyle(
-                        color: cs.onSurfaceVariant.withOpacity(0.5),
+                        color: cs.onSurfaceVariant.withValues(alpha: 0.5),
                         fontSize: 13,
                       ),
                     ),
@@ -10889,7 +10947,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                     Text(
                       'Long-press any style to add to favorites',
                       style: TextStyle(
-                        color: cs.onSurfaceVariant.withOpacity(0.35),
+                        color: cs.onSurfaceVariant.withValues(alpha: 0.35),
                         fontSize: 11,
                       ),
                     ),
@@ -10976,8 +11034,8 @@ class _GenericToolPageState extends State<GenericToolPage>
             gradient: isSelected && !hasPreview
                 ? LinearGradient(
                     colors: [
-                      accentColor.withOpacity(0.2),
-                      accentColor.withOpacity(0.1),
+                      accentColor.withValues(alpha: 0.2),
+                      accentColor.withValues(alpha: 0.1),
                     ],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
@@ -10987,14 +11045,14 @@ class _GenericToolPageState extends State<GenericToolPage>
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
               color: isSelected
-                  ? accentColor.withOpacity(0.6)
-                  : cs.outlineVariant.withOpacity(0.2),
+                  ? accentColor.withValues(alpha: 0.6)
+                  : cs.outlineVariant.withValues(alpha: 0.2),
               width: isSelected ? 2 : 1,
             ),
             boxShadow: isSelected
                 ? [
                     BoxShadow(
-                      color: accentColor.withOpacity(0.2),
+                      color: accentColor.withValues(alpha: 0.2),
                       blurRadius: 8,
                       offset: const Offset(0, 2),
                     ),
@@ -11017,8 +11075,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
-                          accentColor.withOpacity(0.15),
-                          accentColor.withOpacity(0.05),
+                          accentColor.withValues(alpha: 0.15),
+                          accentColor.withValues(alpha: 0.05),
                         ],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
@@ -11035,7 +11093,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                           end: Alignment.bottomCenter,
                           colors: [
                             Colors.transparent,
-                            Colors.black.withOpacity(0.65),
+                            Colors.black.withValues(alpha: 0.65),
                           ],
                           stops: const [0.3, 1.0],
                         ),
@@ -11056,7 +11114,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                             Container(
                               padding: const EdgeInsets.all(4),
                               decoration: BoxDecoration(
-                                color: accentColor.withOpacity(0.2),
+                                color: accentColor.withValues(alpha: 0.2),
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(style.icon,
@@ -11078,7 +11136,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                             Container(
                               padding: const EdgeInsets.all(2),
                               decoration: BoxDecoration(
-                                color: Colors.black.withOpacity(0.3),
+                                color: Colors.black.withValues(alpha: 0.3),
                                 shape: BoxShape.circle,
                               ),
                               child: const Icon(Icons.favorite,
@@ -11102,7 +11160,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                           shadows: hasPreview
                               ? [
                                   Shadow(
-                                      color: Colors.black.withOpacity(0.5),
+                                      color: Colors.black.withValues(alpha: 0.5),
                                       blurRadius: 2),
                                 ]
                               : null,
@@ -11115,16 +11173,16 @@ class _GenericToolPageState extends State<GenericToolPage>
                             horizontal: 4, vertical: 1),
                         decoration: BoxDecoration(
                           color: hasPreview
-                              ? Colors.black.withOpacity(0.4)
-                              : accentColor.withOpacity(0.1),
+                              ? Colors.black.withValues(alpha: 0.4)
+                              : accentColor.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(
                           style.category,
                           style: TextStyle(
                             color: hasPreview
-                                ? Colors.white.withOpacity(0.9)
-                                : accentColor.withOpacity(0.8),
+                                ? Colors.white.withValues(alpha: 0.9)
+                                : accentColor.withValues(alpha: 0.8),
                             fontSize: 8,
                             fontWeight: FontWeight.w500,
                           ),
@@ -11155,10 +11213,10 @@ class _GenericToolPageState extends State<GenericToolPage>
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
-                color: cs.primary.withOpacity(0.1),
+                color: cs.primary.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: cs.primary.withOpacity(0.3),
+                  color: cs.primary.withValues(alpha: 0.3),
                   width: 1.5,
                 ),
               ),
@@ -11191,13 +11249,13 @@ class _GenericToolPageState extends State<GenericToolPage>
                     Icon(
                       LucideIcons.bookmark,
                       size: 48,
-                      color: cs.onSurfaceVariant.withOpacity(0.3),
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.3),
                     ),
                     const SizedBox(height: 12),
                     Text(
                       'No templates yet',
                       style: TextStyle(
-                        color: cs.onSurfaceVariant.withOpacity(0.6),
+                        color: cs.onSurfaceVariant.withValues(alpha: 0.6),
                         fontSize: 13,
                       ),
                     ),
@@ -11205,7 +11263,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                     Text(
                       'Save your settings to create one',
                       style: TextStyle(
-                        color: cs.onSurfaceVariant.withOpacity(0.5),
+                        color: cs.onSurfaceVariant.withValues(alpha: 0.5),
                         fontSize: 11,
                       ),
                     ),
@@ -11241,7 +11299,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             color: cs.surfaceContainerHigh,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: cs.outlineVariant.withOpacity(0.2),
+              color: cs.outlineVariant.withValues(alpha: 0.2),
             ),
           ),
           child: Row(
@@ -11250,7 +11308,7 @@ class _GenericToolPageState extends State<GenericToolPage>
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: cs.primary.withOpacity(0.1),
+                  color: cs.primary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(
@@ -11283,7 +11341,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                               ? '${template.prompt.substring(0, 40)}...'
                               : template.prompt,
                       style: TextStyle(
-                        color: cs.onSurfaceVariant.withOpacity(0.7),
+                        color: cs.onSurfaceVariant.withValues(alpha: 0.7),
                         fontSize: 11,
                       ),
                       maxLines: 1,
@@ -11294,7 +11352,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                       Text(
                         'Last used: ${_formatTemplateDate(template.lastUsed!)}',
                         style: TextStyle(
-                          color: cs.onSurfaceVariant.withOpacity(0.5),
+                          color: cs.onSurfaceVariant.withValues(alpha: 0.5),
                           fontSize: 10,
                         ),
                       ),
@@ -11307,7 +11365,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                 icon: Icon(
                   LucideIcons.trash2,
                   size: 16,
-                  color: cs.error.withOpacity(0.7),
+                  color: cs.error.withValues(alpha: 0.7),
                 ),
                 onPressed: () => _deleteTemplate(template),
                 padding: EdgeInsets.zero,
@@ -11343,12 +11401,12 @@ class _GenericToolPageState extends State<GenericToolPage>
             child: Row(
               children: [
                 Icon(LucideIcons.image,
-                    size: 12, color: cs.onSurfaceVariant.withOpacity(0.7)),
+                    size: 12, color: cs.onSurfaceVariant.withValues(alpha: 0.7)),
                 const SizedBox(width: 6),
                 Text(
                   label,
                   style: TextStyle(
-                    color: cs.onSurface.withOpacity(0.85),
+                    color: cs.onSurface.withValues(alpha: 0.85),
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                   ),
@@ -11357,7 +11415,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                 Text(
                   '· Optional',
                   style: TextStyle(
-                    color: cs.onSurfaceVariant.withOpacity(0.55),
+                    color: cs.onSurfaceVariant.withValues(alpha: 0.55),
                     fontSize: 11,
                     fontWeight: FontWeight.w500,
                   ),
@@ -11466,13 +11524,13 @@ class _GenericToolPageState extends State<GenericToolPage>
                 Icon(
                   ref == 'ref_image' ? LucideIcons.image : LucideIcons.video,
                   size: 12,
-                  color: cs.onSurfaceVariant.withOpacity(0.7),
+                  color: cs.onSurfaceVariant.withValues(alpha: 0.7),
                 ),
                 const SizedBox(width: 6),
                 Text(
                   label,
                   style: TextStyle(
-                    color: cs.onSurface.withOpacity(0.85),
+                    color: cs.onSurface.withValues(alpha: 0.85),
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                   ),
@@ -11481,7 +11539,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                 Text(
                   '· Optional',
                   style: TextStyle(
-                    color: cs.onSurfaceVariant.withOpacity(0.55),
+                    color: cs.onSurfaceVariant.withValues(alpha: 0.55),
                     fontSize: 11,
                     fontWeight: FontWeight.w500,
                   ),
@@ -11575,10 +11633,10 @@ class _GenericToolPageState extends State<GenericToolPage>
       return Container(
         height: 200,
         decoration: BoxDecoration(
-          color: cs.surfaceContainerHigh.withOpacity(0.5),
+          color: cs.surfaceContainerHigh.withValues(alpha: 0.5),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: cs.outlineVariant.withOpacity(0.2),
+            color: cs.outlineVariant.withValues(alpha: 0.2),
             style: BorderStyle.solid,
           ),
         ),
@@ -11589,13 +11647,13 @@ class _GenericToolPageState extends State<GenericToolPage>
               Icon(
                 LucideIcons.video,
                 size: 48,
-                color: cs.onSurfaceVariant.withOpacity(0.5),
+                color: cs.onSurfaceVariant.withValues(alpha: 0.5),
               ),
               const SizedBox(height: 12),
               Text(
                 'No video selected',
                 style: TextStyle(
-                  color: cs.onSurfaceVariant.withOpacity(0.7),
+                  color: cs.onSurfaceVariant.withValues(alpha: 0.7),
                   fontSize: 14,
                 ),
               ),
@@ -11612,7 +11670,7 @@ class _GenericToolPageState extends State<GenericToolPage>
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: cs.outlineVariant.withOpacity(0.2),
+          color: cs.outlineVariant.withValues(alpha: 0.2),
         ),
       ),
       child: ClipRRect(
@@ -11641,7 +11699,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                           opacity: showOverlay ? 1.0 : 0.0,
                           duration: const Duration(milliseconds: 200),
                           child: Container(
-                            color: Colors.black.withOpacity(0.3),
+                            color: Colors.black.withValues(alpha: 0.3),
                             child: Center(
                               child: Icon(
                                 value.isPlaying
@@ -11666,7 +11724,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                   // For non-upscaler tools, show static play icon (existing behavior)
                   if (controller != null && !_isVideoUpscalerTool)
                     Container(
-                      color: Colors.black.withOpacity(0.3),
+                      color: Colors.black.withValues(alpha: 0.3),
                       child: const Center(
                         child: Icon(
                           LucideIcons.play,
@@ -12117,13 +12175,13 @@ class _GenericToolPageState extends State<GenericToolPage>
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
               color: exceedsLimit
-                  ? cs.errorContainer.withOpacity(0.3)
-                  : cs.primaryContainer.withOpacity(0.3),
+                  ? cs.errorContainer.withValues(alpha: 0.3)
+                  : cs.primaryContainer.withValues(alpha: 0.3),
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
                 color: exceedsLimit
-                    ? cs.error.withOpacity(0.3)
-                    : cs.primary.withOpacity(0.2),
+                    ? cs.error.withValues(alpha: 0.3)
+                    : cs.primary.withValues(alpha: 0.2),
               ),
             ),
             child: Row(
@@ -12184,7 +12242,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                         color: cs.surfaceContainerHigh,
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                          color: cs.outlineVariant.withOpacity(0.3),
+                          color: cs.outlineVariant.withValues(alpha: 0.3),
                         ),
                       ),
                       child: Column(
@@ -12437,7 +12495,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                       '(${isVip ? _maxBulkImagesVip : _maxBulkImagesNonVip})',
                       style: TextStyle(
                         color: isBulkMode
-                            ? cs.onPrimary.withOpacity(0.9)
+                            ? cs.onPrimary.withValues(alpha: 0.9)
                             : cs.onSurfaceVariant,
                         fontWeight: FontWeight.w600,
                         fontSize: capSize,
@@ -12474,13 +12532,13 @@ class _GenericToolPageState extends State<GenericToolPage>
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
               color: exceedsLimit
-                  ? cs.errorContainer.withOpacity(0.3)
-                  : cs.primaryContainer.withOpacity(0.3),
+                  ? cs.errorContainer.withValues(alpha: 0.3)
+                  : cs.primaryContainer.withValues(alpha: 0.3),
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
                 color: exceedsLimit
-                    ? cs.error.withOpacity(0.3)
-                    : cs.primary.withOpacity(0.2),
+                    ? cs.error.withValues(alpha: 0.3)
+                    : cs.primary.withValues(alpha: 0.2),
               ),
             ),
             child: Row(
@@ -12521,7 +12579,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                   child: Container(
                     padding: const EdgeInsets.all(4),
                     decoration: BoxDecoration(
-                      color: cs.errorContainer.withOpacity(0.5),
+                      color: cs.errorContainer.withValues(alpha: 0.5),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Icon(LucideIcons.trash2, size: 14, color: cs.error),
@@ -12586,15 +12644,15 @@ class _GenericToolPageState extends State<GenericToolPage>
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            cs.surfaceContainerHigh.withOpacity(0.8),
-            cs.surfaceContainerHighest.withOpacity(0.4),
+            cs.surfaceContainerHigh.withValues(alpha: 0.8),
+            cs.surfaceContainerHighest.withValues(alpha: 0.4),
           ],
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
         ),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: cs.outlineVariant.withOpacity(0.3),
+          color: cs.outlineVariant.withValues(alpha: 0.3),
           width: 1.5,
         ),
       ),
@@ -12605,8 +12663,8 @@ class _GenericToolPageState extends State<GenericToolPage>
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               gradient: LinearGradient(colors: [
-                cs.primary.withOpacity(0.2),
-                cs.tertiary.withOpacity(0.1)
+                cs.primary.withValues(alpha: 0.2),
+                cs.tertiary.withValues(alpha: 0.1)
               ]),
               shape: BoxShape.circle,
             ),
@@ -12674,15 +12732,15 @@ class _GenericToolPageState extends State<GenericToolPage>
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [
-              cs.surfaceContainerHigh.withOpacity(0.8),
-              cs.surfaceContainerHighest.withOpacity(0.4),
+              cs.surfaceContainerHigh.withValues(alpha: 0.8),
+              cs.surfaceContainerHighest.withValues(alpha: 0.4),
             ],
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
           ),
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: cs.primary.withOpacity(0.3),
+            color: cs.primary.withValues(alpha: 0.3),
             width: 1.5,
           ),
         ),
@@ -12718,15 +12776,15 @@ class _GenericToolPageState extends State<GenericToolPage>
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [
-              cs.surfaceContainerHigh.withOpacity(0.8),
-              cs.surfaceContainerHighest.withOpacity(0.4),
+              cs.surfaceContainerHigh.withValues(alpha: 0.8),
+              cs.surfaceContainerHighest.withValues(alpha: 0.4),
             ],
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
           ),
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: cs.outlineVariant.withOpacity(0.2),
+            color: cs.outlineVariant.withValues(alpha: 0.2),
             width: 1.5,
           ),
         ),
@@ -12736,12 +12794,12 @@ class _GenericToolPageState extends State<GenericToolPage>
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: cs.primary.withOpacity(0.08),
+                color: cs.primary.withValues(alpha: 0.08),
                 shape: BoxShape.circle,
               ),
               child: Icon(
                 LucideIcons.imagePlus,
-                color: cs.primary.withOpacity(0.6),
+                color: cs.primary.withValues(alpha: 0.6),
                 size: 40,
               ),
             ),
@@ -12749,7 +12807,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             Text(
               "Tap to upload an image",
               style: TextStyle(
-                color: cs.onSurfaceVariant.withOpacity(0.7),
+                color: cs.onSurfaceVariant.withValues(alpha: 0.7),
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
               ),
@@ -12758,7 +12816,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             Text(
               "Supports PNG, JPG, WEBP",
               style: TextStyle(
-                color: cs.onSurfaceVariant.withOpacity(0.5),
+                color: cs.onSurfaceVariant.withValues(alpha: 0.5),
                 fontSize: 12,
               ),
             ),
@@ -12805,7 +12863,7 @@ class _GenericToolPageState extends State<GenericToolPage>
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: cs.primary.withOpacity(0.3),
+            color: cs.primary.withValues(alpha: 0.3),
             width: 2,
           ),
           color: cs.surfaceContainerHigh,
@@ -12832,7 +12890,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.15),
+                    color: Colors.green.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Row(
@@ -12873,7 +12931,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: cs.primary.withOpacity(0.3),
+                              color: cs.primary.withValues(alpha: 0.3),
                               width: 1.5,
                             ),
                           ),
@@ -12893,7 +12951,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 6, vertical: 3),
                             decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(0.6),
+                              color: Colors.black.withValues(alpha: 0.6),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
@@ -12927,13 +12985,13 @@ class _GenericToolPageState extends State<GenericToolPage>
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: hasMask
-              ? Colors.green.withOpacity(0.5)
-              : cs.primary.withOpacity(0.3),
+              ? Colors.green.withValues(alpha: 0.5)
+              : cs.primary.withValues(alpha: 0.3),
           width: 2,
         ),
         boxShadow: [
           BoxShadow(
-            color: cs.primary.withOpacity(0.08),
+            color: cs.primary.withValues(alpha: 0.08),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -12986,7 +13044,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                         padding: const EdgeInsets.symmetric(
                             horizontal: 10, vertical: 6),
                         decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.6),
+                          color: Colors.black.withValues(alpha: 0.6),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Row(
@@ -13039,12 +13097,12 @@ class _GenericToolPageState extends State<GenericToolPage>
                               borderRadius: BorderRadius.circular(10),
                               border: Border.all(
                                 color: hasMask
-                                    ? cs.outline.withOpacity(0.3)
+                                    ? cs.outline.withValues(alpha: 0.3)
                                     : cs.primary,
                               ),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withOpacity(0.3),
+                                  color: Colors.black.withValues(alpha: 0.3),
                                   blurRadius: 8,
                                   offset: const Offset(0, 2),
                                 ),
@@ -13151,7 +13209,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                   padding:
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.6),
+                    color: Colors.black.withValues(alpha: 0.6),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Row(
@@ -13250,7 +13308,7 @@ class _GenericToolPageState extends State<GenericToolPage>
         child: Container(
           padding: const EdgeInsets.all(6),
           decoration: BoxDecoration(
-            color: cs.primary.withOpacity(0.8),
+            color: cs.primary.withValues(alpha: 0.8),
             shape: BoxShape.circle,
           ),
           child: Icon(icon, size: 16, color: cs.onPrimary),
@@ -13314,9 +13372,9 @@ class _GenericToolPageState extends State<GenericToolPage>
           SliderTheme(
             data: SliderTheme.of(context).copyWith(
               activeTrackColor: cs.primary,
-              inactiveTrackColor: cs.outlineVariant.withOpacity(0.25),
+              inactiveTrackColor: cs.outlineVariant.withValues(alpha: 0.25),
               thumbColor: cs.primary,
-              overlayColor: cs.primary.withOpacity(0.12),
+              overlayColor: cs.primary.withValues(alpha: 0.12),
               trackHeight: 4,
               thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
               overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
@@ -13337,7 +13395,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                 Text(
                   minVal.toStringAsFixed(minVal % 1 == 0 ? 0 : 1),
                   style: TextStyle(
-                    color: cs.onSurfaceVariant.withOpacity(0.55),
+                    color: cs.onSurfaceVariant.withValues(alpha: 0.55),
                     fontSize: 11,
                     fontFeatures: const [FontFeature.tabularFigures()],
                   ),
@@ -13345,7 +13403,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                 Text(
                   maxVal.toStringAsFixed(maxVal % 1 == 0 ? 0 : 1),
                   style: TextStyle(
-                    color: cs.onSurfaceVariant.withOpacity(0.55),
+                    color: cs.onSurfaceVariant.withValues(alpha: 0.55),
                     fontSize: 11,
                     fontFeatures: const [FontFeature.tabularFigures()],
                   ),
@@ -13412,7 +13470,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                   Text(
                     description,
                     style: TextStyle(
-                      color: cs.onSurfaceVariant.withOpacity(0.65),
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.65),
                       fontSize: 11.5,
                     ),
                   ),
@@ -13474,12 +13532,12 @@ class _GenericToolPageState extends State<GenericToolPage>
                         : null,
                     color: isSelected
                         ? null
-                        : cs.surfaceContainerHigh.withOpacity(0.55),
+                        : cs.surfaceContainerHigh.withValues(alpha: 0.55),
                     borderRadius: BorderRadius.circular(AppStyles.radiusFull),
                     border: Border.all(
                       color: isSelected
                           ? Colors.transparent
-                          : cs.outlineVariant.withOpacity(0.25),
+                          : cs.outlineVariant.withValues(alpha: 0.25),
                       width: 1,
                     ),
                   ),
@@ -13496,7 +13554,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                         style: TextStyle(
                           color: isSelected
                               ? Colors.white
-                              : cs.onSurfaceVariant.withOpacity(0.9),
+                              : cs.onSurfaceVariant.withValues(alpha: 0.9),
                           fontWeight:
                               isSelected ? FontWeight.w600 : FontWeight.w500,
                           fontSize: 12.5,
@@ -13651,7 +13709,7 @@ class _GenericToolPageState extends State<GenericToolPage>
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(AppStyles.radiusLg),
           border: Border.all(
-            color: pulse ? cs.primary.withOpacity(0.55) : Colors.transparent,
+            color: pulse ? cs.primary.withValues(alpha: 0.55) : Colors.transparent,
             width: pulse ? 1.5 : 0,
           ),
         ),
@@ -13787,14 +13845,14 @@ class _GenericToolPageState extends State<GenericToolPage>
         color: cs.surface,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.06),
+            color: Colors.black.withValues(alpha: 0.06),
             blurRadius: 8,
             offset: const Offset(0, -3),
           ),
         ],
         border: Border(
           top: BorderSide(
-            color: cs.outlineVariant.withOpacity(0.12),
+            color: cs.outlineVariant.withValues(alpha: 0.12),
             width: 1,
           ),
         ),
@@ -13819,21 +13877,21 @@ class _GenericToolPageState extends State<GenericToolPage>
                       final IconData hintIcon;
 
                       if (isProcessing) {
-                        bgColor = cs.primaryContainer.withOpacity(0.3);
-                        borderColor = cs.primary.withOpacity(0.2);
-                        textColor = cs.primary.withOpacity(0.9);
+                        bgColor = cs.primaryContainer.withValues(alpha: 0.3);
+                        borderColor = cs.primary.withValues(alpha: 0.2);
+                        textColor = cs.primary.withValues(alpha: 0.9);
                         hintIcon = LucideIcons.loader;
                       } else if (isRateLimitHint) {
                         // Rate limit - use amber/orange for "busy" feeling
-                        bgColor = Colors.amber.withOpacity(0.15);
-                        borderColor = Colors.amber.withOpacity(0.3);
+                        bgColor = Colors.amber.withValues(alpha: 0.15);
+                        borderColor = Colors.amber.withValues(alpha: 0.3);
                         textColor = Colors.amber.shade800;
                         hintIcon = LucideIcons.sparkles;
                       } else {
                         // Missing input - use subtle red
-                        bgColor = cs.errorContainer.withOpacity(0.3);
-                        borderColor = cs.error.withOpacity(0.2);
-                        textColor = cs.error.withOpacity(0.9);
+                        bgColor = cs.errorContainer.withValues(alpha: 0.3);
+                        borderColor = cs.error.withValues(alpha: 0.2);
+                        textColor = cs.error.withValues(alpha: 0.9);
                         hintIcon = LucideIcons.alertCircle;
                       }
 
@@ -13884,7 +13942,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                                   height: 14,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    color: cs.primary.withOpacity(0.8),
+                                    color: cs.primary.withValues(alpha: 0.8),
                                   ),
                                 )
                               else
@@ -13910,7 +13968,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                                 Icon(
                                   LucideIcons.chevronRight,
                                   size: 14,
-                                  color: textColor.withOpacity(0.6),
+                                  color: textColor.withValues(alpha: 0.6),
                                 ),
                               ],
                             ],
@@ -13936,10 +13994,10 @@ class _GenericToolPageState extends State<GenericToolPage>
                   child: Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: cs.surfaceContainerHigh.withOpacity(0.75),
+                      color: cs.surfaceContainerHigh.withValues(alpha: 0.75),
                       borderRadius: BorderRadius.circular(AppStyles.radiusMd),
                       border: Border.all(
-                        color: cs.outlineVariant.withOpacity(0.25),
+                        color: cs.outlineVariant.withValues(alpha: 0.25),
                       ),
                     ),
                     child: Icon(
@@ -13993,10 +14051,10 @@ class _GenericToolPageState extends State<GenericToolPage>
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            color: cs.surfaceContainerLow.withOpacity(0.5),
+            color: cs.surfaceContainerLow.withValues(alpha: 0.5),
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
-              color: cs.outlineVariant.withOpacity(0.15),
+              color: cs.outlineVariant.withValues(alpha: 0.15),
             ),
           ),
           child: Row(
@@ -14004,7 +14062,7 @@ class _GenericToolPageState extends State<GenericToolPage>
               Icon(
                 LucideIcons.info,
                 size: 14,
-                color: cs.onSurfaceVariant.withOpacity(0.6),
+                color: cs.onSurfaceVariant.withValues(alpha: 0.6),
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -14059,7 +14117,7 @@ class _GenericToolPageState extends State<GenericToolPage>
               Icon(
                 LucideIcons.chevronRight,
                 size: 14,
-                color: cs.onSurfaceVariant.withOpacity(0.4),
+                color: cs.onSurfaceVariant.withValues(alpha: 0.4),
               ),
             ],
           ),
@@ -14084,13 +14142,13 @@ class _GenericToolPageState extends State<GenericToolPage>
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       decoration: BoxDecoration(
         color: highlight
-            ? chipColor.withOpacity(0.1)
-            : cs.surfaceContainerHigh.withOpacity(0.5),
+            ? chipColor.withValues(alpha: 0.1)
+            : cs.surfaceContainerHigh.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(6),
         border: Border.all(
           color: highlight
-              ? chipColor.withOpacity(0.2)
-              : cs.outlineVariant.withOpacity(0.1),
+              ? chipColor.withValues(alpha: 0.2)
+              : cs.outlineVariant.withValues(alpha: 0.1),
         ),
       ),
       child: Row(
@@ -14099,13 +14157,13 @@ class _GenericToolPageState extends State<GenericToolPage>
           Icon(
             icon,
             size: 11,
-            color: chipColor.withOpacity(highlight ? 1.0 : 0.6),
+            color: chipColor.withValues(alpha: highlight ? 1.0 : 0.6),
           ),
           const SizedBox(width: 4),
           Text(
             label,
             style: TextStyle(
-              color: chipColor.withOpacity(highlight ? 0.9 : 0.7),
+              color: chipColor.withValues(alpha: highlight ? 0.9 : 0.7),
               fontSize: 11,
               fontWeight: highlight ? FontWeight.w600 : FontWeight.w500,
             ),
@@ -14166,12 +14224,12 @@ class _GenericToolPageState extends State<GenericToolPage>
             boxShadow: isEnabled
                 ? [
                     BoxShadow(
-                      color: KalaColors.purple.withOpacity(glowOpacity),
+                      color: KalaColors.purple.withValues(alpha: glowOpacity),
                       blurRadius: 16 + (_glowAnimationController.value * 8),
                       offset: const Offset(0, 4),
                     ),
                     BoxShadow(
-                      color: KalaColors.cyan.withOpacity(glowOpacity * 0.6),
+                      color: KalaColors.cyan.withValues(alpha: glowOpacity * 0.6),
                       blurRadius: 20 + (_glowAnimationController.value * 10),
                       offset: const Offset(0, 6),
                     ),
@@ -14187,8 +14245,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                   colors: isEnabled
                       ? KalaColors.brandGradient
                       : [
-                          cs.onSurfaceVariant.withOpacity(0.4),
-                          cs.onSurfaceVariant.withOpacity(0.3)
+                          cs.onSurfaceVariant.withValues(alpha: 0.4),
+                          cs.onSurfaceVariant.withValues(alpha: 0.3)
                         ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
@@ -14237,7 +14295,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                           margin: const EdgeInsets.symmetric(horizontal: 10),
                           height: 20,
                           width: 1,
-                          color: Colors.white.withOpacity(0.3),
+                          color: Colors.white.withValues(alpha: 0.3),
                         ),
 
                         // Compact job count badge (when multiple jobs)
@@ -14246,7 +14304,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 6, vertical: 3),
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.15),
+                              color: Colors.white.withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
@@ -14268,7 +14326,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                             Icon(
                               LucideIcons.gem,
                               size: 14,
-                              color: Colors.white.withOpacity(0.9),
+                              color: Colors.white.withValues(alpha: 0.9),
                             ),
                             const SizedBox(width: 3),
                             if (offer > 0 &&
@@ -14276,11 +14334,11 @@ class _GenericToolPageState extends State<GenericToolPage>
                               Text(
                                 "$totalBeforeDiscount",
                                 style: TextStyle(
-                                  color: Colors.white.withOpacity(0.5),
+                                  color: Colors.white.withValues(alpha: 0.5),
                                   fontSize: 11,
                                   decoration: TextDecoration.lineThrough,
                                   decorationColor:
-                                      Colors.white.withOpacity(0.5),
+                                      Colors.white.withValues(alpha: 0.5),
                                 ),
                               ),
                               const SizedBox(width: 2),
@@ -14301,7 +14359,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                                   vertical: 1,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: Colors.greenAccent.withOpacity(0.25),
+                                  color: Colors.greenAccent.withValues(alpha: 0.25),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: Text(
@@ -14379,7 +14437,7 @@ class _GenericToolPageState extends State<GenericToolPage>
           color: isDark ? const Color(0xFF1A1A2E) : cs.surface,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           border: Border.all(
-            color: cs.primary.withOpacity(0.2),
+            color: cs.primary.withValues(alpha: 0.2),
             width: 1,
           ),
         ),
@@ -14401,7 +14459,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: cs.onSurface.withOpacity(0.2),
+                  color: cs.onSurface.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -14413,8 +14471,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
-                      KalaColors.purple.withOpacity(0.2),
-                      KalaColors.cyan.withOpacity(0.2),
+                      KalaColors.purple.withValues(alpha: 0.2),
+                      KalaColors.cyan.withValues(alpha: 0.2),
                     ],
                   ),
                   shape: BoxShape.circle,
@@ -14440,7 +14498,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                 'You\'re about to generate multiple results',
                 style: TextStyle(
                   fontSize: 14,
-                  color: cs.onSurface.withOpacity(0.7),
+                  color: cs.onSurface.withValues(alpha: 0.7),
                 ),
               ),
               const SizedBox(height: 24),
@@ -14449,10 +14507,10 @@ class _GenericToolPageState extends State<GenericToolPage>
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: cs.surfaceContainerHighest.withOpacity(0.5),
+                  color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: cs.outline.withOpacity(0.1),
+                    color: cs.outline.withValues(alpha: 0.1),
                   ),
                 ),
                 child: Column(
@@ -14539,7 +14597,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                       ),
 
                     // Divider
-                    Divider(color: cs.outline.withOpacity(0.2)),
+                    Divider(color: cs.outline.withValues(alpha: 0.2)),
                     const SizedBox(height: 12),
 
                     // Total jobs
@@ -14565,7 +14623,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                         Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: Colors.amber.withOpacity(0.15),
+                            color: Colors.amber.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: const Icon(
@@ -14578,7 +14636,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                         Text(
                           'Total Cost',
                           style: TextStyle(
-                            color: cs.onSurface.withOpacity(0.7),
+                            color: cs.onSurface.withValues(alpha: 0.7),
                             fontSize: 14,
                           ),
                         ),
@@ -14589,8 +14647,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
                               colors: [
-                                Colors.amber.withOpacity(0.2),
-                                Colors.orange.withOpacity(0.2),
+                                Colors.amber.withValues(alpha: 0.2),
+                                Colors.orange.withValues(alpha: 0.2),
                               ],
                             ),
                             borderRadius: BorderRadius.circular(20),
@@ -14631,7 +14689,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                       onPressed: () => Navigator.pop(ctx, false),
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 14),
-                        side: BorderSide(color: cs.outline.withOpacity(0.3)),
+                        side: BorderSide(color: cs.outline.withValues(alpha: 0.3)),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
@@ -14639,7 +14697,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                       child: Text(
                         'Cancel',
                         style: TextStyle(
-                          color: cs.onSurface.withOpacity(0.7),
+                          color: cs.onSurface.withValues(alpha: 0.7),
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -14658,7 +14716,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                         borderRadius: BorderRadius.circular(12),
                         boxShadow: [
                           BoxShadow(
-                            color: KalaColors.purple.withOpacity(0.3),
+                            color: KalaColors.purple.withValues(alpha: 0.3),
                             blurRadius: 12,
                             offset: const Offset(0, 4),
                           ),
@@ -14740,11 +14798,11 @@ class _GenericToolPageState extends State<GenericToolPage>
   ) {
     final offer = _currentModelOffer;
     final smallStyle = TextStyle(
-      color: cs.onSurface.withOpacity(0.7),
+      color: cs.onSurface.withValues(alpha: 0.7),
       fontSize: 12,
     );
     final lineStyle = TextStyle(
-      color: cs.onSurface.withOpacity(0.85),
+      color: cs.onSurface.withValues(alpha: 0.85),
       fontSize: 13,
     );
 
@@ -14826,7 +14884,7 @@ class _GenericToolPageState extends State<GenericToolPage>
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: iconColor.withOpacity(0.15),
+            color: iconColor.withValues(alpha: 0.15),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(
@@ -14839,7 +14897,7 @@ class _GenericToolPageState extends State<GenericToolPage>
         Text(
           label,
           style: TextStyle(
-            color: cs.onSurface.withOpacity(0.7),
+            color: cs.onSurface.withValues(alpha: 0.7),
             fontSize: 14,
           ),
         ),
@@ -14865,9 +14923,9 @@ class _GenericToolPageState extends State<GenericToolPage>
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 6),
       decoration: BoxDecoration(
-        color: cs.surfaceContainerHigh.withOpacity(0.5),
+        color: cs.surfaceContainerHigh.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(AppStyles.radiusLg),
-        border: Border.all(color: cs.outlineVariant.withOpacity(0.2)),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.2)),
       ),
       padding: const EdgeInsets.all(4),
       child: Row(
@@ -14900,7 +14958,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                   boxShadow: selected
                       ? [
                           BoxShadow(
-                            color: KalaColors.purple.withOpacity(0.28),
+                            color: KalaColors.purple.withValues(alpha: 0.28),
                             blurRadius: 10,
                             offset: const Offset(0, 3),
                           ),
@@ -14956,7 +15014,7 @@ class _GenericToolPageState extends State<GenericToolPage>
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.orange.withOpacity(0.1),
+                  color: Colors.orange.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
@@ -14993,7 +15051,7 @@ class _GenericToolPageState extends State<GenericToolPage>
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: cs.surfaceContainerHighest.withOpacity(0.5),
+                  color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
@@ -15154,8 +15212,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
-                      iconColor.withOpacity(0.15),
-                      iconColor.withOpacity(0.05),
+                      iconColor.withValues(alpha: 0.15),
+                      iconColor.withValues(alpha: 0.05),
                     ],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
@@ -15163,7 +15221,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: iconColor.withOpacity(0.2),
+                      color: iconColor.withValues(alpha: 0.2),
                       blurRadius: 12,
                       offset: const Offset(0, 4),
                     ),
@@ -15200,10 +15258,10 @@ class _GenericToolPageState extends State<GenericToolPage>
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: cs.surfaceContainerHighest.withOpacity(0.5),
+                  color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: cs.outlineVariant.withOpacity(0.2),
+                    color: cs.outlineVariant.withValues(alpha: 0.2),
                   ),
                 ),
                 child: Column(
@@ -15214,7 +15272,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                         Container(
                           height: 12,
                           decoration: BoxDecoration(
-                            color: cs.outlineVariant.withOpacity(0.2),
+                            color: cs.outlineVariant.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(6),
                           ),
                         ),
@@ -15237,7 +15295,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                                   color: (percentUsed >= 100
                                           ? Colors.orange
                                           : cs.primary)
-                                      .withOpacity(0.3),
+                                      .withValues(alpha: 0.3),
                                   blurRadius: 4,
                                   offset: const Offset(0, 2),
                                 ),
@@ -15252,7 +15310,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                     Text(
                       '$percentUsed% capacity used',
                       style: TextStyle(
-                        color: cs.onSurfaceVariant.withOpacity(0.7),
+                        color: cs.onSurfaceVariant.withValues(alpha: 0.7),
                         fontSize: 11,
                         fontWeight: FontWeight.w500,
                       ),
@@ -15301,9 +15359,9 @@ class _GenericToolPageState extends State<GenericToolPage>
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: cs.primaryContainer.withOpacity(0.2),
+                  color: cs.primaryContainer.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: cs.primary.withOpacity(0.2)),
+                  border: Border.all(color: cs.primary.withValues(alpha: 0.2)),
                 ),
                 child: Row(
                   children: [
@@ -15385,9 +15443,9 @@ class _GenericToolPageState extends State<GenericToolPage>
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: cs.primaryContainer.withOpacity(0.3),
+                    color: cs.primaryContainer.withValues(alpha: 0.3),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: cs.primary.withOpacity(0.3)),
+                    border: Border.all(color: cs.primary.withValues(alpha: 0.3)),
                   ),
                   child: Row(
                     children: [
@@ -15415,12 +15473,12 @@ class _GenericToolPageState extends State<GenericToolPage>
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [
-                        Colors.amber.withOpacity(0.15),
-                        Colors.orange.withOpacity(0.1),
+                        Colors.amber.withValues(alpha: 0.15),
+                        Colors.orange.withValues(alpha: 0.1),
                       ],
                     ),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.amber.withOpacity(0.3)),
+                    border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
                   ),
                   child: Row(
                     children: [
@@ -15457,9 +15515,9 @@ class _GenericToolPageState extends State<GenericToolPage>
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.2)),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -15484,7 +15542,7 @@ class _GenericToolPageState extends State<GenericToolPage>
           Text(
             label,
             style: TextStyle(
-              color: cs.onSurfaceVariant.withOpacity(0.8),
+              color: cs.onSurfaceVariant.withValues(alpha: 0.8),
               fontSize: 10,
               fontWeight: FontWeight.w500,
             ),
@@ -15766,11 +15824,11 @@ class _GenericToolPageState extends State<GenericToolPage>
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
-                color: cs.outlineVariant.withOpacity(0.2),
+                color: cs.outlineVariant.withValues(alpha: 0.2),
               ),
               boxShadow: [
                 BoxShadow(
-                  color: cs.primary.withOpacity(0.08),
+                  color: cs.primary.withValues(alpha: 0.08),
                   blurRadius: 24,
                   offset: const Offset(0, 8),
                 ),
@@ -15784,7 +15842,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: cs.primary.withOpacity(0.08),
+                    color: cs.primary.withValues(alpha: 0.08),
                     shape: BoxShape.circle,
                   ),
                   child: SizedBox(
@@ -15828,7 +15886,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                     value,
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: cs.onSurfaceVariant.withOpacity(0.8),
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.8),
                       fontSize: 14,
                       height: 1.5,
                     ),
@@ -15952,8 +16010,9 @@ class _GenericToolPageState extends State<GenericToolPage>
                   if (baseId == refId ||
                       baseId.replaceAll('-', '_') ==
                           refId.replaceAll('-', '_')) {
-                    if (encoded.containsKey(overrideId))
+                    if (encoded.containsKey(overrideId)) {
                       return encoded[overrideId];
+                    }
                   }
                 }
               }
@@ -17508,8 +17567,8 @@ class _StylePreviewImageState extends State<_StylePreviewImage> {
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [
-              widget.accentColor.withOpacity(0.15),
-              widget.accentColor.withOpacity(0.05),
+              widget.accentColor.withValues(alpha: 0.15),
+              widget.accentColor.withValues(alpha: 0.05),
             ],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
@@ -17521,7 +17580,7 @@ class _StylePreviewImageState extends State<_StylePreviewImage> {
             height: 16,
             child: CircularProgressIndicator(
               strokeWidth: 1.5,
-              color: widget.accentColor.withOpacity(0.5),
+              color: widget.accentColor.withValues(alpha: 0.5),
             ),
           ),
         ),
@@ -17557,8 +17616,8 @@ class _StylePreviewImageState extends State<_StylePreviewImage> {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            widget.accentColor.withOpacity(0.15),
-            widget.accentColor.withOpacity(0.05),
+            widget.accentColor.withValues(alpha: 0.15),
+            widget.accentColor.withValues(alpha: 0.05),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -17961,12 +18020,12 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
                               child: Container(
                                 decoration: BoxDecoration(
                                   border: Border.all(
-                                    color: cs.outline.withOpacity(0.3),
+                                    color: cs.outline.withValues(alpha: 0.3),
                                     width: 2,
                                   ),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: Colors.black.withOpacity(0.2),
+                                      color: Colors.black.withValues(alpha: 0.2),
                                       blurRadius: 20,
                                       offset: const Offset(0, 8),
                                     ),
@@ -18186,10 +18245,10 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 10, vertical: 8),
                       decoration: BoxDecoration(
-                        color: cs.primaryContainer.withOpacity(0.5),
+                        color: cs.primaryContainer.withValues(alpha: 0.5),
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                          color: cs.primary.withOpacity(0.22),
+                          color: cs.primary.withValues(alpha: 0.22),
                         ),
                       ),
                       child: Row(
@@ -18212,7 +18271,7 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                color: cs.onSurface.withOpacity(0.88),
+                                color: cs.onSurface.withValues(alpha: 0.88),
                                 fontSize: 12,
                               ),
                             ),
@@ -18223,7 +18282,7 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 6, vertical: 3),
                               decoration: BoxDecoration(
-                                color: cs.primary.withOpacity(0.18),
+                                color: cs.primary.withValues(alpha: 0.18),
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
@@ -18305,7 +18364,7 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
               decoration: BoxDecoration(
                 color: cs.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: cs.outline.withOpacity(0.2)),
+                border: Border.all(color: cs.outline.withValues(alpha: 0.2)),
               ),
               child: Row(
                 children: [
@@ -18324,14 +18383,14 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
                       max: 150,
                       onChanged: (v) => setState(() => _brushSize = v),
                       activeColor: cs.primary,
-                      inactiveColor: cs.onSurfaceVariant.withOpacity(0.2),
+                      inactiveColor: cs.onSurfaceVariant.withValues(alpha: 0.2),
                     ),
                   ),
                   Container(
                     padding:
                         const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
-                      color: cs.primary.withOpacity(0.12),
+                      color: cs.primary.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
@@ -18419,10 +18478,10 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
         : isDanger
             ? (isEnabled
                 ? cs.onErrorContainer
-                : cs.onSurfaceVariant.withOpacity(0.5))
+                : cs.onSurfaceVariant.withValues(alpha: 0.5))
             : (isEnabled
                 ? cs.onSurfaceVariant
-                : cs.onSurfaceVariant.withOpacity(0.5));
+                : cs.onSurfaceVariant.withValues(alpha: 0.5));
 
     return GestureDetector(
       onTap: onTap,
@@ -18433,7 +18492,7 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
           color: bgColor,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isActive ? cs.primary : cs.outline.withOpacity(0.2),
+            color: isActive ? cs.primary : cs.outline.withValues(alpha: 0.2),
             width: 1.5,
           ),
         ),
@@ -18492,7 +18551,7 @@ class _MaskEditorPageState extends State<MaskEditorPage> {
           color: active ? cs.primary : cs.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: active ? cs.primary : cs.outline.withOpacity(0.2),
+            color: active ? cs.primary : cs.outline.withValues(alpha: 0.2),
           ),
         ),
         child: Text(
@@ -18570,7 +18629,7 @@ class _MaskEditorPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final dst = Rect.fromLTWH(0, 0, displaySize.width, displaySize.height);
     canvas.clipRect(dst);
-    final fq = FilterQuality.medium;
+    const fq = FilterQuality.medium;
     paintImage(
       canvas: canvas,
       rect: dst,
@@ -18858,7 +18917,7 @@ class _BulkExtraRefsStack extends StatelessWidget {
                   border: Border.all(color: cs.surface, width: 1),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.22),
+                      color: Colors.black.withValues(alpha: 0.22),
                       blurRadius: 2,
                       offset: const Offset(0, 1),
                     ),
@@ -18878,10 +18937,10 @@ class _BulkExtraRefsStack extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.62),
+                  color: Colors.black.withValues(alpha: 0.62),
                   borderRadius: BorderRadius.circular(4),
                   border: Border.all(
-                      color: cs.surface.withOpacity(0.35), width: 0.5),
+                      color: cs.surface.withValues(alpha: 0.35), width: 0.5),
                 ),
                 child: Text(
                   '+$overflow',
@@ -18947,7 +19006,7 @@ class _ComposerImageGalleryDialogState
       elevation: 0,
       insetPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 24),
       child: Container(
-        constraints: BoxConstraints(maxWidth: 560),
+        constraints: const BoxConstraints(maxWidth: 560),
         decoration: BoxDecoration(
           color: const Color(0xFF1C1C1E),
           borderRadius: BorderRadius.circular(AppStyles.radiusLg),
@@ -18978,7 +19037,7 @@ class _ComposerImageGalleryDialogState
                       child: Text(
                         '${_pageIndex + 1} / $n',
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.8),
+                          color: Colors.white.withValues(alpha: 0.8),
                           fontSize: 13,
                           fontWeight: FontWeight.w500,
                         ),
@@ -19196,7 +19255,7 @@ class _ComposerIconButton extends StatelessWidget {
     final effectiveOnTap = (enabled && !busy) ? onTap : () {};
     final iconColor = enabled
         ? (active ? Colors.white : cs.onSurfaceVariant)
-        : cs.onSurfaceVariant.withOpacity(0.35);
+        : cs.onSurfaceVariant.withValues(alpha: 0.35);
     return Tooltip(
       message: tooltip,
       child: InkWell(
@@ -19210,11 +19269,11 @@ class _ComposerIconButton extends StatelessWidget {
             gradient: active
                 ? const LinearGradient(colors: KalaColors.brandGradient)
                 : null,
-            color: active ? null : cs.surfaceContainerHigh.withOpacity(0.55),
+            color: active ? null : cs.surfaceContainerHigh.withValues(alpha: 0.55),
             border: Border.all(
               color: active
                   ? Colors.transparent
-                  : cs.outlineVariant.withOpacity(0.3),
+                  : cs.outlineVariant.withValues(alpha: 0.3),
             ),
           ),
           child: busy
@@ -19295,7 +19354,7 @@ class _AttachListRow extends StatelessWidget {
               width: 34,
               height: 34,
               decoration: BoxDecoration(
-                color: cs.surfaceContainerHigh.withOpacity(0.65),
+                color: cs.surfaceContainerHigh.withValues(alpha: 0.65),
                 shape: BoxShape.circle,
               ),
               child: Icon(icon, size: 17, color: color),
@@ -19317,7 +19376,7 @@ class _AttachListRow extends StatelessWidget {
                   Text(
                     subtitle,
                     style: TextStyle(
-                      color: cs.onSurfaceVariant.withOpacity(0.7),
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.7),
                       fontSize: 11.5,
                     ),
                   ),
@@ -19347,12 +19406,12 @@ class _AttachBulkTogglePill extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
-          color: on ? cs.primary.withOpacity(0.15) : cs.surfaceContainerHigh,
+          color: on ? cs.primary.withValues(alpha: 0.15) : cs.surfaceContainerHigh,
           borderRadius: BorderRadius.circular(100),
           border: Border.all(
             color: on
-                ? cs.primary.withOpacity(0.45)
-                : cs.outlineVariant.withOpacity(0.3),
+                ? cs.primary.withValues(alpha: 0.45)
+                : cs.outlineVariant.withValues(alpha: 0.3),
           ),
         ),
         child: Row(

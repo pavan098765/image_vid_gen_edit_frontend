@@ -201,7 +201,7 @@ class _EditorPageState extends State<EditorPage>
             borderRadius: BorderRadius.circular(12),
             boxShadow: [
               BoxShadow(
-                color: glow.withOpacity(0.28 + 0.55 * t),
+                color: glow.withValues(alpha: 0.28 + 0.55 * t),
                 blurRadius: 8 + 16 * t,
                 spreadRadius: 1 + 2 * t,
               ),
@@ -1013,31 +1013,31 @@ class _EditorPageState extends State<EditorPage>
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: isDark
-                ? [cs.surface.withOpacity(0.70), cs.surface.withOpacity(0.55)]
-                : [cs.surface.withOpacity(0.85), cs.surface.withOpacity(0.70)],
+                ? [cs.surface.withValues(alpha: 0.70), cs.surface.withValues(alpha: 0.55)]
+                : [cs.surface.withValues(alpha: 0.85), cs.surface.withValues(alpha: 0.70)],
           ),
           boxShadow: [
             BoxShadow(
-              color: (isDark ? Colors.black : Colors.black54).withOpacity(0.10),
+              color: (isDark ? Colors.black : Colors.black54).withValues(alpha: 0.10),
               blurRadius: 16,
               offset: const Offset(0, 6),
             ),
           ],
           border: Border.all(
-            color: cs.outlineVariant.withOpacity(0.25),
+            color: cs.outlineVariant.withValues(alpha: 0.25),
           ),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.image_outlined,
-                size: 56, color: cs.onSurface.withOpacity(0.38)),
+                size: 56, color: cs.onSurface.withValues(alpha: 0.38)),
             const SizedBox(height: 12),
             Text(
               'Choose a photo to start.',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: cs.onSurface.withOpacity(0.70),
+                    color: cs.onSurface.withValues(alpha: 0.70),
                     fontSize: 14,
                   ),
             ),
@@ -1096,7 +1096,7 @@ class _ConfirmExitAppDialog extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: cs.primaryContainer.withOpacity(0.3),
+              color: cs.primaryContainer.withValues(alpha: 0.3),
               shape: BoxShape.circle,
             ),
             child: Icon(

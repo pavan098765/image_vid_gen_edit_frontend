@@ -691,8 +691,9 @@ class _ExploreAIPageState extends State<ExploreAIPage>
   }
 
   void _selectCategory(int index) {
-    if (index < 0 || index > _categories.length)
+    if (index < 0 || index > _categories.length) {
       return; // 0 = All, 1+ = categories
+    }
 
     HapticFeedback.lightImpact();
     setState(() {
@@ -714,18 +715,21 @@ class _ExploreAIPageState extends State<ExploreAIPage>
   /// Check if a template's model is enabled
   bool _isTemplateModelEnabled(Map<String, dynamic> template) {
     final capabilityId = template['capability'] as String?;
-    if (capabilityId == null)
+    if (capabilityId == null) {
       return true; // Default to enabled if no capability
+    }
 
     final capability = _capabilities[capabilityId] as Map<String, dynamic>?;
-    if (capability == null)
+    if (capability == null) {
       return true; // Default to enabled if capability not found
+    }
 
     final templateModelId = template['model'] as String? ??
         template['preferred_model'] as String? ??
         capability['defaultModel'] as String?;
-    if (templateModelId == null)
+    if (templateModelId == null) {
       return true; // Default to enabled if no model specified
+    }
 
     final allModels = capability['models'] as List<dynamic>? ?? [];
     final model = allModels.firstWhere(
@@ -1835,8 +1839,9 @@ class _ExploreAIPageState extends State<ExploreAIPage>
           enabled == true; // Default to enabled if not specified
     }).toList();
 
-    if (enabledModelsJson.isEmpty)
+    if (enabledModelsJson.isEmpty) {
       return const SizedBox.shrink(); // Hide if no enabled models
+    }
 
     final models = enabledModelsJson
         .map((m) => ModelOption.fromJson(m as Map<String, dynamic>))
@@ -2749,8 +2754,9 @@ class _ExploreAIPageState extends State<ExploreAIPage>
       if (capabilityId == null) throw Exception('Template missing capability');
 
       final capability = _capabilities[capabilityId] as Map<String, dynamic>?;
-      if (capability == null)
+      if (capability == null) {
         throw Exception('Capability not found: $capabilityId');
+      }
 
       // Get model config
       final modelId = selectedModelId ??
@@ -3351,7 +3357,9 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
     if (!_hasMedia && !_isTextOnly) return false;
     if (_showPromptInput &&
         _promptController.text.trim().isEmpty &&
-        _isTextOnly) return false;
+        _isTextOnly) {
+      return false;
+    }
     return userCreditsNotifier.value >= _totalCost;
   }
 
@@ -4743,8 +4751,9 @@ class _TemplateCardState extends State<_TemplateCard>
   }
 
   Future<void> _loadThumbnail() async {
-    if (_thumbnailBytes != null || _thumbnailLoading || _previewUrl == null)
+    if (_thumbnailBytes != null || _thumbnailLoading || _previewUrl == null) {
       return;
+    }
 
     setState(() => _thumbnailLoading = true);
 
@@ -5493,8 +5502,9 @@ class _CategoryTemplatesPageState extends State<_CategoryTemplatesPage> {
 
       final capability =
           widget.capabilities[capabilityId] as Map<String, dynamic>?;
-      if (capability == null)
+      if (capability == null) {
         throw Exception('Capability not found: $capabilityId');
+      }
 
       final modelId = result.selectedModelId ??
           template['model'] as String? ??
@@ -6003,7 +6013,7 @@ class _ConfirmExitAppDialog extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: cs.primaryContainer.withOpacity(0.3),
+              color: cs.primaryContainer.withValues(alpha: 0.3),
               shape: BoxShape.circle,
             ),
             child: Icon(

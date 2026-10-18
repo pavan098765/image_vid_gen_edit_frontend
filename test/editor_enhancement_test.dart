@@ -36,7 +36,7 @@ void main() {
   });
 
   test('speed ramp slices sum to clip duration', () {
-    final clip = VideoClip(
+    const clip = VideoClip(
       id: 'c1',
       startTime: Duration.zero,
       duration: const Duration(seconds: 4),
@@ -59,7 +59,7 @@ void main() {
   });
 
   test('project JSON round-trip keeps crop, look, text align', () {
-    final project = VideoProject(
+    const project = VideoProject(
       id: 'job_abc',
       name: 'Roundtrip',
       totalDuration: const Duration(seconds: 3),

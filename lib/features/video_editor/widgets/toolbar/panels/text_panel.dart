@@ -157,17 +157,17 @@ class _TextPanelState extends ConsumerState<TextPanel> {
             onChanged: isEditing ? (_) => _updateClip() : null,
             decoration: InputDecoration(
               hintText: 'Enter text...',
-              hintStyle: TextStyle(color: cs.onSurface.withOpacity(0.4)),
+              hintStyle: TextStyle(color: cs.onSurface.withValues(alpha: 0.4)),
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               isDense: true,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
-                borderSide: BorderSide(color: cs.onSurface.withOpacity(0.15)),
+                borderSide: BorderSide(color: cs.onSurface.withValues(alpha: 0.15)),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
-                borderSide: BorderSide(color: cs.onSurface.withOpacity(0.15)),
+                borderSide: BorderSide(color: cs.onSurface.withValues(alpha: 0.15)),
               ),
             ),
           ),
@@ -193,11 +193,11 @@ class _TextPanelState extends ConsumerState<TextPanel> {
                     padding: const EdgeInsets.symmetric(horizontal: 10),
                     decoration: BoxDecoration(
                       color: selected
-                          ? cs.primary.withOpacity(0.15)
+                          ? cs.primary.withValues(alpha: 0.15)
                           : cs.surfaceContainerHigh,
                       borderRadius: BorderRadius.circular(6),
                       border: selected
-                          ? Border.all(color: cs.primary.withOpacity(0.4))
+                          ? Border.all(color: cs.primary.withValues(alpha: 0.4))
                           : null,
                     ),
                     alignment: Alignment.center,
@@ -208,7 +208,7 @@ class _TextPanelState extends ConsumerState<TextPanel> {
                         fontSize: 12,
                         color: selected
                             ? cs.primary
-                            : cs.onSurface.withOpacity(0.7),
+                            : cs.onSurface.withValues(alpha: 0.7),
                         fontWeight:
                             selected ? FontWeight.w600 : FontWeight.normal,
                       ),
@@ -225,7 +225,7 @@ class _TextPanelState extends ConsumerState<TextPanel> {
             children: [
               Text('Size',
                   style: TextStyle(
-                      fontSize: 12, color: cs.onSurface.withOpacity(0.6))),
+                      fontSize: 12, color: cs.onSurface.withValues(alpha: 0.6))),
               Expanded(
                 child: Slider(
                   value: _fontSize,
@@ -240,7 +240,7 @@ class _TextPanelState extends ConsumerState<TextPanel> {
               Text(
                 _fontSize.round().toString(),
                 style: TextStyle(
-                    fontSize: 12, color: cs.onSurface.withOpacity(0.7)),
+                    fontSize: 12, color: cs.onSurface.withValues(alpha: 0.7)),
               ),
               const SizedBox(width: 8),
               _toggleChip('B', _isBold, () {
@@ -264,7 +264,7 @@ class _TextPanelState extends ConsumerState<TextPanel> {
               separatorBuilder: (_, __) => const SizedBox(width: 6),
               itemBuilder: (_, i) {
                 final c = _colorOptions[i];
-                final selected = c.value == _textColor.value;
+                final selected = c.toARGB32() == _textColor.toARGB32();
                 return GestureDetector(
                   onTap: () {
                     setState(() => _textColor = c);
@@ -283,7 +283,7 @@ class _TextPanelState extends ConsumerState<TextPanel> {
                       boxShadow: selected
                           ? [
                               BoxShadow(
-                                  color: c.withOpacity(0.4), blurRadius: 6)
+                                  color: c.withValues(alpha: 0.4), blurRadius: 6)
                             ]
                           : null,
                     ),
@@ -297,7 +297,7 @@ class _TextPanelState extends ConsumerState<TextPanel> {
           // Animation picker
           Text('Animation',
               style: TextStyle(
-                  fontSize: 12, color: cs.onSurface.withOpacity(0.6))),
+                  fontSize: 12, color: cs.onSurface.withValues(alpha: 0.6))),
           const SizedBox(height: 6),
           SizedBox(
             height: 32,
@@ -318,11 +318,11 @@ class _TextPanelState extends ConsumerState<TextPanel> {
                     padding: const EdgeInsets.symmetric(horizontal: 10),
                     decoration: BoxDecoration(
                       color: selected
-                          ? cs.primary.withOpacity(0.15)
+                          ? cs.primary.withValues(alpha: 0.15)
                           : cs.surfaceContainerHigh,
                       borderRadius: BorderRadius.circular(6),
                       border: selected
-                          ? Border.all(color: cs.primary.withOpacity(0.4))
+                          ? Border.all(color: cs.primary.withValues(alpha: 0.4))
                           : null,
                     ),
                     alignment: Alignment.center,
@@ -332,7 +332,7 @@ class _TextPanelState extends ConsumerState<TextPanel> {
                         fontSize: 11,
                         color: selected
                             ? cs.primary
-                            : cs.onSurface.withOpacity(0.6),
+                            : cs.onSurface.withValues(alpha: 0.6),
                         fontWeight:
                             selected ? FontWeight.w600 : FontWeight.normal,
                       ),
@@ -347,7 +347,7 @@ class _TextPanelState extends ConsumerState<TextPanel> {
             'Animation plays in preview. The export uses still text.',
             style: TextStyle(
               fontSize: 12,
-              color: cs.onSurface.withOpacity(0.6),
+              color: cs.onSurface.withValues(alpha: 0.6),
             ),
           ),
         ],
@@ -365,10 +365,10 @@ class _TextPanelState extends ConsumerState<TextPanel> {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color:
-              active ? cs.primary.withOpacity(0.15) : cs.surfaceContainerHigh,
+              active ? cs.primary.withValues(alpha: 0.15) : cs.surfaceContainerHigh,
           borderRadius: BorderRadius.circular(6),
           border:
-              active ? Border.all(color: cs.primary.withOpacity(0.4)) : null,
+              active ? Border.all(color: cs.primary.withValues(alpha: 0.4)) : null,
         ),
         child: Text(
           label,
@@ -376,7 +376,7 @@ class _TextPanelState extends ConsumerState<TextPanel> {
             fontSize: 13,
             fontWeight: FontWeight.bold,
             fontStyle: label == 'I' ? FontStyle.italic : FontStyle.normal,
-            color: active ? cs.primary : cs.onSurface.withOpacity(0.6),
+            color: active ? cs.primary : cs.onSurface.withValues(alpha: 0.6),
           ),
         ),
       ),

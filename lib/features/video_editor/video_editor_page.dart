@@ -1124,7 +1124,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
       decoration: BoxDecoration(
         color: cs.surface,
         border: Border(
-          bottom: BorderSide(color: cs.onSurface.withOpacity(0.08)),
+          bottom: BorderSide(color: cs.onSurface.withValues(alpha: 0.08)),
         ),
       ),
       child: Row(
@@ -1247,13 +1247,13 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
           borderRadius: BorderRadius.circular(16),
           gradient: LinearGradient(
             colors: isDark
-                ? [cs.surface.withOpacity(0.65), cs.surface.withOpacity(0.50)]
-                : [cs.surface.withOpacity(0.85), cs.surface.withOpacity(0.70)],
+                ? [cs.surface.withValues(alpha: 0.65), cs.surface.withValues(alpha: 0.50)]
+                : [cs.surface.withValues(alpha: 0.85), cs.surface.withValues(alpha: 0.70)],
           ),
-          border: Border.all(color: cs.outlineVariant.withOpacity(0.25)),
+          border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.25)),
           boxShadow: [
             BoxShadow(
-              color: cs.shadow.withOpacity(0.12),
+              color: cs.shadow.withValues(alpha: 0.12),
               blurRadius: 16,
               offset: const Offset(0, 6),
             ),
@@ -1263,7 +1263,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.movie_outlined,
-                size: 56, color: cs.onSurface.withOpacity(0.38)),
+                size: 56, color: cs.onSurface.withValues(alpha: 0.38)),
             const SizedBox(height: 12),
             Text(
               widget.initialStickerPath != null
@@ -1271,7 +1271,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
                   : 'Add a video to start.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: cs.onSurface.withOpacity(0.70),
+                color: cs.onSurface.withValues(alpha: 0.70),
                 fontSize: 14,
               ),
             ),
@@ -1350,15 +1350,15 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
                   borderRadius: BorderRadius.circular(12),
                   gradient: LinearGradient(
                     colors: [
-                      cs.surface.withOpacity(0.9),
-                      cs.surface.withOpacity(0.65),
+                      cs.surface.withValues(alpha: 0.9),
+                      cs.surface.withValues(alpha: 0.65),
                     ],
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: cs.shadow.withOpacity(0.25),
+                      color: cs.shadow.withValues(alpha: 0.25),
                       blurRadius: 22,
                       offset: const Offset(0, 6),
                     ),
@@ -1385,11 +1385,11 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
                           opacity: controller.value.isPlaying ? 0.0 : 1.0,
                           duration: const Duration(milliseconds: 250),
                           child: Container(
-                            color: cs.surface.withOpacity(0.25),
+                            color: cs.surface.withValues(alpha: 0.25),
                             child: Icon(
                               Icons.play_circle_fill_rounded,
                               size: 90,
-                              color: cs.onSurface.withOpacity(0.85),
+                              color: cs.onSurface.withValues(alpha: 0.85),
                             ),
                           ),
                         ),
@@ -1404,8 +1404,8 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
                         allowScrubbing: true,
                         colors: VideoProgressColors(
                           playedColor: cs.primary,
-                          bufferedColor: cs.onSurface.withOpacity(0.30),
-                          backgroundColor: cs.onSurface.withOpacity(0.15),
+                          bufferedColor: cs.onSurface.withValues(alpha: 0.30),
+                          backgroundColor: cs.onSurface.withValues(alpha: 0.15),
                         ),
                       ),
                     ),
@@ -1425,13 +1425,13 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(Icons.video_file,
-                          size: 48, color: cs.onSurface.withOpacity(0.4)),
+                          size: 48, color: cs.onSurface.withValues(alpha: 0.4)),
                       const SizedBox(height: 8),
                       Text(
                         'Video exported successfully.\nPreview not available.',
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                            color: cs.onSurface.withOpacity(0.5), fontSize: 13),
+                            color: cs.onSurface.withValues(alpha: 0.5), fontSize: 13),
                       ),
                     ],
                   ),
@@ -1505,7 +1505,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: cs.shadow.withOpacity(0.3),
+                color: cs.shadow.withValues(alpha: 0.3),
                 blurRadius: 20,
               ),
             ],
@@ -1536,7 +1536,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
                 Text(
                   '${(_exportProgress * 100).toStringAsFixed(0)}%',
                   style: TextStyle(
-                    color: cs.onSurface.withOpacity(0.6),
+                    color: cs.onSurface.withValues(alpha: 0.6),
                     fontSize: 14,
                   ),
                 ),
@@ -1556,7 +1556,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
   }) {
     final cs = Theme.of(context).colorScheme;
     return Material(
-      color: isPrimary ? cs.primary : cs.surface.withOpacity(0.9),
+      color: isPrimary ? cs.primary : cs.surface.withValues(alpha: 0.9),
       borderRadius: BorderRadius.circular(10),
       elevation: 2,
       child: InkWell(
@@ -1579,7 +1579,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
       width: 40,
       height: 40,
       decoration: BoxDecoration(
-        color: cs.surface.withOpacity(0.9),
+        color: cs.surface.withValues(alpha: 0.9),
         borderRadius: BorderRadius.circular(10),
       ),
       child: const Center(
@@ -1750,7 +1750,7 @@ class _ConfirmExitAppDialog extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: cs.primaryContainer.withOpacity(0.3),
+              color: cs.primaryContainer.withValues(alpha: 0.3),
               shape: BoxShape.circle,
             ),
             child: Icon(LucideIcons.logOut, size: 40, color: cs.primary),
@@ -1821,8 +1821,8 @@ class _VideoInitializingWidget extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: isDark
-              ? [cs.surface.withOpacity(0.95), cs.surface.withOpacity(0.80)]
-              : [cs.surface.withOpacity(0.98), cs.surface.withOpacity(0.92)],
+              ? [cs.surface.withValues(alpha: 0.95), cs.surface.withValues(alpha: 0.80)]
+              : [cs.surface.withValues(alpha: 0.98), cs.surface.withValues(alpha: 0.92)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -1832,13 +1832,13 @@ class _VideoInitializingWidget extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.video_camera_back_rounded,
-                size: 80, color: cs.onSurface.withOpacity(0.70)),
+                size: 80, color: cs.onSurface.withValues(alpha: 0.70)),
             const SizedBox(height: 30),
             Text(
               'Initializing Video Editor...',
               style: TextStyle(
                 fontSize: 18,
-                color: cs.onSurface.withOpacity(0.70),
+                color: cs.onSurface.withValues(alpha: 0.70),
                 fontWeight: FontWeight.w500,
               ),
             ),

@@ -717,7 +717,7 @@ class ExportService {
     required Directory workDir,
     required int clipIndex,
   }) async {
-    final n = exportSegmentedSpeedSegments;
+    const n = exportSegmentedSpeedSegments;
     final e = clip.speedEffect;
     final S = clip.trimEnd - clip.trimStart;
     if (S <= Duration.zero) return null;

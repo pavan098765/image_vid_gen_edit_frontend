@@ -88,8 +88,8 @@ class _PreviewPlayerState extends ConsumerState<PreviewPlayer> {
                   Center(
                     child: AspectRatio(
                       aspectRatio: _previewAspect(ref, controller),
-                      child: Stack(
-                        children: const [
+                      child: const Stack(
+                        children: [
                           PreviewOverlay(),
                           CropBoxOverlay(),
                         ],
@@ -104,7 +104,7 @@ class _PreviewPlayerState extends ConsumerState<PreviewPlayer> {
                     child: Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.5),
+                        color: Colors.black.withValues(alpha: 0.5),
                         shape: BoxShape.circle,
                       ),
                       child: Icon(
@@ -132,7 +132,7 @@ class _PreviewPlayerState extends ConsumerState<PreviewPlayer> {
               child: Text(
                 'Exporting as ${ar.platformHint} ${ar.label}',
                 style: TextStyle(
-                  color: cs.onSurface.withOpacity(0.55),
+                  color: cs.onSurface.withValues(alpha: 0.55),
                   fontSize: 11,
                 ),
               ),
@@ -142,14 +142,14 @@ class _PreviewPlayerState extends ConsumerState<PreviewPlayer> {
           // Transport controls bar
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            color: cs.surface.withOpacity(0.95),
+            color: cs.surface.withValues(alpha: 0.95),
             child: Row(
               children: [
                 // Time display
                 Text(
                   TimeUtils.formatDuration(playback.position),
                   style: TextStyle(
-                    color: cs.onSurface.withOpacity(0.8),
+                    color: cs.onSurface.withValues(alpha: 0.8),
                     fontSize: 12,
                     fontFamily: 'monospace',
                     fontWeight: FontWeight.w500,
@@ -158,7 +158,7 @@ class _PreviewPlayerState extends ConsumerState<PreviewPlayer> {
                 Text(
                   ' / ${TimeUtils.formatDuration(playback.totalDuration)}',
                   style: TextStyle(
-                    color: cs.onSurface.withOpacity(0.4),
+                    color: cs.onSurface.withValues(alpha: 0.4),
                     fontSize: 12,
                     fontFamily: 'monospace',
                   ),
@@ -470,8 +470,8 @@ class _TransportButton extends StatelessWidget {
           icon,
           size: 18,
           color: enabled
-              ? cs.onSurface.withOpacity(0.8)
-              : cs.onSurface.withOpacity(0.25),
+              ? cs.onSurface.withValues(alpha: 0.8)
+              : cs.onSurface.withValues(alpha: 0.25),
         ),
       ),
     );

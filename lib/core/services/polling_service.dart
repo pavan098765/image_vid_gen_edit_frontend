@@ -600,7 +600,9 @@ class PollingService {
             status != "queued" &&
             status != "running" &&
             status != "stitching" &&
-            status != "uploading") return false;
+            status != "uploading") {
+          return false;
+        }
 
         // Skip age check for manual/force refresh
         if (forceRefresh) return true;
