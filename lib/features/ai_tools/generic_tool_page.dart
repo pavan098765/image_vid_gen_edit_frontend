@@ -6441,6 +6441,7 @@ class _GenericToolPageState extends State<GenericToolPage>
               ],
               if (widget.config.capabilityId == 'edit_image') ...[
                 _buildEditBrushRow(cs, attachments),
+                _buildQwenBackgroundChoice(cs),
                 const SizedBox(height: 8),
               ],
 
@@ -16225,6 +16226,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             "Uploading media…\nPlease be patient if your internet connection is slow.";
 
         if (!isBulkEdit) {
+          Uint8List? qwenMaskForUpload;
           final imageInputDef = widget.config.inputs.firstWhere(
               (i) => i["type"] == "image",
               orElse: () => <String, dynamic>{});
@@ -16256,14 +16258,21 @@ class _GenericToolPageState extends State<GenericToolPage>
                   }
                   rawImageList = fitted;
                   paramsForSubmit['aspect_ratio'] = fit.aspectRatio;
-                  final mask = _inputs['mask_image'];
-                  if (mask is Uint8List) {
-                    final croppedMask = cropBytesLikeFrame(mask, fit);
-                    if (croppedMask != null) {
-                      _inputs['mask_image'] = croppedMask;
-                    }
-                  }
                 }
+                final mask = _inputs['mask_image'];
+                if (mask is Uint8List && rawImageList.length == 1) {
+                  qwenMaskForUpload = qwenLocalEditMask(
+                    mask,
+                    width: fit?.width,
+                    height: fit?.height,
+                  );
+                }
+                final wantsTransparent = _inputs['background'] == 'transparent';
+                paramsForSubmit['background'] =
+                    wantsTransparent && qwenMaskForUpload == null
+                        ? 'transparent'
+                        : 'opaque';
+                paramsForSubmit['output_format'] = 'png';
               }
               if (widget.config.capabilityId == 'expand_scene') {
                 final modelId = _selectedModelId ?? widget.config.model;
@@ -16294,10 +16303,11 @@ class _GenericToolPageState extends State<GenericToolPage>
                   }
                   final existing =
                       (basePayload['prompt'] as String?)?.trim() ?? '';
-                  if (existing.isEmpty) {
-                    basePayload['prompt'] =
-                        'Continue the scene into the border. Match the lighting, perspective, and texture. Leave the original photo unchanged.';
-                  }
+                  const instruction =
+                      'Outpaint the image: replace the flat gray border with a seamless continuation of the scene. Keep the existing picture unchanged.';
+                  basePayload['prompt'] = existing.isEmpty
+                      ? instruction
+                      : '$instruction $existing';
                   final ratio = _inputs['aspect_ratio']?.toString();
                   if (ratio != null &&
                       ratio.isNotEmpty &&
@@ -16369,7 +16379,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             }
           }
 
-          final rawMask = _inputs["mask_image"];
+          final rawMask = qwenMaskForUpload ?? _inputs["mask_image"];
           final photos = _inputs['init_image'];
           final photoCount = photos is List ? photos.length : (photos is Uint8List ? 1 : 0);
           final qwenBrush = widget.config.capabilityId == 'edit_image' && (_selectedModelId ?? widget.config.model) == 'qwen2_1_i2i';
@@ -17043,6 +17053,95 @@ class _GenericToolPageState extends State<GenericToolPage>
     }
   }
 
+  Widget _buildQwenBackgroundChoice(ColorScheme cs) {
+    if ((_selectedModelId ?? widget.config.model) != 'qwen2_1_i2i') {
+      return const SizedBox.shrink();
+    }
+    final transparent = _inputs['background'] == 'transparent';
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Background',
+            style: TextStyle(
+              color: cs.onSurface,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              _backgroundChoice(cs, 'Opaque', !transparent, () {
+                setState(() => _inputs['background'] = 'opaque');
+              }),
+              const SizedBox(width: 8),
+              _backgroundChoice(cs, 'Transparent', transparent, () {
+                setState(() {
+                  _inputs['background'] = 'transparent';
+                  _inputs.remove('mask_image');
+                });
+              }),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            transparent
+                ? 'Describe only the subject. A painted area is cleared, because a transparent background cannot be combined with one.'
+                : 'The result is a PNG with a solid background.',
+            style: TextStyle(
+              color: cs.onSurfaceVariant,
+              fontSize: 12,
+              height: 1.35,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _backgroundChoice(
+    ColorScheme cs,
+    String label,
+    bool selected,
+    VoidCallback onTap,
+  ) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: '$label background',
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppStyles.radiusFull),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          decoration: BoxDecoration(
+            gradient: selected
+                ? const LinearGradient(colors: KalaColors.brandGradient)
+                : null,
+            color: selected ? null : cs.surfaceContainerHigh.withOpacity(0.55),
+            borderRadius: BorderRadius.circular(AppStyles.radiusFull),
+            border: Border.all(
+              color: selected
+                  ? Colors.transparent
+                  : cs.outlineVariant.withOpacity(0.25),
+            ),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: selected ? Colors.white : cs.onSurfaceVariant,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+              fontSize: 12.5,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   bool _qwenEditBrush(List<_ComposerAttachment> attachments) {
     final model = _selectedModelId ?? widget.config.model;
     if (model != 'qwen2_1_i2i') return false;
@@ -17078,7 +17177,12 @@ class _GenericToolPageState extends State<GenericToolPage>
             final base = photos.first.thumbBytes;
             if (base == null) return;
             final mask = await _openMaskEditor(base, brushOnly: true);
-            if (mask != null && mounted) setState(() => _inputs['mask_image'] = mask);
+            if (mask != null && mounted) {
+              setState(() {
+                _inputs['mask_image'] = mask;
+                _inputs['background'] = 'opaque';
+              });
+            }
           },
           child: Text(painted ? 'Edit area' : 'Paint'),
         ),

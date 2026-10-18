@@ -67,19 +67,14 @@ ExpandPair? buildExpandPair(Uint8List source, Map<String, dynamic> inputs) {
   top = top.clamp(0, canvasH - decoded.height);
 
   final canvas = img.Image(width: canvasW, height: canvasH);
-  _extendEdges(canvas, decoded, left, top);
+  // Flat gray, not a stretched edge pixel. A one-pixel smear is what comes
+  // back as the vertical color bands.
+  img.fill(canvas, color: img.ColorRgb8(128, 128, 128));
   img.compositeImage(canvas, decoded, dstX: left, dstY: top);
 
   final mask = img.Image(width: canvasW, height: canvasH);
   img.fill(mask, color: img.ColorRgb8(255, 255, 255));
-  img.fillRect(
-    mask,
-    x1: left,
-    y1: top,
-    x2: left + decoded.width - 1,
-    y2: top + decoded.height - 1,
-    color: img.ColorRgb8(0, 0, 0),
-  );
+  _keepPhoto(mask, left, top, decoded.width, decoded.height);
 
   return ExpandPair(
     canvas: Uint8List.fromList(img.encodePng(canvas)),
@@ -125,42 +120,28 @@ _Placement? _customPlacement(img.Image source, Map<String, dynamic> inputs) {
   return _Placement(canvasW, canvasH, left, top);
 }
 
-void _extendEdges(img.Image canvas, img.Image source, int left, int top) {
-  if (top > 0) {
-    final row = img.copyCrop(source, x: 0, y: 0, width: source.width, height: 1);
-    final band = img.copyResize(row, width: canvas.width, height: top);
-    img.compositeImage(canvas, band);
-  }
-  final bottom = canvas.height - top - source.height;
-  if (bottom > 0) {
-    final row = img.copyCrop(
-      source,
-      x: 0,
-      y: source.height - 1,
-      width: source.width,
-      height: 1,
-    );
-    final band = img.copyResize(row, width: canvas.width, height: bottom);
-    img.compositeImage(canvas, band, dstY: top + source.height);
-  }
-  if (left > 0) {
-    final col = img.copyCrop(source, x: 0, y: 0, width: 1, height: source.height);
-    final band = img.copyResize(col, width: left, height: source.height);
-    img.compositeImage(canvas, band, dstY: top);
-  }
-  final right = canvas.width - left - source.width;
-  if (right > 0) {
-    final col = img.copyCrop(
-      source,
-      x: source.width - 1,
-      y: 0,
-      width: 1,
-      height: source.height,
-    );
-    final band = img.copyResize(col, width: right, height: source.height);
-    img.compositeImage(canvas, band, dstX: left + source.width, dstY: top);
+const _feather = 32;
+
+/// White is the area the model may paint. The photo stays black, with a short
+/// fade at each new edge so the join is not a hard rectangle.
+void _keepPhoto(img.Image mask, int left, int top, int srcW, int srcH) {
+  final rightPad = left + srcW < mask.width;
+  final bottomPad = top + srcH < mask.height;
+  for (var y = top; y < top + srcH; y++) {
+    for (var x = left; x < left + srcW; x++) {
+      var edge = _feather;
+      if (top > 0) edge = _min(edge, y - top);
+      if (bottomPad) edge = _min(edge, top + srcH - 1 - y);
+      if (left > 0) edge = _min(edge, x - left);
+      if (rightPad) edge = _min(edge, left + srcW - 1 - x);
+      final kept = edge >= _feather;
+      final value = kept ? 0 : (255 * (1 - edge / _feather)).round();
+      mask.setPixelRgba(x, y, value, value, value, 255);
+    }
   }
 }
+
+int _min(int a, int b) => a < b ? a : b;
 
 double _ratio(String value) {
   final parts = value.split(':');
