@@ -20,10 +20,23 @@ class BeforeAfterPreviewPage extends StatefulWidget {
 class _BeforeAfterPreviewPageState extends State<BeforeAfterPreviewPage> {
   bool _showOriginal = false;
   int? _heldPointer;
+  final TransformationController _zoom = TransformationController();
+  Offset? _doubleTapPoint;
+
+  @override
+  void dispose() {
+    _zoom.dispose();
+    super.dispose();
+  }
+
+  void _resetZoom() {
+    _zoom.value = Matrix4.identity();
+  }
 
   void _press(PointerDownEvent event) {
     _heldPointer = event.pointer;
     if (_showOriginal) return;
+    _resetZoom();
     setState(() => _showOriginal = true);
   }
 
@@ -31,7 +44,20 @@ class _BeforeAfterPreviewPageState extends State<BeforeAfterPreviewPage> {
     if (event.pointer != _heldPointer) return;
     _heldPointer = null;
     if (!_showOriginal) return;
+    _resetZoom();
     setState(() => _showOriginal = false);
+  }
+
+  void _toggleZoom() {
+    final point = _doubleTapPoint;
+    if (_zoom.value.getMaxScaleOnAxis() > 1.05 || point == null) {
+      _resetZoom();
+      return;
+    }
+    const zoom = 2.5;
+    _zoom.value = Matrix4.identity()
+      ..translate(-point.dx * (zoom - 1), -point.dy * (zoom - 1))
+      ..scale(zoom);
   }
 
   @override
@@ -71,12 +97,22 @@ class _BeforeAfterPreviewPageState extends State<BeforeAfterPreviewPage> {
           child: Semantics(
             image: true,
             label: label,
-            child: Image.file(
-              file,
-              key: ValueKey<String>(file.path + label),
-              fit: BoxFit.contain,
-              width: double.infinity,
-              height: double.infinity,
+            child: GestureDetector(
+              onDoubleTapDown: (details) =>
+                  _doubleTapPoint = details.localPosition,
+              onDoubleTap: _toggleZoom,
+              child: InteractiveViewer(
+                transformationController: _zoom,
+                minScale: 1,
+                maxScale: 5,
+                child: Image.file(
+                  file,
+                  key: ValueKey<String>(file.path + label),
+                  fit: BoxFit.contain,
+                  width: double.infinity,
+                  height: double.infinity,
+                ),
+              ),
             ),
           ),
         ),

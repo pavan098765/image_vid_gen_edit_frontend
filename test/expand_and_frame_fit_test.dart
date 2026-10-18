@@ -31,15 +31,26 @@ void main() {
     expect(fit!.aspectRatio, '16:9');
     expect(fit.cropped, isFalse);
     final resized = img.decodePng(fit.image)!;
-    expect(resized.width, 1920);
-    expect((resized.width / resized.height - (2752 / 1536)).abs(), lessThan(0.01));
+    expect(resized.width, 1376);
+    expect(resized.height, 768);
+
+    final sharp = fitImageToQwenRatio(
+      Uint8List.fromList(img.encodePng(wide)),
+      resolution: '2K',
+    );
+    expect(sharp!.aspectRatio, '16:9');
+    final sharpImage = img.decodePng(sharp.image)!;
+    expect(sharpImage.width, 2752);
+    expect(sharpImage.height, 1536);
 
     final body = img.Image(width: 100, height: 220);
     img.fill(body, color: img.ColorRgb8(10, 10, 10));
     final tall = fitImageToQwenRatio(Uint8List.fromList(img.encodePng(body)));
     expect(tall, isNotNull);
-    final tallImage = img.decodePng(tall!.image)!;
-    expect(tallImage.height, 220);
+    expect(tall!.aspectRatio, '9:21');
+    final tallImage = img.decodePng(tall.image)!;
+    expect(tallImage.width, 672);
+    expect(tallImage.height, 1568);
   });
 
   test('a painted edit mask is white on the paint and black everywhere else', () {

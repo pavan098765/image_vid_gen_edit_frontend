@@ -186,7 +186,7 @@ class _JobNextActionsState extends State<JobNextActions> {
     final job = widget.job;
     final cs = Theme.of(context).colorScheme;
     final result = _resultFile;
-    final expired = job.isCloudExpired && !job.isSavedLocally;
+    final expired = job.showsCloudExpiry;
 
     if (job.status == 'failed') {
       final amount = job.creditsCharged;

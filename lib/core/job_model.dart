@@ -69,6 +69,7 @@ Map<String, dynamic> sanitizeSettingsSnapshot(Map<String, dynamic>? raw) {
     'cineRealMotionMode',
     'cfgScale',
     'bulkEditEnabled',
+    'outputResolution',
     'styleId',
     'inputPaths',
     'mediaPaths',
@@ -188,11 +189,16 @@ class JobModel {
   }
 
   /// Kie results that are still only in the cloud after 17 minutes.
+  /// Saving continues after the cloud link times out, until the file is on the phone.
   bool get shouldAutoSave {
     if (!usesKieCloud || status != 'completed' || isSavedLocally) return false;
-    if (isCloudExpired) return false;
     return DateTime.now().difference(cloudReadyAt) >= kieAutoSaveAfter;
   }
+
+  /// Grey expired treatment is for cloud copies that are not saved automatically.
+  /// Kie results are downloaded at 17 minutes, so the card stays as a normal result.
+  bool get showsCloudExpiry =>
+      !usesKieCloud && isCloudExpired && !isSavedLocally;
 
   String get expiryTimeFormatted {
     final remaining = timeUntilExpiry;
@@ -219,7 +225,7 @@ class JobModel {
 
   /// Unsaved completed results with under 6 hours of cloud life left.
   String? get expiryCue {
-    if (status != 'completed' || isSavedLocally) return null;
+    if (status != 'completed' || isSavedLocally || usesKieCloud) return null;
     if (timeUntilExpiry >= const Duration(hours: 6)) return null;
     return 'Save to keep it · $expiryTimeFormatted left';
   }

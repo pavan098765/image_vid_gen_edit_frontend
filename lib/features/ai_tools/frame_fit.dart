@@ -2,10 +2,10 @@ import 'dart:typed_data';
 
 import 'package:image/image.dart' as img;
 
-/// Qwen 2.1 image-to-image only emits these ratios. The pixel frames are the
-/// ones the model actually draws: 16:9 is 2752x1536, not 16/9. The whole photo
-/// is resized onto that frame so a full-body shot stays full. A crop would
-/// cut the head or the feet, and a leftover sliver comes back as a purple edge.
+/// Qwen 2.1 image-to-image at 1K draws one of these canvases. A reference that
+/// is a different size is letterboxed onto that canvas, and the empty strip
+/// comes back purple. The upload is resized to the exact frame so nothing is
+/// left for the model to pad. The whole photo stays in frame.
 const List<(int, int)> qwenEditRatios = [
   (1, 1),
   (4, 3),
@@ -18,17 +18,48 @@ const List<(int, int)> qwenEditRatios = [
   (9, 21),
 ];
 
-const Map<String, double> qwenOutputAspect = {
-  '1:1': 2048 / 2048,
-  '4:3': 2400 / 1792,
-  '3:4': 1792 / 2400,
-  '3:2': 2528 / 1696,
-  '2:3': 1696 / 2528,
-  '16:9': 2752 / 1536,
-  '9:16': 1536 / 2752,
-  '21:9': 21 / 9,
-  '9:21': 9 / 21,
+/// Pixel size of each 1K label. These are the frames Kie renders, and they
+/// are not half of the 2K frames: 4:3 is 1184x896, not 1200x896.
+const Map<String, (int, int)> qwen1kFrames = {
+  '1:1': (1024, 1024),
+  '4:3': (1184, 896),
+  '3:4': (896, 1184),
+  '3:2': (1248, 832),
+  '2:3': (832, 1248),
+  '16:9': (1376, 768),
+  '9:16': (768, 1376),
+  '21:9': (1568, 672),
+  '9:21': (672, 1568),
 };
+
+/// Pixel size of each 2K label. These are not double the 1K frames.
+const Map<String, (int, int)> qwen2kFrames = {
+  '1:1': (2048, 2048),
+  '4:3': (2400, 1792),
+  '3:4': (1792, 2400),
+  '3:2': (2528, 1696),
+  '2:3': (1696, 2528),
+  '16:9': (2752, 1536),
+  '9:16': (1536, 2752),
+  '21:9': (3136, 1344),
+  '9:21': (1344, 3136),
+};
+
+const Map<String, double> qwenOutputAspect = {
+  '1:1': 1024 / 1024,
+  '4:3': 1184 / 896,
+  '3:4': 896 / 1184,
+  '3:2': 1248 / 832,
+  '2:3': 832 / 1248,
+  '16:9': 1376 / 768,
+  '9:16': 768 / 1376,
+  '21:9': 1568 / 672,
+  '9:21': 672 / 1568,
+};
+
+Map<String, (int, int)> qwenFramesFor(String resolution) {
+  return resolution.toUpperCase() == '2K' ? qwen2kFrames : qwen1kFrames;
+}
 
 class FrameFit {
   final Uint8List image;
@@ -54,17 +85,29 @@ class FrameFit {
   });
 }
 
-FrameFit? fitImageToQwenRatio(Uint8List source) {
+FrameFit? fitImageToQwenRatio(Uint8List source, {String resolution = '1K'}) {
   final decoded = img.decodeImage(source);
   if (decoded == null || decoded.width < 2 || decoded.height < 2) return null;
-  final ratio = nearestQwenRatio(decoded.width / decoded.height);
-  return _fitDecoded(decoded, source, ratio);
+  final ratio = nearestQwenRatio(
+    decoded.width / decoded.height,
+    resolution: resolution,
+  );
+  return _fitDecoded(decoded, source, ratio, resolution: resolution);
 }
 
-Uint8List? fitBytesToAspect(Uint8List source, String aspectRatio) {
+Uint8List? fitBytesToAspect(
+  Uint8List source,
+  String aspectRatio, {
+  String resolution = '1K',
+}) {
   final decoded = img.decodeImage(source);
   if (decoded == null) return null;
-  final fitted = _fitDecoded(decoded, source, aspectRatio);
+  final fitted = _fitDecoded(
+    decoded,
+    source,
+    aspectRatio,
+    resolution: resolution,
+  );
   return fitted?.image;
 }
 
@@ -123,12 +166,14 @@ Uint8List? cropBytesLikeFrame(Uint8List bytes, FrameFit fit) {
   return Uint8List.fromList(img.encodePng(cropped));
 }
 
-String nearestQwenRatio(double aspect) {
+String nearestQwenRatio(double aspect, {String resolution = '1K'}) {
+  final frames = qwenFramesFor(resolution);
   var best = qwenEditRatios.first;
   var bestGap = double.infinity;
   for (final ratio in qwenEditRatios) {
     final label = '${ratio.$1}:${ratio.$2}';
-    final target = qwenOutputAspect[label] ?? (ratio.$1 / ratio.$2);
+    final size = frames[label];
+    final target = size == null ? (ratio.$1 / ratio.$2) : size.$1 / size.$2;
     final gap = (aspect - target).abs() / aspect;
     if (gap < bestGap) {
       bestGap = gap;
@@ -138,15 +183,22 @@ String nearestQwenRatio(double aspect) {
   return '${best.$1}:${best.$2}';
 }
 
-FrameFit? _fitDecoded(img.Image decoded, Uint8List original, String aspectRatio) {
+FrameFit? _fitDecoded(
+  img.Image decoded,
+  Uint8List original,
+  String aspectRatio, {
+  String resolution = '1K',
+}) {
   final parts = aspectRatio.split(':');
   if (parts.length != 2) return null;
   final rw = int.tryParse(parts[0]);
   final rh = int.tryParse(parts[1]);
   if (rw == null || rh == null || rw == 0 || rh == 0) return null;
-  final target = qwenOutputAspect[aspectRatio] ?? (rw / rh);
-  final current = decoded.width / decoded.height;
-  if ((current - target).abs() / current < 0.002) {
+  final frame = qwenFramesFor(resolution)[aspectRatio];
+  if (frame == null) return null;
+  final outW = frame.$1;
+  final outH = frame.$2;
+  if (decoded.width == outW && decoded.height == outH) {
     return FrameFit(
       image: original,
       aspectRatio: aspectRatio,
@@ -154,22 +206,13 @@ FrameFit? _fitDecoded(img.Image decoded, Uint8List original, String aspectRatio)
       sourceHeight: decoded.height,
       x: 0,
       y: 0,
-      width: decoded.width,
-      height: decoded.height,
+      width: outW,
+      height: outH,
       cropped: false,
     );
   }
-  // Stretch one axis onto the model's frame. Both original edges stay in
-  // the picture, so a full-body photo is not trimmed.
-  final int outW;
-  final int outH;
-  if (current > target) {
-    outH = decoded.height;
-    outW = (decoded.height * target).round().clamp(2, 8192);
-  } else {
-    outW = decoded.width;
-    outH = (decoded.width / target).round().clamp(2, 8192);
-  }
+  // Fill the selected 1K or 2K canvas. A smaller photo would be padded, and
+  // that pad is the purple band. Both original edges stay in the picture.
   final resized = img.copyResize(
     decoded,
     width: outW,

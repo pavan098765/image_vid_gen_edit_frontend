@@ -1341,8 +1341,9 @@ class _JobCardState extends State<JobCard> {
       });
     }
 
-    // Check if expired (>24h old and not saved locally)
-    final isExpired = job.isCloudExpired && !job.isSavedLocally;
+    // Kie results are saved on the phone at 17 minutes, so they stay visible
+    // after the cloud link times out.
+    final isExpired = job.showsCloudExpiry;
     final isSaved = job.isSavedLocally;
 
     final downloadColor = isSaved
@@ -2128,7 +2129,7 @@ class _JobCardState extends State<JobCard> {
 
     final isFailed = job.status == 'failed';
     final isDownloaded = _isDownloaded;
-    final isExpired = job.isCloudExpired && !job.isSavedLocally;
+    final isExpired = job.showsCloudExpiry;
     final isSaved = job.isSavedLocally;
 
     // Show expired status for completed jobs that have expired and aren't saved
@@ -2177,8 +2178,12 @@ class _JobCardState extends State<JobCard> {
       );
     }
 
-    // Show expiry countdown for completed but not yet saved/expired
-    if (job.status == 'completed' && !isExpired && !isSaved) {
+    // Countdown until the cloud copy times out. Kie jobs are downloaded
+    // automatically, so after that timeout they stay a normal result.
+    if (job.status == 'completed' &&
+        !isExpired &&
+        !isSaved &&
+        !(job.usesKieCloud && job.isCloudExpired)) {
       final timeLeft = job.expiryTimeFormatted;
       return Row(
         key: ValueKey('expiring_$timeLeft'),

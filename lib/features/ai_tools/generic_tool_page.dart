@@ -2024,8 +2024,9 @@ class _GenericToolPageState extends State<GenericToolPage>
     // Animate image / create video: duration × the model's baseCost5Sec.
     final bool isVideoGenTool =
         widget.config.outputType == 'video' && !_isVideoUpscalerTool;
-    final baseCost =
-        isVideoGenTool ? _getDurationBasedCost() : _currentModelCost;
+    final baseCost = _withQwenResolutionPrice(
+      isVideoGenTool ? _getDurationBasedCost() : _currentModelCost,
+    );
     final offer = _currentModelOffer;
     final variations =
         _advancedSettings.variations.clamp(1, getMaxVariations());
@@ -2874,6 +2875,18 @@ class _GenericToolPageState extends State<GenericToolPage>
     // The StatefulBuilder will pick up the new _selectedModelData
   }
 
+  /// 2K Kala Imagine costs twice the 1K price. Other models are unchanged.
+  int _withQwenResolutionPrice(int base) {
+    final model = _selectedModelId ?? widget.config.model;
+    if (model == 'qwen2_1_i2i' && _inputs['resolution'] == '2K') {
+      return base * 2;
+    }
+    return base;
+  }
+
+  String get _qwenResolution =>
+      _inputs['resolution'] == '2K' ? '2K' : '1K';
+
   /// Get the current model's cost
   int get _currentModelCost =>
       _selectedModelData?['baseCost'] as int? ??
@@ -3017,6 +3030,7 @@ class _GenericToolPageState extends State<GenericToolPage>
           _advancedSettings.upscaleOutput ||
           _advancedSettings.enableUpscale,
       'transparentBackground': _inputs['background'] == 'transparent',
+      'outputResolution': _qwenResolution,
       'interpolateEnabled': _advancedSettings.enableInterpolate,
       'quality': _advancedSettings.quality,
       'videoDuration': _advancedSettings.videoDuration,
@@ -3358,6 +3372,10 @@ class _GenericToolPageState extends State<GenericToolPage>
             activeModel == 'qwen2_1_i2i') {
           _inputs['background'] = 'transparent';
         }
+        if (activeModel == 'qwen2_1_i2i' &&
+            snapshot['outputResolution'] == '2K') {
+          _inputs['resolution'] = '2K';
+        }
         _restoreSelectedStyle();
       });
     }
@@ -3618,6 +3636,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                                 },
                               ),
                               const SizedBox(height: 12),
+                              _buildQwenResolutionChoice(cs, setSheetState),
+                              const SizedBox(height: 12),
                             ],
                             const SizedBox(height: 4),
                           ],
@@ -3705,6 +3725,64 @@ class _GenericToolPageState extends State<GenericToolPage>
     if (mounted) {
       FocusManager.instance.primaryFocus?.unfocus();
     }
+  }
+
+  Widget _buildQwenResolutionChoice(
+    ColorScheme cs,
+    void Function(VoidCallback fn) setSheetState,
+  ) {
+    final selected = _qwenResolution;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(LucideIcons.maximize2, size: 18, color: cs.onSurfaceVariant),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Output size',
+                    style: TextStyle(
+                      color: cs.onSurface,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Text(
+                    '2K costs twice the 1K price.',
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant.withOpacity(0.7),
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            for (final size in const ['1K', '2K'])
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: ChoiceChip(
+                  label: Text(size),
+                  selected: selected == size,
+                  onSelected: (_) {
+                    setSheetState(() {
+                      setState(() => _inputs['resolution'] = size);
+                    });
+                  },
+                ),
+              ),
+          ],
+        ),
+      ],
+    );
   }
 
   /// Build toggle setting widget
@@ -5102,7 +5180,7 @@ class _GenericToolPageState extends State<GenericToolPage>
       final imageCount = _advancedSettings.bulkEditEnabled && _hasBulkInput
           ? _bulkActiveMediaCount
           : 1;
-      final baseCostPerVariation = _currentModelCost +
+      final baseCostPerVariation = _withQwenResolutionPrice(_currentModelCost) +
           _enhancementUpscaleCreditsPerVariation() +
           _inputScaleUpscaleCreditsPerVariation();
       baseTotal = baseCostPerVariation * variations * imageCount;
@@ -14064,7 +14142,7 @@ class _GenericToolPageState extends State<GenericToolPage>
           _getDurationBasedCost() + _enhancementUpscaleCreditsPerVariation();
       totalBeforeDiscount = baseCostPerVariation * variations * imageCount;
     } else {
-      final baseCostPerVariation = _currentModelCost +
+      final baseCostPerVariation = _withQwenResolutionPrice(_currentModelCost) +
           _enhancementUpscaleCreditsPerVariation() +
           _inputScaleUpscaleCreditsPerVariation();
       totalBeforeDiscount = baseCostPerVariation * variations * imageCount;
@@ -16490,12 +16568,21 @@ class _GenericToolPageState extends State<GenericToolPage>
             if (rawImageList != null && rawImageList.isNotEmpty) {
               if (widget.config.capabilityId == 'edit_image' &&
                   (_selectedModelId ?? widget.config.model) == 'qwen2_1_i2i') {
-                final fit = fitImageToQwenRatio(rawImageList.first);
+                final qwenResolution = _qwenResolution;
+                paramsForSubmit['resolution'] = qwenResolution;
+                final fit = fitImageToQwenRatio(
+                  rawImageList.first,
+                  resolution: qwenResolution,
+                );
                 if (fit != null) {
                   final fitted = <Uint8List>[fit.image];
                   for (var i = 1; i < rawImageList.length; i++) {
                     fitted.add(
-                      fitBytesToAspect(rawImageList[i], fit.aspectRatio) ??
+                      fitBytesToAspect(
+                            rawImageList[i],
+                            fit.aspectRatio,
+                            resolution: qwenResolution,
+                          ) ??
                           rawImageList[i],
                     );
                   }
