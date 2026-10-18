@@ -204,8 +204,40 @@ Future<void> saveJobsToPrefs() async {
   }
 }
 
+/// True when this job was removed from Result Manager and must stay gone.
+Future<bool> wasJobDeleted(String jobId) async {
+  if (jobId.isEmpty) return false;
+  final prefs = await SharedPreferences.getInstance();
+  return getDeletedJobIdsSync(prefs).contains(jobId);
+}
+
+/// Drops jobs the user already deleted, and rewrites prefs when any were present.
+Future<List<JobModel>> withoutDeletedJobs(List<JobModel> jobs) async {
+  final prefs = await SharedPreferences.getInstance();
+  final blocked = getDeletedJobIdsSync(prefs).toSet();
+  if (blocked.isEmpty) return jobs;
+  final kept = jobs.where((job) => !blocked.contains(job.jobId)).toList();
+  if (kept.length != jobs.length) {
+    await prefs.setString(
+      'jobs',
+      jsonEncode(kept.map((job) => job.toJson()).toList()),
+    );
+  }
+  return kept;
+}
+
 /// Add a new job or update existing by jobId. Persists immediately.
 Future<void> addOrUpdateJob(JobModel job) async {
+  if (await wasJobDeleted(job.jobId)) {
+    final kept = jobListNotifier.value
+        .where((existing) => existing.jobId != job.jobId)
+        .toList();
+    if (kept.length != jobListNotifier.value.length) {
+      jobListNotifier.value = kept;
+      await saveJobsToPrefs();
+    }
+    return;
+  }
   job.stampCloudReady();
   final list = List<JobModel>.from(jobListNotifier.value);
   final idx = list.indexWhere((j) => j.jobId == job.jobId);
@@ -240,6 +272,15 @@ Future<void> updateJobFields({
   bool? promptEnhanced,
   String? originalPrompt,
 }) async {
+  if (await wasJobDeleted(jobId)) {
+    final kept =
+        jobListNotifier.value.where((job) => job.jobId != jobId).toList();
+    if (kept.length != jobListNotifier.value.length) {
+      jobListNotifier.value = kept;
+      await saveJobsToPrefs();
+    }
+    return;
+  }
   final list = List<JobModel>.from(jobListNotifier.value);
   final idx = list.indexWhere((j) => j.jobId == jobId);
 
@@ -482,13 +523,6 @@ Future<bool> applyPendingFcmUpdatesFromFile() async {
       final jobId = update['jobId']?.toString();
       if (jobId == null || jobId.isEmpty) continue;
 
-      // 🛡️ Check if this job was previously deleted - don't recreate it
-      if (deletedJobIds.contains(jobId)) {
-        debugPrint("📁 [FCM File] Skipping deleted job $jobId");
-        skippedCount++;
-        continue;
-      }
-
       final newStatus = update['status']?.toString() ?? 'processing';
       final newUrl = update['downloadUrl']?.toString();
       final newTitle = update['title']?.toString();
@@ -497,6 +531,16 @@ Future<bool> applyPendingFcmUpdatesFromFile() async {
       final timestamp = update['timestamp']?.toString();
 
       final idx = jobs.indexWhere((j) => j['jobId'] == jobId);
+
+      if (deletedJobIds.contains(jobId)) {
+        if (idx >= 0) {
+          jobs.removeAt(idx);
+          anyUpdated = true;
+        }
+        debugPrint("📁 [FCM File] Skipping deleted job $jobId");
+        skippedCount++;
+        continue;
+      }
 
       if (idx >= 0) {
         // ✅ UPDATE existing job
@@ -561,9 +605,11 @@ Future<bool> applyPendingFcmUpdatesFromFile() async {
       await prefs.reload(); // Second reload to verify
 
       // Update notifier with the merged jobs
-      jobListNotifier.value = jobs
-          .map((e) => JobModel.fromJson(Map<String, dynamic>.from(e)))
-          .toList();
+      jobListNotifier.value = await withoutDeletedJobs(
+        jobs
+            .map((e) => JobModel.fromJson(Map<String, dynamic>.from(e)))
+            .toList(),
+      );
 
       debugPrint(
           "✅ [FCM File] Applied updates: $updatedCount updated, $createdCount created, $skippedCount skipped");
@@ -641,8 +687,7 @@ Future<void> loadJobsFromPrefs() async {
         .map((e) => JobModel.fromJson(Map<String, dynamic>.from(e)))
         .toList();
 
-    // 🧠 Always assign a new list object to trigger UI rebuild
-    jobListNotifier.value = List<JobModel>.from(list);
+    jobListNotifier.value = await withoutDeletedJobs(List<JobModel>.from(list));
 
     // Log status summary
     final completed = list.where((j) => j.status == 'completed').length;

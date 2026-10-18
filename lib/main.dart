@@ -72,6 +72,15 @@ Future<void> _mergeAndPersistJobMap(Map<String, dynamic> jobMap) async {
     final downloadUrl = (jobMap['download_url'] ?? '').toString();
 
     final idx = existing.indexWhere((e) => e['jobId'] == jobId);
+    if (deletedJobIds.contains(jobId)) {
+      if (idx != -1) {
+        existing.removeAt(idx);
+        await prefs.setString('jobs', jsonEncode(existing));
+        await prefs.reload();
+      }
+      debugPrint("🛡️ [FCM] Ignoring notification for deleted job $jobId");
+      return;
+    }
     if (idx != -1) {
       // Job exists - update it
       final old = existing[idx];
@@ -85,10 +94,6 @@ Future<void> _mergeAndPersistJobMap(Map<String, dynamic> jobMap) async {
         'status': status.isNotEmpty ? status : (old['status'] ?? 'processing'),
         'createdAt': old['createdAt'] ?? DateTime.now().toIso8601String(),
       };
-    } else if (deletedJobIds.contains(jobId)) {
-      // 🛡️ Job was deleted - don't recreate it
-      debugPrint("🛡️ [FCM] Ignoring notification for deleted job $jobId");
-      return;
     } else {
       // New job - create entry
       existing.insert(0, {
@@ -187,7 +192,7 @@ Future<void> _reloadJobsToNotifier({bool retryOnEmpty = true}) async {
               }
             }
             
-            jobListNotifier.value = mergedJobs;
+            jobListNotifier.value = await withoutDeletedJobs(mergedJobs);
             debugPrint("✅ Merged ${mergedJobs.length} jobs from file + SharedPreferences (current had ${currentJobs.length}, prefs had ${prefsJobs.length})");
             return; // Done - file updates applied and merged
           }
@@ -228,7 +233,7 @@ Future<void> _reloadJobsToNotifier({bool retryOnEmpty = true}) async {
             final list = decoded
                 .map((e) => JobModel.fromJson(Map<String, dynamic>.from(e)))
                 .toList();
-            jobListNotifier.value = List<JobModel>.from(list);
+            jobListNotifier.value = await withoutDeletedJobs(List<JobModel>.from(list));
             debugPrint("✅ Reloaded ${list.length} jobs on retry");
             return;
           }
@@ -249,7 +254,7 @@ Future<void> _reloadJobsToNotifier({bool retryOnEmpty = true}) async {
         .map((e) => JobModel.fromJson(Map<String, dynamic>.from(e)))
         .toList();
 
-    jobListNotifier.value = List<JobModel>.from(list);
+    jobListNotifier.value = await withoutDeletedJobs(List<JobModel>.from(list));
     debugPrint("✅ Reloaded ${list.length} jobs from SharedPreferences");
     
     // Log status summary
@@ -271,6 +276,14 @@ Future<void> _applyFcmUpdate(Map<String, dynamic> data) async {
   try {
     final jobId = (data['job_id'] ?? data['jobId'] ?? '').toString();
     if (jobId.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    if (getDeletedJobIdsSync(prefs).contains(jobId)) {
+      jobListNotifier.value = jobListNotifier.value
+          .where((job) => job.jobId != jobId)
+          .toList();
+      debugPrint("🛡️ [FCM Foreground] Ignoring deleted job $jobId");
+      return;
+    }
 
     var status = (data['status'] ?? '').toString().toLowerCase();
     if (status == 'review') status = 'reviewing';
@@ -368,6 +381,15 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
             .toList();
 
     final idx = existing.indexWhere((e) => e['jobId'] == jobId);
+    if (deletedJobIds.contains(jobId)) {
+      if (idx >= 0) {
+        existing.removeAt(idx);
+        await prefs.setString('jobs', jsonEncode(existing));
+        await prefs.reload();
+      }
+      debugPrint("🛡️ [FCM Background] Ignoring notification for deleted job $jobId");
+      return;
+    }
 
     if (idx >= 0) {
       // Job exists - update it
@@ -394,10 +416,6 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
       debugPrint(
           "🟣 [FCM isolate] Preserved inputImagePath for $jobId → $preservedInputImagePath");
-    } else if (deletedJobIds.contains(jobId)) {
-      // 🛡️ Job was deleted - don't recreate it, skip notification too
-      debugPrint("🛡️ [FCM Background] Ignoring notification for deleted job $jobId");
-      return;
     } else {
       // 🔹 New job record — no previous entry to merge from
       existing.insert(0, {

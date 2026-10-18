@@ -305,6 +305,7 @@ class PollingService {
 
       // --- 3️⃣ Handle status
       if (status == "completed") {
+        if (await wasJobDeleted(jobId)) return;
         if (downloadUrl == null || downloadUrl.isEmpty) return;
         debugPrint("PollingService: job completed, prefetching result...");
 

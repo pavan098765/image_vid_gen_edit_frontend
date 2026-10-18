@@ -253,6 +253,7 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
 
       // Fetch URLs in parallel with a small delay between each
       for (final job in completedJobs) {
+        if (await wasJobDeleted(job.jobId)) continue;
         // Don't block - fire and forget
         PollingService.getValidDownloadUrl(job.jobId).then((url) {
           if (url != null && url.isNotEmpty && url != job.downloadUrl) {
@@ -388,7 +389,7 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
                 }
               }
 
-              jobListNotifier.value = mergedJobs;
+              jobListNotifier.value = await withoutDeletedJobs(mergedJobs);
               debugPrint(
                   "✅ [ResultManager] Merged ${mergedJobs.length} jobs from file + SharedPreferences");
 
@@ -422,9 +423,11 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
         if (localJson != null) {
           final decoded = jsonDecode(localJson);
           if (decoded is List) {
-            jobListNotifier.value = decoded
-                .map((e) => JobModel.fromJson(Map<String, dynamic>.from(e)))
-                .toList();
+            jobListNotifier.value = await withoutDeletedJobs(
+              decoded
+                  .map((e) => JobModel.fromJson(Map<String, dynamic>.from(e)))
+                  .toList(),
+            );
 
             // Log status summary
             final jobs = jobListNotifier.value;
@@ -458,9 +461,11 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
         if (updatedJson != null) {
           final decoded = jsonDecode(updatedJson);
           if (decoded is List) {
-            jobListNotifier.value = decoded
-                .map((e) => JobModel.fromJson(Map<String, dynamic>.from(e)))
-                .toList();
+            jobListNotifier.value = await withoutDeletedJobs(
+              decoded
+                  .map((e) => JobModel.fromJson(Map<String, dynamic>.from(e)))
+                  .toList(),
+            );
           }
         }
       }
@@ -612,20 +617,19 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
       final selectedCount = _selectedJobIds.length;
       final selectedIdsCopy = Set<String>.from(_selectedJobIds);
       final jobs = jobListNotifier.value;
+      final jobsToDelete = jobs
+          .where((job) => selectedIdsCopy.contains(job.jobId))
+          .toList();
 
-      for (final jobId in selectedIdsCopy) {
-        final job =
-            jobs.firstWhere((j) => j.jobId == jobId, orElse: () => jobs.first);
-        await FileService.deleteJobFiles(job,
-            deleteGalleryFile: deleteGalleryFiles);
-      }
-
-      // 🛡️ Mark deleted jobs so FCM won't recreate them
       await markJobsAsDeleted(selectedIdsCopy.toList());
-
       jobListNotifier.value =
           jobs.where((j) => !selectedIdsCopy.contains(j.jobId)).toList();
       await saveJobsToPrefs();
+
+      for (final job in jobsToDelete) {
+        await FileService.deleteJobFiles(job,
+            deleteGalleryFile: deleteGalleryFiles);
+      }
 
       setState(() {
         _selectedJobIds.clear();
@@ -2316,16 +2320,13 @@ class _JobCardState extends State<JobCard> {
     );
 
     if (confirmed == true) {
-      await FileService.deleteJobFiles(widget.job,
-          deleteGalleryFile: deleteGalleryFile);
-
-      // 🛡️ Mark deleted job so FCM won't recreate it
       await markJobAsDeleted(widget.job.jobId);
-
       jobListNotifier.value = jobListNotifier.value
           .where((j) => j.jobId != widget.job.jobId)
           .toList();
       await saveJobsToPrefs();
+      await FileService.deleteJobFiles(widget.job,
+          deleteGalleryFile: deleteGalleryFile);
     }
   }
 

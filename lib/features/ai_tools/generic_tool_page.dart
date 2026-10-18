@@ -34,6 +34,7 @@ import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_butto
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/sign_in_prompt.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/themed_native_ad.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/ai_tools/frame_fit.dart';
+import 'package:kala_ai_create_images_videos_with_ai/features/ai_tools/mask_layout_preview.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/ai_tools/expand_canvas.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/ai_tools/outpaint_canvas_page.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/ai_tools/services/on_device_inpaint_service.dart';
@@ -5709,6 +5710,7 @@ class _GenericToolPageState extends State<GenericToolPage>
               setState(() {
                 _inputs["mask_image"] = mask;
               });
+              await _showMaskLayout(baseBytes, mask);
             }
           }
         }
@@ -5834,6 +5836,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             setState(() {
               _inputs["mask_image"] = mask;
             });
+            await _showMaskLayout(baseBytes, mask);
           }
         }
       }
@@ -7647,7 +7650,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             if (maskOv != null)
               ColorFiltered(
                 colorFilter: ColorFilter.mode(
-                  Colors.red.withValues(alpha: 0.32),
+                  Colors.red.withValues(alpha: 0.7),
                   BlendMode.srcATop,
                 ),
                 child: Image.memory(
@@ -7670,7 +7673,7 @@ class _GenericToolPageState extends State<GenericToolPage>
           if (maskOv != null)
             ColorFiltered(
               colorFilter: ColorFilter.mode(
-                Colors.red.withValues(alpha: 0.32),
+                Colors.red.withValues(alpha: 0.7),
                 BlendMode.srcATop,
               ),
               child: Image.memory(
@@ -8530,13 +8533,39 @@ class _GenericToolPageState extends State<GenericToolPage>
                           }
                           _bulkMasks[idx] = mask;
                         });
+                        await _showMaskLayout(base, mask);
                       }
                     } else {
                       final mask = await _openMaskEditor(base);
                       if (mask != null && mounted) {
                         setState(() => _inputs['mask_image'] = mask);
+                        await _showMaskLayout(base, mask);
                       }
                     }
+                  },
+                ),
+              if (isImage && _requiresMask && a.thumbBytes != null)
+                Builder(
+                  builder: (context) {
+                    final Uint8List? painted = a.kind ==
+                            _ComposerAttachmentKind.bulkImage
+                        ? (a.index < _bulkMasks.length ? _bulkMasks[a.index] : null)
+                        : (_inputs['mask_image'] is Uint8List
+                            ? _inputs['mask_image'] as Uint8List
+                            : null);
+                    if (painted == null || painted.isEmpty) {
+                      return const SizedBox.shrink();
+                    }
+                    final photo = a.thumbBytes!;
+                    return _AttachListRow(
+                      icon: LucideIcons.eye,
+                      label: 'View mask on photo',
+                      subtitle: 'Check the painted area lines up',
+                      onTap: () async {
+                        Navigator.pop(ctx);
+                        await _showMaskLayout(photo, painted);
+                      },
+                    );
                   },
                 ),
               if (isImage &&
@@ -17425,6 +17454,24 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   // -------- Painter (Mask Editor) --------
+  Future<void> _showMaskLayout(Uint8List photo, Uint8List mask) async {
+    if (!mounted) return;
+    final qwen = widget.config.capabilityId == 'edit_image' &&
+        (_selectedModelId ?? widget.config.model) == 'qwen2_1_i2i';
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => MaskLayoutPreviewPage(
+          photo: photo,
+          brushMask: mask,
+          fitToQwenFrame: qwen,
+          resolution: _qwenResolution,
+        ),
+      ),
+    );
+  }
+
   /// Opens mask editor with optional existing mask
   /// [base] - The base image to draw mask on
   /// [existingMask] - Optional existing mask to load

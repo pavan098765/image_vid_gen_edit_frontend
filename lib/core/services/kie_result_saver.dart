@@ -42,11 +42,17 @@ class KieResultSaver {
     }
   }
 
+  static bool _stillListed(String jobId) =>
+      jobListNotifier.value.any((job) => job.jobId == jobId);
+
   static Future<void> _save(JobModel job) async {
+    if (await wasJobDeleted(job.jobId) || !_stillListed(job.jobId)) return;
     final url = await PollingService.refreshDownloadUrl(job.jobId);
     if (url == null || url.isEmpty) return;
+    if (await wasJobDeleted(job.jobId) || !_stillListed(job.jobId)) return;
     job.downloadUrl = url;
     await addOrUpdateJob(job);
+    if (await wasJobDeleted(job.jobId) || !_stillListed(job.jobId)) return;
     final context = _navigatorKey?.currentContext;
     if (context == null || !context.mounted) return;
     await FileService.downloadFromUrl(
