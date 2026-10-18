@@ -227,7 +227,7 @@ class _JobNextActionsState extends State<JobNextActions> {
             Text(
               widget.job.usesKieCloud
                   ? 'The cloud copy expired after 14 days on server then deleted.'
-                  : 'The cloud copy expired after 14 days on server then deleted.',
+                  : 'The cloud copy expired after 24 hours on server then deleted.',
               style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
             ),
             if (_prompt != null || _sourceFile != null) ...[
