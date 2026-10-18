@@ -702,6 +702,15 @@ class _ExploreAIPageState extends State<ExploreAIPage>
     });
   }
 
+  void _selectOutcome(ExploreOutcomeChip chip) {
+    HapticFeedback.lightImpact();
+    setState(() {
+      _outcomeChip = chip;
+      _selectedCategoryIndex = 0;
+      _visibleTemplateCount = 16;
+    });
+  }
+
   /// Check if a template's model is enabled
   bool _isTemplateModelEnabled(Map<String, dynamic> template) {
     final capabilityId = template['capability'] as String?;
@@ -1267,15 +1276,6 @@ class _ExploreAIPageState extends State<ExploreAIPage>
                 },
                 onOpenShortcut: _openShortcut,
               );
-            },
-          ),
-        ),
-
-        SliverToBoxAdapter(
-          child: ExploreOutcomeChips(
-            selected: _outcomeChip,
-            onSelected: (chip) {
-              setState(() => _outcomeChip = chip);
             },
           ),
         ),
@@ -2437,17 +2437,53 @@ class _ExploreAIPageState extends State<ExploreAIPage>
   // ============================================================================
 
   Widget _buildCategoryTabs(ColorScheme cs, bool isDark) {
-    // Build tab items: "All" + each category
+    // One row: All, the action filters, then each topic category.
     final tabItems = <_TabItem>[
-      const _TabItem(id: 'all', title: '✨ All', color: KalaColors.purple),
-      ..._categories.map((cat) {
-        final c = cat as Map<String, dynamic>;
+      const _TabItem(
+        id: 'all',
+        title: 'All',
+        color: KalaColors.purple,
+        categoryIndex: 0,
+      ),
+      const _TabItem(
+        id: 'edit',
+        title: 'Edit a photo',
+        color: Color(0xFF8B5CF6),
+        outcome: ExploreOutcomeChip.edit,
+      ),
+      const _TabItem(
+        id: 'create_image',
+        title: 'Create an image',
+        color: Color(0xFF6366F1),
+        outcome: ExploreOutcomeChip.createImage,
+      ),
+      const _TabItem(
+        id: 'create_video',
+        title: 'Create a video',
+        color: Color(0xFFF59E0B),
+        outcome: ExploreOutcomeChip.createVideo,
+      ),
+      const _TabItem(
+        id: 'restore',
+        title: 'Restore',
+        color: Color(0xFF10B981),
+        outcome: ExploreOutcomeChip.restore,
+      ),
+      const _TabItem(
+        id: 'favorites',
+        title: 'Favorites',
+        color: Color(0xFFEC4899),
+        outcome: ExploreOutcomeChip.favorites,
+      ),
+      ..._categories.asMap().entries.map((entry) {
+        final c = entry.value as Map<String, dynamic>;
         final colorHex = c['color'] as String? ?? '#8B5CF6';
         return _TabItem(
           id: c['id'] as String? ?? '',
           title: c['title'] as String? ?? '',
           color:
               Color(int.parse(colorHex.substring(1), radix: 16) + 0xFF000000),
+          categoryIndex: entry.key + 1,
         );
       }),
     ];
@@ -2471,10 +2507,20 @@ class _ExploreAIPageState extends State<ExploreAIPage>
         separatorBuilder: (_, __) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
           final tab = tabItems[index];
-          final isSelected = index == _selectedCategoryIndex;
+          final isSelected = tab.outcome != null
+              ? _outcomeChip == tab.outcome && _selectedCategoryIndex == 0
+              : _selectedCategoryIndex == tab.categoryIndex &&
+                  _outcomeChip == ExploreOutcomeChip.all;
 
           return GestureDetector(
-            onTap: () => _selectCategory(index),
+            onTap: () {
+              final outcome = tab.outcome;
+              if (outcome != null) {
+                _selectOutcome(outcome);
+                return;
+              }
+              _selectCategory(tab.categoryIndex);
+            },
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -5820,11 +5866,15 @@ class _TabItem {
   final String id;
   final String title;
   final Color color;
+  final ExploreOutcomeChip? outcome;
+  final int categoryIndex;
 
   const _TabItem({
     required this.id,
     required this.title,
     required this.color,
+    this.outcome,
+    this.categoryIndex = 0,
   });
 }
 
