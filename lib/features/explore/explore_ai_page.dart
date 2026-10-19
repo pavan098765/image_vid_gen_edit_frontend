@@ -499,6 +499,7 @@ class _ExploreAIPageState extends State<ExploreAIPage>
   ExploreOutcomeChip _outcomeChip = ExploreOutcomeChip.all;
   List<String> _favoriteIds = [];
   List<UserTemplateRecord> _userShortcuts = [];
+  Set<String> _dismissedContinueJobIds = {};
   static const int _templateBatchSize = 12; // Load more increment
 
   // Controllers
@@ -583,6 +584,7 @@ class _ExploreAIPageState extends State<ExploreAIPage>
   Future<void> _loadExploreFavoritesAndShortcuts() async {
     final favs = await loadExploreFavoriteTemplateIds();
     final shortcuts = await loadUserTemplateRecords();
+    final dismissed = await loadDismissedContinueJobIds();
     if (!mounted) return;
     setState(() {
       _favoriteIds = favoriteIdsInCatalog(
@@ -590,6 +592,7 @@ class _ExploreAIPageState extends State<ExploreAIPage>
         knownIds: _templates.keys.map((e) => e.toString()).toSet(),
       );
       _userShortcuts = shortcuts;
+      _dismissedContinueJobIds = dismissed;
     });
   }
 
@@ -1275,6 +1278,7 @@ class _ExploreAIPageState extends State<ExploreAIPage>
               return ExplorePersonalSection(
                 jobs: jobs,
                 shortcuts: _userShortcuts,
+                dismissedJobIds: _dismissedContinueJobIds,
                 onSeeAll: () {
                   Navigator.push(
                     context,
@@ -1286,6 +1290,18 @@ class _ExploreAIPageState extends State<ExploreAIPage>
                   openJobForContinue(context, job);
                 },
                 onOpenShortcut: _openShortcut,
+                onDismissJob: (job) async {
+                  setState(() => _dismissedContinueJobIds.add(job.jobId));
+                  await dismissContinueJob(job.jobId);
+                },
+                onDismissShortcut: (record) async {
+                  setState(() {
+                    _userShortcuts = _userShortcuts
+                        .where((item) => item.id != record.id)
+                        .toList();
+                  });
+                  await deleteUserTemplateRecord(record.id);
+                },
               );
             },
           ),

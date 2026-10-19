@@ -9,31 +9,40 @@ import 'package:kala_ai_create_images_videos_with_ai/core/user_template_store.da
 class ExplorePersonalSection extends StatelessWidget {
   final List<JobModel> jobs;
   final List<UserTemplateRecord> shortcuts;
+  final Set<String> dismissedJobIds;
   final VoidCallback onSeeAll;
   final ValueChanged<JobModel> onOpenJob;
   final ValueChanged<UserTemplateRecord> onOpenShortcut;
+  final ValueChanged<JobModel> onDismissJob;
+  final ValueChanged<UserTemplateRecord> onDismissShortcut;
 
   const ExplorePersonalSection({
     super.key,
     required this.jobs,
     required this.shortcuts,
+    required this.dismissedJobIds,
     required this.onSeeAll,
     required this.onOpenJob,
     required this.onOpenShortcut,
+    required this.onDismissJob,
+    required this.onDismissShortcut,
   });
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final continueJobs = jobs.where(_hasUsableThumb).toList()
+    final continueJobs = jobs
+        .where((job) =>
+            !dismissedJobIds.contains(job.jobId) && _hasUsableThumb(job))
+        .toList()
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
     if (continueJobs.isNotEmpty) {
-      final shown = continueJobs.take(2).toList();
+      final shown = continueJobs.take(3).toList();
       return _section(
         cs,
         title: 'Continue creating',
-        trailing: continueJobs.length > 2
+        trailing: continueJobs.length > 3
             ? TextButton(onPressed: onSeeAll, child: const Text('See all'))
             : null,
         child: Column(
@@ -66,6 +75,11 @@ class ExplorePersonalSection extends StatelessWidget {
                 ],
               ),
               onTap: () => onOpenJob(job),
+              trailing: IconButton(
+                tooltip: 'Remove',
+                icon: Icon(Icons.close, color: cs.onSurfaceVariant),
+                onPressed: () => onDismissJob(job),
+              ),
             );
           }).toList(),
         ),
@@ -73,10 +87,10 @@ class ExplorePersonalSection extends StatelessWidget {
     }
 
     if (shortcuts.isNotEmpty) {
-      final shown = shortcuts.take(2).toList();
+      final shown = shortcuts.take(3).toList();
       return _section(
         cs,
-        title: 'Your shortcuts',
+        title: 'My templates',
         child: Column(
           children: shown
               .map(
@@ -90,6 +104,11 @@ class ExplorePersonalSection extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                   onTap: () => onOpenShortcut(t),
+                  trailing: IconButton(
+                    tooltip: 'Remove',
+                    icon: Icon(Icons.close, color: cs.onSurfaceVariant),
+                    onPressed: () => onDismissShortcut(t),
+                  ),
                 ),
               )
               .toList(),

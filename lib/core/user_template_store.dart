@@ -84,6 +84,36 @@ Future<List<UserTemplateRecord>> loadUserTemplateRecords() async {
   }
 }
 
+const _dismissedContinueJobsKey = 'explore_dismissed_continue_jobs';
+
+Future<Set<String>> loadDismissedContinueJobIds() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getStringList(_dismissedContinueJobsKey)?.toSet() ?? {};
+  } catch (_) {
+    return {};
+  }
+}
+
+/// Hides a job from Explore "Continue creating" without deleting the result.
+Future<void> dismissContinueJob(String jobId) async {
+  final prefs = await SharedPreferences.getInstance();
+  final ids = prefs.getStringList(_dismissedContinueJobsKey)?.toList() ?? [];
+  if (!ids.contains(jobId)) ids.add(jobId);
+  final trimmed = ids.length > 200 ? ids.sublist(ids.length - 200) : ids;
+  await prefs.setStringList(_dismissedContinueJobsKey, trimmed);
+}
+
+Future<void> deleteUserTemplateRecord(String id) async {
+  final prefs = await SharedPreferences.getInstance();
+  final existing = await loadUserTemplateRecords();
+  existing.removeWhere((record) => record.id == id);
+  await prefs.setString(
+    kUserTemplatesPrefsKey,
+    jsonEncode(existing.map((e) => e.toJson()).toList()),
+  );
+}
+
 Future<void> appendUserTemplateRecord(UserTemplateRecord record) async {
   final prefs = await SharedPreferences.getInstance();
   final existing = await loadUserTemplateRecords();
