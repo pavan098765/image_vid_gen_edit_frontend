@@ -14,6 +14,7 @@ import 'package:kala_ai_create_images_videos_with_ai/core/services/ad_service.da
 import 'package:kala_ai_create_images_videos_with_ai/core/services/file_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/polling_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/thumbnail_service.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/app_menu_button.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_button.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/studio/studio_job_page.dart';
@@ -813,13 +814,19 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
                   color: cs.onSurface,
                 ),
               )
-            : Text(
-                'Creations',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: cs.onSurface,
-                ),
-              ),
+            : widget.asTab
+                ? const FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: KalaLogoWithIcon(logoHeight: 30, fontSize: 22),
+                  )
+                : Text(
+                    'Creations',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: cs.onSurface,
+                    ),
+                  ),
         backgroundColor: cs.surface,
         elevation: 0,
         actions: _isSelectionMode
@@ -937,6 +944,22 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
       ),
       body: Column(
         children: [
+          if (widget.asTab && !_isSelectionMode)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 2, 16, 0),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Creations',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 20,
+                    color: cs.onSurface,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+              ),
+            ),
           // 🔔 Cloud Storage Info Banner
           _buildCloudStorageInfoBanner(cs),
 

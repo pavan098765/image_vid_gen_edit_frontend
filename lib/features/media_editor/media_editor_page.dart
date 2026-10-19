@@ -54,15 +54,10 @@ class _MediaEditorPageState extends State<MediaEditorPage>
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      appBar: AppBar(
-        leading: const AppMenuButton(),
-        title: const KalaLogoWithIcon(logoHeight: 30, fontSize: 22),
-        backgroundColor: cs.surface,
-        elevation: 0,
+      appBar: KalaTabAppBar(
         actions: [
-          // Photo/Video toggle in actions
           _buildSegmentedToggle(cs, isDark),
-          const SizedBox(width: 12),
+          const SizedBox(width: 8),
         ],
       ),
       body: IndexedStack(
@@ -95,7 +90,8 @@ class _MediaEditorPageState extends State<MediaEditorPage>
         children: [
           _buildToggleButton(
             icon: LucideIcons.image,
-            label: 'Photo',
+            label: 'Img',
+            tooltip: 'Photo',
             isSelected: _selectedMode == 0,
             onTap: () => setState(() => _selectedMode = 0),
             cs: cs,
@@ -104,7 +100,8 @@ class _MediaEditorPageState extends State<MediaEditorPage>
           const SizedBox(width: 2),
           _buildToggleButton(
             icon: LucideIcons.video,
-            label: 'Video',
+            label: 'Vid',
+            tooltip: 'Video',
             isSelected: _selectedMode == 1,
             onTap: () => setState(() => _selectedMode = 1),
             cs: cs,
@@ -118,6 +115,7 @@ class _MediaEditorPageState extends State<MediaEditorPage>
   Widget _buildToggleButton({
     required IconData icon,
     required String label,
+    required String tooltip,
     required bool isSelected,
     required VoidCallback onTap,
     required ColorScheme cs,
@@ -125,12 +123,14 @@ class _MediaEditorPageState extends State<MediaEditorPage>
   }) {
     final selectedColor = isDark ? KalaColors.cyan : KalaColors.purple;
 
-    return GestureDetector(
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeInOut,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
         decoration: BoxDecoration(
           color: isSelected
               ? selectedColor.withValues(alpha: 0.2)
@@ -145,16 +145,16 @@ class _MediaEditorPageState extends State<MediaEditorPage>
           children: [
             Icon(
               icon,
-              size: 16,
+              size: 14,
               color: isSelected
                   ? selectedColor
                   : (isDark ? Colors.white60 : Colors.black54),
             ),
-            const SizedBox(width: 4),
+            const SizedBox(width: 3),
             Text(
               label,
               style: TextStyle(
-                fontSize: 13,
+                fontSize: 12,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
                 color: isSelected
                     ? selectedColor
@@ -164,6 +164,7 @@ class _MediaEditorPageState extends State<MediaEditorPage>
           ],
         ),
       ),
+    ),
     );
   }
 }

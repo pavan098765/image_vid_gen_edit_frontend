@@ -65,8 +65,9 @@ class _EditorPageState extends State<EditorPage>
   DateTime? _lastEditCompleteAt;
   bool _isSaving = false;
 
-  /// GlobalKey to access ProImageEditor state for undo/redo/done
-  final _editorKey = GlobalKey<ProImageEditorState>();
+  /// GlobalKey to access ProImageEditor state for undo/redo/done.
+  /// Replaced on every open so a previous photo cannot stay on screen.
+  GlobalKey<ProImageEditorState> _editorKey = GlobalKey<ProImageEditorState>();
 
   ImportStateHistory? _importHistory;
   bool _openedInitialTool = false;
@@ -77,10 +78,11 @@ class _EditorPageState extends State<EditorPage>
   bool _allowRoutePop = false;
   bool _historyReady = false;
   bool _returnToResultManager = false;
-  String? _returnJobId;
   int _restoreTabIndex = 0;
   int _seenLaunchId = 0;
   int _openGeneration = 0;
+  bool _replacingImage = false;
+  bool _exitPromptOpen = false;
   String _frameGuide = 'off';
   ImageSaveFormat _saveFormat = ImageSaveFormat.jpeg;
   int _maxEdge = 0;
@@ -191,12 +193,13 @@ class _EditorPageState extends State<EditorPage>
       _returnToResultManager = false;
       return;
     }
+    _replacingImage = true;
     _returnToResultManager = launch.returnToResultManager;
-    _returnJobId = launch.jobId;
     _restoreTabIndex = launch.restoreTabIndex;
     _historyId = launch.historyId ?? ImageHistoryStore.historyIdFor(image: image);
     _stopExportGlow();
     setState(() {
+      _editorKey = GlobalKey<ProImageEditorState>();
       _selectedImage = image;
       _exportedImage = null;
       _lastEditCompleteAt = null;
@@ -227,6 +230,7 @@ class _EditorPageState extends State<EditorPage>
       _originalBytes = bytes;
       _importHistory = history;
       _historyReady = true;
+      _replacingImage = false;
     });
   }
 
@@ -457,36 +461,76 @@ class _EditorPageState extends State<EditorPage>
   }
 
   Future<bool> _confirmExitEditing() async {
-    return (await showDialog<bool>(
-          context: context,
-          builder: (_) => const _ConfirmExitDialog(),
-        )) ??
-        false;
+    if (_exitPromptOpen) return false;
+    _exitPromptOpen = true;
+    try {
+      return (await showDialog<bool>(
+            context: context,
+            builder: (_) => const _ConfirmExitDialog(),
+          )) ??
+          false;
+    } finally {
+      _exitPromptOpen = false;
+    }
+  }
+
+  /// Tool pages share [onCloseEditor] with the main editor. Their back button
+  /// must pop that page. [includeRootRoute] is only for that button: system
+  /// back must not pop the editor route itself.
+  bool _closeOpenTool({bool includeRootRoute = false}) {
+    final editorContext = _editorKey.currentContext;
+    if (editorContext == null || !editorContext.mounted) return false;
+
+    NavigatorState? nested;
+    void visit(Element element) {
+      if (element is StatefulElement && element.state is NavigatorState) {
+        final navigator = element.state as NavigatorState;
+        if (navigator.canPop()) nested = navigator;
+      }
+      element.visitChildren(visit);
+    }
+
+    editorContext.visitChildElements(visit);
+    if (nested != null) {
+      nested!.pop();
+      return true;
+    }
+    if (!includeRootRoute) return false;
+
+    final root = Navigator.of(editorContext);
+    if (!root.canPop()) return false;
+    root.pop();
+    return true;
   }
 
   void _clearOpenImage() {
     if (!mounted) return;
+    _openGeneration++;
+    _replacingImage = false;
     _stopExportGlow();
     setState(() {
       _selectedImage = null;
       _exportedImage = null;
       _lastEditCompleteAt = null;
       _historyReady = true;
+      _originalBytes = null;
+      _importHistory = null;
     });
   }
 
   Future<void> _leaveEditor() async {
-    if (!mounted) return;
+    if (!mounted || _replacingImage) return;
     _stopExportGlow();
     if (_returnToResultManager) {
-      final jobId = _returnJobId;
       final tab = _restoreTabIndex;
+      final generation = _openGeneration;
       _returnToResultManager = false;
-      _returnJobId = null;
       returnEditorSessionToResultManager(
-        jobId: jobId,
         restoreTabIndex: tab,
-        onCovered: _clearOpenImage,
+        onCovered: () {
+          if (generation != _openGeneration) return;
+          _clearOpenImage();
+        },
       );
       return;
     }
@@ -500,6 +544,7 @@ class _EditorPageState extends State<EditorPage>
 
   Future<bool> _handleSystemBack() async {
     if (!widget.handlesSystemBack || _allowRoutePop) return true;
+    if (_selectedImage != null && _closeOpenTool()) return false;
     if (selectedIndexNotifier.value == AppTabs.editor &&
         _returnToResultManager &&
         _selectedImage != null) {
@@ -860,7 +905,12 @@ class _EditorPageState extends State<EditorPage>
                     );
                   },
 
-                  onCloseEditor: (_) async {
+                  onCloseEditor: (mode) async {
+                    if (_replacingImage) return;
+                    if (mode != EditorMode.main) {
+                      _closeOpenTool(includeRootRoute: true);
+                      return;
+                    }
                     final now = DateTime.now();
 
                     // If editing was just completed recently, treat this as the editor's internal close event and ignore it.

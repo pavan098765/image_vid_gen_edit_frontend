@@ -76,9 +76,9 @@ ProImageEditorConfigs kalaImageEditorConfigs(
       stickerEditor: I18nStickerEditor(bottomNavigationBarText: 'Sticker'),
       emojiEditor: I18nEmojiEditor(bottomNavigationBarText: 'Emoji'),
     ),
-    mainEditor: const MainEditorConfigs(
+    mainEditor: MainEditorConfigs(
       captureLayersOnDone: true,
-      tools: [
+      tools: const [
         SubEditorMode.paint,
         SubEditorMode.text,
         SubEditorMode.cropRotate,
@@ -88,6 +88,11 @@ ProImageEditorConfigs kalaImageEditorConfigs(
         SubEditorMode.emoji,
         SubEditorMode.sticker,
       ],
+      // After an edit the package shows "Close Image Editor?" and then calls
+      // onCloseEditor, which asks again. Confirm once in that callback.
+      widgets: MainEditorWidgets(
+        closeWarningDialog: (_) async => true,
+      ),
     ),
     cropRotateEditor: const CropRotateEditorConfigs(
       initAspectRatio: -1,

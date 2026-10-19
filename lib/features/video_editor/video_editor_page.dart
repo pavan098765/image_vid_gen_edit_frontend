@@ -89,7 +89,6 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
   bool _allowRoutePop = false;
   bool _openedInitialTool = false;
   bool _returnToResultManager = false;
-  String? _returnJobId;
   String? _sessionJobId;
   int _restoreTabIndex = 0;
   int _seenLaunchId = 0;
@@ -1196,13 +1195,10 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
     final ok = await _confirmExitEditing();
     if (!ok || !mounted) return;
     if (_returnToResultManager) {
-      final jobId = _returnJobId;
       final tab = _restoreTabIndex;
       _returnToResultManager = false;
-      _returnJobId = null;
       _sessionJobId = null;
       returnEditorSessionToResultManager(
-        jobId: jobId,
         restoreTabIndex: tab,
         onCovered: () {
           if (mounted) _closeProject(leaveRoute: false);
@@ -1738,7 +1734,6 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
       return;
     }
     _returnToResultManager = launch.returnToResultManager;
-    _returnJobId = launch.jobId;
     _sessionJobId = launch.jobId;
     _restoreTabIndex = launch.restoreTabIndex;
     _openedInitialTool = false;

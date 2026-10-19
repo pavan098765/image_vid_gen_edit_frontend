@@ -1115,13 +1115,19 @@ class _ExploreAIPageState extends State<ExploreAIPage>
       onWillPop: _handleSystemBack,
       child: Scaffold(
         backgroundColor: cs.surface,
-        body: SafeArea(
-          child: _isLoading
-              ? _buildLoadingState(cs, isDark)
-              : _loadError != null
-                  ? _buildErrorState(cs)
-                  : _buildContent(cs, isDark),
+        appBar: KalaTabAppBar(
+          actions: [
+            _buildCreditsChip(cs, isDark),
+            const SizedBox(width: 4),
+            _buildResultsButton(cs, isDark),
+            const SizedBox(width: 8),
+          ],
         ),
+        body: _isLoading
+            ? _buildLoadingState(cs, isDark)
+            : _loadError != null
+                ? _buildErrorState(cs)
+                : _buildContent(cs, isDark),
       ),
     );
   }
@@ -1247,7 +1253,7 @@ class _ExploreAIPageState extends State<ExploreAIPage>
                 ),
               );
             },
-            child: _buildHeader(cs, isDark),
+            child: _buildHeader(),
           ),
         ),
 
@@ -2007,34 +2013,10 @@ class _ExploreAIPageState extends State<ExploreAIPage>
   // HEADER - Premium Design
   // ============================================================================
 
-  Widget _buildHeader(ColorScheme cs, bool isDark) {
-    return Column(
+  Widget _buildHeader() {
+    return const Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Top row: Logo + Credits + Results
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  AppMenuButton(),
-                  KalaLogoWithIcon(logoHeight: 30, fontSize: 22),
-                ],
-              ),
-              Row(
-                children: [
-                  _buildCreditsChip(cs, isDark),
-                  const SizedBox(width: 8),
-                  _buildResultsButton(cs, isDark),
-                ],
-              ),
-            ],
-          ),
-        ),
-
         // Sale / next-sale — primary focal point above hero carousel
         const Padding(
           padding: EdgeInsets.fromLTRB(16, 0, 16, 2),

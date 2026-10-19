@@ -28,7 +28,6 @@ import 'core/services/integrity_service.dart';
 import 'core/services/model_cache_service.dart';
 import 'core/services/sale_service.dart';
 
-import 'features/media_editor/editor_tab_launch.dart';
 import 'features/media_editor/media_editor_page.dart';
 import 'features/ai_tools/generic_tool_page.dart';
 import 'features/explore/explore_ai_page.dart';
@@ -897,7 +896,6 @@ Future<void> initializeApp() async {
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
-  openResultManagerPage = _openOrReplaceResultManager;
 
   // 🟢 Run the app IMMEDIATELY to show splash screen
   // Heavy initialization happens in the background while splash is visible

@@ -1118,11 +1118,7 @@ class _CreditsPageState extends State<CreditsPage> {
     return WillPopScope(
       onWillPop: _handleSystemBack,
       child: Scaffold(
-      appBar: AppBar(
-        leading: const AppMenuButton(),
-        title: const KalaLogoWithIcon(logoHeight: 30, fontSize: 22),
-        backgroundColor: cs.surface,
-        elevation: 0,
+      appBar: KalaTabAppBar(
         actions: [
           if (isSignedIn)
             IconButton(

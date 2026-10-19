@@ -49,24 +49,13 @@ void requestEditorTabLaunch({
   );
 }
 
-/// Assigned from app startup. Returns the route so callers can wait until it
-/// covers the editor before clearing the open photo or video.
-ModalRoute<void>? Function({String? initialJobId})? openResultManagerPage;
-
+/// Creations is a bottom-nav tab, so leaving the editor switches back to that
+/// tab directly. Pushing another results page left a route whose completion
+/// cleared the next photo the user opened.
 void returnEditorSessionToResultManager({
-  String? jobId,
   required int restoreTabIndex,
   VoidCallback? onCovered,
 }) {
-  final route = openResultManagerPage?.call(initialJobId: jobId);
-  void finish() {
-    selectedIndexNotifier.value = restoreTabIndex;
-    onCovered?.call();
-  }
-
-  if (route == null) {
-    finish();
-    return;
-  }
-  route.completed.whenComplete(finish);
+  selectedIndexNotifier.value = restoreTabIndex;
+  onCovered?.call();
 }

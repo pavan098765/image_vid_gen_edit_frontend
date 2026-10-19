@@ -38,75 +38,77 @@ class StudioShelf extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
       backgroundColor: cs.surface,
-      body: SafeArea(
-        child: CustomScrollView(
-          slivers: [
-            const SliverPadding(
-              padding: EdgeInsets.fromLTRB(4, 8, 24, 0),
-              sliver: SliverToBoxAdapter(child: AppMenuButton()),
+      appBar: const KalaTabAppBar(),
+      body: workflows.isEmpty
+          ? const Center(child: CircularProgressIndicator())
+          : ListView.separated(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+              itemCount: workflows.length + 1,
+              separatorBuilder: (_, index) =>
+                  SizedBox(height: index == 0 ? 14 : 10),
+              itemBuilder: (context, index) {
+                if (index == 0) return const _StudioIntro();
+                final film = workflows[index - 1];
+                return _FilmRow(
+                  film: film,
+                  tint: _tints[(index - 1) % _tints.length],
+                  onTap: () => _openFilm(context, film),
+                );
+              },
             ),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
-              sliver: SliverToBoxAdapter(
-                child: Text(
-                  'What will you make?',
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.6,
-                      ),
-                ),
-              ),
-            ),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-              sliver: SliverGrid(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  mainAxisSpacing: 14,
-                  crossAxisSpacing: 14,
-                  childAspectRatio: 0.72,
-                ),
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    final film = workflows[index];
-                    return _FilmCard(
-                      film: film,
-                      tint: _tints[index % _tints.length],
-                      onTap: () async {
-                        HapticFeedback.selectionClick();
-                        final session = StudioScope.of(context);
-                        session.open(film);
-                        final saved = await StudioDraftStore().latestFor(film.id);
-                        if (!context.mounted) return;
-                        if (saved != null && saved.stage != 'intake' && saved.stage != 'research') {
-                          session.restore(saved);
-                          final page = saved.stage == 'angles'
-                              ? const StudioAnglesPage()
-                              : saved.stage == 'generating'
-                                  ? const StudioMakingPage()
-                                  : const StudioOutlinePage();
-                          await Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
-                          return;
-                        }
-                        await Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => const StudioSetupPage()),
-                        );
-                      },
-                    );
-                  },
-                  childCount: workflows.length,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
 
-class _FilmCard extends StatelessWidget {
-  const _FilmCard({required this.film, required this.tint, required this.onTap});
+Future<void> _openFilm(BuildContext context, WorkflowSpec film) async {
+  HapticFeedback.selectionClick();
+  final session = StudioScope.of(context);
+  session.open(film);
+  final saved = await StudioDraftStore().latestFor(film.id);
+  if (!context.mounted) return;
+  if (saved != null && saved.stage != 'intake' && saved.stage != 'research') {
+    session.restore(saved);
+    final page = saved.stage == 'angles'
+        ? const StudioAnglesPage()
+        : saved.stage == 'generating'
+            ? const StudioMakingPage()
+            : const StudioOutlinePage();
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
+    return;
+  }
+  await Navigator.of(context).push(
+    MaterialPageRoute(builder: (_) => const StudioSetupPage()),
+  );
+}
+
+class _StudioIntro extends StatelessWidget {
+  const _StudioIntro();
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'What will you make?',
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.4,
+              ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Pick a film. Kala writes the shots, then you review them.',
+          style: TextStyle(color: cs.onSurfaceVariant, height: 1.3),
+        ),
+      ],
+    );
+  }
+}
+
+class _FilmRow extends StatelessWidget {
+  const _FilmRow({required this.film, required this.tint, required this.onTap});
   final WorkflowSpec film;
   final Color tint;
   final VoidCallback onTap;
@@ -114,46 +116,89 @@ class _FilmCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final length = _lengthLabel(film.defaultLength);
     return Material(
-      color: cs.surfaceContainerHighest,
-      borderRadius: BorderRadius.circular(22),
-      clipBehavior: Clip.antiAlias,
+      color: cs.surfaceContainerHighest.withValues(alpha: 0.55),
+      borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: onTap,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: DecoratedBox(
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 10, 12),
+          child: Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [tint.withValues(alpha: 0.95), cs.surface],
-                  ),
+                  color: tint.withValues(alpha: 0.85),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(_filmIcon(film.id), color: Colors.white, size: 22),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      film.title,
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      film.blurb,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: cs.onSurfaceVariant, height: 1.25, fontSize: 13),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '$length · ${film.defaultAspect}',
+                      style: TextStyle(
+                        color: cs.primary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(film.title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-                  const SizedBox(height: 4),
-                  Text(
-                    film.blurb,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: cs.onSurfaceVariant, height: 1.25),
-                  ),
-                ],
-              ),
-            ),
-          ],
+              Icon(LucideIcons.chevronRight, size: 18, color: cs.onSurfaceVariant),
+            ],
+          ),
         ),
       ),
     );
+  }
+}
+
+IconData _filmIcon(String id) {
+  switch (id) {
+    case 'narrated_story':
+      return LucideIcons.bookOpen;
+    case 'explainer':
+      return LucideIcons.lightbulb;
+    case 'podcast':
+      return LucideIcons.headphones;
+    case 'what_if_diary':
+      return LucideIcons.notebookPen;
+    case 'time_travel_pov':
+      return LucideIcons.clock;
+    case 'body':
+      return LucideIcons.heartPulse;
+    case 'fpv':
+      return LucideIcons.plane;
+    case 'creature_eye':
+      return LucideIcons.eye;
+    case 'cut_my_clips':
+      return LucideIcons.scissors;
+    case 'countdown':
+      return LucideIcons.listOrdered;
+    case 'song_video':
+      return LucideIcons.music;
+    default:
+      return LucideIcons.clapperboard;
   }
 }
 
