@@ -307,6 +307,7 @@ class FilmDraft {
   String lyrics;
   List<UserAsset> assets;
   String videoEngine;
+  String finish;
 
   FilmDraft({
     required this.id,
@@ -336,6 +337,7 @@ class FilmDraft {
     this.lyrics = '',
     this.assets = const [],
     this.videoEngine = 'auto',
+    this.finish = 'balanced',
   });
 
   Map<String, dynamic> toJson() => {
@@ -366,6 +368,7 @@ class FilmDraft {
         'lyrics': lyrics,
         'assets': assets.map((a) => a.toJson()).toList(),
         'videoEngine': videoEngine,
+        'finish': finish,
       };
 
   factory FilmDraft.fromJson(Map<String, dynamic> json) {
@@ -407,6 +410,7 @@ class FilmDraft {
           .map((e) => UserAsset.fromJson(Map<String, dynamic>.from(e as Map)))
           .toList(),
       videoEngine: (json['videoEngine'] as String?) ?? 'auto',
+      finish: (json['finish'] as String?) ?? 'balanced',
     );
   }
 }

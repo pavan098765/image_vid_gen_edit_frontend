@@ -305,11 +305,12 @@ String chooseVideoModel(FilmDraft draft, ShotCard shot, WorkflowSpec spec) {
 void applyPicturePolicy(List<ShotCard> shots, String workflowId) {
   final live = shots.where((s) => !s.dropped && s.kind != 'user' && !s.kindSetByUser).toList();
   if (live.isEmpty) return;
-  if (workflowId == 'narrated_story' || workflowId == 'explainer') {
-    for (var i = 0; i < live.length; i++) {
-      final chapter = live[i].chapter.toLowerCase();
-      final marked = chapter.contains('turn') || chapter.contains('claim') || chapter.contains('last');
-      live[i].kind = (i == 0 || marked || i == live.length - 1) ? 'video' : 'image';
+  if (workflowId == 'narrated_story' ||
+      workflowId == 'explainer' ||
+      workflowId == 'countdown' ||
+      workflowId == 'body') {
+    for (final shot in live) {
+      shot.kind = 'video';
     }
   } else if (workflowId == 'podcast') {
     for (var i = 0; i < live.length; i++) {

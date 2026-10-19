@@ -1094,6 +1094,7 @@ class _CreditsPageState extends State<CreditsPage> {
   }
 
   Future<bool> _handleSystemBack() async {
+    if (selectedIndexNotifier.value != AppTabs.credits) return true;
     final ok = await _confirmExitApp();
     if (ok) {
       // User confirmed exit - actually exit the app

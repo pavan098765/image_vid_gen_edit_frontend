@@ -540,6 +540,7 @@ class _EditorPageState extends State<EditorPage>
   }
 
   Future<bool> _handleSystemBack() async {
+    if (selectedIndexNotifier.value != AppTabs.editor) return true;
     if (!widget.handlesSystemBack || _allowRoutePop) return true;
     if (_selectedImage != null && _closeOpenTool()) return false;
     if (selectedIndexNotifier.value == AppTabs.editor &&

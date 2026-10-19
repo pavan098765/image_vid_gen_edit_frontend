@@ -969,6 +969,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
       canPop: _allowRoutePop || !widget.handlesSystemBack,
       onPopInvokedWithResult: (didPop, _) async {
         if (!widget.handlesSystemBack || didPop || _allowRoutePop) return;
+        if (selectedIndexNotifier.value != AppTabs.editor) return;
         if (selectedIndexNotifier.value == AppTabs.editor &&
             _returnToResultManager &&
             _videoFile != null) {

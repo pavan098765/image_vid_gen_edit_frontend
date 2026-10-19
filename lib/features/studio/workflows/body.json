@@ -12,5 +12,6 @@
   "music": true,
   "sfx": 0,
   "clipAudioIsMain": false,
-  "rubric": "Documentary narrator. Beats are start, first change, too far, and failure. One real mechanism with a source. Do not skip to the ending."
+  "chainEndFrames": true,
+  "rubric": "Documentary narrator. Beats are start, first change, too far, and failure. Every beat is a moving shot and lands on the next. One real mechanism with a source. Do not skip to the ending. No face."
 }

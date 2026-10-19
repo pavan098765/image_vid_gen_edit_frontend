@@ -1093,6 +1093,7 @@ class _ExploreAIPageState extends State<ExploreAIPage>
   }
 
   Future<bool> _handleSystemBack() async {
+    if (selectedIndexNotifier.value != AppTabs.explore) return true;
     final ok = await _confirmExitApp();
     if (ok) {
       // User confirmed exit - actually exit the app

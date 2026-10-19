@@ -99,11 +99,49 @@ String castInstruction(FilmDraft draft) {
       'Shots:\n$shots\n'
       'Already uploaded: ${owned.isEmpty ? 'none' : owned}.\n'
       'Return {"assets":[{"name":"Rama","role":"character|background|product","prompt":"..."}]}.\n'
-      'List only people, places, and objects that must look the same in more than one shot. At most six. '
+      'List only people, places, and objects that must look the same in more than one shot. At most six, and at most four in any one shot. '
       'Do not list a person, place, or object the upload already covers. '
       'A character prompt is a sheet on a plain background, front and full body, no scene, no text. '
       'A set prompt is an empty place, no people, no text. '
       'An object prompt is three views on a plain background, no scene, no text.';
+}
+
+/// What the picture models can actually hold, told to the writer.
+String craftBrief(String workflowId) {
+  switch (workflowId) {
+    case 'narrated_story':
+      return 'Every shot is video, 6 to 10 seconds, and the durations add up to the length. '
+          'A face or a line said on screen names the acting. A journey, crowd, or landscape names the camera move and has no close face. '
+          'Do not plan a still.';
+    case 'explainer':
+      return 'Every shot is video, 6 to 8 seconds. The opening claim moves. '
+          'On-screen text is one term, never the spoken sentence. A host face is used only when the lock names a host.';
+    case 'podcast':
+      return 'Only the first shot and the last shot are video. The middle shots are stills. '
+          'Do not write mouth movement. At least two speakers, each with one voice.';
+    case 'fpv':
+      return 'Every shot is video, 6 to 12 seconds, one camera height, one lens, one weather. '
+          'No face. Each shot starts on its frame and lands on the next shot\'s frame. The sound is wind and motor.';
+    case 'body':
+      return 'Every beat is video, 6 to 10 seconds, one camera inside the body. '
+          'Each shot lands on the next beat. Name breath, pulse, or impact. No face.';
+    case 'time_travel_pov':
+      return 'Every shot is video. The same person walks. One modern object stays recognizable. '
+          'A walk starts on one frame and lands on the next.';
+    case 'creature_eye':
+      return 'Every shot is video from the animal\'s eye height. One real behavior per shot. No human face.';
+    case 'countdown':
+      return 'Every rank is a moving shot of 5 to 8 seconds. The best rank is last. One sourced fact per rank.';
+    case 'song_video':
+      return 'Scenes are 4 to 10 seconds and sit on the song lines. The picture follows the song. '
+          'A face in the lock is the same person in every scene that shows them.';
+    case 'what_if_diary':
+      return 'Every shot is video. Chapters are Day 1, Day 2, Day 3, and the bill. One locked person.';
+    case 'cut_my_clips':
+      return 'Use only the attached files. Do not invent a shot.';
+    default:
+      return 'Shots are 6 to 10 seconds of video. A face is held. A camera move names the camera.';
+  }
 }
 
 String composeKeyframePrompt({

@@ -699,6 +699,7 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
       canPop: !widget.asTab,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop || !widget.asTab) return;
+        if (selectedIndexNotifier.value != AppTabs.creations) return;
         _handleSystemBack();
       },
       child: Scaffold(
