@@ -3418,12 +3418,12 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
   Future<ImageSource?> _showMediaSourcePicker({required bool isImage}) {
     return showMediaSourcePickerBottomSheet(
       context,
-      title: isImage ? 'Choose Image Source' : 'Choose Video Source',
-      titleIcon: isImage ? LucideIcons.imagePlus : LucideIcons.video,
-      gallerySublabel: isImage ? 'Choose from photos' : 'Choose from videos',
+      title: isImage ? 'Add a photo' : 'Add a video',
+      galleryLabel: isImage ? 'Photos' : 'Videos',
+      gallerySublabel: 'Choose from gallery',
       cameraSublabel: isImage ? 'Take a new photo' : 'Record a new video',
       galleryIcon: isImage ? LucideIcons.image : LucideIcons.film,
-      cameraIcon: LucideIcons.camera,
+      cameraIcon: isImage ? LucideIcons.camera : LucideIcons.video,
     );
   }
 

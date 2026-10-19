@@ -227,9 +227,9 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
   Future<ImageSource?> _showSourcePickerSheet() {
     return showMediaSourcePickerBottomSheet(
       context,
-      title: 'Choose Video Source',
-      titleIcon: LucideIcons.clapperboard,
-      gallerySublabel: 'Choose from videos',
+      title: 'Add a video',
+      galleryLabel: 'Videos',
+      gallerySublabel: 'Choose from gallery',
       cameraSublabel: 'Record a new video',
       galleryIcon: LucideIcons.film,
       cameraIcon: LucideIcons.video,

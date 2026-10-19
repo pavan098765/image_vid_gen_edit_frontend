@@ -453,10 +453,7 @@ class _EditorPageState extends State<EditorPage>
   Future<ImageSource?> _showSourcePickerSheet() {
     return showMediaSourcePickerBottomSheet(
       context,
-      title: 'Choose Image Source',
-      titleIcon: LucideIcons.imagePlus,
-      gallerySublabel: 'Choose from photos',
-      cameraSublabel: 'Take a new photo',
+      title: 'Add a photo',
     );
   }
 

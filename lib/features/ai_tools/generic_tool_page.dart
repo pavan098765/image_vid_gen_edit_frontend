@@ -5917,10 +5917,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   Future<ImageSource?> _showImageSourcePickerSheet() {
     return showMediaSourcePickerBottomSheet(
       context,
-      title: 'Choose Image Source',
-      titleIcon: LucideIcons.imagePlus,
-      gallerySublabel: 'Choose from photos',
-      cameraSublabel: 'Take a new photo',
+      title: 'Add a photo',
     );
   }
 
@@ -11773,12 +11770,14 @@ class _GenericToolPageState extends State<GenericToolPage>
       {bool bulkAllowMultiSelect = false}) {
     return showMediaSourcePickerBottomSheet(
       context,
-      title: 'Choose Video Source',
-      titleIcon: LucideIcons.video,
+      title: 'Add a video',
+      galleryLabel: 'Videos',
       gallerySublabel: bulkAllowMultiSelect
           ? 'Select one or more videos'
-          : 'Choose from videos',
+          : 'Choose from gallery',
       cameraSublabel: 'Record a new video',
+      galleryIcon: LucideIcons.film,
+      cameraIcon: LucideIcons.video,
     );
   }
 

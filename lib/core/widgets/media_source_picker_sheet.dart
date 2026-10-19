@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-/// Standard card for Gallery / Camera selection (shared layout across tools).
+/// Standard card for Camera / Photos selection (shared layout across tools).
 class MediaSourcePickerTile extends StatelessWidget {
   const MediaSourcePickerTile({
     super.key,
@@ -93,13 +93,11 @@ Widget _mediaSourceSheetGrabber(ColorScheme cs) {
   );
 }
 
-/// Bottom sheet: handle + title row + [Gallery | Camera] using [MediaSourcePickerTile].
+/// Bottom sheet matching the attach picker: Camera, then Photos.
 Future<ImageSource?> showMediaSourcePickerBottomSheet(
   BuildContext context, {
   required String title,
-  IconData titleIcon = LucideIcons.imagePlus,
-  Color? titleIconAccent,
-  String galleryLabel = 'Gallery',
+  String galleryLabel = 'Photos',
   String cameraLabel = 'Camera',
   String gallerySublabel = 'Choose from gallery',
   String cameraSublabel = 'Take a new photo',
@@ -111,7 +109,6 @@ Future<ImageSource?> showMediaSourcePickerBottomSheet(
   final cs = Theme.of(context).colorScheme;
   final gAcc = galleryAccent ?? cs.primary;
   final cAcc = cameraAccent ?? cs.secondary;
-  final headTint = titleIconAccent ?? cs.primary;
 
   return showModalBottomSheet<ImageSource>(
     context: context,
@@ -122,58 +119,34 @@ Future<ImageSource?> showMediaSourcePickerBottomSheet(
         decoration: BoxDecoration(
           color: cs.surface,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.2),
-              blurRadius: 20,
-              offset: const Offset(0, -4),
-            ),
-          ],
+          border: Border(
+            top: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.2)),
+          ),
         ),
         child: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 _mediaSourceSheetGrabber(cs),
-                const SizedBox(height: 20),
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: headTint.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(titleIcon, color: headTint, size: 22),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Text(
-                        title,
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                          color: cs.onSurface,
-                        ),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 4, bottom: 6),
+                    child: Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: cs.onSurface,
                       ),
                     ),
-                  ],
+                  ),
                 ),
-                const SizedBox(height: 20),
                 Row(
                   children: [
-                    Expanded(
-                      child: MediaSourcePickerTile(
-                        icon: galleryIcon,
-                        label: galleryLabel,
-                        sublabel: gallerySublabel,
-                        accentColor: gAcc,
-                        onTap: () => Navigator.pop(ctx, ImageSource.gallery),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
                     Expanded(
                       child: MediaSourcePickerTile(
                         icon: cameraIcon,
@@ -183,9 +156,18 @@ Future<ImageSource?> showMediaSourcePickerBottomSheet(
                         onTap: () => Navigator.pop(ctx, ImageSource.camera),
                       ),
                     ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: MediaSourcePickerTile(
+                        icon: galleryIcon,
+                        label: galleryLabel,
+                        sublabel: gallerySublabel,
+                        accentColor: gAcc,
+                        onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+                      ),
+                    ),
                   ],
                 ),
-                const SizedBox(height: 8),
               ],
             ),
           ),
