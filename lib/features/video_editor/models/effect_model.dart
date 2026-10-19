@@ -226,11 +226,15 @@ class ColorAdjustment {
   /// ID of a filter preset from [ColorMatrixPresets], or null.
   final String? filterPresetId;
 
+  /// How strongly [filterPresetId] is mixed in. 1 is the full look, 0 is none.
+  final double filterStrength;
+
   const ColorAdjustment({
     this.brightness = 0,
     this.contrast = 1.0,
     this.saturation = 1.0,
     this.filterPresetId,
+    this.filterStrength = 1,
   });
 
   ColorAdjustment copyWith({
@@ -238,12 +242,14 @@ class ColorAdjustment {
     double? contrast,
     double? saturation,
     String? filterPresetId,
+    double? filterStrength,
   }) {
     return ColorAdjustment(
       brightness: brightness ?? this.brightness,
       contrast: contrast ?? this.contrast,
       saturation: saturation ?? this.saturation,
       filterPresetId: filterPresetId ?? this.filterPresetId,
+      filterStrength: filterStrength ?? this.filterStrength,
     );
   }
 

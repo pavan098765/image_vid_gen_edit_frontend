@@ -882,8 +882,14 @@ class _SettingsPageState extends State<SettingsPage> {
         builder: (context, snapshot) {
           final isSignedIn = snapshot.data != null;
           
+          final systemBottom = MediaQuery.viewPaddingOf(context).bottom;
           return ListView(
-            padding: const EdgeInsets.all(AppStyles.spacing16),
+            padding: EdgeInsets.fromLTRB(
+              AppStyles.spacing16,
+              AppStyles.spacing16,
+              AppStyles.spacing16,
+              AppStyles.spacing16 + (widget.inDrawer ? systemBottom + 20 : 0),
+            ),
             children: [
               // Account Section
               _buildSectionHeader(context, 'Account', LucideIcons.user),

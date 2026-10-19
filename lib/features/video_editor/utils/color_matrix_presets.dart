@@ -1,134 +1,29 @@
-// lib/features/video_editor/utils/color_matrix_presets.dart
+import '../../media_editor/color_looks.dart';
 
-/// Predefined color filter matrices for the video editor.
-/// Each matrix is a 4x5 list (20 values) for use with ColorFilter.matrix().
+/// Video-editor view of [ColorLooks].
+///
+/// Each preset is one combined 4×5 matrix for preview and export.
 class ColorMatrixPresets {
   ColorMatrixPresets._();
 
-  /// Identity (no change).
   static const String normalId = 'normal';
 
-  static const List<FilterPreset> presets = [
-    FilterPreset(id: 'normal', name: 'Normal', matrix: _identity),
-    FilterPreset(id: 'grayscale', name: 'B&W', matrix: _grayscale),
-    FilterPreset(id: 'sepia', name: 'Sepia', matrix: _sepia),
-    FilterPreset(id: 'vintage', name: 'Vintage', matrix: _vintage),
-    FilterPreset(id: 'cool', name: 'Cool', matrix: _cool),
-    FilterPreset(id: 'warm', name: 'Warm', matrix: _warm),
-    FilterPreset(id: 'bright', name: 'Bright', matrix: _bright),
-    FilterPreset(id: 'contrast', name: 'Contrast', matrix: _contrast),
-    FilterPreset(id: 'fade', name: 'Fade', matrix: _fade),
-    FilterPreset(id: 'dramatic', name: 'Dramatic', matrix: _dramatic),
-    FilterPreset(id: 'invert', name: 'Invert', matrix: _invert),
-    FilterPreset(id: 'purple_tint', name: 'Purple', matrix: _purpleTint),
-    FilterPreset(id: 'cyan_tint', name: 'Cyan', matrix: _cyanTint),
+  static final List<FilterPreset> presets = [
+    for (final look in ColorLooks.looks)
+      FilterPreset(id: look.id, name: look.name, matrix: look.matrix),
   ];
 
-  // Identity
-  static const List<double> _identity = [
-    1, 0, 0, 0, 0,
-    0, 1, 0, 0, 0,
-    0, 0, 1, 0, 0,
-    0, 0, 0, 1, 0,
-  ];
+  static const List<double> identity = colorLookIdentity;
 
-  // Grayscale
-  static const List<double> _grayscale = [
-    0.2126, 0.7152, 0.0722, 0, 0,
-    0.2126, 0.7152, 0.0722, 0, 0,
-    0.2126, 0.7152, 0.0722, 0, 0,
-    0, 0, 0, 1, 0,
-  ];
+  /// The look at [strength], or null when there is nothing to apply.
+  static List<double>? resolvedMatrix(String? id, double strength) {
+    if (id == null || id == normalId || strength <= 0) return null;
+    final look = ColorLooks.byId(id);
+    if (look == null || look.filters.isEmpty) return null;
+    return applyColorLookStrength(look.matrix, strength);
+  }
 
-  // Sepia
-  static const List<double> _sepia = [
-    0.393, 0.769, 0.189, 0, 0,
-    0.349, 0.686, 0.168, 0, 0,
-    0.272, 0.534, 0.131, 0, 0,
-    0, 0, 0, 1, 0,
-  ];
-
-  // Vintage
-  static const List<double> _vintage = [
-    0.9, 0.5, 0.1, 0, 20,
-    0.3, 0.8, 0.1, 0, 10,
-    0.2, 0.3, 0.5, 0, 30,
-    0, 0, 0, 1, 0,
-  ];
-
-  // Cool blue tones
-  static const List<double> _cool = [
-    0.9, 0, 0, 0, 0,
-    0, 0.95, 0, 0, 0,
-    0, 0, 1.1, 0, 20,
-    0, 0, 0, 1, 0,
-  ];
-
-  // Warm tones
-  static const List<double> _warm = [
-    1.1, 0, 0, 0, 15,
-    0, 1.0, 0, 0, 5,
-    0, 0, 0.9, 0, -10,
-    0, 0, 0, 1, 0,
-  ];
-
-  // Bright
-  static const List<double> _bright = [
-    1.2, 0, 0, 0, 20,
-    0, 1.2, 0, 0, 20,
-    0, 0, 1.2, 0, 20,
-    0, 0, 0, 1, 0,
-  ];
-
-  // High contrast
-  static const List<double> _contrast = [
-    1.5, 0, 0, 0, -40,
-    0, 1.5, 0, 0, -40,
-    0, 0, 1.5, 0, -40,
-    0, 0, 0, 1, 0,
-  ];
-
-  // Fade / washed out
-  static const List<double> _fade = [
-    1, 0, 0, 0, 40,
-    0, 1, 0, 0, 40,
-    0, 0, 1, 0, 40,
-    0, 0, 0, 0.9, 0,
-  ];
-
-  // Dramatic / desaturated contrast
-  static const List<double> _dramatic = [
-    1.3, -0.1, -0.1, 0, -20,
-    -0.1, 1.3, -0.1, 0, -20,
-    -0.1, -0.1, 1.3, 0, -20,
-    0, 0, 0, 1, 0,
-  ];
-
-  // Invert
-  static const List<double> _invert = [
-    -1, 0, 0, 0, 255,
-    0, -1, 0, 0, 255,
-    0, 0, -1, 0, 255,
-    0, 0, 0, 1, 0,
-  ];
-
-  // Purple tint (brand colour)
-  static const List<double> _purpleTint = [
-    1.1, 0, 0, 0, 15,
-    0, 0.9, 0, 0, -5,
-    0, 0, 1.15, 0, 20,
-    0, 0, 0, 1, 0,
-  ];
-
-  // Cyan tint (brand colour)
-  static const List<double> _cyanTint = [
-    0.9, 0, 0, 0, -10,
-    0, 1.05, 0, 0, 10,
-    0, 0, 1.15, 0, 20,
-    0, 0, 0, 1, 0,
-  ];
-
-  /// Generate a brightness adjustment matrix.  [-100 .. 100]
+  /// Brightness adjustment. [value] is in the same units as [ColorAdjustment].
   static List<double> brightness(double value) {
     return [
       1, 0, 0, 0, value,
@@ -138,7 +33,7 @@ class ColorMatrixPresets {
     ];
   }
 
-  /// Generate a contrast adjustment matrix.  [0.5 .. 2.0]
+  /// Contrast adjustment. [factor] of 1 leaves the picture unchanged.
   static List<double> contrast(double factor) {
     final t = (1.0 - factor) * 128;
     return [
@@ -149,7 +44,7 @@ class ColorMatrixPresets {
     ];
   }
 
-  /// Generate a saturation adjustment matrix.  [0.0 .. 2.0]
+  /// Saturation adjustment. [s] of 1 leaves the picture unchanged.
   static List<double> saturation(double s) {
     final sr = (1 - s) * 0.2126;
     final sg = (1 - s) * 0.7152;

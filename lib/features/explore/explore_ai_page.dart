@@ -2018,7 +2018,7 @@ class _ExploreAIPageState extends State<ExploreAIPage>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Sale / next-sale — primary focal point above hero carousel
-        const Padding(
+        Padding(
           padding: EdgeInsets.fromLTRB(16, 0, 16, 2),
           child: SaleBanner(display: SaleBannerDisplay.highlight),
         ),

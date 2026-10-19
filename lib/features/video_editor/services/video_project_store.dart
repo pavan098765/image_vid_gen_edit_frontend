@@ -152,6 +152,7 @@ class VideoProjectStore {
           'contrast': c.colorAdjustment.contrast,
           'saturation': c.colorAdjustment.saturation,
           'filter': c.colorAdjustment.filterPresetId,
+          'strength': c.colorAdjustment.filterStrength,
         },
         'transition': {
           'type': c.transitionIn.type.name,
@@ -274,6 +275,7 @@ class VideoProjectStore {
             contrast: (color['contrast'] as num?)?.toDouble() ?? 1,
             saturation: (color['saturation'] as num?)?.toDouble() ?? 1,
             filterPresetId: color['filter'] as String?,
+            filterStrength: (color['strength'] as num?)?.toDouble() ?? 1,
           ),
           transitionIn: ClipTransition(
             type: TransitionType.values.firstWhere(

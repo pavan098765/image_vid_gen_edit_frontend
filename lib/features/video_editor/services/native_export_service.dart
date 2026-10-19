@@ -319,11 +319,11 @@ class NativeExportService {
     final adj = clip.colorAdjustment;
     if (adj.isDefault) return null;
     var matrix = List<double>.from(
-      ColorMatrixPresets.presets
-              .where((p) => p.id == adj.filterPresetId)
-              .map((p) => p.matrix)
-              .firstOrNull ??
-          ColorMatrixPresets.presets.first.matrix,
+      ColorMatrixPresets.resolvedMatrix(
+            adj.filterPresetId,
+            adj.filterStrength,
+          ) ??
+          ColorMatrixPresets.identity,
     );
     if (adj.brightness != 0) {
       final b = adj.brightness / 100 * 255;

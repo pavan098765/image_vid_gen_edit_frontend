@@ -22,6 +22,7 @@ class _FilterPanelState extends ConsumerState<FilterPanel> {
   double _brightness = 0;
   double _contrast = 1.0;
   double _saturation = 1.0;
+  double _strength = 1;
   String? _lastClipId;
 
   void _syncFromClip(VideoClip clip) {
@@ -30,6 +31,7 @@ class _FilterPanelState extends ConsumerState<FilterPanel> {
     _brightness = adj.brightness;
     _contrast = adj.contrast;
     _saturation = adj.saturation;
+    _strength = adj.filterStrength;
     _lastClipId = clip.id;
   }
 
@@ -106,9 +108,13 @@ class _FilterPanelState extends ConsumerState<FilterPanel> {
             const SizedBox(height: 12),
           ],
 
-          // Filter presets grid
+          // Filter presets
+          Text('Filters',
+              style: TextStyle(
+                  fontSize: 12, color: cs.onSurface.withValues(alpha: 0.6))),
+          const SizedBox(height: 8),
           SizedBox(
-            height: 68,
+            height: 78,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: ColorMatrixPresets.presets.length,
@@ -120,7 +126,8 @@ class _FilterPanelState extends ConsumerState<FilterPanel> {
                 return GestureDetector(
                   onTap: () => _applyFilter(preset.id == 'normal' ? null : preset.id),
                   child: Container(
-                    width: 60,
+                    width: 72,
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
@@ -133,7 +140,6 @@ class _FilterPanelState extends ConsumerState<FilterPanel> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        // Preview swatch using the filter matrix
                         Container(
                           width: 36,
                           height: 36,
@@ -150,8 +156,10 @@ class _FilterPanelState extends ConsumerState<FilterPanel> {
                         const SizedBox(height: 4),
                         Text(
                           preset.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: 9,
+                            fontSize: 10,
                             color: selected
                                 ? cs.primary
                                 : cs.onSurface.withValues(alpha: 0.6),
@@ -166,7 +174,18 @@ class _FilterPanelState extends ConsumerState<FilterPanel> {
               },
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
+
+          _adjustmentSlider(
+            'Strength',
+            _strength,
+            0,
+            1,
+            (v) {
+              setState(() => _strength = v);
+              _updateAdjustment();
+            },
+          ),
 
           // Adjustment sliders
           _adjustmentSlider(
@@ -266,6 +285,7 @@ class _FilterPanelState extends ConsumerState<FilterPanel> {
           contrast: _contrast,
           saturation: _saturation,
           filterPresetId: _selectedFilter,
+          filterStrength: _strength,
         ),
       ),
     );

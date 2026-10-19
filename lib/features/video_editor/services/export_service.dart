@@ -872,7 +872,7 @@ class ExportService {
       {ClipTransition? transitionOverride}) {
     final vf = <String>[];
     final adj = clip.colorAdjustment;
-    final preset = _presetToVf(adj.filterPresetId);
+    final preset = _presetToVf(adj);
     if (preset != null) vf.add(preset);
     if (adj.brightness != 0 || adj.contrast != 1.0 || adj.saturation != 1.0) {
       final br = (adj.brightness / 100).toStringAsFixed(3);
@@ -900,24 +900,17 @@ class ExportService {
   //  Filter Preset → FFmpeg
   // =========================================================================
 
-  /// Convert a [ColorMatrixPresets] filter ID to FFmpeg video-filter string.
+  /// Convert a color look to an FFmpeg video-filter string.
   ///
   /// The 4×5 Flutter colour matrix is mapped to:
   ///   1. `colorchannelmixer` for the 4×4 mixing coefficients
   ///   2. `lutrgb` for the constant RGB offsets (5th column)
-  static String? _presetToVf(String? id) {
-    if (id == null || id == 'normal') return null;
-
-    FilterPreset? preset;
-    for (final p in ColorMatrixPresets.presets) {
-      if (p.id == id) {
-        preset = p;
-        break;
-      }
-    }
-    if (preset == null || preset.id == 'normal') return null;
-
-    final m = preset.matrix;
+  static String? _presetToVf(ColorAdjustment adj) {
+    final m = ColorMatrixPresets.resolvedMatrix(
+      adj.filterPresetId,
+      adj.filterStrength,
+    );
+    if (m == null) return null;
     final parts = <String>[
       'colorchannelmixer='
           'rr=${m[0]}:rg=${m[1]}:rb=${m[2]}:ra=${m[3]}:'

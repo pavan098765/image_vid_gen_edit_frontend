@@ -39,12 +39,12 @@ void main() {
     const clip = VideoClip(
       id: 'c1',
       startTime: Duration.zero,
-      duration: const Duration(seconds: 4),
+      duration: Duration(seconds: 4),
       sourcePath: '/tmp/a.mp4',
       trimStart: Duration.zero,
-      trimEnd: const Duration(seconds: 4),
-      originalDuration: const Duration(seconds: 4),
-      speedEffect: const SpeedEffect(
+      trimEnd: Duration(seconds: 4),
+      originalDuration: Duration(seconds: 4),
+      speedEffect: SpeedEffect(
         mode: SpeedMode.ramp,
         rampStart: 0.5,
         rampEnd: 2.0,
@@ -62,7 +62,7 @@ void main() {
     const project = VideoProject(
       id: 'job_abc',
       name: 'Roundtrip',
-      totalDuration: const Duration(seconds: 3),
+      totalDuration: Duration(seconds: 3),
       tracks: [
         Track(
           id: 'v0',
@@ -72,14 +72,14 @@ void main() {
             VideoClip(
               id: 'clip',
               startTime: Duration.zero,
-              duration: const Duration(seconds: 3),
+              duration: Duration(seconds: 3),
               sourcePath: '/tmp/src.mp4',
               trimStart: Duration.zero,
-              trimEnd: const Duration(seconds: 3),
-              originalDuration: const Duration(seconds: 3),
-              cropNorm: const Rect.fromLTWH(0.1, 0.1, 0.8, 0.8),
+              trimEnd: Duration(seconds: 3),
+              originalDuration: Duration(seconds: 3),
+              cropNorm: Rect.fromLTWH(0.1, 0.1, 0.8, 0.8),
               look: VideoLook.film,
-              chroma: const ChromaSettings(enabled: true, similarity: 0.3),
+              chroma: ChromaSettings(enabled: true, similarity: 0.3),
             ),
           ],
         ),
@@ -91,7 +91,7 @@ void main() {
             TextClip(
               id: 'txt',
               startTime: Duration.zero,
-              duration: const Duration(seconds: 2),
+              duration: Duration(seconds: 2),
               text: 'Hello',
               textAlign: TextAlign.right,
             ),

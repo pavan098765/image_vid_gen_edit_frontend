@@ -235,19 +235,12 @@ class _PreviewPlayerState extends ConsumerState<PreviewPlayer> {
         if (hasFilter || hasAdjustments) {
           // Build combined color matrix
           List<double> matrix = List<double>.from(
-            ColorMatrixPresets.presets
-                .firstWhere((p) => p.id == 'normal')
-                .matrix,
+            ColorMatrixPresets.resolvedMatrix(
+                  adj.filterPresetId,
+                  adj.filterStrength,
+                ) ??
+                ColorMatrixPresets.identity,
           );
-
-          if (hasFilter) {
-            final preset = ColorMatrixPresets.presets
-                .where((p) => p.id == adj.filterPresetId)
-                .firstOrNull;
-            if (preset != null) {
-              matrix = List<double>.from(preset.matrix);
-            }
-          }
 
           // Apply brightness/contrast/saturation adjustments
           if (adj.brightness != 0) {
@@ -261,7 +254,10 @@ class _PreviewPlayerState extends ConsumerState<PreviewPlayer> {
           }
 
           videoWidget = ColorFiltered(
-            key: ValueKey('filter_${adj.filterPresetId}_${adj.brightness}_${adj.contrast}_${adj.saturation}'),
+            key: ValueKey(
+              'filter_${adj.filterPresetId}_${adj.filterStrength}_'
+              '${adj.brightness}_${adj.contrast}_${adj.saturation}',
+            ),
             colorFilter: ColorFilter.matrix(matrix),
             child: videoWidget,
           );

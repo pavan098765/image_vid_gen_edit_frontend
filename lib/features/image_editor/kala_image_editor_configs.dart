@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
+import 'package:kala_ai_create_images_videos_with_ai/features/media_editor/color_looks.dart';
 import 'package:material_ui/material_ui.dart' as mui;
 import 'package:pro_image_editor/pro_image_editor.dart';
 
@@ -71,7 +72,7 @@ ProImageEditorConfigs kalaImageEditorConfigs(
         ratio: 'Shape',
       ),
       tuneEditor: I18nTuneEditor(bottomNavigationBarText: 'Looks'),
-      filterEditor: I18nFilterEditor(bottomNavigationBarText: 'Looks'),
+      filterEditor: I18nFilterEditor(bottomNavigationBarText: 'Filters'),
       blurEditor: I18nBlurEditor(bottomNavigationBarText: 'Blur'),
       stickerEditor: I18nStickerEditor(bottomNavigationBarText: 'Sticker'),
       emojiEditor: I18nEmojiEditor(bottomNavigationBarText: 'Emoji'),
@@ -131,14 +132,9 @@ ProImageEditorConfigs kalaImageEditorConfigs(
       ],
     ),
     filterEditor: FilterEditorConfigs(
-      filterList: [
-        FilterModel(name: 'Clean', filters: PresetFilters.none.filters),
-        FilterModel(name: 'Film', filters: PresetFilters.amaro.filters),
-        FilterModel(name: 'Night', filters: PresetFilters.moon.filters),
-        FilterModel(name: 'Poster', filters: PresetFilters.juno.filters),
-        FilterModel(name: 'Soft', filters: PresetFilters.gingham.filters),
-        FilterModel(name: 'Punch', filters: PresetFilters.clarendon.filters),
-      ],
+      // One look at a time. The editor's slider mixes it back toward the original.
+      enableMultiSelection: false,
+      filterList: ColorLooks.imageFilters,
     ),
     blurEditor: const BlurEditorConfigs(),
     stickerEditor: StickerEditorConfigs(

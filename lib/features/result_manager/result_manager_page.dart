@@ -205,9 +205,6 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
   String _sortBy = 'date'; // 'date', 'status', 'title'
   bool _sortAscending = false; // newest first by default
 
-  // Cloud storage banner state
-  bool _isBannerExpanded = true;
-
   final GlobalKey _initialJobKey = GlobalKey();
 
   @override
@@ -228,7 +225,6 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
     }
     _refreshJobs();
     _markAllCompletedAsSeen();
-    _loadBannerPreference();
     _prefetchDownloadUrls(); // Pre-fetch URLs in background
     _loadModelNameCache(); // Load model name cache for friendly names
 
@@ -275,24 +271,6 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
     } catch (e) {
       debugPrint('⚠️ Error pre-fetching URLs: $e');
     }
-  }
-
-  Future<void> _loadBannerPreference() async {
-    final prefs = await SharedPreferences.getInstance();
-    if (mounted) {
-      setState(() {
-        _isBannerExpanded =
-            prefs.getBool('cloud_storage_banner_expanded') ?? true;
-      });
-    }
-  }
-
-  Future<void> _toggleBanner() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _isBannerExpanded = !_isBannerExpanded;
-    });
-    await prefs.setBool('cloud_storage_banner_expanded', _isBannerExpanded);
   }
 
   Future<void> _markAllCompletedAsSeen() async {
@@ -654,117 +632,39 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
     }
   }
 
-  // Info banner explaining 24-hour cloud storage (collapsible)
   Widget _buildCloudStorageInfoBanner(ColorScheme cs) {
-    return GestureDetector(
-      onTap: _toggleBanner,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeOutCubic,
-        margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-        padding: EdgeInsets.symmetric(
-          horizontal: _isBannerExpanded ? 14 : 12,
-          vertical: _isBannerExpanded ? 10 : 8,
-        ),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              cs.primaryContainer.withValues(alpha: _isBannerExpanded ? 0.4 : 0.25),
-              cs.secondaryContainer.withValues(alpha: _isBannerExpanded ? 0.3 : 0.15),
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: cs.primary.withValues(alpha: _isBannerExpanded ? 0.2 : 0.1),
-          ),
-        ),
-        child: AnimatedCrossFade(
-          duration: const Duration(milliseconds: 200),
-          crossFadeState: _isBannerExpanded
-              ? CrossFadeState.showFirst
-              : CrossFadeState.showSecond,
-          firstChild: _buildExpandedBanner(cs),
-          secondChild: _buildCollapsedBanner(cs),
-        ),
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(12),
       ),
-    );
-  }
-
-  Widget _buildExpandedBanner(ColorScheme cs) {
-    return Row(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: cs.primary.withValues(alpha: 0.15),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(
-            Icons.cloud_queue_rounded,
-            size: 18,
+      child: Row(
+        children: [
+          Icon(
+            Icons.cloud_off_outlined,
+            size: 16,
             color: cs.primary,
           ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Free Cloud Storage',
+          const SizedBox(width: 8),
+          Expanded(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Inputs and results are deleted from the server after 14 days.',
+                maxLines: 1,
                 style: TextStyle(
-                  color: cs.onSurface,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
+                  color: cs.onSurfaceVariant,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
-              const SizedBox(height: 2),
-              Text(
-                'Results stay for 14 days on server then deleted. Download them before they expire.',
-                style: TextStyle(
-                  color: cs.onSurfaceVariant.withValues(alpha: 0.8),
-                  fontSize: 11,
-                ),
-              ),
-            ],
+            ),
           ),
-        ),
-        Icon(
-          Icons.keyboard_arrow_up_rounded,
-          size: 20,
-          color: cs.onSurfaceVariant.withValues(alpha: 0.5),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildCollapsedBanner(ColorScheme cs) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(
-          Icons.cloud_queue_rounded,
-          size: 14,
-          color: cs.primary.withValues(alpha: 0.7),
-        ),
-        const SizedBox(width: 8),
-        Text(
-          '14 days · server',
-          style: TextStyle(
-            color: cs.onSurfaceVariant.withValues(alpha: 0.7),
-            fontSize: 11,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const SizedBox(width: 4),
-        Icon(
-          Icons.keyboard_arrow_down_rounded,
-          size: 16,
-          color: cs.onSurfaceVariant.withValues(alpha: 0.5),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
