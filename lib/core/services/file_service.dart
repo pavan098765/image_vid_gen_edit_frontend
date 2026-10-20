@@ -240,6 +240,28 @@ class FileService {
         return resolvedPath;
       }
 
+      // Speech and music stay in app documents. The photo gallery cannot hold them.
+      if (_isAudioExtension(extension)) {
+        try {
+          final appDir = await getApplicationDocumentsDirectory();
+          final cacheDir = Directory('${appDir.path}/saved_results');
+          if (!await cacheDir.exists()) {
+            await cacheDir.create(recursive: true);
+          }
+          final localPath = '${cacheDir.path}/$fileName';
+          await File(localPath).writeAsBytes(bytes, flush: true);
+          _lastSavedPath = localPath;
+          debugPrint('📦 Audio saved to app-documents: $localPath');
+          if (context.mounted && showPreview) {
+            _showMediaPreviewDialog(context, localPath);
+          }
+          return localPath;
+        } catch (e) {
+          debugPrint('❌ Failed to save audio file: $e');
+          return null;
+        }
+      }
+
       // =====================================================================
       // IMAGES & VIDEOS: Save to gallery, prefer gallery path for localFilePath
       // =====================================================================
@@ -552,10 +574,12 @@ class FileService {
     if (_isPreviewOpen) return; // 🚫 prevent double openings
     _isPreviewOpen = true;
 
+    final lowerPath = filePath.toLowerCase();
     // Check if file is a text file
-    final isTextFile = filePath.toLowerCase().endsWith('.txt') || 
-                       filePath.toLowerCase().endsWith('.json') ||
-                       filePath.toLowerCase().endsWith('.text');
+    final isTextFile = lowerPath.endsWith('.txt') ||
+                       lowerPath.endsWith('.json') ||
+                       lowerPath.endsWith('.text');
+    final isAudioFile = _isAudioPath(lowerPath);
 
     // Filter allPaths to only include existing files
     final List<String> validPaths = allPaths?.where((p) => File(p).existsSync()).toList() ?? [];
@@ -597,7 +621,15 @@ class FileService {
             _isPreviewOpen = false;
             return true;
           },
-          child: isTextFile
+          child: isAudioFile
+              ? _AudioPreview(
+                  filePath: filePath,
+                  onClose: () {
+                    _isPreviewOpen = false;
+                    Navigator.of(context, rootNavigator: true).pop();
+                  },
+                )
+              : isTextFile
               ? _TextFilePreview(
                   filePath: filePath,
                   onClose: () {
@@ -781,6 +813,11 @@ class FileService {
     if (ext.contains('png')) return 'png';
     if (ext.contains('jpg') || ext.contains('jpeg')) return 'jpg';
     if (ext.contains('mp4')) return 'mp4';
+    if (ext.contains('mp3')) return 'mp3';
+    if (ext.contains('wav')) return 'wav';
+    if (ext.contains('ogg')) return 'ogg';
+    if (ext.contains('flac')) return 'flac';
+    if (ext.contains('m4a')) return 'm4a';
     if (ext.contains('webp')) return 'webp';
     if (ext.contains('txt') || ext.contains('text')) return 'txt';
     if (ext.contains('json')) return 'json';
@@ -800,6 +837,25 @@ class FileService {
   static bool _isOldDownloadEndpoint(String? url) {
     if (url == null || url.isEmpty) return false;
     return url.contains('/download/') && !url.contains('workers.dev');
+  }
+
+  static bool _isAudioExtension(String ext) {
+    switch (ext.toLowerCase()) {
+      case 'mp3':
+      case 'wav':
+      case 'ogg':
+      case 'flac':
+      case 'm4a':
+      case 'aac':
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  static bool _isAudioPath(String path) {
+    final ext = path.split('.').last;
+    return _isAudioExtension(ext);
   }
 
   /// 🔍 Check if extension is a text file type
@@ -824,6 +880,10 @@ class FileService {
         debugPrint('❌ Text file is not valid UTF-8: $e');
         return false;
       }
+    }
+
+    if (_isAudioExtension(extension)) {
+      return bytes.length > 100;
     }
 
     // Minimum file size check (blank/black images are usually very small)
@@ -2275,6 +2335,99 @@ class _ImagePreviewItemState extends State<_ImagePreviewItem> {
               ),
             );
           },
+        ),
+      ),
+    );
+  }
+}
+
+class _AudioPreview extends StatefulWidget {
+  final String filePath;
+  final VoidCallback onClose;
+
+  const _AudioPreview({required this.filePath, required this.onClose});
+
+  @override
+  State<_AudioPreview> createState() => _AudioPreviewState();
+}
+
+class _AudioPreviewState extends State<_AudioPreview> {
+  VideoPlayerController? _controller;
+  bool _ready = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _open();
+  }
+
+  Future<void> _open() async {
+    try {
+      final controller = VideoPlayerController.file(File(widget.filePath));
+      await controller.initialize();
+      await controller.setLooping(true);
+      if (!mounted) {
+        await controller.dispose();
+        return;
+      }
+      setState(() {
+        _controller = controller;
+        _ready = true;
+      });
+    } catch (e) {
+      if (mounted) setState(() => _error = 'Could not play this audio');
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final playing = _controller?.value.isPlaying ?? false;
+    return Material(
+      color: Colors.black.withValues(alpha: 0.92),
+      child: SafeArea(
+        child: Column(
+          children: [
+            Align(
+              alignment: Alignment.centerRight,
+              child: IconButton(
+                onPressed: widget.onClose,
+                icon: const Icon(Icons.close, color: Colors.white),
+              ),
+            ),
+            const Spacer(),
+            const Icon(Icons.audiotrack_rounded, color: Colors.white, size: 72),
+            const SizedBox(height: 24),
+            if (_error != null)
+              Text(_error!, style: const TextStyle(color: Colors.white70))
+            else if (!_ready)
+              const CircularProgressIndicator()
+            else
+              IconButton(
+                iconSize: 64,
+                onPressed: () {
+                  final controller = _controller;
+                  if (controller == null) return;
+                  if (controller.value.isPlaying) {
+                    controller.pause();
+                  } else {
+                    controller.play();
+                  }
+                  setState(() {});
+                },
+                icon: Icon(
+                  playing ? Icons.pause_circle_filled : Icons.play_circle_fill,
+                  color: Colors.white,
+                ),
+              ),
+            const Spacer(),
+          ],
         ),
       ),
     );

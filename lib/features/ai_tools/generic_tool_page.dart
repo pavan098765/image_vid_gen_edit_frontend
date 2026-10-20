@@ -1944,7 +1944,11 @@ class _GenericToolPageState extends State<GenericToolPage>
     if (_hasScaleFactor) {
       return 0;
     }
-    return (_advancedSettings.upscaleOutput && _scaleFactor > 1) ? v : 0;
+    // Image tools bill the upscaler the user picked, not a flat add-on.
+    if (_isUpscalerTool) return 0;
+    return (_advancedSettings.upscaleOutput && _scaleFactor > 1)
+        ? _selectedOutputUpscaleCost
+        : 0;
   }
 
   /// Extra credits when the tool has a main [scale_factor] input and factor > 1 (VIP = 0).
@@ -2040,9 +2044,8 @@ class _GenericToolPageState extends State<GenericToolPage>
     // Animate image / create video: duration × the model's baseCost5Sec.
     final bool isVideoGenTool =
         widget.config.outputType == 'video' && !_isVideoUpscalerTool;
-    final baseCost = _withQwenResolutionPrice(
-      isVideoGenTool ? _getDurationBasedCost() : _currentModelCost,
-    );
+    final baseCost =
+        isVideoGenTool ? _getDurationBasedCost() : _listedGenerationCost();
     final offer = _currentModelOffer;
     final variations =
         _advancedSettings.variations.clamp(1, getMaxVariations());
@@ -2921,6 +2924,62 @@ class _GenericToolPageState extends State<GenericToolPage>
   int get _currentModelUpscaleCost =>
       _selectedModelData?['costUpscale'] as int? ?? widget.config.costUpscale;
 
+  /// Extra upscale pass the user can add from Additional Settings.
+  /// Ids stay internal. Names are the ones shown in the app.
+  static const List<Map<String, Object>> _outputUpscaleChoices = [
+    {
+      'id': 'recraft_crisp_upscale',
+      'name': 'Crisp Upscale',
+      'cost': 5,
+      'blurb': 'Sharper detail, same size',
+    },
+    {
+      'id': 'realesrgan_upscale',
+      'name': 'General Upscale',
+      'cost': 5,
+      'blurb': 'Clean 2× enlarge',
+    },
+    {
+      'id': 'p_image_upscale',
+      'name': 'Fine Upscale',
+      'cost': 8,
+      'blurb': '2× with extra texture',
+    },
+  ];
+
+  String get _selectedOutputUpscaleId {
+    final raw = _inputs['upscale_model'];
+    if (raw is String &&
+        _outputUpscaleChoices.any((choice) => choice['id'] == raw)) {
+      return raw;
+    }
+    return 'recraft_crisp_upscale';
+  }
+
+  Map<String, Object> get _selectedOutputUpscale {
+    return _outputUpscaleChoices.firstWhere(
+      (choice) => choice['id'] == _selectedOutputUpscaleId,
+      orElse: () => _outputUpscaleChoices.first,
+    );
+  }
+
+  int get _selectedOutputUpscaleCost =>
+      (_selectedOutputUpscale['cost'] as int?) ?? 5;
+
+  /// Listed price for the generate button. Kala Song scales with length.
+  int _listedGenerationCost() {
+    final per60 = _selectedModelData?['costPer60Sec'];
+    if (per60 is num && per60 > 0) {
+      final raw = _inputs['duration'];
+      final seconds = raw is num
+          ? raw.round()
+          : int.tryParse('${raw ?? ''}') ?? 60;
+      final clamped = seconds.clamp(30, 300);
+      return max(1, ((per60 * clamped) / 60).round());
+    }
+    return _withQwenResolutionPrice(_currentModelCost);
+  }
+
   /// Get the current model's effective discount (sale overrides per-model offer)
   int get _currentModelOffer {
     final sale = SaleService().state.value;
@@ -3603,25 +3662,24 @@ class _GenericToolPageState extends State<GenericToolPage>
                             const SizedBox(height: 12),
                           ],
 
-                          // Upscale Toggle (locked for upscaler tools, hidden for video tools)
-                          if (!_isVideoTool) ...[
+                          // Upscale Toggle (locked for upscaler tools, image tools only)
+                          if (widget.config.outputType == 'image') ...[
                             _buildSettingToggle(
                               cs: cs,
                               icon: LucideIcons.maximize2,
                               title: 'Upscale Output',
                               subtitle: _isUpscalerTool
                                   ? 'Always enabled for upscaler tools'
-                                  : (() {
+                                  : () {
                                       final extraCost =
-                                          _currentModelUpscaleCost;
+                                          _selectedOutputUpscaleCost;
+                                      final name = _selectedOutputUpscale['name']
+                                          as String;
                                       if (isVipUser()) {
-                                        return 'Higher resolution result (FREE for VIP)';
+                                        return '$name · free for VIP';
                                       }
-                                      if (extraCost > 0) {
-                                        return 'Higher resolution result (+$extraCost credits) - Free for VIP users';
-                                      }
-                                      return 'Higher resolution result';
-                                    })(),
+                                      return '$name · +$extraCost credits';
+                                    }(),
                               value: _advancedSettings.upscaleOutput,
                               locked:
                                   _isUpscalerTool, // Lock for upscaler tools
@@ -3637,11 +3695,19 @@ class _GenericToolPageState extends State<GenericToolPage>
                                           );
                                           _upscaleEnabled = v;
                                           _scaleFactor = v ? 2 : 1;
-                                          _inputs["scale_factor"] = v ? 2.0 : 1.0;
+                                          _inputs["scale_factor"] =
+                                              v ? 2.0 : 1.0;
+                                          _inputs.putIfAbsent(
+                                            'upscale_model',
+                                            () => 'recraft_crisp_upscale',
+                                          );
                                         });
                                       });
                                     },
                             ),
+                            if (!_isUpscalerTool &&
+                                _advancedSettings.upscaleOutput)
+                              _buildOutputUpscalePicker(cs, setSheetState),
 
                             const SizedBox(height: 12),
                             if (widget.config.capabilityId == 'edit_image' &&
@@ -3814,6 +3880,90 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   /// Build toggle setting widget
+  Widget _buildOutputUpscalePicker(ColorScheme cs, StateSetter setSheetState) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Upscale model',
+            style: TextStyle(
+              color: cs.onSurface,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _outputUpscaleChoices.map((choice) {
+              final selected = choice['id'] == _selectedOutputUpscaleId;
+              final cost = choice['cost'] as int;
+              return InkWell(
+                onTap: () {
+                  setSheetState(() {
+                    setState(() {
+                      _inputs['upscale_model'] = choice['id'];
+                    });
+                  });
+                },
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  width: 148,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? cs.primary.withValues(alpha: 0.12)
+                        : cs.surfaceContainerHigh,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: selected
+                          ? cs.primary.withValues(alpha: 0.5)
+                          : cs.outlineVariant.withValues(alpha: 0.25),
+                      width: selected ? 1.5 : 1,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        choice['name'] as String,
+                        style: TextStyle(
+                          color: cs.onSurface,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        choice['blurb'] as String,
+                        style: TextStyle(
+                          color: cs.onSurfaceVariant,
+                          fontSize: 11,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        isVipUser() ? 'Free for VIP' : '+$cost credits',
+                        style: TextStyle(
+                          color: cs.primary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSettingToggle({
     required ColorScheme cs,
     required IconData icon,
@@ -5235,7 +5385,7 @@ class _GenericToolPageState extends State<GenericToolPage>
       final imageCount = _advancedSettings.bulkEditEnabled && _hasBulkInput
           ? _bulkActiveMediaCount
           : 1;
-      final baseCostPerVariation = _withQwenResolutionPrice(_currentModelCost) +
+      final baseCostPerVariation = _listedGenerationCost() +
           _enhancementUpscaleCreditsPerVariation() +
           _inputScaleUpscaleCreditsPerVariation();
       baseTotal = baseCostPerVariation * variations * imageCount;
@@ -13523,6 +13673,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     final cs = Theme.of(context).colorScheme;
     final input = widget.config.inputs
         .firstWhere((i) => i["id"] == ref, orElse: () => {});
+    if (!_elementShouldRender(input)) return const SizedBox.shrink();
     final label = input["label"] ?? ref;
     final options = List<String>.from(input["options"] ?? []);
     _inputs[ref] ??= options.isNotEmpty ? options.first : null;
@@ -14227,7 +14378,7 @@ class _GenericToolPageState extends State<GenericToolPage>
           _getDurationBasedCost() + _enhancementUpscaleCreditsPerVariation();
       totalBeforeDiscount = baseCostPerVariation * variations * imageCount;
     } else {
-      final baseCostPerVariation = _withQwenResolutionPrice(_currentModelCost) +
+      final baseCostPerVariation = _listedGenerationCost() +
           _enhancementUpscaleCreditsPerVariation() +
           _inputScaleUpscaleCreditsPerVariation();
       totalBeforeDiscount = baseCostPerVariation * variations * imageCount;
@@ -16493,6 +16644,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             widget.config.outputType == 'image' &&
             !_isUpscalerTool) {
           resolvedParams['scale_factor'] = 2;
+          resolvedParams['upscale_model'] = _selectedOutputUpscaleId;
         }
 
         final filteredRootParams = filterSubmitRootParams(rootParams);
@@ -16936,7 +17088,6 @@ class _GenericToolPageState extends State<GenericToolPage>
               "Could not upload $id to cloud storage. Check your connection and try again.",
             );
           }
-          basePayload["${id}_r2_key"] = urls.first.r2Key;
           paramsForSubmit["${id}_r2_key"] = urls.first.r2Key;
           // Never ship raw bytes in params.
           paramsForSubmit.remove(id);

@@ -934,6 +934,38 @@
           "rootParams": {
             "prompt": "{{prompt}}"
           }
+        },
+        {
+          "id": "flux2_klein_9b",
+          "name": "Kala Flash",
+          "description": "Fast text to image",
+          "useExternalApi": true,
+          "cost": 10,
+          "costUpscale": 0,
+          "offer": 0,
+          "enabled": true,
+          "params": {
+            "aspect_ratio": "{{aspect_ratio}}"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        },
+        {
+          "id": "muse_image",
+          "name": "Kala Canvas",
+          "description": "Prompt-faithful text to image",
+          "useExternalApi": true,
+          "cost": 10,
+          "costUpscale": 0,
+          "offer": 0,
+          "enabled": true,
+          "params": {
+            "aspect_ratio": "{{aspect_ratio}}"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
         }
       ],
       "inputs": [
@@ -1005,6 +1037,40 @@
           "useExternalApi": true,
           "cost": 18,
           "costUpscale": 8,
+          "offer": 0,
+          "enabled": true,
+          "params": {
+            "init_image": "{{init_image}}",
+            "aspect_ratio": "auto"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        },
+        {
+          "id": "flux2_klein_9b_edit",
+          "name": "Kala Flash",
+          "description": "Edit with up to 4 references",
+          "useExternalApi": true,
+          "cost": 10,
+          "costUpscale": 0,
+          "offer": 0,
+          "enabled": true,
+          "params": {
+            "init_image": "{{init_image}}",
+            "aspect_ratio": "auto"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        },
+        {
+          "id": "muse_image_edit",
+          "name": "Kala Canvas",
+          "description": "Edit or combine references",
+          "useExternalApi": true,
+          "cost": 10,
+          "costUpscale": 0,
           "offer": 0,
           "enabled": true,
           "params": {
@@ -1898,7 +1964,7 @@
         {
           "id": "recraft_crisp_upscale",
           "name": "Crisp Upscale",
-          "description": "Recraft 1x crisp upscale",
+          "description": "Sharper detail, same size",
           "useExternalApi": true,
           "cost": 5,
           "costUpscale": 0,
@@ -1906,6 +1972,36 @@
           "enabled": true,
           "params": {
             "init_image": "{{image}}"
+          }
+        },
+        {
+          "id": "p_image_upscale",
+          "name": "Fine Upscale",
+          "description": "2× or 4× with extra texture",
+          "useExternalApi": true,
+          "cost": 8,
+          "costUpscale": 0,
+          "offer": 0,
+          "enabled": true,
+          "params": {
+            "init_image": "{{image}}",
+            "upscale_factor": "{{upscale_factor}}",
+            "enhance_details": "{{enhance_details}}",
+            "realism": "{{realism}}"
+          }
+        },
+        {
+          "id": "realesrgan_upscale",
+          "name": "General Upscale",
+          "description": "Clean 2× or 4× enlarge",
+          "useExternalApi": true,
+          "cost": 5,
+          "costUpscale": 0,
+          "offer": 0,
+          "enabled": true,
+          "params": {
+            "init_image": "{{image}}",
+            "upscale_factor": "{{upscale_factor}}"
           }
         }
       ],
@@ -1916,12 +2012,48 @@
           "label": "Upload Image",
           "min": 1,
           "max": 1
+        },
+        {
+          "id": "upscale_factor",
+          "type": "dropdown",
+          "label": "Scale",
+          "options": ["2", "4"],
+          "default": "2",
+          "showForModels": ["p_image_upscale", "realesrgan_upscale"]
+        },
+        {
+          "id": "enhance_details",
+          "type": "toggle",
+          "label": "Enhance details",
+          "description": "Sharpen fine texture. Can raise contrast.",
+          "default": false,
+          "showForModels": ["p_image_upscale"]
+        },
+        {
+          "id": "realism",
+          "type": "toggle",
+          "label": "Realism",
+          "description": "Push a generated image toward a photograph.",
+          "default": false,
+          "showForModels": ["p_image_upscale"]
         }
       ],
       "elements": [
         {
           "type": "image_upload",
           "input_ref": "image"
+        },
+        {
+          "type": "dropdown",
+          "input_ref": "upscale_factor"
+        },
+        {
+          "type": "toggle",
+          "input_ref": "enhance_details"
+        },
+        {
+          "type": "toggle",
+          "input_ref": "realism"
         },
         {
           "type": "generate_button"
@@ -2076,6 +2208,239 @@
         {
           "type": "generate_button"
         }
+      ]
+    },
+    {
+      "id": "create_speech",
+      "name": "Speech",
+      "description": "Turn text into a spoken voice",
+      "icon": "mic",
+      "accent": "#38BDF8",
+      "outputType": "audio",
+      "defaultModel": "xai_tts",
+      "models": [
+        {
+          "id": "xai_tts",
+          "name": "Kala Voice",
+          "description": "Expressive voices",
+          "useExternalApi": true,
+          "cost": 8,
+          "costUpscale": 0,
+          "offer": 0,
+          "enabled": true,
+          "params": {
+            "voice": "{{voice}}",
+            "language": "{{language}}"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        },
+        {
+          "id": "qwen_voice_design",
+          "name": "Kala Speech",
+          "description": "Describe the voice, then the line",
+          "useExternalApi": true,
+          "cost": 8,
+          "costUpscale": 0,
+          "offer": 0,
+          "enabled": true,
+          "params": {
+            "voice_description": "{{voice_description}}",
+            "language": "{{design_language}}"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        }
+      ],
+      "inputs": [
+        {
+          "id": "prompt",
+          "type": "text",
+          "label": "Script",
+          "hintExamples": [
+            "Write the words to speak. Short sentences sound more natural.",
+            "A warm welcome for a product video, calm and unhurried."
+          ]
+        },
+        {
+          "id": "voice",
+          "type": "dropdown",
+          "label": "Voice",
+          "options": ["eve", "orion", "luna", "leo", "rex", "ara", "sal", "iris"],
+          "default": "eve",
+          "showForModels": ["xai_tts"]
+        },
+        {
+          "id": "language",
+          "type": "dropdown",
+          "label": "Language",
+          "options": ["en", "es-ES", "fr", "de", "hi", "ja", "ko", "zh", "pt-BR"],
+          "default": "en",
+          "showForModels": ["xai_tts"]
+        },
+        {
+          "id": "voice_description",
+          "type": "text",
+          "label": "Voice description",
+          "placeholder": "A warm, cheerful voice with a moderate pace",
+          "multiline": true,
+          "required": true,
+          "showForModels": ["qwen_voice_design"]
+        },
+        {
+          "id": "design_language",
+          "type": "dropdown",
+          "label": "Language",
+          "options": ["Auto", "English", "Chinese", "Japanese", "Korean", "German", "French", "Spanish", "Portuguese", "Italian", "Russian"],
+          "default": "Auto",
+          "showForModels": ["qwen_voice_design"]
+        }
+      ],
+      "elements": [
+        { "type": "prompt", "input_ref": "prompt" },
+        { "type": "dropdown", "input_ref": "voice" },
+        { "type": "dropdown", "input_ref": "language" },
+        { "type": "text_input", "input_ref": "voice_description" },
+        { "type": "dropdown", "input_ref": "design_language" },
+        { "type": "generate_button" }
+      ]
+    },
+    {
+      "id": "clone_voice",
+      "name": "Clone Voice",
+      "description": "Speak new lines in a voice from a short recording",
+      "icon": "headphones",
+      "accent": "#818CF8",
+      "outputType": "audio",
+      "defaultModel": "qwen_voice_clone",
+      "models": [
+        {
+          "id": "qwen_voice_clone",
+          "name": "Kala Speech Clone",
+          "description": "Match a few seconds of audio",
+          "useExternalApi": true,
+          "cost": 8,
+          "costUpscale": 0,
+          "offer": 0,
+          "enabled": true,
+          "params": {
+            "reference_audio": "{{reference_audio}}",
+            "language": "{{language}}"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        }
+      ],
+      "inputs": [
+        {
+          "id": "reference_audio",
+          "type": "audio_upload",
+          "label": "Voice sample",
+          "min": 1,
+          "max": 1
+        },
+        {
+          "id": "prompt",
+          "type": "text",
+          "label": "New line",
+          "hintExamples": [
+            "The words this voice should say. Keep it under a few sentences."
+          ]
+        },
+        {
+          "id": "language",
+          "type": "dropdown",
+          "label": "Language",
+          "options": ["Auto", "English", "Chinese", "Japanese", "Korean", "German", "French", "Spanish", "Portuguese", "Italian", "Russian"],
+          "default": "Auto"
+        }
+      ],
+      "elements": [
+        { "type": "audio_upload", "input_ref": "reference_audio" },
+        { "type": "prompt", "input_ref": "prompt" },
+        { "type": "dropdown", "input_ref": "language" },
+        { "type": "generate_button" }
+      ]
+    },
+    {
+      "id": "create_music",
+      "name": "Music",
+      "description": "Instrumentals or songs from a description",
+      "icon": "music",
+      "accent": "#F472B6",
+      "outputType": "audio",
+      "defaultModel": "ace_step_music",
+      "models": [
+        {
+          "id": "ace_step_music",
+          "name": "Kala Song",
+          "description": "25 credits per minute",
+          "useExternalApi": true,
+          "cost": 25,
+          "costPer60Sec": 25,
+          "costUpscale": 0,
+          "offer": 0,
+          "enabled": true,
+          "params": {
+            "duration": "{{duration}}",
+            "lyrics": "{{lyrics}}"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        },
+        {
+          "id": "minimax_music_26",
+          "name": "Kala Song Pro",
+          "description": "Full song, optional lyrics",
+          "useExternalApi": true,
+          "cost": 100,
+          "costUpscale": 0,
+          "offer": 0,
+          "enabled": true,
+          "params": {
+            "lyrics": "{{lyrics}}"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        }
+      ],
+      "inputs": [
+        {
+          "id": "prompt",
+          "type": "text",
+          "label": "Describe the track",
+          "hintExamples": [
+            "Warm acoustic guitar, soft brushed drums, hopeful and unhurried.",
+            "Late-night electronic pulse, minor key, no vocals."
+          ]
+        },
+        {
+          "id": "duration",
+          "type": "dropdown",
+          "label": "Length",
+          "options": ["30", "60", "90", "120"],
+          "default": "60",
+          "showForModels": ["ace_step_music"]
+        },
+        {
+          "id": "lyrics",
+          "type": "text",
+          "label": "Lyrics (optional)",
+          "placeholder": "Leave empty for an instrumental",
+          "multiline": true,
+          "optional": true
+        }
+      ],
+      "elements": [
+        { "type": "prompt", "input_ref": "prompt" },
+        { "type": "dropdown", "input_ref": "duration" },
+        { "type": "text_input", "input_ref": "lyrics" },
+        { "type": "generate_button" }
       ]
     }
   ],
