@@ -33,6 +33,7 @@ import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_butto
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/sign_in_prompt.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/themed_native_ad.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/ai_tools/frame_fit.dart';
+import 'package:kala_ai_create_images_videos_with_ai/features/studio/gemini_client.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/ai_tools/mask_layout_preview.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/ai_tools/expand_canvas.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/ai_tools/outpaint_canvas_page.dart';
@@ -1720,11 +1721,17 @@ class _GenericToolPageState extends State<GenericToolPage>
   /// Check if this is a video category tool (text to video, image to video, video to video)
   bool get _isVideoTool => widget.config.outputType == 'video';
   bool get _isTextTool => widget.config.outputType == 'text';
+  bool get _isAudioTool => widget.config.outputType == 'audio';
+  bool get _isSpeechTool => widget.config.capabilityId == 'create_speech';
+  bool get _isMusicTool => widget.config.capabilityId == 'create_music';
+  bool get _musicEasy => _isMusicTool && _inputs['music_mode'] != 'advanced';
+  bool _musicExpanding = false;
+  String? _easyMusicPrompt;
 
   /// Composer auto-prompt is hidden only for Create Image / Create Video tools.
   bool get _hideComposerAutoPromptButton {
     final id = widget.config.capabilityId;
-    return id == 'create_image' || id == 'create_video';
+    return id == 'create_image' || id == 'create_video' || _isAudioTool;
   }
 
   /// Check if this is an expand scene (outpaint) category tool
@@ -2141,6 +2148,9 @@ class _GenericToolPageState extends State<GenericToolPage>
     if (_isUpscalerTool) {
       const hiddenMainRefs = <String>{
         'scale_factor',
+        'upscale_factor',
+        'enhance_details',
+        'realism',
         'face_enhance',
         'mode',
         'bg_model',
@@ -2308,6 +2318,11 @@ class _GenericToolPageState extends State<GenericToolPage>
 
     // Initialize selected model
     _initializeSelectedModel();
+    _seedInputDefaults();
+    if (widget.config.capabilityId == 'create_music') {
+      _inputs['music_mode'] = 'easy';
+      _inputs['vocals'] ??= true;
+    }
     _syncFaceEnhancerFixedParams();
     if (_isVideoTool && !_isVideoUpscalerTool) {
       _advancedSettings = _advancedSettings.copyWith(aspectRatio: '9:16');
@@ -2826,6 +2841,45 @@ class _GenericToolPageState extends State<GenericToolPage>
     }
   }
 
+  /// Defaults for choices that live in Additional Settings, so a job can
+  /// submit before that sheet has been opened.
+  void _seedInputDefaults() {
+    for (final def in widget.config.inputs) {
+      if (def is! Map) continue;
+      final id = def['id'] as String?;
+      if (id == null || _inputs.containsKey(id)) continue;
+      final type = def['type']?.toString();
+      if (type == 'dropdown') {
+        final options = _choiceOptions(Map<String, dynamic>.from(def));
+        if (options.isEmpty) continue;
+        final fallback = def['default']?.toString();
+        final match = options.where((o) => o.value == fallback);
+        _inputs[id] = match.isEmpty ? options.first.value : match.first.value;
+      } else if (type == 'toggle') {
+        _inputs[id] = def['default'] == true;
+      }
+    }
+  }
+
+  List<({String value, String label})> _choiceOptions(Map<String, dynamic> input) {
+    final raw = input['options'];
+    if (raw is! List) return const [];
+    final out = <({String value, String label})>[];
+    for (final opt in raw) {
+      if (opt is Map) {
+        final value = '${opt['value'] ?? opt['id'] ?? ''}'.trim();
+        if (value.isEmpty) continue;
+        final label = '${opt['label'] ?? value}'.trim();
+        out.add((value: value, label: label.isEmpty ? value : label));
+      } else {
+        final value = '$opt'.trim();
+        if (value.isEmpty) continue;
+        out.add((value: value, label: value));
+      }
+    }
+    return out;
+  }
+
   /// Select a different model
   void _selectModel(Map<String, dynamic> model) {
     setState(() {
@@ -2966,15 +3020,28 @@ class _GenericToolPageState extends State<GenericToolPage>
   int get _selectedOutputUpscaleCost =>
       (_selectedOutputUpscale['cost'] as int?) ?? 5;
 
-  /// Listed price for the generate button. Kala Song scales with length.
+  /// Listed price for the generate button.
+  /// Speech is 15 credits a minute, estimated at 600 characters.
+  /// Kala Song scales with the chosen length.
   int _listedGenerationCost() {
     final per60 = _selectedModelData?['costPer60Sec'];
+    final charsPerMin = _selectedModelData?['speechCharsPerMin'];
+    if (charsPerMin is num &&
+        charsPerMin > 0 &&
+        per60 is num &&
+        per60 > 0) {
+      final chars = _promptController.text.trim().length;
+      if (chars <= 0) return per60.round();
+      return max(1, ((per60 * chars) / charsPerMin).round());
+    }
     if (per60 is num && per60 > 0) {
       final raw = _inputs['duration'];
       final seconds = raw is num
           ? raw.round()
           : int.tryParse('${raw ?? ''}') ?? 60;
-      final clamped = seconds.clamp(30, 300);
+      final maxSeconds =
+          (_selectedModelData?['maxDuration'] as num?)?.toInt() ?? 240;
+      final clamped = seconds.clamp(30, maxSeconds);
       return max(1, ((per60 * clamped) / 60).round());
     }
     return _withQwenResolutionPrice(_currentModelCost);
@@ -3636,14 +3703,22 @@ class _GenericToolPageState extends State<GenericToolPage>
                             ),
                           ),
                         ] else ...[
-                          // Model Selector (only if multiple models available)
-                          if (widget.config.hasMultipleModels) ...[
+                          // Speech switches Voice / Speech / Clone on the tool itself.
+                          if (widget.config.hasMultipleModels && !_isSpeechTool) ...[
                             _buildModelSelector(cs, setSheetState),
                             const SizedBox(height: 20),
                           ],
 
+                          if (_isAudioTool) ...[
+                            _buildOffFormChoices(cs, setSheetState),
+                          ],
+
+                          if (_isUpscalerTool) ...[
+                            _buildUpscaleModelOptions(cs, setSheetState),
+                          ],
+
                           // Enhance Prompt Toggle (only for models with prompt)
-                          if (_hasPrompt) ...[
+                          if (_hasPrompt && !_isAudioTool) ...[
                             _buildSettingToggle(
                               cs: cs,
                               icon: LucideIcons.sparkles,
@@ -3662,8 +3737,10 @@ class _GenericToolPageState extends State<GenericToolPage>
                             const SizedBox(height: 12),
                           ],
 
-                          // Upscale Toggle (locked for upscaler tools, image tools only)
-                          if (widget.config.outputType == 'image') ...[
+                          // Extra upscale pass after an image is created.
+                          // The Upscale Image tool picks its model and scale below instead.
+                          if (widget.config.outputType == 'image' &&
+                              !_isUpscalerTool) ...[
                             _buildSettingToggle(
                               cs: cs,
                               icon: LucideIcons.maximize2,
@@ -3738,7 +3815,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                           ],
 
                           // Aspect Ratio Selector (hidden for edit_image, expand scene, upscale, inpaint/erase, remove background tools)
-                          if (!_isEditImageTool &&
+                          if (!_isAudioTool &&
+                              !_isEditImageTool &&
                               !_isExpandSceneTool &&
                               !_isUpscalerTool &&
                               !_isInpaintEraseTool &&
@@ -5005,6 +5083,12 @@ class _GenericToolPageState extends State<GenericToolPage>
 
       // Skip elements without input_ref (like upscale_toggle, generate_button)
       if (inputRef == null) continue;
+      final gated = widget.config.inputs
+          .firstWhere((i) => i["id"] == inputRef, orElse: () => {});
+      if (gated is Map &&
+          !_elementShouldRender(Map<String, dynamic>.from(gated))) {
+        continue;
+      }
 
       // Skip optional inputs like sliders, dropdowns (they have defaults)
       if (type == "slider" || type == "dropdown") continue;
@@ -5244,6 +5328,12 @@ class _GenericToolPageState extends State<GenericToolPage>
 
       // Skip elements without input_ref
       if (inputRef == null) continue;
+      final gated = widget.config.inputs
+          .firstWhere((i) => i["id"] == inputRef, orElse: () => {});
+      if (gated is Map &&
+          !_elementShouldRender(Map<String, dynamic>.from(gated))) {
+        continue;
+      }
 
       // Skip optional inputs
       if (type == "slider" || type == "dropdown") continue;
@@ -5392,7 +5482,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     }
 
     // Check if button should be enabled
-    final isEnabled = _areRequiredInputsFilled();
+    final isEnabled = _areRequiredInputsFilled() && !_musicExpanding;
     final missingInputs = _getMissingInputs();
 
     return Container(
@@ -6877,8 +6967,10 @@ class _GenericToolPageState extends State<GenericToolPage>
     final cs = Theme.of(context).colorScheme;
     final promptLength = _promptController.text.length;
     final effectivePromptInput = _effectiveInputConfig(ref);
-    final hintLabel = (effectivePromptInput["label"] as String?) ??
-        'Describe what you want to create…';
+    final hintLabel = _isMusicTool && !_musicEasy
+        ? 'Style, instruments, mood, and how the song moves'
+        : ((effectivePromptInput["label"] as String?) ??
+            'Describe what you want to create…');
     final hintExamples = _composerHintExamplesFor(effectivePromptInput, ref);
     final showStreamingHint =
         _promptController.text.isEmpty && !_promptFocusNode.hasFocus;
@@ -7052,6 +7144,21 @@ class _GenericToolPageState extends State<GenericToolPage>
                 ],
               ),
 
+              if (_isSpeechTool &&
+                  (_selectedModelId ?? widget.config.model) ==
+                      'qwen_voice_clone' &&
+                  _inputs['reference_audio'] is! Uint8List)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    'Attach a few seconds of the voice with +',
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.75),
+                      fontSize: 12.5,
+                    ),
+                  ),
+                ),
+
               // Divider line
               const SizedBox(height: 6),
               Container(
@@ -7087,15 +7194,16 @@ class _GenericToolPageState extends State<GenericToolPage>
                   ] else ...[
                     const Spacer(),
                   ],
-                  _ComposerIconButton(
-                    icon: LucideIcons.palette,
-                    tooltip: _promptStylesVisible
-                        ? 'Hide Style & Tags'
-                        : 'Show Style & Tags',
-                    onTap: () => setState(
-                        () => _promptStylesVisible = !_promptStylesVisible),
-                    active: _promptStylesVisible,
-                  ),
+                  if (!_isAudioTool)
+                    _ComposerIconButton(
+                      icon: LucideIcons.palette,
+                      tooltip: _promptStylesVisible
+                          ? 'Hide Style & Tags'
+                          : 'Show Style & Tags',
+                      onTap: () => setState(
+                          () => _promptStylesVisible = !_promptStylesVisible),
+                      active: _promptStylesVisible,
+                    ),
                   if (!_hideComposerAutoPromptButton) ...[
                     const SizedBox(width: 6),
                     _ComposerIconButton(
@@ -9361,6 +9469,14 @@ class _GenericToolPageState extends State<GenericToolPage>
   /// input config declares `showWhen` or `showForModels` and the condition
   /// isn't met.
   bool _elementShouldRender(Map<String, dynamic> input) {
+    if (_isMusicTool && _inputs['vocals'] == false) {
+      final id = input['id'];
+      if (id == 'lyrics' ||
+          id == 'vocal_language' ||
+          id == 'lyrics_optimizer') {
+        return false;
+      }
+    }
     final showForModels = input['showForModels'] as List<dynamic>?;
     if (showForModels != null && showForModels.isNotEmpty) {
       final currentModel = _selectedModelId ?? widget.config.model;
@@ -13594,7 +13710,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   // -------- Toggle (Switch) --------
-  Widget _buildToggle(String ref) {
+  Widget _buildToggle(String ref, {StateSetter? sheetSetter}) {
     final cs = Theme.of(context).colorScheme;
     final input = widget.config.inputs
         .firstWhere((i) => i["id"] == ref, orElse: () => {});
@@ -13659,7 +13775,14 @@ class _GenericToolPageState extends State<GenericToolPage>
             scale: 0.9,
             child: Switch.adaptive(
               value: isEnabled,
-              onChanged: (v) => setState(() => _inputs[ref] = v),
+              onChanged: (v) {
+                void apply() => _inputs[ref] = v;
+                if (sheetSetter != null) {
+                  sheetSetter(() => setState(apply));
+                } else {
+                  setState(apply);
+                }
+              },
               activeColor: cs.primary,
             ),
           ),
@@ -13669,14 +13792,17 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   // -------- Dropdown (ChoiceChips) --------
-  Widget _buildDropdown(String ref) {
+  Widget _buildDropdown(String ref, {StateSetter? sheetSetter}) {
     final cs = Theme.of(context).colorScheme;
     final input = widget.config.inputs
         .firstWhere((i) => i["id"] == ref, orElse: () => {});
     if (!_elementShouldRender(input)) return const SizedBox.shrink();
     final label = input["label"] ?? ref;
-    final options = List<String>.from(input["options"] ?? []);
-    _inputs[ref] ??= options.isNotEmpty ? options.first : null;
+    final options = _choiceOptions(Map<String, dynamic>.from(input));
+    if (options.isNotEmpty &&
+        !options.any((o) => o.value == _inputs[ref]?.toString())) {
+      _inputs[ref] = options.first.value;
+    }
 
     return _buildCard(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
@@ -13697,9 +13823,16 @@ class _GenericToolPageState extends State<GenericToolPage>
             spacing: 8,
             runSpacing: 8,
             children: options.map((opt) {
-              final isSelected = _inputs[ref] == opt;
+              final isSelected = _inputs[ref]?.toString() == opt.value;
               return InkWell(
-                onTap: () => setState(() => _inputs[ref] = opt),
+                onTap: () {
+                  void apply() => _inputs[ref] = opt.value;
+                  if (sheetSetter != null) {
+                    sheetSetter(() => setState(apply));
+                  } else {
+                    setState(apply);
+                  }
+                },
                 borderRadius: BorderRadius.circular(AppStyles.radiusFull),
                 child: Container(
                   padding:
@@ -13728,7 +13861,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                         const SizedBox(width: 5),
                       ],
                       Text(
-                        opt,
+                        opt.label,
                         style: TextStyle(
                           color: isSelected
                               ? Colors.white
@@ -13934,6 +14067,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                       key: _modeSectionKey,
                       child: _buildModeSelector(),
                     ),
+                  if (_isSpeechTool) _buildSpeechModeBar(),
+                  if (_isMusicTool) _buildMusicModeBar(),
 
                   // 2a. Prompt composer (when tool has a `prompt` element)
                   if (hasPromptElement) _buildElement(promptElement),
@@ -13949,7 +14084,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                   ...afterPromptElements.map(renderElement),
 
                   // 6. Relocated Style & Tags panel — only when a prompt exists.
-                  if (hasPromptElement && _promptStylesVisible) ...[
+                  if (hasPromptElement && _promptStylesVisible && !_isAudioTool) ...[
                     const SizedBox(height: 10),
                     KeyedSubtree(
                       key: _stylesSectionKey,
@@ -14009,7 +14144,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   /// Build the sticky footer with settings and generate button
   Widget _buildStickyGenerateFooter(double bottomSafeArea) {
     final cs = Theme.of(context).colorScheme;
-    final isEnabled = _areRequiredInputsFilled();
+    final isEnabled = _areRequiredInputsFilled() && !_musicExpanding;
     final missingInputs = _getMissingInputs();
 
     return Container(
@@ -14385,7 +14520,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     }
 
     // Check if button should be enabled
-    final isEnabled = _areRequiredInputsFilled();
+    final isEnabled = _areRequiredInputsFilled() && !_musicExpanding;
 
     // Check if we have multiple images or variations (show compact summary)
     final bool showJobCount = totalJobs > 1;
@@ -14458,9 +14593,9 @@ class _GenericToolPageState extends State<GenericToolPage>
                         ),
                         const SizedBox(width: 8),
                         // Generate text
-                        const Text(
-                          "Generate",
-                          style: TextStyle(
+                        Text(
+                          _musicExpanding ? "Writing the song" : "Generate",
+                          style: const TextStyle(
                             color: Colors.white,
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
@@ -15089,6 +15224,221 @@ class _GenericToolPageState extends State<GenericToolPage>
           ),
         ),
       ],
+    );
+  }
+
+  /// Easy writes the full song from an idea. Advanced shows every control.
+  Widget _buildMusicModeBar() {
+    final cs = Theme.of(context).colorScheme;
+    const modes = [
+      ('easy', 'Easy'),
+      ('advanced', 'Advanced'),
+    ];
+    final selected = _musicEasy ? 'easy' : 'advanced';
+    return Padding(
+      padding: const EdgeInsets.only(top: 6, bottom: 2),
+      child: Column(
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHigh.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(AppStyles.radiusLg),
+              border:
+                  Border.all(color: cs.outlineVariant.withValues(alpha: 0.2)),
+            ),
+            padding: const EdgeInsets.all(4),
+            child: Row(
+              children: modes.map((mode) {
+                final on = selected == mode.$1;
+                return Expanded(
+                  child: GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _inputs['music_mode'] = mode.$1;
+                        if (mode.$1 == 'easy') _easyMusicPrompt = null;
+                      });
+                    },
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 220),
+                      curve: Curves.easeOutCubic,
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        gradient: on
+                            ? const LinearGradient(
+                                colors: KalaColors.brandGradient,
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              )
+                            : null,
+                        borderRadius:
+                            BorderRadius.circular(AppStyles.radiusMd - 2),
+                      ),
+                      child: Text(
+                        mode.$2,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: on ? cs.onPrimary : cs.onSurfaceVariant,
+                          fontWeight: on ? FontWeight.w600 : FontWeight.w500,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _musicEasy
+                ? 'A song idea is enough. We write the rest.'
+                : 'Set the prompt, lyrics, and musical details yourself.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: cs.onSurfaceVariant.withValues(alpha: 0.75),
+              fontSize: 12.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Voice, Speech, and Clone as one text-to-speech tool.
+  Widget _buildSpeechModeBar() {
+    final cs = Theme.of(context).colorScheme;
+    final models = (widget.config.models ?? [])
+        .where((m) => m['enabled'] != false)
+        .toList();
+    if (models.length < 2) return const SizedBox.shrink();
+    const labels = {
+      'xai_tts': 'Voice',
+      'qwen_voice_design': 'Speech',
+      'qwen_voice_clone': 'Clone',
+    };
+    final description = _selectedModelData?['description'] as String?;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 6, bottom: 2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHigh.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(AppStyles.radiusLg),
+              border:
+                  Border.all(color: cs.outlineVariant.withValues(alpha: 0.2)),
+            ),
+            padding: const EdgeInsets.all(4),
+            child: Row(
+              children: models.map((model) {
+                final id = model['id'] as String? ?? '';
+                final selected = id == (_selectedModelId ?? widget.config.model);
+                return Expanded(
+                  child: GestureDetector(
+                    onTap: () => _selectModel(model),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 220),
+                      curve: Curves.easeOutCubic,
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 10, horizontal: 8),
+                      decoration: BoxDecoration(
+                        gradient: selected
+                            ? const LinearGradient(
+                                colors: KalaColors.brandGradient,
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              )
+                            : null,
+                        borderRadius:
+                            BorderRadius.circular(AppStyles.radiusMd - 2),
+                      ),
+                      child: Text(
+                        labels[id] ?? (model['name'] as String? ?? id),
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: selected ? cs.onPrimary : cs.onSurfaceVariant,
+                          fontWeight:
+                              selected ? FontWeight.w600 : FontWeight.w500,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          if (description != null && description.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              description,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: cs.onSurfaceVariant.withValues(alpha: 0.75),
+                fontSize: 12.5,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// Dropdowns that are not on the main form (voice, language, track length).
+  Widget _buildOffFormChoices(ColorScheme cs, StateSetter setSheetState) {
+    final onForm = <String>{
+      for (final element in _currentElements)
+        if (element['input_ref'] is String) element['input_ref'] as String,
+    };
+    final refs = <String>[];
+    for (final input in widget.config.inputs) {
+      if (input is! Map || input['type'] != 'dropdown') continue;
+      final id = input['id'] as String?;
+      if (id == null || onForm.contains(id)) continue;
+      if (!_elementShouldRender(Map<String, dynamic>.from(input))) continue;
+      refs.add(id);
+    }
+    if (refs.isEmpty) return const SizedBox.shrink();
+    return Column(
+      children: [
+        for (final ref in refs) ...[
+          _buildDropdown(ref, sheetSetter: setSheetState),
+          const SizedBox(height: 12),
+        ],
+      ],
+    );
+  }
+
+  /// Scale and detail controls for the upscaler selected in this sheet.
+  Widget _buildUpscaleModelOptions(ColorScheme cs, StateSetter setSheetState) {
+    const ids = ['upscale_factor', 'enhance_details', 'realism'];
+    final children = <Widget>[];
+    for (final id in ids) {
+      final input = widget.config.inputs.cast<dynamic>().firstWhere(
+            (i) => i is Map && i['id'] == id,
+            orElse: () => null,
+          );
+      if (input is! Map) continue;
+      final spec = Map<String, dynamic>.from(input);
+      if (!_elementShouldRender(spec)) continue;
+      final type = spec['type']?.toString();
+      if (type == 'dropdown') {
+        children.add(_buildDropdown(id, sheetSetter: setSheetState));
+      } else if (type == 'toggle') {
+        children.add(_buildToggle(id, sheetSetter: setSheetState));
+      } else {
+        continue;
+      }
+      children.add(const SizedBox(height: 12));
+    }
+    if (children.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: children,
     );
   }
 
@@ -15739,7 +16089,23 @@ class _GenericToolPageState extends State<GenericToolPage>
 
   void _syncLiveSubmitInputsFromUi() {
     if (_hasPrompt) {
-      _inputs["prompt"] = _promptController.text.trim();
+      final expanded = _easyMusicPrompt?.trim();
+      _inputs["prompt"] = (expanded != null && expanded.length >= 2)
+          ? expanded
+          : _promptController.text.trim();
+    }
+    if (_isMusicTool) {
+      final vocals = _inputs['vocals'] != false;
+      _inputs['instrumental'] = !vocals;
+      if (!vocals) {
+        _inputs['lyrics'] = '';
+        _inputs['vocal_language'] = 'unknown';
+        _inputs['lyrics_optimizer'] = false;
+      } else if (!_musicEasy &&
+          ((_inputs['lyrics'] as String?)?.trim().isEmpty ?? true) &&
+          (_selectedModelId ?? widget.config.model) == 'minimax_music_26') {
+        _inputs['lyrics_optimizer'] = true;
+      }
     }
     if (!_hasScaleFactor && _inputs.containsKey("scale_factor")) {
       _inputs["scale_factor"] = _upscaleEnabled ? _scaleFactor : 1;
@@ -15833,7 +16199,216 @@ class _GenericToolPageState extends State<GenericToolPage>
     }
   }
 
+  /// ACE-Step treats the prompt as a caption and the lyrics as a timed script.
+  /// Tempo and key stay in their own fields. Source: ACE-Step 1.5 tutorial.
+  String _aceMusicSkill({required bool vocals, required int seconds}) {
+    final form = seconds <= 45
+        ? 'Intro, one verse, chorus, outro.'
+        : seconds <= 90
+            ? 'Intro, verse, chorus, verse, chorus, outro.'
+            : 'Intro, verse, pre-chorus, chorus, verse, chorus, bridge, final chorus, outro.';
+    return '''
+You write inputs for ACE-Step 1.5. Follow this skill exactly.
+
+Caption (the prompt field):
+- This is the song's overall portrait: genre, emotion, instruments, timbre, era, production, and vocal character.
+- Do not write BPM, key, or time signature in the prompt. Those go only in bpm, keyScale, and timeSignature.
+- Be specific. "Sad piano ballad, female breathy vocal, close and dry" is better than "a sad song".
+- Combine genre, emotion, instruments, and texture. Do not ask for two conflicting styles unless the caption says the style changes over time.
+- Comma-separated tags or one short paragraph. Under 2500 characters.
+
+Lyrics are the timeline, not a second caption:
+- Structure tags: [Intro], [Verse], [Pre-Chorus], [Chorus], [Bridge], [Outro], [Build], [Drop], [Breakdown], [Instrumental]. A solo may be [Guitar Solo] or [Piano Solo].
+- One short hint after a dash is allowed, such as [Chorus - anthemic]. Do not stack many adjectives in one tag.
+- Sung lines are 6 to 10 syllables. Leave a blank line between sections.
+- Parentheses are background vocals. Capital letters mean a shout, so use them rarely.
+- Keep one metaphor. Do not stack vague images.
+- The caption and the lyrics must agree on instruments, energy, and the singer.
+- ${vocals ? 'Write sung lyrics for about $seconds seconds. Shape: $form' : 'This is instrumental. Leave lyrics empty. Put the arrangement only in the caption. Set vocalLanguage to unknown.'}
+
+negativePrompt is a short exclusion list, under 200 characters, or an empty string. It must not contradict the caption.
+
+bpm is one of 70, 80, 90, 100, 110, 120, 128, 140, 160. Match the energy, but do not repeat it in the caption.
+keyScale is one of C major, G major, D major, A major, F major, Bb major, A minor, E minor, D minor, B minor, F# minor.
+timeSignature is 4 unless the idea clearly needs 3 or 6. 2 is only for a march.
+vocalLanguage is ${vocals ? 'en, es, fr, de, hi, ja, ko, zh, pt, it, ru, or ar, chosen from the idea, otherwise en' : 'unknown'}.
+''';
+  }
+
+  /// MiniMax Music 2.6 reads key and BPM from the prompt itself, and uses its own lyric tags.
+  String _minimaxMusicSkill({required bool vocals}) {
+    return '''
+You write inputs for MiniMax Music 2.6. Follow this skill exactly.
+
+Prompt:
+- A producer note, comma-separated, under 1800 characters. Not an essay and not a section-by-section story.
+- Put the key and the BPM in the prompt. This model follows those words. Shape: "D minor, 90 BPM, acoustic ballad, intimate, female vocal, breathy, acoustic guitar, piano, dry studio".
+- Order: key, BPM, genre, mood, vocal description, instruments, production.
+- ${vocals ? 'Name the singer, for example female vocal or male vocal, and how they sing.' : 'Start the style with Instrumental. Do not describe a singer.'}
+
+Lyrics:
+- Use only these tags: [Intro], [Verse], [Pre Chorus], [Chorus], [Post Chorus], [Hook], [Bridge], [Interlude], [Break], [Transition], [Build Up], [Inst], [Solo], [Outro].
+- One newline between lines. A blank line between sections. The tags are not sung.
+- Parentheses are backing vocals or a performance note, such as (ooh) or (whispered).
+- ${vocals ? 'Write a complete song: intro, verse, pre-chorus, chorus, second verse, chorus, bridge, final chorus, outro. Repeat the chorus words. At least 80 characters and under 3500.' : 'Leave lyrics empty.'}
+- The prompt and the lyrics must share one mood. Do not mix conflicting styles.
+
+negativePrompt is a short comma list of things to leave out, under 200 characters, or an empty string. Do not restate the style there.
+
+bpm, keyScale, and vocalLanguage must match the prompt. bpm is one of 70, 80, 90, 100, 110, 120, 128, 140, 160.
+keyScale is one of C major, G major, D major, A major, F major, Bb major, A minor, E minor, D minor, B minor, F# minor.
+timeSignature is 4 unless the idea clearly needs 3 or 6.
+vocalLanguage is ${vocals ? 'en, es, fr, de, hi, ja, ko, zh, pt, it, ru, or ar, otherwise en' : 'unknown'}.
+''';
+  }
+
+  Future<bool> _fillEasyMusicFromIdea() async {
+    final idea = _promptController.text.trim();
+    if (idea.length < 2) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Add a song idea first.')),
+        );
+      }
+      return false;
+    }
+    final vocals = _inputs['vocals'] != false;
+    final model = _selectedModelId ?? widget.config.model;
+    final isPro = model == 'minimax_music_26';
+    final seconds = int.tryParse('${_inputs['duration'] ?? ''}') ?? 60;
+    _easyMusicPrompt = null;
+    final skill = isPro
+        ? _minimaxMusicSkill(vocals: vocals)
+        : _aceMusicSkill(vocals: vocals, seconds: seconds);
+    final task = '''
+Song idea: $idea
+Vocals: ${vocals ? 'yes' : 'instrumental only'}
+${isPro ? 'Length: a full song.' : 'Length: $seconds seconds.'}
+Return only the JSON fields.
+''';
+    try {
+      final result = await GeminiDirector().generate(
+        step: 'music_easy',
+        systemInstruction: skill,
+        // The live worker forwards this message. The system field is used
+        // once that worker is deployed with system-instruction support.
+        instruction: '$skill\n\nTask:\n$task',
+        schema: {
+          'type': 'OBJECT',
+          'properties': {
+            'prompt': {'type': 'STRING'},
+            'lyrics': {'type': 'STRING'},
+            'bpm': {'type': 'INTEGER'},
+            'keyScale': {'type': 'STRING'},
+            'timeSignature': {'type': 'INTEGER'},
+            'vocalLanguage': {'type': 'STRING'},
+            'negativePrompt': {'type': 'STRING'},
+          },
+          'required': [
+            'prompt',
+            'lyrics',
+            'bpm',
+            'keyScale',
+            'timeSignature',
+            'vocalLanguage',
+          ],
+        },
+      );
+      final prompt = (result['prompt'] ?? '').toString().trim();
+      if (prompt.length < 2) {
+        throw StateError('The song brief was too short. Try again.');
+      }
+      var lyrics = (result['lyrics'] ?? '').toString().trim();
+      if (!vocals) lyrics = '';
+      if (vocals && lyrics.length < 10) {
+        throw StateError('The lyrics were too short. Try the idea again.');
+      }
+      const tempos = [70, 80, 90, 100, 110, 120, 128, 140, 160];
+      final bpmRaw = result['bpm'];
+      final bpmNum =
+          bpmRaw is num ? bpmRaw.round() : int.tryParse('$bpmRaw') ?? 100;
+      var tempo = tempos.first;
+      var gap = 1 << 30;
+      for (final candidate in tempos) {
+        final next = (candidate - bpmNum).abs();
+        if (next < gap) {
+          tempo = candidate;
+          gap = next;
+        }
+      }
+      const keys = {
+        'C major',
+        'G major',
+        'D major',
+        'A major',
+        'F major',
+        'Bb major',
+        'A minor',
+        'E minor',
+        'D minor',
+        'B minor',
+        'F# minor',
+      };
+      final key = (result['keyScale'] ?? '').toString().trim();
+      final meterRaw = result['timeSignature'];
+      final meter =
+          meterRaw is num ? meterRaw.round() : int.tryParse('$meterRaw');
+      const languages = {
+        'en',
+        'es',
+        'fr',
+        'de',
+        'hi',
+        'ja',
+        'ko',
+        'zh',
+        'pt',
+        'it',
+        'ru',
+        'ar',
+        'unknown',
+      };
+      var language =
+          (result['vocalLanguage'] ?? '').toString().trim().toLowerCase();
+      if (!languages.contains(language)) language = vocals ? 'en' : 'unknown';
+      if (!vocals) language = 'unknown';
+      _easyMusicPrompt = prompt;
+      _inputs['lyrics'] = lyrics;
+      _inputs['bpm'] = '$tempo';
+      _inputs['key_scale'] = keys.contains(key) ? key : 'C major';
+      _inputs['time_signature'] =
+          const {2, 3, 4, 6}.contains(meter) ? '$meter' : '4';
+      _inputs['vocal_language'] = language;
+      _inputs['negative_prompt'] =
+          (result['negativePrompt'] ?? '').toString().trim();
+      _inputs['lyrics_optimizer'] = false;
+      return true;
+    } on StateError catch (error) {
+      _easyMusicPrompt = null;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error.message)),
+        );
+      }
+      return false;
+    } catch (_) {
+      _easyMusicPrompt = null;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not write the song. Try again.')),
+        );
+      }
+      return false;
+    }
+  }
+
   Future<void> _runJob() async {
+    if (_musicEasy && !_musicExpanding && !_isSubmittingJob) {
+      setState(() => _musicExpanding = true);
+      final ready = await _fillEasyMusicFromIdea();
+      if (mounted) setState(() => _musicExpanding = false);
+      if (!ready || !mounted) return;
+    }
     // Video upscaler bulk: validate once, then run one [_runJob] per queued file.
     if (!_videoBulkSequentialActive &&
         _isVideoUpscalerTool &&

@@ -2212,8 +2212,8 @@
     },
     {
       "id": "create_speech",
-      "name": "Speech",
-      "description": "Turn text into a spoken voice",
+      "name": "Text to Speech",
+      "description": "Speak a script in a chosen, designed, or cloned voice",
       "icon": "mic",
       "accent": "#38BDF8",
       "outputType": "audio",
@@ -2222,9 +2222,11 @@
         {
           "id": "xai_tts",
           "name": "Kala Voice",
-          "description": "Expressive voices",
+          "description": "Pick a ready-made voice",
           "useExternalApi": true,
-          "cost": 8,
+          "cost": 15,
+          "costPer60Sec": 15,
+          "speechCharsPerMin": 600,
           "costUpscale": 0,
           "offer": 0,
           "enabled": true,
@@ -2239,9 +2241,11 @@
         {
           "id": "qwen_voice_design",
           "name": "Kala Speech",
-          "description": "Describe the voice, then the line",
+          "description": "Describe the voice you want",
           "useExternalApi": true,
-          "cost": 8,
+          "cost": 15,
+          "costPer60Sec": 15,
+          "speechCharsPerMin": 600,
           "costUpscale": 0,
           "offer": 0,
           "enabled": true,
@@ -2252,23 +2256,51 @@
           "rootParams": {
             "prompt": "{{prompt}}"
           }
+        },
+        {
+          "id": "qwen_voice_clone",
+          "name": "Kala Speech Clone",
+          "description": "Match a short recording",
+          "useExternalApi": true,
+          "cost": 15,
+          "costPer60Sec": 15,
+          "speechCharsPerMin": 600,
+          "costUpscale": 0,
+          "offer": 0,
+          "enabled": true,
+          "params": {
+            "reference_audio": "{{reference_audio}}",
+            "language": "{{clone_language}}"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
         }
       ],
       "inputs": [
         {
           "id": "prompt",
           "type": "text",
-          "label": "Script",
+          "label": "What should they say?",
           "hintExamples": [
             "Write the words to speak. Short sentences sound more natural.",
-            "A warm welcome for a product video, calm and unhurried."
+            "A calm welcome for a product video, unhurried and warm."
           ]
         },
         {
           "id": "voice",
           "type": "dropdown",
           "label": "Voice",
-          "options": ["eve", "orion", "luna", "leo", "rex", "ara", "sal", "iris"],
+          "options": [
+            { "value": "eve", "label": "Eve" },
+            { "value": "orion", "label": "Orion" },
+            { "value": "luna", "label": "Luna" },
+            { "value": "leo", "label": "Leo" },
+            { "value": "rex", "label": "Rex" },
+            { "value": "ara", "label": "Ara" },
+            { "value": "sal", "label": "Sal" },
+            { "value": "iris", "label": "Iris" }
+          ],
           "default": "eve",
           "showForModels": ["xai_tts"]
         },
@@ -2276,14 +2308,24 @@
           "id": "language",
           "type": "dropdown",
           "label": "Language",
-          "options": ["en", "es-ES", "fr", "de", "hi", "ja", "ko", "zh", "pt-BR"],
+          "options": [
+            { "value": "en", "label": "English" },
+            { "value": "es-ES", "label": "Spanish" },
+            { "value": "fr", "label": "French" },
+            { "value": "de", "label": "German" },
+            { "value": "hi", "label": "Hindi" },
+            { "value": "ja", "label": "Japanese" },
+            { "value": "ko", "label": "Korean" },
+            { "value": "zh", "label": "Chinese" },
+            { "value": "pt-BR", "label": "Portuguese" }
+          ],
           "default": "en",
           "showForModels": ["xai_tts"]
         },
         {
           "id": "voice_description",
           "type": "text",
-          "label": "Voice description",
+          "label": "Describe the voice",
           "placeholder": "A warm, cheerful voice with a moderate pace",
           "multiline": true,
           "required": true,
@@ -2296,79 +2338,36 @@
           "options": ["Auto", "English", "Chinese", "Japanese", "Korean", "German", "French", "Spanish", "Portuguese", "Italian", "Russian"],
           "default": "Auto",
           "showForModels": ["qwen_voice_design"]
-        }
-      ],
-      "elements": [
-        { "type": "prompt", "input_ref": "prompt" },
-        { "type": "dropdown", "input_ref": "voice" },
-        { "type": "dropdown", "input_ref": "language" },
-        { "type": "text_input", "input_ref": "voice_description" },
-        { "type": "dropdown", "input_ref": "design_language" },
-        { "type": "generate_button" }
-      ]
-    },
-    {
-      "id": "clone_voice",
-      "name": "Clone Voice",
-      "description": "Speak new lines in a voice from a short recording",
-      "icon": "headphones",
-      "accent": "#818CF8",
-      "outputType": "audio",
-      "defaultModel": "qwen_voice_clone",
-      "models": [
-        {
-          "id": "qwen_voice_clone",
-          "name": "Kala Speech Clone",
-          "description": "Match a few seconds of audio",
-          "useExternalApi": true,
-          "cost": 8,
-          "costUpscale": 0,
-          "offer": 0,
-          "enabled": true,
-          "params": {
-            "reference_audio": "{{reference_audio}}",
-            "language": "{{language}}"
-          },
-          "rootParams": {
-            "prompt": "{{prompt}}"
-          }
-        }
-      ],
-      "inputs": [
+        },
         {
           "id": "reference_audio",
           "type": "audio_upload",
           "label": "Voice sample",
           "min": 1,
-          "max": 1
+          "max": 1,
+          "required": true,
+          "showForModels": ["qwen_voice_clone"]
         },
         {
-          "id": "prompt",
-          "type": "text",
-          "label": "New line",
-          "hintExamples": [
-            "The words this voice should say. Keep it under a few sentences."
-          ]
-        },
-        {
-          "id": "language",
+          "id": "clone_language",
           "type": "dropdown",
           "label": "Language",
           "options": ["Auto", "English", "Chinese", "Japanese", "Korean", "German", "French", "Spanish", "Portuguese", "Italian", "Russian"],
-          "default": "Auto"
+          "default": "Auto",
+          "showForModels": ["qwen_voice_clone"]
         }
       ],
       "elements": [
-        { "type": "audio_upload", "input_ref": "reference_audio" },
         { "type": "prompt", "input_ref": "prompt" },
-        { "type": "dropdown", "input_ref": "language" },
+        { "type": "text_input", "input_ref": "voice_description" },
+        { "type": "audio_upload", "input_ref": "reference_audio" },
         { "type": "generate_button" }
       ]
     },
     {
       "id": "create_music",
       "name": "Music",
-      "description": "Instrumentals or songs from a description",
+      "description": "A track from a description, with optional lyrics",
       "icon": "music",
       "accent": "#F472B6",
       "outputType": "audio",
@@ -2377,10 +2376,11 @@
         {
           "id": "ace_step_music",
           "name": "Kala Song",
-          "description": "25 credits per minute",
+          "description": "Up to 4 minutes",
           "useExternalApi": true,
           "cost": 25,
           "costPer60Sec": 25,
+          "maxDuration": 240,
           "costUpscale": 0,
           "offer": 0,
           "enabled": true,
@@ -2395,7 +2395,7 @@
         {
           "id": "minimax_music_26",
           "name": "Kala Song Pro",
-          "description": "Full song, optional lyrics",
+          "description": "A full song",
           "useExternalApi": true,
           "cost": 100,
           "costUpscale": 0,
@@ -2413,33 +2413,153 @@
         {
           "id": "prompt",
           "type": "text",
-          "label": "Describe the track",
+          "label": "Song idea",
           "hintExamples": [
-            "Warm acoustic guitar, soft brushed drums, hopeful and unhurried.",
-            "Late-night electronic pulse, minor key, no vocals."
+            "A hopeful acoustic song about coming home after a long trip.",
+            "Late-night electronic instrumental, minor key, no vocals."
           ]
+        },
+        {
+          "id": "vocals",
+          "type": "toggle",
+          "label": "Vocals",
+          "description": "Turn off for an instrumental.",
+          "default": true
         },
         {
           "id": "duration",
           "type": "dropdown",
           "label": "Length",
-          "options": ["30", "60", "90", "120"],
+          "options": [
+            { "value": "30", "label": "30 sec" },
+            { "value": "60", "label": "1 min" },
+            { "value": "90", "label": "1 min 30 sec" },
+            { "value": "120", "label": "2 min" },
+            { "value": "180", "label": "3 min" },
+            { "value": "240", "label": "4 min" }
+          ],
           "default": "60",
           "showForModels": ["ace_step_music"]
         },
         {
           "id": "lyrics",
           "type": "text",
-          "label": "Lyrics (optional)",
-          "placeholder": "Leave empty for an instrumental",
+          "label": "Lyrics",
+          "placeholder": "Section tags such as [Verse] and [Chorus]. Leave empty to let the song be written for you.",
           "multiline": true,
-          "optional": true
+          "optional": true,
+          "showWhen": { "music_mode": "advanced" }
+        },
+        {
+          "id": "negative_prompt",
+          "type": "text",
+          "label": "Avoid",
+          "placeholder": "What should stay out of the track",
+          "multiline": true,
+          "optional": true,
+          "showWhen": { "music_mode": "advanced" }
+        },
+        {
+          "id": "bpm",
+          "type": "dropdown",
+          "label": "Tempo",
+          "options": [
+            { "value": "auto", "label": "Auto" },
+            { "value": "70", "label": "70" },
+            { "value": "80", "label": "80" },
+            { "value": "90", "label": "90" },
+            { "value": "100", "label": "100" },
+            { "value": "110", "label": "110" },
+            { "value": "120", "label": "120" },
+            { "value": "128", "label": "128" },
+            { "value": "140", "label": "140" },
+            { "value": "160", "label": "160" }
+          ],
+          "default": "auto",
+          "showForModels": ["ace_step_music"],
+          "showWhen": { "music_mode": "advanced" }
+        },
+        {
+          "id": "key_scale",
+          "type": "dropdown",
+          "label": "Key",
+          "options": [
+            { "value": "auto", "label": "Auto" },
+            { "value": "C major", "label": "C major" },
+            { "value": "G major", "label": "G major" },
+            { "value": "D major", "label": "D major" },
+            { "value": "A major", "label": "A major" },
+            { "value": "F major", "label": "F major" },
+            { "value": "Bb major", "label": "B♭ major" },
+            { "value": "A minor", "label": "A minor" },
+            { "value": "E minor", "label": "E minor" },
+            { "value": "D minor", "label": "D minor" },
+            { "value": "B minor", "label": "B minor" },
+            { "value": "F# minor", "label": "F♯ minor" }
+          ],
+          "default": "auto",
+          "showForModels": ["ace_step_music"],
+          "showWhen": { "music_mode": "advanced" }
+        },
+        {
+          "id": "time_signature",
+          "type": "dropdown",
+          "label": "Meter",
+          "options": [
+            { "value": "auto", "label": "Auto" },
+            { "value": "3", "label": "3/4" },
+            { "value": "4", "label": "4/4" },
+            { "value": "6", "label": "6/8" },
+            { "value": "2", "label": "2/4" }
+          ],
+          "default": "auto",
+          "showForModels": ["ace_step_music"],
+          "showWhen": { "music_mode": "advanced" }
+        },
+        {
+          "id": "vocal_language",
+          "type": "dropdown",
+          "label": "Vocal language",
+          "options": [
+            { "value": "auto", "label": "Auto" },
+            { "value": "en", "label": "English" },
+            { "value": "es", "label": "Spanish" },
+            { "value": "fr", "label": "French" },
+            { "value": "de", "label": "German" },
+            { "value": "hi", "label": "Hindi" },
+            { "value": "ja", "label": "Japanese" },
+            { "value": "ko", "label": "Korean" },
+            { "value": "zh", "label": "Chinese" },
+            { "value": "pt", "label": "Portuguese" },
+            { "value": "it", "label": "Italian" },
+            { "value": "ru", "label": "Russian" },
+            { "value": "ar", "label": "Arabic" }
+          ],
+          "default": "auto",
+          "showForModels": ["ace_step_music"],
+          "showWhen": { "music_mode": "advanced" }
+        },
+        {
+          "id": "lyrics_optimizer",
+          "type": "toggle",
+          "label": "Rewrite lyrics",
+          "description": "Smooth the meter and phrasing of the lyrics you wrote.",
+          "default": false,
+          "showForModels": ["minimax_music_26"],
+          "showWhen": { "music_mode": "advanced" }
         }
       ],
       "elements": [
         { "type": "prompt", "input_ref": "prompt" },
+        { "type": "toggle", "input_ref": "vocals" },
         { "type": "dropdown", "input_ref": "duration" },
         { "type": "text_input", "input_ref": "lyrics" },
+        { "type": "text_input", "input_ref": "negative_prompt" },
+        { "type": "dropdown", "input_ref": "bpm" },
+        { "type": "dropdown", "input_ref": "key_scale" },
+        { "type": "dropdown", "input_ref": "time_signature" },
+        { "type": "dropdown", "input_ref": "vocal_language" },
+        { "type": "toggle", "input_ref": "lyrics_optimizer" },
         { "type": "generate_button" }
       ]
     }
