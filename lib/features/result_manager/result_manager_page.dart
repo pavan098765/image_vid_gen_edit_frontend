@@ -87,9 +87,37 @@ String _getFriendlyModelName(String modelId) {
     return modelId;
   }
 
-  // Return cached name if available
-  return _modelNameCache[modelId] ?? modelId;
+  final mapped = _kUserFacingModelNames[modelId];
+  if (mapped != null && mapped.isNotEmpty) return mapped;
+  final cached = _modelNameCache[modelId];
+  if (cached != null && cached.isNotEmpty && cached != modelId) {
+    return cached;
+  }
+  return modelId;
 }
+
+/// Names for models added after a phone may still be holding an older config.
+const Map<String, String> _kUserFacingModelNames = {
+  'flux2_klein_9b': 'Kala Flash',
+  'flux2_klein_9b_edit': 'Kala Flash',
+  'muse_image': 'Kala Canvas',
+  'muse_image_edit': 'Kala Canvas',
+  'xai_tts': 'Kala Voice',
+  'qwen_voice_design': 'Kala Speech',
+  'qwen_voice_clone': 'Kala Speech Clone',
+  'ace_step_music': 'Kala Song',
+  'minimax_music_26': 'Kala Song Pro',
+  'recraft_crisp_upscale': 'Crisp Upscale',
+  'realesrgan_upscale': 'General Upscale',
+  'p_image_upscale': 'Fine Upscale',
+  'runware:400@2': 'Kala Flash',
+  'meta:muse@image': 'Kala Canvas',
+  'xai:tts@0': 'Kala Voice',
+  'alibaba:qwen@3-tts-1.7b-voicedesign': 'Kala Speech',
+  'alibaba:qwen@3-tts-1.7b-base': 'Kala Speech Clone',
+  'runware:ace-step@v1.5-xl-sft': 'Kala Song',
+  'minimax:music@2.6': 'Kala Song Pro',
+};
 
 /// =============================================================================
 /// SHARED ANIMATION CONTROLLER FOR PROCESSING JOBS

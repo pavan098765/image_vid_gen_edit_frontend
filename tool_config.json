@@ -961,7 +961,12 @@
           "offer": 0,
           "enabled": true,
           "params": {
-            "aspect_ratio": "{{aspect_ratio}}"
+            "aspect_ratio": "{{aspect_ratio}}",
+            "thinking_level": "{{thinking_level}}",
+            "web_search": "{{web_search}}",
+            "image_search": "{{image_search}}",
+            "layout_tools": "{{layout_tools}}",
+            "moderation": "{{moderation}}"
           },
           "rootParams": {
             "prompt": "{{prompt}}"
@@ -989,10 +994,7 @@
             "16:9",
             "9:16",
             "4:3",
-            "3:4",
-            "3:2",
-            "2:3",
-            "21:9"
+            "3:4"
           ],
           "default": "1:1"
         }
@@ -1078,7 +1080,11 @@
           "enabled": true,
           "params": {
             "init_image": "{{init_image}}",
-            "aspect_ratio": "{{aspect_ratio}}"
+            "thinking_level": "{{thinking_level}}",
+            "web_search": "{{web_search}}",
+            "image_search": "{{image_search}}",
+            "layout_tools": "{{layout_tools}}",
+            "moderation": "{{moderation}}"
           },
           "rootParams": {
             "prompt": "{{prompt}}"
@@ -2286,14 +2292,33 @@
           "type": "dropdown",
           "label": "Voice",
           "options": [
-            { "value": "eve", "label": "Eve" },
-            { "value": "orion", "label": "Orion" },
-            { "value": "luna", "label": "Luna" },
-            { "value": "leo", "label": "Leo" },
-            { "value": "rex", "label": "Rex" },
+            { "value": "altair", "label": "Altair" },
             { "value": "ara", "label": "Ara" },
+            { "value": "atlas", "label": "Atlas" },
+            { "value": "carina", "label": "Carina" },
+            { "value": "castor", "label": "Castor" },
+            { "value": "celeste", "label": "Celeste" },
+            { "value": "cosmo", "label": "Cosmo" },
+            { "value": "eve", "label": "Eve" },
+            { "value": "helios", "label": "Helios" },
+            { "value": "helix", "label": "Helix" },
+            { "value": "iris", "label": "Iris" },
+            { "value": "kepler", "label": "Kepler" },
+            { "value": "leo", "label": "Leo" },
+            { "value": "lumen", "label": "Lumen" },
+            { "value": "luna", "label": "Luna" },
+            { "value": "lux", "label": "Lux" },
+            { "value": "naksh", "label": "Naksh" },
+            { "value": "orion", "label": "Orion" },
+            { "value": "perseus", "label": "Perseus" },
+            { "value": "rex", "label": "Rex" },
+            { "value": "rigel", "label": "Rigel" },
             { "value": "sal", "label": "Sal" },
-            { "value": "iris", "label": "Iris" }
+            { "value": "sirius", "label": "Sirius" },
+            { "value": "una", "label": "Una" },
+            { "value": "ursa", "label": "Ursa" },
+            { "value": "zagan", "label": "Zagan" },
+            { "value": "zenith", "label": "Zenith" }
           ],
           "default": "eve",
           "showForModels": ["xai_tts"]
@@ -2304,14 +2329,25 @@
           "label": "Language",
           "options": [
             { "value": "en", "label": "English" },
-            { "value": "es-ES", "label": "Spanish" },
+            { "value": "ar-EG", "label": "Arabic (Egypt)" },
+            { "value": "ar-SA", "label": "Arabic (Saudi Arabia)" },
+            { "value": "ar-AE", "label": "Arabic (UAE)" },
+            { "value": "bn", "label": "Bengali" },
+            { "value": "zh", "label": "Chinese" },
             { "value": "fr", "label": "French" },
             { "value": "de", "label": "German" },
             { "value": "hi", "label": "Hindi" },
+            { "value": "id", "label": "Indonesian" },
+            { "value": "it", "label": "Italian" },
             { "value": "ja", "label": "Japanese" },
             { "value": "ko", "label": "Korean" },
-            { "value": "zh", "label": "Chinese" },
-            { "value": "pt-BR", "label": "Portuguese" }
+            { "value": "pt-BR", "label": "Portuguese (Brazil)" },
+            { "value": "pt-PT", "label": "Portuguese (Portugal)" },
+            { "value": "ru", "label": "Russian" },
+            { "value": "es-MX", "label": "Spanish (Mexico)" },
+            { "value": "es-ES", "label": "Spanish (Spain)" },
+            { "value": "tr", "label": "Turkish" },
+            { "value": "vi", "label": "Vietnamese" }
           ],
           "default": "en",
           "showForModels": ["xai_tts"]
@@ -2352,9 +2388,13 @@
         }
       ],
       "elements": [
-        { "type": "prompt", "input_ref": "prompt" },
+        { "type": "choice_menu", "input_ref": "voice" },
+        { "type": "choice_menu", "input_ref": "language" },
         { "type": "text_input", "input_ref": "voice_description" },
+        { "type": "choice_menu", "input_ref": "design_language" },
         { "type": "audio_upload", "input_ref": "reference_audio" },
+        { "type": "choice_menu", "input_ref": "clone_language" },
+        { "type": "prompt", "input_ref": "prompt" },
         { "type": "generate_button" }
       ]
     },
@@ -2430,17 +2470,12 @@
         },
         {
           "id": "duration",
-          "type": "dropdown",
+          "type": "slider",
           "label": "Length",
-          "options": [
-            { "value": "30", "label": "30 sec" },
-            { "value": "60", "label": "1 min" },
-            { "value": "90", "label": "1 min 30 sec" },
-            { "value": "120", "label": "2 min" },
-            { "value": "180", "label": "3 min" },
-            { "value": "240", "label": "4 min" }
-          ],
-          "default": "60",
+          "min": 60,
+          "max": 240,
+          "step": 30,
+          "default": 60,
           "showForModels": ["ace_step_music"]
         },
         {
@@ -2553,8 +2588,8 @@
       ],
       "elements": [
         { "type": "prompt", "input_ref": "prompt" },
-        { "type": "toggle", "input_ref": "vocals" },
-        { "type": "dropdown", "input_ref": "duration" },
+        { "type": "text_input", "input_ref": "lyrics" },
+        { "type": "text_input", "input_ref": "negative_prompt" },
         { "type": "generate_button" }
       ]
     }

@@ -1745,6 +1745,11 @@ class _GenericToolPageState extends State<GenericToolPage>
   bool get _isSpeechTool => widget.config.capabilityId == 'create_speech';
   bool get _isMusicTool => widget.config.capabilityId == 'create_music';
 
+  bool get _isMuseModel {
+    final id = _selectedModelId ?? widget.config.model;
+    return id == 'muse_image' || id == 'muse_image_edit';
+  }
+
   bool get _isFlashOrCanvasModel {
     final id = _selectedModelId ?? widget.config.model;
     return id == 'flux2_klein_9b' ||
@@ -1800,7 +1805,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   bool get _showAdvancedControls =>
-      !_isOnDeviceInpaintTool && !_isInpaintEraseTool;
+      !_isOnDeviceInpaintTool && !_isInpaintEraseTool && !_isSpeechTool;
 
   /// Check if this is a remove background category tool
   bool get _isRemoveBackgroundTool {
@@ -2176,23 +2181,10 @@ class _GenericToolPageState extends State<GenericToolPage>
       }).toList();
     }
 
-    if (_isSpeechTool) {
-      const settingsOnly = {
-        'voice',
-        'language',
-        'design_language',
-        'clone_language',
-      };
-      return allElements.where((e) {
-        final inputRef = e['input_ref'] as String?;
-        return inputRef == null || !settingsOnly.contains(inputRef);
-      }).toList();
-    }
-
     if (_isMusicTool) {
       const settingsOnly = {
-        'lyrics',
-        'negative_prompt',
+        'vocals',
+        'duration',
         'bpm',
         'key_scale',
         'time_signature',
@@ -2383,6 +2375,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     if (widget.config.capabilityId == 'create_music') {
       _inputs['music_mode'] = 'easy';
       _inputs['vocals'] ??= true;
+      _inputs['duration'] ??= 60;
     }
     _syncFaceEnhancerFixedParams();
     if (_isVideoTool && !_isVideoUpscalerTool) {
@@ -3062,12 +3055,6 @@ class _GenericToolPageState extends State<GenericToolPage>
       'name': 'General Upscale',
       'cost': 5,
       'blurb': 'Clean 2× enlarge',
-    },
-    {
-      'id': 'p_image_upscale',
-      'name': 'Fine Upscale',
-      'cost': 8,
-      'blurb': '2× with extra texture',
     },
   ];
 
@@ -3891,13 +3878,18 @@ class _GenericToolPageState extends State<GenericToolPage>
 
                           // Aspect Ratio Selector (hidden for edit_image, expand scene, upscale, inpaint/erase, remove background tools)
                           if (!_isAudioTool &&
-                              (!_isEditImageTool || _isFlashOrCanvasModel) &&
+                              !_isEditImageTool &&
                               !_isExpandSceneTool &&
                               !_isUpscalerTool &&
                               !_isInpaintEraseTool &&
                               !_isRemoveBackgroundTool) ...[
                             _buildAdvancedAspectRatioChipSelector(
                                 cs, setSheetState),
+                            const SizedBox(height: 16),
+                          ],
+
+                          if (_isMuseModel) ...[
+                            _buildMuseCanvasSettings(cs, setSheetState),
                             const SizedBox(height: 16),
                           ],
 
@@ -4200,9 +4192,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   ) {
     final options = _isVideoTool
         ? _kVideoShapeOptions
-        : _isFlashOrCanvasModel
-            ? AdvancedSettings.kFlashCanvasAspectRatioOptions
-            : AdvancedSettings.kAdvancedAspectRatioOptions;
+        : AdvancedSettings.kAdvancedAspectRatioOptions;
     final currentStr = _selectedShapeRatio;
     final currentIndex = options.indexOf(currentStr);
     final current = currentIndex < 0 ? 0 : currentIndex;
@@ -6977,6 +6967,8 @@ class _GenericToolPageState extends State<GenericToolPage>
         return _buildSlider(ref);
       case "dropdown":
         return _buildDropdown(ref);
+      case "choice_menu":
+        return _buildSettingsMenu(ref);
       case "toggle":
         return _buildToggle(ref);
       case "painter":
@@ -7304,7 +7296,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                       enabled: canAutoPrompt && !_composerAutoPromptLoading,
                     ),
                   ],
-                  if (!_isInpaintEraseTool) ...[
+                  if (!_isInpaintEraseTool && !_isSpeechTool) ...[
                     const SizedBox(width: 6),
                     _ComposerIconButton(
                       icon: LucideIcons.settings,
@@ -7522,7 +7514,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                   ] else ...[
                     const Spacer(),
                   ],
-                  if (!_isInpaintEraseTool)
+                  if (!_isInpaintEraseTool && !_isSpeechTool)
                     _ComposerIconButton(
                       icon: LucideIcons.settings,
                       tooltip: 'Settings · $modelName',
@@ -7656,6 +7648,7 @@ class _GenericToolPageState extends State<GenericToolPage>
           }
           break;
         case 'audio_upload':
+          if (_isSpeechTool) break;
           if (v is Uint8List && v.isNotEmpty) {
             out.add(_ComposerAttachment(
               ref: id,
@@ -7846,6 +7839,7 @@ class _GenericToolPageState extends State<GenericToolPage>
               t == 'audio_upload' ||
               t == 'file_upload';
           if (!ok) return false;
+          if (_isSpeechTool && t == 'audio_upload') return false;
           return _elementShouldRender(Map<String, dynamic>.from(i as Map));
         })
         .map((e) => Map<String, dynamic>.from(e as Map))
@@ -13713,27 +13707,27 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   // -------- Slider --------
-  Widget _buildSlider(String ref) {
+  Widget _buildSlider(String ref, {StateSetter? sheetSetter}) {
     final cs = Theme.of(context).colorScheme;
     final input = widget.config.inputs
         .firstWhere((i) => i["id"] == ref, orElse: () => {});
-
-    // Check showWhen condition
-    final showWhen = input["showWhen"] as Map<String, dynamic>?;
-    if (showWhen != null) {
-      final conditionKey = showWhen.keys.first;
-      final conditionValue = showWhen[conditionKey];
-      final actualValue = _inputs[conditionKey];
-      if (actualValue != conditionValue) {
-        return const SizedBox.shrink();
-      }
+    if (!_elementShouldRender(Map<String, dynamic>.from(input))) {
+      return const SizedBox.shrink();
     }
 
     final label = input["label"] ?? ref;
     _inputs[ref] ??= input["default"] ?? input["min"] ?? 1.0;
     final minVal = (input["min"] as num?)?.toDouble() ?? 0;
     final maxVal = (input["max"] as num?)?.toDouble() ?? 100;
-    final currentVal = (_inputs[ref] as num).toDouble();
+    final step = (input["step"] as num?)?.toDouble();
+    final raw = _inputs[ref];
+    var currentVal =
+        raw is num ? raw.toDouble() : double.tryParse('$raw') ?? minVal;
+    currentVal = currentVal.clamp(minVal, maxVal);
+    String formatValue(double value) {
+      if (ref == 'duration') return _musicLengthLabel(value.round());
+      return value.toStringAsFixed(value % 1 == 0 ? 0 : 1);
+    }
 
     return _buildCard(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
@@ -13754,7 +13748,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                 ),
               ),
               Text(
-                currentVal.toStringAsFixed(currentVal % 1 == 0 ? 0 : 1),
+                formatValue(currentVal),
                 style: TextStyle(
                   color: cs.primary,
                   fontWeight: FontWeight.w700,
@@ -13778,8 +13772,21 @@ class _GenericToolPageState extends State<GenericToolPage>
               value: currentVal.clamp(minVal, maxVal),
               min: minVal,
               max: maxVal,
-              divisions: ((maxVal - minVal) * 10).round().clamp(1, 100),
-              onChanged: (v) => setState(() => _inputs[ref] = v),
+              divisions: step != null && step > 0
+                  ? ((maxVal - minVal) / step).round().clamp(1, 24)
+                  : ((maxVal - minVal) * 10).round().clamp(1, 100),
+              onChanged: (v) {
+                final snapped = step != null && step > 0
+                    ? minVal + ((v - minVal) / step).round() * step
+                    : v;
+                final stored = ref == 'duration' ? snapped.round() : snapped;
+                void apply() => _inputs[ref] = stored;
+                if (sheetSetter != null) {
+                  sheetSetter(() => setState(apply));
+                } else {
+                  setState(apply);
+                }
+              },
             ),
           ),
           Padding(
@@ -13788,7 +13795,7 @@ class _GenericToolPageState extends State<GenericToolPage>
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  minVal.toStringAsFixed(minVal % 1 == 0 ? 0 : 1),
+                  formatValue(minVal),
                   style: TextStyle(
                     color: cs.onSurfaceVariant.withValues(alpha: 0.55),
                     fontSize: 11,
@@ -13796,7 +13803,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                   ),
                 ),
                 Text(
-                  maxVal.toStringAsFixed(maxVal % 1 == 0 ? 0 : 1),
+                  formatValue(maxVal),
                   style: TextStyle(
                     color: cs.onSurfaceVariant.withValues(alpha: 0.55),
                     fontSize: 11,
@@ -14050,9 +14057,21 @@ class _GenericToolPageState extends State<GenericToolPage>
           t == 'file_upload';
     }
 
-    final afterPromptElements = contentElements
-        .where((e) => e['type'] != 'prompt' && !isUploadCardHidden(e))
-        .toList();
+    const speechLeadRefs = {
+      'voice',
+      'language',
+      'voice_description',
+      'design_language',
+      'reference_audio',
+      'clone_language',
+    };
+    final afterPromptElements = contentElements.where((e) {
+      if (e['type'] == 'prompt' || isUploadCardHidden(e)) return false;
+      if (_isSpeechTool && speechLeadRefs.contains(e['input_ref'])) {
+        return false;
+      }
+      return true;
+    }).toList();
     final bool hasPromptElement = promptElement != null;
     final attachInputsStandalone = _attachableInputs();
     final bool showStandaloneMediaComposer =
@@ -14170,6 +14189,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                       child: _buildModeSelector(),
                     ),
                   if (_isSpeechTool) _buildSpeechModeBar(),
+                  if (_isSpeechTool) _buildSpeechLeadFields(),
                   if (_isMusicTool) _buildMusicModeBar(),
 
                   // 2a. Prompt composer (when tool has a `prompt` element)
@@ -15409,18 +15429,140 @@ class _GenericToolPageState extends State<GenericToolPage>
     );
   }
 
-  /// Voice, Speech, and Clone as one text-to-speech tool.
+  String _musicLengthLabel(int seconds) {
+    final whole = seconds < 0 ? 0 : seconds;
+    final minutes = whole ~/ 60;
+    final remainder = whole % 60;
+    if (remainder == 0) {
+      return minutes == 1 ? '1 min' : '$minutes min';
+    }
+    return '$minutes min $remainder sec';
+  }
+
+  Map<String, dynamic>? _speechModel(String id) {
+    for (final model in widget.config.models ?? const <Map<String, dynamic>>[]) {
+      if (model['id'] == id && model['enabled'] != false) return model;
+    }
+    return null;
+  }
+
+  String _nearestImageFrame(int width, int height) {
+    const frames = <String, double>{
+      '1:1': 1,
+      '16:9': 16 / 9,
+      '9:16': 9 / 16,
+      '4:3': 4 / 3,
+      '3:4': 3 / 4,
+    };
+    if (width <= 0 || height <= 0) return '1:1';
+    final target = width / height;
+    var best = '1:1';
+    var gap = double.infinity;
+    for (final frame in frames.entries) {
+      final next = (frame.value - target).abs();
+      if (next < gap) {
+        gap = next;
+        best = frame.key;
+      }
+    }
+    return best;
+  }
+
+  String _aspectFromAttachedPhoto() {
+    final raw = _inputs['init_image'];
+    Uint8List? bytes;
+    if (raw is Uint8List && raw.isNotEmpty) {
+      bytes = raw;
+    } else if (raw is List) {
+      for (final item in raw) {
+        if (item is Uint8List && item.isNotEmpty) {
+          bytes = item;
+          break;
+        }
+      }
+    }
+    if (bytes == null) return '1:1';
+    final decoded = imglib.decodeImage(bytes);
+    if (decoded == null) return '1:1';
+    return _nearestImageFrame(decoded.width, decoded.height);
+  }
+
+  Widget _modePills({
+    required List<({String id, String label, bool selected})> items,
+    required ValueChanged<String> onPick,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHigh.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(AppStyles.radiusLg),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.2)),
+      ),
+      padding: const EdgeInsets.all(4),
+      child: Row(
+        children: [
+          for (final item in items)
+            Expanded(
+              child: GestureDetector(
+                onTap: () => onPick(item.id),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOutCubic,
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                  decoration: BoxDecoration(
+                    gradient: item.selected
+                        ? const LinearGradient(
+                            colors: KalaColors.brandGradient,
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          )
+                        : null,
+                    borderRadius:
+                        BorderRadius.circular(AppStyles.radiusMd - 2),
+                  ),
+                  child: Text(
+                    item.label,
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: item.selected ? cs.onPrimary : cs.onSurfaceVariant,
+                      fontWeight:
+                          item.selected ? FontWeight.w600 : FontWeight.w500,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Voice, language, description, or sample for the model selected above.
+  Widget _buildSpeechLeadFields() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildSettingsMenu('voice'),
+        _buildSettingsMenu('language'),
+        _buildTextInput('voice_description'),
+        _buildSettingsMenu('design_language'),
+        _buildAudioUpload('reference_audio'),
+        _buildSettingsMenu('clone_language'),
+      ],
+    );
+  }
+
+  /// Voice groups preset and described voices. Clone is the other tab.
   Widget _buildSpeechModeBar() {
     final cs = Theme.of(context).colorScheme;
-    final models = (widget.config.models ?? [])
-        .where((m) => m['enabled'] != false)
-        .toList();
-    if (models.length < 2) return const SizedBox.shrink();
-    const labels = {
-      'xai_tts': 'Voice',
-      'qwen_voice_design': 'Speech',
-      'qwen_voice_clone': 'Clone',
-    };
+    if ((widget.config.models ?? []).length < 2) return const SizedBox.shrink();
+    final current = _selectedModelId ?? widget.config.model;
+    final clone = current == 'qwen_voice_clone';
+    final describe = current == 'qwen_voice_design';
     final description = _selectedModelData?['description'] as String?;
 
     return Padding(
@@ -15428,55 +15570,42 @@ class _GenericToolPageState extends State<GenericToolPage>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            decoration: BoxDecoration(
-              color: cs.surfaceContainerHigh.withValues(alpha: 0.5),
-              borderRadius: BorderRadius.circular(AppStyles.radiusLg),
-              border:
-                  Border.all(color: cs.outlineVariant.withValues(alpha: 0.2)),
-            ),
-            padding: const EdgeInsets.all(4),
-            child: Row(
-              children: models.map((model) {
-                final id = model['id'] as String? ?? '';
-                final selected = id == (_selectedModelId ?? widget.config.model);
-                return Expanded(
-                  child: GestureDetector(
-                    onTap: () => _selectModel(model),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 220),
-                      curve: Curves.easeOutCubic,
-                      padding: const EdgeInsets.symmetric(
-                          vertical: 10, horizontal: 8),
-                      decoration: BoxDecoration(
-                        gradient: selected
-                            ? const LinearGradient(
-                                colors: KalaColors.brandGradient,
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                              )
-                            : null,
-                        borderRadius:
-                            BorderRadius.circular(AppStyles.radiusMd - 2),
-                      ),
-                      child: Text(
-                        labels[id] ?? (model['name'] as String? ?? id),
-                        textAlign: TextAlign.center,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: selected ? cs.onPrimary : cs.onSurfaceVariant,
-                          fontWeight:
-                              selected ? FontWeight.w600 : FontWeight.w500,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
+          _modePills(
+            items: [
+              (id: 'voice', label: 'Voice', selected: !clone),
+              (id: 'clone', label: 'Clone', selected: clone),
+            ],
+            onPick: (id) {
+              if (id == 'clone') {
+                final model = _speechModel('qwen_voice_clone');
+                if (model != null) _selectModel(model);
+                return;
+              }
+              if (clone) {
+                final model = _speechModel('xai_tts');
+                if (model != null) _selectModel(model);
+              }
+            },
           ),
+          if (!clone) ...[
+            const SizedBox(height: 8),
+            _modePills(
+              items: [
+                (id: 'preset', label: 'Pick a voice', selected: !describe),
+                (
+                  id: 'describe',
+                  label: 'Describe a voice',
+                  selected: describe,
+                ),
+              ],
+              onPick: (id) {
+                final model = _speechModel(
+                  id == 'describe' ? 'qwen_voice_design' : 'xai_tts',
+                );
+                if (model != null) _selectModel(model);
+              },
+            ),
+          ],
           if (description != null && description.isNotEmpty) ...[
             const SizedBox(height: 8),
             Text(
@@ -15493,6 +15622,352 @@ class _GenericToolPageState extends State<GenericToolPage>
     );
   }
 
+  Widget _buildSettingsMenu(String ref, {StateSetter? sheetSetter}) {
+    final cs = Theme.of(context).colorScheme;
+    final input = _inputSpec(ref);
+    if (!_elementShouldRender(input)) return const SizedBox.shrink();
+    final options = _choiceOptions(input);
+    if (options.isEmpty) return const SizedBox.shrink();
+    final label = input['label']?.toString() ?? ref;
+    final hint = input['description'] as String?;
+    _inputs[ref] ??= input['default']?.toString() ?? options.first.value;
+    final current = _inputs[ref]?.toString() ?? '';
+    var valueLabel = current;
+    for (final option in options) {
+      if (option.value == current) {
+        valueLabel = option.label;
+        break;
+      }
+    }
+
+    return _buildCard(
+      padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+      child: InkWell(
+        onTap: () async {
+          final picked = await showModalBottomSheet<String>(
+            context: context,
+            showDragHandle: true,
+            isScrollControlled: true,
+            builder: (sheetContext) {
+              final sheetScheme = Theme.of(sheetContext).colorScheme;
+              return SafeArea(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.72,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            label,
+                            style: TextStyle(
+                              color: sheetScheme.onSurface,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                      Flexible(
+                        child: ListView.builder(
+                          shrinkWrap: true,
+                          itemCount: options.length,
+                          itemBuilder: (context, index) {
+                            final option = options[index];
+                            final selected = option.value == current;
+                            return ListTile(
+                              title: Text(option.label),
+                              trailing: selected
+                                  ? Icon(LucideIcons.check,
+                                      color: sheetScheme.primary, size: 18)
+                                  : null,
+                              selected: selected,
+                              onTap: () =>
+                                  Navigator.pop(sheetContext, option.value),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+          if (picked == null || !mounted) return;
+          void apply() => _inputs[ref] = picked;
+          if (sheetSetter != null) {
+            sheetSetter(() => setState(apply));
+          } else {
+            setState(apply);
+          }
+        },
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      color: cs.onSurface,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (hint != null && hint.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      hint,
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant.withValues(alpha: 0.65),
+                        fontSize: 11.5,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Flexible(
+              child: Text(
+                valueLabel,
+                textAlign: TextAlign.end,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: cs.primary,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+            Icon(
+              LucideIcons.chevronDown,
+              size: 16,
+              color: cs.onSurfaceVariant.withValues(alpha: 0.7),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMuseCanvasSettings(ColorScheme cs, StateSetter setSheetState) {
+    _inputs['thinking_level'] ??= 'high';
+    _inputs['web_search'] ??= true;
+    _inputs['image_search'] ??= true;
+    _inputs['layout_tools'] ??= true;
+    _inputs['moderation'] ??= 'auto';
+    final thinking = _inputs['thinking_level'] == 'low' ? 'Low' : 'High';
+    final filter = _inputs['moderation'] == 'low' ? 'Light' : 'Standard';
+
+    return Column(
+      children: [
+        _buildCard(
+          padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+          child: InkWell(
+            onTap: () async {
+              final picked = await showModalBottomSheet<String>(
+                context: context,
+                showDragHandle: true,
+                builder: (sheetContext) {
+                  return SafeArea(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (final option in const [
+                          ('high', 'High'),
+                          ('low', 'Low'),
+                        ])
+                          ListTile(
+                            title: Text(option.$2),
+                            subtitle: Text(
+                              option.$1 == 'high'
+                                  ? 'More planning before the picture'
+                                  : 'A faster, lighter pass',
+                            ),
+                            trailing: _inputs['thinking_level'] == option.$1
+                                ? Icon(LucideIcons.check,
+                                    color: Theme.of(sheetContext)
+                                        .colorScheme
+                                        .primary)
+                                : null,
+                            onTap: () => Navigator.pop(sheetContext, option.$1),
+                          ),
+                      ],
+                    ),
+                  );
+                },
+              );
+              if (picked == null || !mounted) return;
+              setSheetState(() {
+                setState(() => _inputs['thinking_level'] = picked);
+              });
+            },
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Reasoning',
+                        style: TextStyle(
+                          color: cs.onSurface,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'How much planning happens before the picture',
+                        style: TextStyle(
+                          color: cs.onSurfaceVariant.withValues(alpha: 0.65),
+                          fontSize: 11.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Text(
+                  thinking,
+                  style: TextStyle(
+                    color: cs.primary,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Icon(LucideIcons.chevronDown,
+                    size: 16,
+                    color: cs.onSurfaceVariant.withValues(alpha: 0.7)),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _buildSettingToggle(
+          cs: cs,
+          icon: LucideIcons.search,
+          title: 'Look up facts',
+          subtitle: 'Use current information when the picture needs it',
+          value: _inputs['web_search'] == true,
+          onChanged: (value) {
+            setSheetState(() => setState(() => _inputs['web_search'] = value));
+          },
+        ),
+        const SizedBox(height: 12),
+        _buildSettingToggle(
+          cs: cs,
+          icon: LucideIcons.image,
+          title: 'Look up pictures',
+          subtitle: 'Find visual references for real places and products',
+          value: _inputs['image_search'] == true,
+          onChanged: (value) {
+            setSheetState(
+                () => setState(() => _inputs['image_search'] = value));
+          },
+        ),
+        const SizedBox(height: 12),
+        _buildSettingToggle(
+          cs: cs,
+          icon: LucideIcons.table,
+          title: 'Charts and layouts',
+          subtitle: 'Build tables and diagrams before drawing',
+          value: _inputs['layout_tools'] == true,
+          onChanged: (value) {
+            setSheetState(
+                () => setState(() => _inputs['layout_tools'] = value));
+          },
+        ),
+        const SizedBox(height: 12),
+        _buildCard(
+          padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+          child: InkWell(
+            onTap: () async {
+              final picked = await showModalBottomSheet<String>(
+                context: context,
+                showDragHandle: true,
+                builder: (sheetContext) {
+                  return SafeArea(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (final option in const [
+                          ('auto', 'Standard'),
+                          ('low', 'Light'),
+                        ])
+                          ListTile(
+                            title: Text(option.$2),
+                            trailing: _inputs['moderation'] == option.$1
+                                ? Icon(LucideIcons.check,
+                                    color: Theme.of(sheetContext)
+                                        .colorScheme
+                                        .primary)
+                                : null,
+                            onTap: () => Navigator.pop(sheetContext, option.$1),
+                          ),
+                      ],
+                    ),
+                  );
+                },
+              );
+              if (picked == null || !mounted) return;
+              setSheetState(() {
+                setState(() => _inputs['moderation'] = picked);
+              });
+            },
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Content filter',
+                        style: TextStyle(
+                          color: cs.onSurface,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'How strictly the picture is filtered',
+                        style: TextStyle(
+                          color: cs.onSurfaceVariant.withValues(alpha: 0.65),
+                          fontSize: 11.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Text(
+                  filter,
+                  style: TextStyle(
+                    color: cs.primary,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Icon(LucideIcons.chevronDown,
+                    size: 16,
+                    color: cs.onSurfaceVariant.withValues(alpha: 0.7)),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   /// Choices that are not on the main form (voice, language, lyrics, tempo).
   Widget _buildOffFormChoices(ColorScheme cs, StateSetter setSheetState) {
     final onForm = <String>{
@@ -15503,7 +15978,12 @@ class _GenericToolPageState extends State<GenericToolPage>
     for (final input in widget.config.inputs) {
       if (input is! Map) continue;
       final type = input['type'];
-      if (type != 'dropdown' && type != 'text' && type != 'toggle') continue;
+      if (type != 'dropdown' &&
+          type != 'text' &&
+          type != 'toggle' &&
+          type != 'slider') {
+        continue;
+      }
       final id = input['id'] as String?;
       if (id == null || id == 'prompt' || onForm.contains(id)) continue;
       final spec = Map<String, dynamic>.from(input);
@@ -15515,9 +15995,11 @@ class _GenericToolPageState extends State<GenericToolPage>
       children: [
         for (final spec in fields) ...[
           if (spec['type'] == 'dropdown')
-            _buildDropdown(spec['id'] as String, sheetSetter: setSheetState)
+            _buildSettingsMenu(spec['id'] as String, sheetSetter: setSheetState)
           else if (spec['type'] == 'toggle')
             _buildToggle(spec['id'] as String, sheetSetter: setSheetState)
+          else if (spec['type'] == 'slider')
+            _buildSlider(spec['id'] as String, sheetSetter: setSheetState)
           else
             _buildTextInput(spec['id'] as String, sheetSetter: setSheetState),
           const SizedBox(height: 12),
@@ -16241,11 +16723,21 @@ class _GenericToolPageState extends State<GenericToolPage>
           ? expanded
           : _promptController.text.trim();
     }
-    if (_isFlashOrCanvasModel) {
+    final activeModel = _selectedModelId ?? widget.config.model;
+    if (activeModel == 'flux2_klein_9b_edit') {
+      _inputs['aspect_ratio'] = _aspectFromAttachedPhoto();
+    } else if (_isFlashOrCanvasModel && !_isEditImageTool) {
       final ratio = _inputs['aspect_ratio']?.toString().trim() ?? '';
       if (ratio.isEmpty || ratio == 'auto') {
         _inputs['aspect_ratio'] = _selectedShapeRatio;
       }
+    }
+    if (_isMuseModel) {
+      _inputs['thinking_level'] ??= 'high';
+      _inputs['web_search'] ??= true;
+      _inputs['image_search'] ??= true;
+      _inputs['layout_tools'] ??= true;
+      _inputs['moderation'] ??= 'auto';
     }
     if (_isMusicTool) {
       final vocals = _inputs['vocals'] != false;
@@ -17372,7 +17864,8 @@ Return only the JSON fields.
         }
         if (widget.config.capabilityId == 'edit_image' &&
             (_selectedModelId ?? widget.config.model) != 'qwen2_1_i2i' &&
-            !_isFlashOrCanvasModel) {
+            (_selectedModelId ?? widget.config.model) !=
+                'flux2_klein_9b_edit') {
           resolvedParams['aspect_ratio'] = 'auto';
         }
         if (_upscaleEnabled && _allowsOutputUpscale) {
