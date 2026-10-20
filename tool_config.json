@@ -989,7 +989,10 @@
             "16:9",
             "9:16",
             "4:3",
-            "3:4"
+            "3:4",
+            "3:2",
+            "2:3",
+            "21:9"
           ],
           "default": "1:1"
         }
@@ -1058,7 +1061,7 @@
           "enabled": true,
           "params": {
             "init_image": "{{init_image}}",
-            "aspect_ratio": "auto"
+            "aspect_ratio": "{{aspect_ratio}}"
           },
           "rootParams": {
             "prompt": "{{prompt}}"
@@ -1075,7 +1078,7 @@
           "enabled": true,
           "params": {
             "init_image": "{{init_image}}",
-            "aspect_ratio": "auto"
+            "aspect_ratio": "{{aspect_ratio}}"
           },
           "rootParams": {
             "prompt": "{{prompt}}"
@@ -2017,7 +2020,10 @@
           "id": "upscale_factor",
           "type": "dropdown",
           "label": "Scale",
-          "options": ["2", "4"],
+          "options": [
+            { "value": "2", "label": "2×" },
+            { "value": "4", "label": "4×" }
+          ],
           "default": "2",
           "showForModels": ["p_image_upscale", "realesrgan_upscale"]
         },
@@ -2042,18 +2048,6 @@
         {
           "type": "image_upload",
           "input_ref": "image"
-        },
-        {
-          "type": "dropdown",
-          "input_ref": "upscale_factor"
-        },
-        {
-          "type": "toggle",
-          "input_ref": "enhance_details"
-        },
-        {
-          "type": "toggle",
-          "input_ref": "realism"
         },
         {
           "type": "generate_button"
@@ -2335,7 +2329,7 @@
           "id": "design_language",
           "type": "dropdown",
           "label": "Language",
-          "options": ["Auto", "English", "Chinese", "Japanese", "Korean", "German", "French", "Spanish", "Portuguese", "Italian", "Russian"],
+          "options": ["Auto", "English", "Chinese", "Japanese", "Korean", "German", "French", "Russian", "Portuguese", "Spanish", "Italian"],
           "default": "Auto",
           "showForModels": ["qwen_voice_design"]
         },
@@ -2352,7 +2346,7 @@
           "id": "clone_language",
           "type": "dropdown",
           "label": "Language",
-          "options": ["Auto", "English", "Chinese", "Japanese", "Korean", "German", "French", "Spanish", "Portuguese", "Italian", "Russian"],
+          "options": ["Auto", "English", "Chinese", "Japanese", "Korean", "German", "French", "Russian", "Portuguese", "Spanish", "Italian"],
           "default": "Auto",
           "showForModels": ["qwen_voice_clone"]
         }
@@ -2386,7 +2380,12 @@
           "enabled": true,
           "params": {
             "duration": "{{duration}}",
-            "lyrics": "{{lyrics}}"
+            "lyrics": "{{lyrics}}",
+            "negative_prompt": "{{negative_prompt}}",
+            "bpm": "{{bpm}}",
+            "key_scale": "{{key_scale}}",
+            "time_signature": "{{time_signature}}",
+            "vocal_language": "{{vocal_language}}"
           },
           "rootParams": {
             "prompt": "{{prompt}}"
@@ -2402,7 +2401,10 @@
           "offer": 0,
           "enabled": true,
           "params": {
-            "lyrics": "{{lyrics}}"
+            "lyrics": "{{lyrics}}",
+            "negative_prompt": "{{negative_prompt}}",
+            "instrumental": "{{instrumental}}",
+            "lyrics_optimizer": "{{lyrics_optimizer}}"
           },
           "rootParams": {
             "prompt": "{{prompt}}"
@@ -2553,13 +2555,6 @@
         { "type": "prompt", "input_ref": "prompt" },
         { "type": "toggle", "input_ref": "vocals" },
         { "type": "dropdown", "input_ref": "duration" },
-        { "type": "text_input", "input_ref": "lyrics" },
-        { "type": "text_input", "input_ref": "negative_prompt" },
-        { "type": "dropdown", "input_ref": "bpm" },
-        { "type": "dropdown", "input_ref": "key_scale" },
-        { "type": "dropdown", "input_ref": "time_signature" },
-        { "type": "dropdown", "input_ref": "vocal_language" },
-        { "type": "toggle", "input_ref": "lyrics_optimizer" },
         { "type": "generate_button" }
       ]
     }

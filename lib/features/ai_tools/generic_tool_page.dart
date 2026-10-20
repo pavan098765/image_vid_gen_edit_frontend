@@ -841,12 +841,27 @@ class AdvancedSettings {
     '3:4',
   ];
 
+  /// Kala Flash and Kala Canvas. Other image models keep the shorter set.
+  static const List<String> kFlashCanvasAspectRatioOptions = [
+    '1:1',
+    '16:9',
+    '9:16',
+    '4:3',
+    '3:4',
+    '3:2',
+    '2:3',
+    '21:9',
+  ];
+
   /// Maps stored values (including legacy `Default`) to a supported ratio.
   static String normalizeAspectRatio(String? raw) {
     if (raw == null) return '1:1';
     final t = raw.trim();
     if (t.isEmpty || t == 'Default') return '1:1';
-    if (kAdvancedAspectRatioOptions.contains(t)) return t;
+    if (kAdvancedAspectRatioOptions.contains(t) ||
+        kFlashCanvasAspectRatioOptions.contains(t)) {
+      return t;
+    }
     return '1:1';
   }
 }
@@ -954,6 +969,10 @@ class _GenericToolPageState extends State<GenericToolPage>
 
   /// Rebuild composer when focus/text changes (streaming hint vs field).
   void _onComposerPromptVisualsChanged() {
+    final typed = _promptController.text;
+    if (_hasPrompt && typed.trim().isNotEmpty) {
+      _inputs['prompt'] = typed;
+    }
     if (mounted) setState(() {});
   }
 
@@ -1293,7 +1312,8 @@ class _GenericToolPageState extends State<GenericToolPage>
     if (fromInput != null && fromInput.trim().isNotEmpty) {
       final n = AdvancedSettings.normalizeAspectRatio(fromInput);
       if (_kVideoShapeOptions.contains(n) ||
-          AdvancedSettings.kAdvancedAspectRatioOptions.contains(n)) {
+          AdvancedSettings.kAdvancedAspectRatioOptions.contains(n) ||
+          AdvancedSettings.kFlashCanvasAspectRatioOptions.contains(n)) {
         return n;
       }
     }
@@ -1724,6 +1744,18 @@ class _GenericToolPageState extends State<GenericToolPage>
   bool get _isAudioTool => widget.config.outputType == 'audio';
   bool get _isSpeechTool => widget.config.capabilityId == 'create_speech';
   bool get _isMusicTool => widget.config.capabilityId == 'create_music';
+
+  bool get _isFlashOrCanvasModel {
+    final id = _selectedModelId ?? widget.config.model;
+    return id == 'flux2_klein_9b' ||
+        id == 'flux2_klein_9b_edit' ||
+        id == 'muse_image' ||
+        id == 'muse_image_edit';
+  }
+
+  bool get _allowsOutputUpscale =>
+      widget.config.capabilityId == 'create_image' ||
+      widget.config.capabilityId == 'edit_image';
   bool get _musicEasy => _isMusicTool && _inputs['music_mode'] != 'advanced';
   bool _musicExpanding = false;
   String? _easyMusicPrompt;
@@ -2141,6 +2173,35 @@ class _GenericToolPageState extends State<GenericToolPage>
       return allElements.where((e) {
         final inputRef = e['input_ref'] as String?;
         return inputRef == null || !hiddenMainRefs.contains(inputRef);
+      }).toList();
+    }
+
+    if (_isSpeechTool) {
+      const settingsOnly = {
+        'voice',
+        'language',
+        'design_language',
+        'clone_language',
+      };
+      return allElements.where((e) {
+        final inputRef = e['input_ref'] as String?;
+        return inputRef == null || !settingsOnly.contains(inputRef);
+      }).toList();
+    }
+
+    if (_isMusicTool) {
+      const settingsOnly = {
+        'lyrics',
+        'negative_prompt',
+        'bpm',
+        'key_scale',
+        'time_signature',
+        'vocal_language',
+        'lyrics_optimizer',
+      };
+      return allElements.where((e) {
+        final inputRef = e['input_ref'] as String?;
+        return inputRef == null || !settingsOnly.contains(inputRef);
       }).toList();
     }
 
@@ -2888,6 +2949,15 @@ class _GenericToolPageState extends State<GenericToolPage>
       _selectedModelId = nextId;
       _selectedModelData = model;
 
+      if (widget.config.outputType == 'image' && !_isFlashOrCanvasModel) {
+        final ratio = _inputs['aspect_ratio']?.toString() ?? '';
+        if (AdvancedSettings.kFlashCanvasAspectRatioOptions.contains(ratio) &&
+            !AdvancedSettings.kAdvancedAspectRatioOptions.contains(ratio)) {
+          _inputs['aspect_ratio'] = '1:1';
+          _advancedSettings = _advancedSettings.copyWith(aspectRatio: '1:1');
+        }
+      }
+
       if (prevId == _kCineRealAnimateModelId &&
           nextId != _kCineRealAnimateModelId) {
         _advancedSettings =
@@ -2985,7 +3055,7 @@ class _GenericToolPageState extends State<GenericToolPage>
       'id': 'recraft_crisp_upscale',
       'name': 'Crisp Upscale',
       'cost': 5,
-      'blurb': 'Sharper detail, same size',
+      'blurb': 'Sharper, same size',
     },
     {
       'id': 'realesrgan_upscale',
@@ -3020,9 +3090,15 @@ class _GenericToolPageState extends State<GenericToolPage>
   int get _selectedOutputUpscaleCost =>
       (_selectedOutputUpscale['cost'] as int?) ?? 5;
 
+  /// Half-up for positive credit math (12.5 → 13).
+  int _halfUp(num value) {
+    if (value.isNaN || value.isInfinite || value <= 0) return 0;
+    return (value + 0.5).floor();
+  }
+
   /// Listed price for the generate button.
-  /// Speech is 15 credits a minute, estimated at 600 characters.
-  /// Kala Song scales with the chosen length.
+  /// Speech is 15 credits a minute, estimated at 600 characters of the script.
+  /// Kala Song scales with the chosen length. Kala Song Pro stays a flat price.
   int _listedGenerationCost() {
     final per60 = _selectedModelData?['costPer60Sec'];
     final charsPerMin = _selectedModelData?['speechCharsPerMin'];
@@ -3031,8 +3107,8 @@ class _GenericToolPageState extends State<GenericToolPage>
         per60 is num &&
         per60 > 0) {
       final chars = _promptController.text.trim().length;
-      if (chars <= 0) return per60.round();
-      return max(1, ((per60 * chars) / charsPerMin).round());
+      if (chars <= 0) return _halfUp(per60);
+      return max(1, _halfUp((per60 * chars) / charsPerMin));
     }
     if (per60 is num && per60 > 0) {
       final raw = _inputs['duration'];
@@ -3042,7 +3118,7 @@ class _GenericToolPageState extends State<GenericToolPage>
       final maxSeconds =
           (_selectedModelData?['maxDuration'] as num?)?.toInt() ?? 240;
       final clamped = seconds.clamp(30, maxSeconds);
-      return max(1, ((per60 * clamped) / 60).round());
+      return max(1, _halfUp((per60 * clamped) / 60));
     }
     return _withQwenResolutionPrice(_currentModelCost);
   }
@@ -3678,7 +3754,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                             ),
                             const SizedBox(width: 14),
                             Text(
-                              'Advanced Settings',
+                              'Additional Settings',
                               style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.w700,
@@ -3739,8 +3815,7 @@ class _GenericToolPageState extends State<GenericToolPage>
 
                           // Extra upscale pass after an image is created.
                           // The Upscale Image tool picks its model and scale below instead.
-                          if (widget.config.outputType == 'image' &&
-                              !_isUpscalerTool) ...[
+                          if (_allowsOutputUpscale) ...[
                             _buildSettingToggle(
                               cs: cs,
                               icon: LucideIcons.maximize2,
@@ -3816,7 +3891,7 @@ class _GenericToolPageState extends State<GenericToolPage>
 
                           // Aspect Ratio Selector (hidden for edit_image, expand scene, upscale, inpaint/erase, remove background tools)
                           if (!_isAudioTool &&
-                              !_isEditImageTool &&
+                              (!_isEditImageTool || _isFlashOrCanvasModel) &&
                               !_isExpandSceneTool &&
                               !_isUpscalerTool &&
                               !_isInpaintEraseTool &&
@@ -4125,7 +4200,9 @@ class _GenericToolPageState extends State<GenericToolPage>
   ) {
     final options = _isVideoTool
         ? _kVideoShapeOptions
-        : AdvancedSettings.kAdvancedAspectRatioOptions;
+        : _isFlashOrCanvasModel
+            ? AdvancedSettings.kFlashCanvasAspectRatioOptions
+            : AdvancedSettings.kAdvancedAspectRatioOptions;
     final currentStr = _selectedShapeRatio;
     final currentIndex = options.indexOf(currentStr);
     final current = currentIndex < 0 ? 0 : currentIndex;
@@ -5116,6 +5193,9 @@ class _GenericToolPageState extends State<GenericToolPage>
           if (!isOptional) {
             // Prompt is required - always use the controller as source of truth
             final promptText = _promptController.text.trim();
+            if (promptText.isNotEmpty) {
+              _inputs['prompt'] = _promptController.text;
+            }
             if (promptText.isEmpty) {
               return false;
             }
@@ -5361,6 +5441,9 @@ class _GenericToolPageState extends State<GenericToolPage>
           if (!isOptional) {
             // Prompt is required - check if filled
             final promptText = _promptController.text.trim();
+            if (promptText.isNotEmpty) {
+              _inputs['prompt'] = _promptController.text;
+            }
             if (promptText.isEmpty) {
               missing.add("Prompt");
             }
@@ -9477,6 +9560,21 @@ class _GenericToolPageState extends State<GenericToolPage>
         return false;
       }
     }
+    if (_isMusicTool) {
+      const advancedOnly = {
+        'lyrics',
+        'negative_prompt',
+        'bpm',
+        'key_scale',
+        'time_signature',
+        'vocal_language',
+        'lyrics_optimizer',
+      };
+      if (advancedOnly.contains(input['id']) &&
+          _inputs['music_mode'] != 'advanced') {
+        return false;
+      }
+    }
     final showForModels = input['showForModels'] as List<dynamic>?;
     if (showForModels != null && showForModels.isNotEmpty) {
       final currentModel = _selectedModelId ?? widget.config.model;
@@ -9845,7 +9943,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   // ── 3. text_input ───────────────────────────────────────────────────────
-  Widget _buildTextInput(String ref) {
+  Widget _buildTextInput(String ref, {StateSetter? sheetSetter}) {
     final cs = Theme.of(context).colorScheme;
     final input = _inputSpec(ref);
     if (!_elementShouldRender(input)) return const SizedBox.shrink();
@@ -9874,8 +9972,12 @@ class _GenericToolPageState extends State<GenericToolPage>
           TextFormField(
             initialValue: _inputs[ref] as String? ?? '',
             onChanged: (v) {
-              _inputs[ref] = v;
-              setState(() {});
+              void apply() => _inputs[ref] = v;
+              if (sheetSetter != null) {
+                sheetSetter(() => setState(apply));
+              } else {
+                setState(apply);
+              }
             },
             minLines: minLines,
             maxLines: maxLines,
@@ -14300,8 +14402,9 @@ class _GenericToolPageState extends State<GenericToolPage>
           Row(
             children: [
               if (_showAdvancedControls) ...[
-                // Settings button (compact)
-                InkWell(
+                Tooltip(
+                  message: 'Additional Settings',
+                  child: InkWell(
                   onTap: _showAdvancedSettings,
                   borderRadius: BorderRadius.circular(AppStyles.radiusMd),
                   child: Container(
@@ -14317,8 +14420,10 @@ class _GenericToolPageState extends State<GenericToolPage>
                       LucideIcons.settings,
                       size: 20,
                       color: cs.onSurfaceVariant,
+                      semanticLabel: 'Additional Settings',
                     ),
                   ),
+                ),
                 ),
                 const SizedBox(width: 10),
               ],
@@ -14392,7 +14497,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                       highlight: true,
                     ),
                     // Upscale status chip (skip when combined video enhancement is on; subtitle covers it)
-                    if (!hideVideoEnhancementSummaryChips)
+                    if (!hideVideoEnhancementSummaryChips && !_isAudioTool)
                       _buildSummaryChip(
                         cs,
                         icon: isUpscaled
@@ -15292,7 +15397,7 @@ class _GenericToolPageState extends State<GenericToolPage>
           Text(
             _musicEasy
                 ? 'A song idea is enough. We write the rest.'
-                : 'Set the prompt, lyrics, and musical details yourself.',
+                : 'Style, instruments, mood, and how the song moves',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: cs.onSurfaceVariant.withValues(alpha: 0.75),
@@ -15388,25 +15493,33 @@ class _GenericToolPageState extends State<GenericToolPage>
     );
   }
 
-  /// Dropdowns that are not on the main form (voice, language, track length).
+  /// Choices that are not on the main form (voice, language, lyrics, tempo).
   Widget _buildOffFormChoices(ColorScheme cs, StateSetter setSheetState) {
     final onForm = <String>{
       for (final element in _currentElements)
         if (element['input_ref'] is String) element['input_ref'] as String,
     };
-    final refs = <String>[];
+    final fields = <Map<String, dynamic>>[];
     for (final input in widget.config.inputs) {
-      if (input is! Map || input['type'] != 'dropdown') continue;
+      if (input is! Map) continue;
+      final type = input['type'];
+      if (type != 'dropdown' && type != 'text' && type != 'toggle') continue;
       final id = input['id'] as String?;
-      if (id == null || onForm.contains(id)) continue;
-      if (!_elementShouldRender(Map<String, dynamic>.from(input))) continue;
-      refs.add(id);
+      if (id == null || id == 'prompt' || onForm.contains(id)) continue;
+      final spec = Map<String, dynamic>.from(input);
+      if (!_elementShouldRender(spec)) continue;
+      fields.add(spec);
     }
-    if (refs.isEmpty) return const SizedBox.shrink();
+    if (fields.isEmpty) return const SizedBox.shrink();
     return Column(
       children: [
-        for (final ref in refs) ...[
-          _buildDropdown(ref, sheetSetter: setSheetState),
+        for (final spec in fields) ...[
+          if (spec['type'] == 'dropdown')
+            _buildDropdown(spec['id'] as String, sheetSetter: setSheetState)
+          else if (spec['type'] == 'toggle')
+            _buildToggle(spec['id'] as String, sheetSetter: setSheetState)
+          else
+            _buildTextInput(spec['id'] as String, sheetSetter: setSheetState),
           const SizedBox(height: 12),
         ],
       ],
@@ -16087,12 +16200,52 @@ class _GenericToolPageState extends State<GenericToolPage>
   // Track if a job submission is in progress to prevent double execution
   bool _isSubmittingJob = false;
 
+  /// Audio, Flash, Canvas, and Upscale Image only send keys from that model's params.
+  void _keepListedParams(Map<String, dynamic> resolved) {
+    final template = _selectedModelData?['params'];
+    if (template is! Map) return;
+    final listed = _isAudioTool ||
+        _isFlashOrCanvasModel ||
+        widget.config.capabilityId == 'upscale';
+    if (!listed) return;
+    final allowed = <String>{
+      for (final key in template.keys) key.toString(),
+      if (_currentModelUseExternalApi != null) 'use_external_api',
+    };
+    if (_upscaleEnabled && _allowsOutputUpscale) {
+      allowed.add('scale_factor');
+      allowed.add('upscale_model');
+    }
+    resolved.removeWhere((key, _) => !allowed.contains(key));
+    if (_isMusicTool) {
+      for (final key in ['bpm', 'key_scale', 'time_signature']) {
+        final value = resolved[key]?.toString().trim().toLowerCase();
+        if (value == null || value.isEmpty || value == 'auto') {
+          resolved.remove(key);
+        }
+      }
+      if (_inputs['vocals'] == false) {
+        resolved.remove('lyrics');
+      }
+    }
+    resolved.removeWhere((_, value) {
+      if (value is! String) return false;
+      return RegExp(r'^\{\{[\w\-]+\}\}$').hasMatch(value.trim());
+    });
+  }
+
   void _syncLiveSubmitInputsFromUi() {
     if (_hasPrompt) {
       final expanded = _easyMusicPrompt?.trim();
       _inputs["prompt"] = (expanded != null && expanded.length >= 2)
           ? expanded
           : _promptController.text.trim();
+    }
+    if (_isFlashOrCanvasModel) {
+      final ratio = _inputs['aspect_ratio']?.toString().trim() ?? '';
+      if (ratio.isEmpty || ratio == 'auto') {
+        _inputs['aspect_ratio'] = _selectedShapeRatio;
+      }
     }
     if (_isMusicTool) {
       final vocals = _inputs['vocals'] != false;
@@ -16224,7 +16377,7 @@ Lyrics are the timeline, not a second caption:
 - Parentheses are background vocals. Capital letters mean a shout, so use them rarely.
 - Keep one metaphor. Do not stack vague images.
 - The caption and the lyrics must agree on instruments, energy, and the singer.
-- ${vocals ? 'Write sung lyrics for about $seconds seconds. Shape: $form' : 'This is instrumental. Leave lyrics empty. Put the arrangement only in the caption. Set vocalLanguage to unknown.'}
+- ${vocals ? 'Write sung lyrics for about $seconds seconds. Shape: $form' : 'This is instrumental. Leave lyrics empty. The caption must describe an instrumental with no singer. Set vocalLanguage to unknown.'}
 
 negativePrompt is a short exclusion list, under 200 characters, or an empty string. It must not contradict the caption.
 
@@ -16244,7 +16397,7 @@ Prompt:
 - A producer note, comma-separated, under 1800 characters. Not an essay and not a section-by-section story.
 - Put the key and the BPM in the prompt. This model follows those words. Shape: "D minor, 90 BPM, acoustic ballad, intimate, female vocal, breathy, acoustic guitar, piano, dry studio".
 - Order: key, BPM, genre, mood, vocal description, instruments, production.
-- ${vocals ? 'Name the singer, for example female vocal or male vocal, and how they sing.' : 'Start the style with Instrumental. Do not describe a singer.'}
+- ${vocals ? 'Name the singer, for example female vocal or male vocal, and how they sing.' : 'Start the style with Instrumental. The prompt must describe an instrumental with no singer.'}
 
 Lyrics:
 - Use only these tags: [Intro], [Verse], [Pre Chorus], [Chorus], [Post Chorus], [Hook], [Bridge], [Interlude], [Break], [Transition], [Build Up], [Inst], [Solo], [Outro].
@@ -16372,6 +16525,8 @@ Return only the JSON fields.
           (result['vocalLanguage'] ?? '').toString().trim().toLowerCase();
       if (!languages.contains(language)) language = vocals ? 'en' : 'unknown';
       if (!vocals) language = 'unknown';
+      final lockedDuration = _inputs['duration'];
+      final lockedVocals = _inputs['vocals'];
       _easyMusicPrompt = prompt;
       _inputs['lyrics'] = lyrics;
       _inputs['bpm'] = '$tempo';
@@ -16382,6 +16537,8 @@ Return only the JSON fields.
       _inputs['negative_prompt'] =
           (result['negativePrompt'] ?? '').toString().trim();
       _inputs['lyrics_optimizer'] = false;
+      _inputs['duration'] = lockedDuration;
+      _inputs['vocals'] = lockedVocals;
       return true;
     } on StateError catch (error) {
       _easyMusicPrompt = null;
@@ -16404,6 +16561,8 @@ Return only the JSON fields.
 
   Future<void> _runJob() async {
     if (_musicEasy && !_musicExpanding && !_isSubmittingJob) {
+      final signedIn = await requireSignIn(context, feature: 'AI Tools');
+      if (!signedIn || !mounted) return;
       setState(() => _musicExpanding = true);
       final ready = await _fillEasyMusicFromIdea();
       if (mounted) setState(() => _musicExpanding = false);
@@ -17212,15 +17371,19 @@ Return only the JSON fields.
           resolvedParams['use_external_api'] = useExternalApi;
         }
         if (widget.config.capabilityId == 'edit_image' &&
-            (_selectedModelId ?? widget.config.model) != 'qwen2_1_i2i') {
+            (_selectedModelId ?? widget.config.model) != 'qwen2_1_i2i' &&
+            !_isFlashOrCanvasModel) {
           resolvedParams['aspect_ratio'] = 'auto';
         }
-        if (_upscaleEnabled &&
-            widget.config.outputType == 'image' &&
-            !_isUpscalerTool) {
+        if (_upscaleEnabled && _allowsOutputUpscale) {
           resolvedParams['scale_factor'] = 2;
           resolvedParams['upscale_model'] = _selectedOutputUpscaleId;
+        } else if (_allowsOutputUpscale || _isUpscalerTool) {
+          resolvedParams.remove('scale_factor');
+          resolvedParams.remove('upscale_model');
+          resolvedParams.remove('scale_image');
         }
+        _keepListedParams(resolvedParams);
 
         final filteredRootParams = filterSubmitRootParams(rootParams);
 
@@ -17232,7 +17395,8 @@ Return only the JSON fields.
           "fcm_token": fcmToken,
           "variations": requestedVariations,
           "is_bulk": isBulkEdit,
-          "enhance_prompt": _advancedSettings.enhancePrompt,
+          "enhance_prompt":
+              _isAudioTool ? false : _advancedSettings.enhancePrompt,
         };
 
         // Bulk (R2-only): strip single-task media keys; masks via bulk_mask_r2_keys after upload.
