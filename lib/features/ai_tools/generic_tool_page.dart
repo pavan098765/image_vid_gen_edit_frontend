@@ -1762,6 +1762,17 @@ class _GenericToolPageState extends State<GenericToolPage>
       widget.config.capabilityId == 'create_image' ||
       widget.config.capabilityId == 'edit_image';
   bool get _musicEasy => _isMusicTool && _inputs['music_mode'] != 'advanced';
+  bool get _isKalaSong =>
+      _isMusicTool &&
+      (_selectedModelId ?? widget.config.model) == 'ace_step_music';
+  bool get _isKalaSongPro =>
+      _isMusicTool &&
+      (_selectedModelId ?? widget.config.model) == 'minimax_music_26';
+  String get _musicTrackMode => _inputs['track_mode']?.toString() ?? 'create';
+  bool get _musicUsesAudio =>
+      _isKalaSong &&
+      (_musicTrackMode == 'remix' || _musicTrackMode == 'repaint');
+  bool get _musicRepaint => _isKalaSong && _musicTrackMode == 'repaint';
   bool _musicExpanding = false;
   String? _easyMusicPrompt;
 
@@ -1805,7 +1816,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   bool get _showAdvancedControls =>
-      !_isOnDeviceInpaintTool && !_isInpaintEraseTool && !_isSpeechTool;
+      !_isOnDeviceInpaintTool && !_isInpaintEraseTool;
 
   /// Check if this is a remove background category tool
   bool get _isRemoveBackgroundTool {
@@ -2190,6 +2201,9 @@ class _GenericToolPageState extends State<GenericToolPage>
         'time_signature',
         'vocal_language',
         'lyrics_optimizer',
+        'strength',
+        'repaint_start',
+        'repaint_end',
       };
       return allElements.where((e) {
         final inputRef = e['input_ref'] as String?;
@@ -2374,8 +2388,13 @@ class _GenericToolPageState extends State<GenericToolPage>
     _seedInputDefaults();
     if (widget.config.capabilityId == 'create_music') {
       _inputs['music_mode'] = 'easy';
+      _inputs['track_mode'] = 'create';
       _inputs['vocals'] ??= true;
       _inputs['duration'] ??= 60;
+      _inputs['strength'] ??= 0.55;
+      _inputs['repaint_start'] ??= 8;
+      _inputs['repaint_end'] ??= 18;
+      _inputs['lyrics_optimizer'] ??= true;
     }
     _syncFaceEnhancerFixedParams();
     if (_isVideoTool && !_isVideoUpscalerTool) {
@@ -3770,6 +3789,18 @@ class _GenericToolPageState extends State<GenericToolPage>
                           if (widget.config.hasMultipleModels && !_isSpeechTool) ...[
                             _buildModelSelector(cs, setSheetState),
                             const SizedBox(height: 20),
+                          ],
+
+                          if (_isSpeechTool) ...[
+                            _buildSpeechStylePicker(setSheetState),
+                            _buildSettingsMenu('voice',
+                                sheetSetter: setSheetState),
+                            _buildSettingsMenu('language',
+                                sheetSetter: setSheetState),
+                            _buildSettingsMenu('design_language',
+                                sheetSetter: setSheetState),
+                            _buildSettingsMenu('clone_language',
+                                sheetSetter: setSheetState),
                           ],
 
                           if (_isAudioTool) ...[
@@ -7296,7 +7327,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                       enabled: canAutoPrompt && !_composerAutoPromptLoading,
                     ),
                   ],
-                  if (!_isInpaintEraseTool && !_isSpeechTool) ...[
+                  if (!_isInpaintEraseTool) ...[
                     const SizedBox(width: 6),
                     _ComposerIconButton(
                       icon: LucideIcons.settings,
@@ -7514,7 +7545,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                   ] else ...[
                     const Spacer(),
                   ],
-                  if (!_isInpaintEraseTool && !_isSpeechTool)
+                  if (!_isInpaintEraseTool)
                     _ComposerIconButton(
                       icon: LucideIcons.settings,
                       tooltip: 'Settings · $modelName',
@@ -7648,7 +7679,7 @@ class _GenericToolPageState extends State<GenericToolPage>
           }
           break;
         case 'audio_upload':
-          if (_isSpeechTool) break;
+          if (_isSpeechTool || _isMusicTool) break;
           if (v is Uint8List && v.isNotEmpty) {
             out.add(_ComposerAttachment(
               ref: id,
@@ -7839,7 +7870,9 @@ class _GenericToolPageState extends State<GenericToolPage>
               t == 'audio_upload' ||
               t == 'file_upload';
           if (!ok) return false;
-          if (_isSpeechTool && t == 'audio_upload') return false;
+          if ((_isSpeechTool || _isMusicTool) && t == 'audio_upload') {
+            return false;
+          }
           return _elementShouldRender(Map<String, dynamic>.from(i as Map));
         })
         .map((e) => Map<String, dynamic>.from(e as Map))
@@ -9562,12 +9595,18 @@ class _GenericToolPageState extends State<GenericToolPage>
         'key_scale',
         'time_signature',
         'vocal_language',
-        'lyrics_optimizer',
       };
-      if (advancedOnly.contains(input['id']) &&
-          _inputs['music_mode'] != 'advanced') {
+      final id = input['id'];
+      if (advancedOnly.contains(id) && _inputs['music_mode'] != 'advanced') {
         return false;
       }
+      if ((id == 'source_audio' || id == 'strength') && !_musicUsesAudio) {
+        return false;
+      }
+      if ((id == 'repaint_start' || id == 'repaint_end') && !_musicRepaint) {
+        return false;
+      }
+      if (id == 'duration' && _musicUsesAudio) return false;
     }
     final showForModels = input['showForModels'] as List<dynamic>?;
     if (showForModels != null && showForModels.isNotEmpty) {
@@ -13726,6 +13765,10 @@ class _GenericToolPageState extends State<GenericToolPage>
     currentVal = currentVal.clamp(minVal, maxVal);
     String formatValue(double value) {
       if (ref == 'duration') return _musicLengthLabel(value.round());
+      if (ref == 'strength') return value.toStringAsFixed(2);
+      if (ref == 'repaint_start' || ref == 'repaint_end') {
+        return '${value.round()} sec';
+      }
       return value.toStringAsFixed(value % 1 == 0 ? 0 : 1);
     }
 
@@ -13758,6 +13801,17 @@ class _GenericToolPageState extends State<GenericToolPage>
               ),
             ],
           ),
+          if (input['description'] is String &&
+              (input['description'] as String).isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text(
+              input['description'] as String,
+              style: TextStyle(
+                color: cs.onSurfaceVariant.withValues(alpha: 0.65),
+                fontSize: 11.5,
+              ),
+            ),
+          ],
           SliderTheme(
             data: SliderTheme.of(context).copyWith(
               activeTrackColor: cs.primary,
@@ -13773,13 +13827,17 @@ class _GenericToolPageState extends State<GenericToolPage>
               min: minVal,
               max: maxVal,
               divisions: step != null && step > 0
-                  ? ((maxVal - minVal) / step).round().clamp(1, 24)
+                  ? ((maxVal - minVal) / step).round().clamp(1, 240)
                   : ((maxVal - minVal) * 10).round().clamp(1, 100),
               onChanged: (v) {
                 final snapped = step != null && step > 0
                     ? minVal + ((v - minVal) / step).round() * step
                     : v;
-                final stored = ref == 'duration' ? snapped.round() : snapped;
+                final stored = ref == 'duration' ||
+                        ref == 'repaint_start' ||
+                        ref == 'repaint_end'
+                    ? snapped.round()
+                    : snapped;
                 void apply() => _inputs[ref] = stored;
                 if (sheetSetter != null) {
                   sheetSetter(() => setState(apply));
@@ -14070,6 +14128,10 @@ class _GenericToolPageState extends State<GenericToolPage>
       if (_isSpeechTool && speechLeadRefs.contains(e['input_ref'])) {
         return false;
       }
+      if (_isMusicTool &&
+          (e['input_ref'] == 'lyrics' || e['input_ref'] == 'negative_prompt')) {
+        return false;
+      }
       return true;
     }).toList();
     final bool hasPromptElement = promptElement != null;
@@ -14191,15 +14253,24 @@ class _GenericToolPageState extends State<GenericToolPage>
                   if (_isSpeechTool) _buildSpeechModeBar(),
                   if (_isSpeechTool) _buildSpeechLeadFields(),
                   if (_isMusicTool) _buildMusicModeBar(),
+                  if (_isMusicTool && !_musicEasy) ...[
+                    _buildTextInput('lyrics'),
+                    _buildMusicStyleField(),
+                    _buildTextInput('negative_prompt'),
+                  ],
 
                   // 2a. Prompt composer (when tool has a `prompt` element)
-                  if (hasPromptElement) _buildElement(promptElement),
+                  if (hasPromptElement && !(_isMusicTool && !_musicEasy))
+                    _buildElement(promptElement),
+                  if (_isMusicTool && _musicUsesAudio)
+                    _buildAudioUpload('source_audio'),
 
                   // 2b. Media-only composer (hidden upload cards + no prompt — upscale, OCR, etc.)
                   if (showStandaloneMediaComposer)
                     _buildStandaloneMediaComposer(),
 
-                  if (hasPromptElement || showStandaloneMediaComposer)
+                  if ((hasPromptElement || showStandaloneMediaComposer) &&
+                      !_isMusicTool)
                     _buildSectionShortcutBar(contentElements),
 
                   // 5. Rest of the dynamic elements (no prompt, no generate_button)
@@ -14509,11 +14580,10 @@ class _GenericToolPageState extends State<GenericToolPage>
                   runSpacing: 4,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    // Model name chip
                     _buildSummaryChip(
                       cs,
                       icon: LucideIcons.cpu,
-                      label: modelName,
+                      label: _isSpeechTool ? _speechSettingsSummary() : modelName,
                       highlight: true,
                     ),
                     // Upscale status chip (skip when combined video enhancement is on; subtitle covers it)
@@ -15352,6 +15422,65 @@ class _GenericToolPageState extends State<GenericToolPage>
     );
   }
 
+  /// Smaller style box used when lyrics are the main field.
+  Widget _buildMusicStyleField() {
+    final cs = Theme.of(context).colorScheme;
+    return _buildCard(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Prompt',
+            style: TextStyle(
+              color: cs.onSurface,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _promptController,
+            minLines: 3,
+            maxLines: 5,
+            style: TextStyle(color: cs.onSurface, fontSize: 14, height: 1.4),
+            decoration: InputDecoration(
+              isDense: true,
+              hintText: _isKalaSongPro
+                  ? 'Key, tempo, instruments, and how it should feel'
+                  : 'Style, instruments, mood, and how the song moves',
+              hintStyle: TextStyle(
+                color: cs.onSurfaceVariant.withValues(alpha: 0.55),
+                fontSize: 14,
+              ),
+              filled: true,
+              fillColor: cs.surfaceContainerHigh.withValues(alpha: 0.45),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppStyles.radiusMd),
+                borderSide: BorderSide.none,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppStyles.radiusMd),
+                borderSide: BorderSide(
+                  color: cs.outlineVariant.withValues(alpha: 0.22),
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppStyles.radiusMd),
+                borderSide: BorderSide(
+                  color: cs.primary.withValues(alpha: 0.5),
+                  width: 1.5,
+                ),
+              ),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Easy writes the full song from an idea. Advanced shows every control.
   Widget _buildMusicModeBar() {
     final cs = Theme.of(context).colorScheme;
@@ -15413,11 +15542,44 @@ class _GenericToolPageState extends State<GenericToolPage>
               }).toList(),
             ),
           ),
+          if (_isKalaSong) ...[
+            const SizedBox(height: 8),
+            _modePills(
+              items: [
+                (
+                  id: 'create',
+                  label: 'New',
+                  selected: _musicTrackMode == 'create',
+                ),
+                (
+                  id: 'remix',
+                  label: 'Remix',
+                  selected: _musicTrackMode == 'remix',
+                ),
+                (
+                  id: 'repaint',
+                  label: 'Repaint',
+                  selected: _musicTrackMode == 'repaint',
+                ),
+              ],
+              onPick: (id) {
+                setState(() {
+                  _inputs['track_mode'] = id;
+                  final current = (_inputs['strength'] as num?)?.toDouble();
+                  if (id == 'repaint' &&
+                      (current == null || (current - 0.55).abs() < 0.001)) {
+                    _inputs['strength'] = 0.75;
+                  } else if (id == 'remix' &&
+                      (current == null || (current - 0.75).abs() < 0.001)) {
+                    _inputs['strength'] = 0.55;
+                  }
+                });
+              },
+            ),
+          ],
           const SizedBox(height: 8),
           Text(
-            _musicEasy
-                ? 'A song idea is enough. We write the rest.'
-                : 'Style, instruments, mood, and how the song moves',
+            _musicCaption(),
             textAlign: TextAlign.center,
             style: TextStyle(
               color: cs.onSurfaceVariant.withValues(alpha: 0.75),
@@ -15427,6 +15589,27 @@ class _GenericToolPageState extends State<GenericToolPage>
         ],
       ),
     );
+  }
+
+  String _musicCaption() {
+    if (_musicRepaint) {
+      return _musicEasy
+          ? 'Describe the passage to replace, then add the track.'
+          : 'Lyrics lead. Describe the passage, what to avoid, and add the track.';
+    }
+    if (_musicUsesAudio) {
+      return _musicEasy
+          ? 'Describe the new version, then add the track.'
+          : 'Lyrics lead. Describe the new version, what to avoid, and add the track.';
+    }
+    if (_isKalaSongPro) {
+      return _musicEasy
+          ? 'Describe the song. The lyrics can be written for you.'
+          : 'Lyrics lead. Add the style underneath.';
+    }
+    return _musicEasy
+        ? 'A song idea is enough. We write the rest.'
+        : 'Lyrics lead. Add the style, and what to leave out.';
   }
 
   String _musicLengthLabel(int seconds) {
@@ -15541,28 +15724,70 @@ class _GenericToolPageState extends State<GenericToolPage>
     );
   }
 
-  /// Voice, language, description, or sample for the model selected above.
+  /// Description or sample for the model selected above.
+  /// Voice and language live in Additional Settings.
   Widget _buildSpeechLeadFields() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _buildSettingsMenu('voice'),
-        _buildSettingsMenu('language'),
         _buildTextInput('voice_description'),
-        _buildSettingsMenu('design_language'),
         _buildAudioUpload('reference_audio'),
-        _buildSettingsMenu('clone_language'),
       ],
     );
   }
 
-  /// Voice groups preset and described voices. Clone is the other tab.
+  String _speechChoiceLabel(String ref) {
+    final input = _inputSpec(ref);
+    final current =
+        _inputs[ref]?.toString() ?? input['default']?.toString() ?? '';
+    for (final option in _choiceOptions(input)) {
+      if (option.value == current) return option.label;
+    }
+    return current;
+  }
+
+  String _speechSettingsSummary() {
+    final current = _selectedModelId ?? widget.config.model;
+    if (current == 'qwen_voice_clone') {
+      return 'Clone · ${_speechChoiceLabel('clone_language')}';
+    }
+    if (current == 'qwen_voice_design') {
+      return 'Describe · ${_speechChoiceLabel('design_language')}';
+    }
+    return '${_speechChoiceLabel('voice')} · ${_speechChoiceLabel('language')}';
+  }
+
+  /// Same pill control as Pre Made Voice / Clone a Voice.
+  /// Shown in Additional Settings while a premade voice is selected.
+  Widget _buildSpeechStylePicker(StateSetter setSheetState) {
+    final current = _selectedModelId ?? widget.config.model;
+    if (current == 'qwen_voice_clone') return const SizedBox.shrink();
+    final describe = current == 'qwen_voice_design';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: _modePills(
+        items: [
+          (id: 'preset', label: 'Pick a voice', selected: !describe),
+          (id: 'describe', label: 'Describe a voice', selected: describe),
+        ],
+        onPick: (id) {
+          final model = _speechModel(
+            id == 'describe' ? 'qwen_voice_design' : 'xai_tts',
+          );
+          if (model == null) return;
+          _selectModel(model);
+          setSheetState(() {});
+        },
+      ),
+    );
+  }
+
+  /// Pre Made Voice and Clone a Voice. Voice style is chosen in settings.
   Widget _buildSpeechModeBar() {
     final cs = Theme.of(context).colorScheme;
     if ((widget.config.models ?? []).length < 2) return const SizedBox.shrink();
     final current = _selectedModelId ?? widget.config.model;
     final clone = current == 'qwen_voice_clone';
-    final describe = current == 'qwen_voice_design';
     final description = _selectedModelData?['description'] as String?;
 
     return Padding(
@@ -15572,8 +15797,8 @@ class _GenericToolPageState extends State<GenericToolPage>
         children: [
           _modePills(
             items: [
-              (id: 'voice', label: 'Voice', selected: !clone),
-              (id: 'clone', label: 'Clone', selected: clone),
+              (id: 'voice', label: 'Pre Made Voice', selected: !clone),
+              (id: 'clone', label: 'Clone a Voice', selected: clone),
             ],
             onPick: (id) {
               if (id == 'clone') {
@@ -15587,25 +15812,6 @@ class _GenericToolPageState extends State<GenericToolPage>
               }
             },
           ),
-          if (!clone) ...[
-            const SizedBox(height: 8),
-            _modePills(
-              items: [
-                (id: 'preset', label: 'Pick a voice', selected: !describe),
-                (
-                  id: 'describe',
-                  label: 'Describe a voice',
-                  selected: describe,
-                ),
-              ],
-              onPick: (id) {
-                final model = _speechModel(
-                  id == 'describe' ? 'qwen_voice_design' : 'xai_tts',
-                );
-                if (model != null) _selectModel(model);
-              },
-            ),
-          ],
           if (description != null && description.isNotEmpty) ...[
             const SizedBox(height: 8),
             Text(
@@ -15986,6 +16192,13 @@ class _GenericToolPageState extends State<GenericToolPage>
       }
       final id = input['id'] as String?;
       if (id == null || id == 'prompt' || onForm.contains(id)) continue;
+      if (_isSpeechTool &&
+          (id == 'voice' ||
+              id == 'language' ||
+              id == 'design_language' ||
+              id == 'clone_language')) {
+        continue;
+      }
       final spec = Map<String, dynamic>.from(input);
       if (!_elementShouldRender(spec)) continue;
       fields.add(spec);
@@ -16709,6 +16922,27 @@ class _GenericToolPageState extends State<GenericToolPage>
       if (_inputs['vocals'] == false) {
         resolved.remove('lyrics');
       }
+      if (!_musicUsesAudio) {
+        resolved.remove('source_audio');
+        resolved.remove('strength');
+        resolved.remove('repaint_start');
+        resolved.remove('repaint_end');
+      } else {
+        resolved.remove('duration');
+        if (!_musicRepaint) {
+          resolved.remove('repaint_start');
+          resolved.remove('repaint_end');
+        } else {
+          final start = int.tryParse('${resolved['repaint_start']}') ?? 8;
+          var end = int.tryParse('${resolved['repaint_end']}') ?? 18;
+          if (end <= start) end = start + 5;
+          resolved['repaint_start'] = start;
+          resolved['repaint_end'] = end;
+        }
+      }
+      if (_isKalaSongPro) {
+        resolved.remove('negative_prompt');
+      }
     }
     resolved.removeWhere((_, value) {
       if (value is! String) return false;
@@ -16746,10 +16980,8 @@ class _GenericToolPageState extends State<GenericToolPage>
         _inputs['lyrics'] = '';
         _inputs['vocal_language'] = 'unknown';
         _inputs['lyrics_optimizer'] = false;
-      } else if (!_musicEasy &&
-          ((_inputs['lyrics'] as String?)?.trim().isEmpty ?? true) &&
-          (_selectedModelId ?? widget.config.model) == 'minimax_music_26') {
-        _inputs['lyrics_optimizer'] = true;
+      } else if (_isKalaSongPro && _musicEasy) {
+        _inputs['lyrics_optimizer'] ??= true;
       }
     }
     if (!_hasScaleFactor && _inputs.containsKey("scale_factor")) {
@@ -16920,15 +17152,24 @@ vocalLanguage is ${vocals ? 'en, es, fr, de, hi, ja, ko, zh, pt, it, ru, or ar, 
     final vocals = _inputs['vocals'] != false;
     final model = _selectedModelId ?? widget.config.model;
     final isPro = model == 'minimax_music_26';
+    final writeLyrics =
+        vocals && !(isPro && _inputs['lyrics_optimizer'] != false);
     final seconds = int.tryParse('${_inputs['duration'] ?? ''}') ?? 60;
     _easyMusicPrompt = null;
     final skill = isPro
         ? _minimaxMusicSkill(vocals: vocals)
         : _aceMusicSkill(vocals: vocals, seconds: seconds);
+    final trackNote = _musicRepaint
+        ? 'This rewrites only the passage from ${_inputs['repaint_start'] ?? 8} to ${_inputs['repaint_end'] ?? 18} seconds of an uploaded track. Describe that passage. Do not set a new duration.'
+        : _musicUsesAudio
+            ? 'This reinterprets an entire uploaded track. Describe the new version and what should stay recognizable. Do not set a new duration. If the idea includes words to speak, keep those words in the prompt.'
+            : '';
     final task = '''
 Song idea: $idea
 Vocals: ${vocals ? 'yes' : 'instrumental only'}
-${isPro ? 'Length: a full song.' : 'Length: $seconds seconds.'}
+${isPro ? 'Length: a full song.' : _musicUsesAudio ? 'Length: follow the uploaded track.' : 'Length: $seconds seconds.'}
+${writeLyrics ? '' : 'Leave lyrics empty. The song model will write them.'}
+$trackNote
 Return only the JSON fields.
 ''';
     try {
@@ -16951,7 +17192,7 @@ Return only the JSON fields.
           },
           'required': [
             'prompt',
-            'lyrics',
+            if (writeLyrics) 'lyrics',
             'bpm',
             'keyScale',
             'timeSignature',
@@ -16964,8 +17205,8 @@ Return only the JSON fields.
         throw StateError('The song brief was too short. Try again.');
       }
       var lyrics = (result['lyrics'] ?? '').toString().trim();
-      if (!vocals) lyrics = '';
-      if (vocals && lyrics.length < 10) {
+      if (!vocals || !writeLyrics) lyrics = '';
+      if (writeLyrics && lyrics.length < 10) {
         throw StateError('The lyrics were too short. Try the idea again.');
       }
       const tempos = [70, 80, 90, 100, 110, 120, 128, 140, 160];
@@ -17026,9 +17267,12 @@ Return only the JSON fields.
       _inputs['time_signature'] =
           const {2, 3, 4, 6}.contains(meter) ? '$meter' : '4';
       _inputs['vocal_language'] = language;
-      _inputs['negative_prompt'] =
-          (result['negativePrompt'] ?? '').toString().trim();
-      _inputs['lyrics_optimizer'] = false;
+      _inputs['negative_prompt'] = isPro
+          ? ''
+          : (result['negativePrompt'] ?? '').toString().trim();
+      if (!isPro || !vocals) {
+        _inputs['lyrics_optimizer'] = false;
+      }
       _inputs['duration'] = lockedDuration;
       _inputs['vocals'] = lockedVocals;
       return true;
@@ -18296,6 +18540,7 @@ Return only the JSON fields.
           if (t != "audio_upload" && t != "file_upload") continue;
           final id = inputDef["id"] as String?;
           if (id == null) continue;
+          if (id == 'source_audio' && !_musicUsesAudio) continue;
           final rawBytes = _inputs[id];
           if (rawBytes is! Uint8List || rawBytes.isEmpty) continue;
           final mime = (_inputs["${id}_mime"] as String?) ??

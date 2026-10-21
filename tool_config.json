@@ -2425,7 +2425,11 @@
             "bpm": "{{bpm}}",
             "key_scale": "{{key_scale}}",
             "time_signature": "{{time_signature}}",
-            "vocal_language": "{{vocal_language}}"
+            "vocal_language": "{{vocal_language}}",
+            "source_audio": "{{source_audio}}",
+            "strength": "{{strength}}",
+            "repaint_start": "{{repaint_start}}",
+            "repaint_end": "{{repaint_end}}"
           },
           "rootParams": {
             "prompt": "{{prompt}}"
@@ -2442,7 +2446,6 @@
           "enabled": true,
           "params": {
             "lyrics": "{{lyrics}}",
-            "negative_prompt": "{{negative_prompt}}",
             "instrumental": "{{instrumental}}",
             "lyrics_optimizer": "{{lyrics_optimizer}}"
           },
@@ -2479,12 +2482,56 @@
           "showForModels": ["ace_step_music"]
         },
         {
+          "id": "source_audio",
+          "type": "audio_upload",
+          "label": "Track",
+          "min": 1,
+          "max": 1,
+          "required": true,
+          "showForModels": ["ace_step_music"]
+        },
+        {
+          "id": "strength",
+          "type": "slider",
+          "label": "Keep the original",
+          "description": "Higher stays closer to the uploaded track.",
+          "min": 0,
+          "max": 1,
+          "step": 0.05,
+          "default": 0.55,
+          "showForModels": ["ace_step_music"]
+        },
+        {
+          "id": "repaint_start",
+          "type": "slider",
+          "label": "Repaint from",
+          "description": "Where the new passage starts, in seconds.",
+          "min": 0,
+          "max": 180,
+          "step": 1,
+          "default": 8,
+          "showForModels": ["ace_step_music"]
+        },
+        {
+          "id": "repaint_end",
+          "type": "slider",
+          "label": "Repaint until",
+          "description": "Where the new passage ends, in seconds.",
+          "min": 0,
+          "max": 180,
+          "step": 1,
+          "default": 18,
+          "showForModels": ["ace_step_music"]
+        },
+        {
           "id": "lyrics",
           "type": "text",
           "label": "Lyrics",
-          "placeholder": "Section tags such as [Verse] and [Chorus]. Leave empty to let the song be written for you.",
+          "placeholder": "Section tags such as [Verse] and [Chorus].",
           "multiline": true,
-          "optional": true,
+          "minLines": 8,
+          "maxLines": 14,
+          "required": true,
           "showWhen": { "music_mode": "advanced" }
         },
         {
@@ -2493,7 +2540,10 @@
           "label": "Avoid",
           "placeholder": "What should stay out of the track",
           "multiline": true,
-          "optional": true,
+          "minLines": 3,
+          "maxLines": 5,
+          "required": true,
+          "showForModels": ["ace_step_music"],
           "showWhen": { "music_mode": "advanced" }
         },
         {
@@ -2579,17 +2629,17 @@
         {
           "id": "lyrics_optimizer",
           "type": "toggle",
-          "label": "Rewrite lyrics",
-          "description": "Smooth the meter and phrasing of the lyrics you wrote.",
-          "default": false,
-          "showForModels": ["minimax_music_26"],
-          "showWhen": { "music_mode": "advanced" }
+          "label": "Write the lyrics",
+          "description": "Write lyrics from the prompt, or smooth the lyrics you typed.",
+          "default": true,
+          "showForModels": ["minimax_music_26"]
         }
       ],
       "elements": [
         { "type": "prompt", "input_ref": "prompt" },
         { "type": "text_input", "input_ref": "lyrics" },
         { "type": "text_input", "input_ref": "negative_prompt" },
+        { "type": "audio_upload", "input_ref": "source_audio" },
         { "type": "generate_button" }
       ]
     }
