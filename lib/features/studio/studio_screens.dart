@@ -34,9 +34,8 @@ class StudioShelf extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: cs.surface,
+      backgroundColor: Colors.transparent,
       appBar: const KalaTabAppBar(),
       body: workflows.isEmpty
           ? const Center(child: CircularProgressIndicator())

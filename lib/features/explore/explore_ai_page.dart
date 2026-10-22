@@ -16,6 +16,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/api/submit_payload_helpers.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/app_menu_button.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/backlit_glass.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/center_crop.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/explore_favorites.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/tool_launch.dart';
@@ -1118,7 +1119,7 @@ class _ExploreAIPageState extends State<ExploreAIPage>
     return WillPopScope(
       onWillPop: _handleSystemBack,
       child: Scaffold(
-        backgroundColor: cs.surface,
+        backgroundColor: Colors.transparent,
         appBar: KalaTabAppBar(
           actions: [
             _buildCreditsChip(cs, isDark),
@@ -1907,10 +1908,10 @@ class _ExploreAIPageState extends State<ExploreAIPage>
       },
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: cs.surfaceContainerHighest.withValues(alpha: 0.4),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: accent.withValues(alpha: 0.2)),
+        decoration: kalaGlassDecoration(isDark: isDark, radius: 14).copyWith(
+          border: Border.all(
+            color: accent.withValues(alpha: isDark ? 0.32 : 0.28),
+          ),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,

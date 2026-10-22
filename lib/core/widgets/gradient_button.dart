@@ -400,40 +400,35 @@ class AppStyles {
   // Card Decoration
   // ---------------------------------------------------------------------------
   static BoxDecoration cardDecoration(ColorScheme cs, {bool elevated = false}) {
+    final isDark = cs.brightness == Brightness.dark;
     return BoxDecoration(
       gradient: LinearGradient(
-        colors: [
-          cs.surfaceContainerHighest.withValues(alpha: 0.12),
-          cs.surfaceContainerHigh.withValues(alpha: 0.06),
-        ],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
+        colors: isDark
+            ? [
+                Colors.white.withValues(alpha: elevated ? 0.10 : 0.07),
+                const Color(0xFF1A1224).withValues(alpha: 0.72),
+              ]
+            : [
+                Colors.white.withValues(alpha: 0.94),
+                Colors.white.withValues(alpha: 0.78),
+              ],
       ),
       borderRadius: BorderRadius.circular(radiusLg),
       border: Border.all(
-        color: cs.outlineVariant.withValues(alpha: 0.25),
-        width: 1,
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.12)
+            : Colors.white.withValues(alpha: 0.9),
       ),
-      boxShadow: elevated
-          ? [
-              BoxShadow(
-                color: cs.shadow.withValues(alpha: 0.12),
-                blurRadius: 16,
-                offset: const Offset(0, 6),
-              ),
-              BoxShadow(
-                color: cs.primary.withValues(alpha: 0.04),
-                blurRadius: 24,
-                offset: const Offset(0, 8),
-              ),
-            ]
-          : [
-              BoxShadow(
-                color: cs.shadow.withValues(alpha: 0.06),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
+      boxShadow: [
+        BoxShadow(
+          color: (isDark ? const Color(0xFF7B5EFF) : Colors.black)
+              .withValues(alpha: isDark ? 0.10 : 0.05),
+          blurRadius: elevated ? 22 : 14,
+          offset: const Offset(0, 8),
+        ),
+      ],
     );
   }
 

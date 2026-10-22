@@ -28,11 +28,14 @@ import 'package:kala_ai_create_images_videos_with_ai/core/services/user_service.
         isLoadingUserNotifier,
         UserData;
 import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/backlit_glass.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/media_source_picker_sheet.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_button.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/sign_in_prompt.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/themed_native_ad.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/music_job.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/ai_tools/frame_fit.dart';
+import 'package:kala_ai_create_images_videos_with_ai/features/ai_tools/suno_v6_studio.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/studio/gemini_client.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/ai_tools/mask_layout_preview.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/ai_tools/expand_canvas.dart';
@@ -876,6 +879,7 @@ class GenericToolPage extends StatefulWidget {
   final String? launchTemplateId;
   final String? launchTemplateTitle;
   final bool focusPrompt;
+  final Future<String?>? pendingPrompt;
   const GenericToolPage({
     super.key,
     required this.config,
@@ -887,6 +891,7 @@ class GenericToolPage extends StatefulWidget {
     this.launchTemplateId,
     this.launchTemplateTitle,
     this.focusPrompt = false,
+    this.pendingPrompt,
   });
 
   static Widget restoreFromJob({
@@ -1768,6 +1773,9 @@ class _GenericToolPageState extends State<GenericToolPage>
   bool get _isKalaSongPro =>
       _isMusicTool &&
       (_selectedModelId ?? widget.config.model) == 'minimax_music_26';
+  bool get _isSunoV6 =>
+      _isMusicTool &&
+      (_selectedModelId ?? widget.config.model) == kSunoV6ModelId;
   String get _musicTrackMode => _inputs['track_mode']?.toString() ?? 'create';
   bool get _musicUsesAudio =>
       _isKalaSong &&
@@ -1775,6 +1783,9 @@ class _GenericToolPageState extends State<GenericToolPage>
   bool get _musicRepaint => _isKalaSong && _musicTrackMode == 'repaint';
   bool _musicExpanding = false;
   String? _easyMusicPrompt;
+  final GlobalKey<SunoV6StudioState> _sunoKey = GlobalKey<SunoV6StudioState>();
+  bool _sunoSheetRefreshQueued = false;
+  bool _promptFilling = false;
 
   /// Composer auto-prompt is hidden only for Create Image / Create Video tools.
   bool get _hideComposerAutoPromptButton {
@@ -2437,9 +2448,11 @@ class _GenericToolPageState extends State<GenericToolPage>
     // Load user templates from local storage
     _loadUserTemplates();
     _loadFavoriteStyles();
+    if (widget.pendingPrompt != null) _promptFilling = true;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _applyLaunchPrefill();
-      if (widget.focusPrompt && mounted) {
+      await _finishPendingPrompt();
+      if (widget.focusPrompt && mounted && !_promptFilling) {
         _promptFocusNode.requestFocus();
       }
     });
@@ -3104,7 +3117,7 @@ class _GenericToolPageState extends State<GenericToolPage>
 
   /// Listed price for the generate button.
   /// Speech is 15 credits a minute, estimated at 600 characters of the script.
-  /// Kala Song scales with the chosen length. Kala Song Pro stays a flat price.
+  /// Kala SongFlow scales with the chosen length. Kala BeatWave stays a flat price.
   int _listedGenerationCost() {
     final per60 = _selectedModelData?['costPer60Sec'];
     final charsPerMin = _selectedModelData?['speechCharsPerMin'];
@@ -3277,7 +3290,23 @@ class _GenericToolPageState extends State<GenericToolPage>
       if (_selectedStyle != null) 'styleId': _selectedStyle!.id,
       if (inputPaths.isNotEmpty) 'inputPaths': inputPaths,
       if (mediaPaths != null && mediaPaths.isNotEmpty) 'mediaPaths': mediaPaths,
+      if (_textSnapshot('lyrics') != null) 'lyrics': _textSnapshot('lyrics'),
+      if (_textSnapshot('negative_prompt') != null)
+        'negativePrompt': _textSnapshot('negative_prompt'),
+      if (_inputs['vocals'] is bool) 'vocals': _inputs['vocals'],
+      if (_inputs['music_mode'] != null) 'musicMode': _inputs['music_mode'],
+      if (_inputs['track_mode'] != null) 'trackMode': _inputs['track_mode'],
+      if (_inputs['duration'] is num) 'musicDuration': _inputs['duration'],
+      if (_inputs['bpm'] != null) 'bpm': _inputs['bpm'],
+      if (_inputs['key_scale'] != null) 'keyScale': _inputs['key_scale'],
     });
+  }
+
+  String? _textSnapshot(String id) {
+    final value = _inputs[id];
+    if (value is! String) return null;
+    final text = value.trim();
+    return text.isEmpty ? null : text;
   }
 
   String? get _typedPrompt {
@@ -3454,6 +3483,15 @@ class _GenericToolPageState extends State<GenericToolPage>
     return null;
   }
 
+  String? _firstAudioPath(List<String> paths) {
+    const extensions = {'mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac'};
+    for (final path in paths) {
+      final ext = path.split('.').last.toLowerCase();
+      if (extensions.contains(ext) && File(path).existsSync()) return path;
+    }
+    return null;
+  }
+
   bool _isImageLaunchPath(String path) {
     final lower = path.toLowerCase();
     return lower.endsWith('.jpg') ||
@@ -3532,6 +3570,43 @@ class _GenericToolPageState extends State<GenericToolPage>
       loaded = _inputs[primary] != null;
     }
     return loaded;
+  }
+
+  Future<void> _finishPendingPrompt() async {
+    final pending = widget.pendingPrompt;
+    if (pending == null) return;
+    if (mounted) setState(() => _promptFilling = true);
+    try {
+      final written = await pending;
+      if (!mounted) return;
+      final text = written?.trim() ?? '';
+      if (text.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not write the cover prompt. Try again.'),
+          ),
+        );
+        return;
+      }
+      setState(() {
+        _promptController.text = text;
+        _inputs['prompt'] = text;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      final message = error.toString().toLowerCase();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            message.contains('sign in')
+                ? 'Sign in to write a cover prompt.'
+                : 'Could not write the cover prompt. Try again.',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _promptFilling = false);
+    }
   }
 
   Future<void> _applyLaunchPrefill() async {
@@ -3613,6 +3688,20 @@ class _GenericToolPageState extends State<GenericToolPage>
           _inputs['resolution'] = '2K';
         }
         _restoreSelectedStyle();
+        if (_isMusicTool) {
+          final musicMode = snapshot['musicMode'];
+          final trackMode = snapshot['trackMode'];
+          final lyrics = snapshot['lyrics'];
+          if (musicMode is String && musicMode.isNotEmpty) {
+            _inputs['music_mode'] = musicMode;
+          }
+          if (trackMode is String && trackMode.isNotEmpty) {
+            _inputs['track_mode'] = trackMode;
+          }
+          if (lyrics is String && lyrics.trim().isNotEmpty) {
+            _inputs['lyrics'] = lyrics;
+          }
+        }
       });
     }
 
@@ -3625,6 +3714,31 @@ class _GenericToolPageState extends State<GenericToolPage>
 
     final restoredMedia = await _restoreSavedMedia(snapshot?['mediaPaths']);
     if (restoredMedia) return;
+
+    if (_isMusicTool) {
+      final audioPath = _firstAudioPath(widget.initialLocalPaths);
+      if (audioPath != null) {
+        try {
+          final bytes = await File(audioPath).readAsBytes();
+          if (!mounted) return;
+          final name = audioPath.split(RegExp(r'[\\/]')).last;
+          final ext = name.contains('.') ? name.split('.').last : '';
+          setState(() {
+            _inputs['music_mode'] = _inputs['music_mode'] ?? 'easy';
+            _inputs['track_mode'] = _inputs['track_mode'] == 'create'
+                ? 'remix'
+                : (_inputs['track_mode'] ?? 'remix');
+            _inputs['source_audio'] = bytes;
+            _inputs['source_audio_path'] = audioPath;
+            _inputs['source_audio_name'] = name;
+            _inputs['source_audio_mime'] = _guessAudioMime(ext);
+          });
+        } catch (e) {
+          debugPrint('Could not attach remix audio: $e');
+        }
+        return;
+      }
+    }
 
     final wantsImage = _bulkPrimaryImageInputRef != null;
     final wantsVideo = widget.config.inputs
@@ -3803,7 +3917,9 @@ class _GenericToolPageState extends State<GenericToolPage>
                                 sheetSetter: setSheetState),
                           ],
 
-                          if (_isAudioTool) ...[
+                          if (_isAudioTool && _isSunoV6) ...[
+                            ..._hitMakerSettings(cs, setSheetState),
+                          ] else if (_isAudioTool) ...[
                             _buildOffFormChoices(cs, setSheetState),
                           ],
 
@@ -5826,8 +5942,11 @@ class _GenericToolPageState extends State<GenericToolPage>
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return Scaffold(
-      backgroundColor: cs.surface,
+    return Stack(
+      children: [
+        const Positioned.fill(child: BacklitWash()),
+        Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         titleSpacing: 8,
         title: Row(
@@ -5859,7 +5978,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             ),
           ],
         ),
-        backgroundColor: cs.surface,
+        backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,
@@ -5907,6 +6026,8 @@ class _GenericToolPageState extends State<GenericToolPage>
       body: SafeArea(
         child: _buildDynamicInputScreen(),
       ),
+        ),
+      ],
     );
   }
 
@@ -7078,8 +7199,9 @@ class _GenericToolPageState extends State<GenericToolPage>
         : ((effectivePromptInput["label"] as String?) ??
             'Describe what you want to create…');
     final hintExamples = _composerHintExamplesFor(effectivePromptInput, ref);
-    final showStreamingHint =
-        _promptController.text.isEmpty && !_promptFocusNode.hasFocus;
+    final showStreamingHint = _promptController.text.isEmpty &&
+        !_promptFocusNode.hasFocus &&
+        !_promptFilling;
 
     final modelName = _selectedModelData?['name'] as String? ??
         widget.config.models?.firstWhere(
@@ -7177,6 +7299,31 @@ class _GenericToolPageState extends State<GenericToolPage>
                 const SizedBox(height: 8),
               ],
 
+              if (_promptFilling)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: cs.primary,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Writing the cover prompt…',
+                        style: TextStyle(
+                          color: cs.onSurfaceVariant,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
               // Prompt TextField + cycling typewriter hints from tool_config [hintExamples].
               Stack(
                 clipBehavior: Clip.hardEdge,
@@ -7184,6 +7331,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                   TextField(
                     focusNode: _promptFocusNode,
                     controller: _promptController,
+                    readOnly: _promptFilling,
                     onChanged: (v) {
                       _inputs[ref] = v;
                       setState(() {});
@@ -7257,7 +7405,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(
-                    'Attach a few seconds of the voice with +',
+                    'Attach a few seconds of the voice above',
                     style: TextStyle(
                       color: cs.onSurfaceVariant.withValues(alpha: 0.75),
                       fontSize: 12.5,
@@ -14217,6 +14365,42 @@ class _GenericToolPageState extends State<GenericToolPage>
       );
     }
 
+    if (_isSunoV6) {
+      return Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              cs.surface,
+              cs.surfaceContainerLowest,
+            ],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+        ),
+        child: SunoV6Studio(
+          key: _sunoKey,
+          initialPrompt: _promptController.text.isNotEmpty
+              ? _promptController.text
+              : widget.initialPrompt,
+          initialAudioPath: _inputs['source_audio_path']?.toString() ??
+              _firstAudioPath(widget.initialLocalPaths),
+          initialLyrics: _inputs['lyrics']?.toString(),
+          selectedModelId: _selectedModelId ?? widget.config.model,
+          models: [
+            for (final model
+                in widget.config.models ?? const <Map<String, dynamic>>[])
+              if (model['enabled'] != false)
+                (
+                  id: model['id']?.toString() ?? '',
+                  name: model['name']?.toString() ?? '',
+                  description: model['description']?.toString() ?? '',
+                ),
+          ],
+          onOpenSettings: _showAdvancedSettings,
+        ),
+      );
+    }
+
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -16175,6 +16359,21 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   /// Choices that are not on the main form (voice, language, lyrics, tempo).
+  List<Widget> _hitMakerSettings(ColorScheme cs, StateSetter setSheetState) {
+    final studio = _sunoKey.currentState;
+    if (studio == null) {
+      if (!_sunoSheetRefreshQueued) {
+        _sunoSheetRefreshQueued = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _sunoSheetRefreshQueued = false;
+          if (mounted) setSheetState(() {});
+        });
+      }
+      return const [SizedBox(height: 12)];
+    }
+    return studio.settingsFields(cs, () => setSheetState(() {}));
+  }
+
   Widget _buildOffFormChoices(ColorScheme cs, StateSetter setSheetState) {
     final onForm = <String>{
       for (final element in _currentElements)

@@ -18,6 +18,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/music_job.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/auth_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/file_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -275,6 +276,7 @@ class PollingService {
           allCompleted: allCompleted,
           enhancedPrompt: enhancedPrompt ?? old.enhancedPrompt,
           promptEnhanced: promptEnhanced || old.promptEnhanced,
+          music: preferRicherMusic(old.music, musicMapFromStatus(data['music'])),
         );
         jobListNotifier.value = jobs;
       }
@@ -290,6 +292,7 @@ class PollingService {
         allCompleted: allCompleted,
         enhancedPrompt: enhancedPrompt,
         promptEnhanced: promptEnhanced,
+        music: musicMapFromStatus(data['music']),
       ));
 
       if (!_onStatus.isClosed) {
@@ -521,6 +524,7 @@ class PollingService {
             allCompleted: allCompleted,
             enhancedPrompt: enhancedPrompt ?? old.enhancedPrompt,
             promptEnhanced: promptEnhanced || old.promptEnhanced,
+            music: preferRicherMusic(old.music, musicMapFromStatus(data['music'])),
           );
 
           debugPrint("✅ Job $jobId → $finalStatus");
@@ -794,6 +798,7 @@ class PollingService {
             allCompleted: allCompleted,
             enhancedPrompt: enhancedPrompt ?? old.enhancedPrompt,
             promptEnhanced: promptEnhanced || old.promptEnhanced,
+            music: preferRicherMusic(old.music, musicMapFromStatus(data['music'])),
           );
 
           debugPrint("✅ Job $jobId → $finalStatus");

@@ -12,10 +12,14 @@ import 'package:crypto/crypto.dart';
 import 'package:uuid/uuid.dart';
 import 'package:gal/gal.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/audio_result_player.dart';
 import 'package:video_player/video_player.dart';
 
 class FileService {
   static bool _isSaving = false;
+
+  /// Opens Music with this track attached. Set from app startup.
+  static AudioRemixHandler? remixAudio;
   static String? _lastSavedHash;
   static String? _lastSavedPath;
   static bool _cleanupStarted = false;
@@ -563,6 +567,7 @@ class FileService {
     String filePath, {
     List<String>? allPaths,
     int currentIndex = 0,
+    List<AudioTrackDetails>? audioTracks,
   }) {
     if (!File(filePath).existsSync()) {
       debugPrint("⚠️ File not found for preview: $filePath");
@@ -622,8 +627,10 @@ class FileService {
             return true;
           },
           child: isAudioFile
-              ? _AudioPreview(
-                  filePath: filePath,
+              ? AudioResultPlayer(
+                  tracks: _audioTracksFor(filePath, audioTracks),
+                  initialIndex: _audioIndexFor(filePath, audioTracks),
+                  onRemix: remixAudio,
                   onClose: () {
                     _isPreviewOpen = false;
                     Navigator.of(context, rootNavigator: true).pop();
@@ -775,6 +782,35 @@ class FileService {
     }
   }
 
+  /// Play audio that may only exist as a network URL (Suno V6 studio tracks).
+  static Future<void> openAudioTracks(
+    BuildContext context, {
+    required List<AudioTrackDetails> tracks,
+    int initialIndex = 0,
+  }) async {
+    if (tracks.isEmpty) return;
+    if (_isPreviewOpen) return;
+    _isPreviewOpen = true;
+    await showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.transparent,
+      transitionDuration: const Duration(milliseconds: 300),
+      pageBuilder: (_, __, ___) {
+        return AudioResultPlayer(
+          tracks: tracks,
+          initialIndex: initialIndex.clamp(0, tracks.length - 1),
+          onRemix: remixAudio,
+          onClose: () {
+            _isPreviewOpen = false;
+            Navigator.of(context, rootNavigator: true).pop();
+          },
+        );
+      },
+    );
+    _isPreviewOpen = false;
+  }
+
   // ✅ Opens an already-downloaded file like preview
   /// [path] - The current file to preview
   /// [allPaths] - Optional list of all file paths for swipe navigation
@@ -784,6 +820,7 @@ class FileService {
     String path, {
     List<String>? allPaths,
     int currentIndex = 0,
+    List<AudioTrackDetails>? audioTracks,
   }) async {
     if (!File(path).existsSync()) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -792,7 +829,27 @@ class FileService {
       return;
     }
 
-    _showMediaPreviewDialog(context, path, allPaths: allPaths, currentIndex: currentIndex);
+    _showMediaPreviewDialog(
+      context,
+      path,
+      allPaths: allPaths,
+      currentIndex: currentIndex,
+      audioTracks: audioTracks,
+    );
+  }
+
+  static List<AudioTrackDetails> _audioTracksFor(
+    String filePath,
+    List<AudioTrackDetails>? tracks,
+  ) {
+    if (tracks != null && tracks.isNotEmpty) return tracks;
+    return [AudioTrackDetails.fromPath(filePath)];
+  }
+
+  static int _audioIndexFor(String filePath, List<AudioTrackDetails>? tracks) {
+    if (tracks == null || tracks.isEmpty) return 0;
+    final index = tracks.indexWhere((track) => track.filePath == filePath);
+    return index < 0 ? 0 : index;
   }
 
   static String generateTimestampFilename(String prefix, String ext) {
@@ -2335,99 +2392,6 @@ class _ImagePreviewItemState extends State<_ImagePreviewItem> {
               ),
             );
           },
-        ),
-      ),
-    );
-  }
-}
-
-class _AudioPreview extends StatefulWidget {
-  final String filePath;
-  final VoidCallback onClose;
-
-  const _AudioPreview({required this.filePath, required this.onClose});
-
-  @override
-  State<_AudioPreview> createState() => _AudioPreviewState();
-}
-
-class _AudioPreviewState extends State<_AudioPreview> {
-  VideoPlayerController? _controller;
-  bool _ready = false;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _open();
-  }
-
-  Future<void> _open() async {
-    try {
-      final controller = VideoPlayerController.file(File(widget.filePath));
-      await controller.initialize();
-      await controller.setLooping(true);
-      if (!mounted) {
-        await controller.dispose();
-        return;
-      }
-      setState(() {
-        _controller = controller;
-        _ready = true;
-      });
-    } catch (e) {
-      if (mounted) setState(() => _error = 'Could not play this audio');
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller?.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final playing = _controller?.value.isPlaying ?? false;
-    return Material(
-      color: Colors.black.withValues(alpha: 0.92),
-      child: SafeArea(
-        child: Column(
-          children: [
-            Align(
-              alignment: Alignment.centerRight,
-              child: IconButton(
-                onPressed: widget.onClose,
-                icon: const Icon(Icons.close, color: Colors.white),
-              ),
-            ),
-            const Spacer(),
-            const Icon(Icons.audiotrack_rounded, color: Colors.white, size: 72),
-            const SizedBox(height: 24),
-            if (_error != null)
-              Text(_error!, style: const TextStyle(color: Colors.white70))
-            else if (!_ready)
-              const CircularProgressIndicator()
-            else
-              IconButton(
-                iconSize: 64,
-                onPressed: () {
-                  final controller = _controller;
-                  if (controller == null) return;
-                  if (controller.value.isPlaying) {
-                    controller.pause();
-                  } else {
-                    controller.play();
-                  }
-                  setState(() {});
-                },
-                icon: Icon(
-                  playing ? Icons.pause_circle_filled : Icons.play_circle_fill,
-                  color: Colors.white,
-                ),
-              ),
-            const Spacer(),
-          ],
         ),
       ),
     );

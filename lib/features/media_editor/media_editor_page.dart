@@ -54,6 +54,7 @@ class _MediaEditorPageState extends State<MediaEditorPage>
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: KalaTabAppBar(
         actions: [
           _buildSegmentedToggle(cs, isDark),

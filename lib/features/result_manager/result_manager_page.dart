@@ -10,12 +10,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/model_display_name.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/ad_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/file_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/polling_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/thumbnail_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/app_menu_button.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/music_job.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/audio_result_player.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/backlit_glass.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_button.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/studio/studio_job_page.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/studio/studio_page.dart';
@@ -54,24 +58,10 @@ Future<void> _loadModelNameCache() async {
       return;
     }
 
-    // Search through all capabilities and their models
-    for (final cap in capabilities) {
-      final models = cap['models'] as List<dynamic>?;
-      if (models == null) continue;
-
-      for (final model in models) {
-        final id = model['id'] as String?;
-        final name = model['name'] as String?;
-        // First occurrence wins so duplicate model ids (e.g. basic_utils on
-        // inpaint vs remove background) keep a stable, capability-ordered name.
-        if (id != null &&
-            name != null &&
-            name.isNotEmpty &&
-            !_modelNameCache.containsKey(id)) {
-          _modelNameCache[id] = name;
-        }
-      }
-    }
+    indexModelDisplayNames(config);
+    _modelNameCache
+      ..clear()
+      ..addAll(modelDisplayNameCache);
 
     _modelNameCacheLoaded = true;
     debugPrint('✅ Loaded ${_modelNameCache.length} model names from config');
@@ -81,43 +71,10 @@ Future<void> _loadModelNameCache() async {
   }
 }
 
-/// Get friendly model name from model ID (uses cache)
-String _getFriendlyModelName(String modelId) {
-  if (modelId.isEmpty || modelId == 'unknown') {
-    return modelId;
-  }
-
-  final mapped = _kUserFacingModelNames[modelId];
-  if (mapped != null && mapped.isNotEmpty) return mapped;
-  final cached = _modelNameCache[modelId];
-  if (cached != null && cached.isNotEmpty && cached != modelId) {
-    return cached;
-  }
-  return modelId;
+String _getFriendlyModelName(JobModel job) {
+  final snapId = job.settingsSnapshot?['modelId']?.toString();
+  return displayNameForModel(preferInternalModelId(snapId, job.model));
 }
-
-/// Names for models added after a phone may still be holding an older config.
-const Map<String, String> _kUserFacingModelNames = {
-  'flux2_klein_9b': 'Kala Flash',
-  'flux2_klein_9b_edit': 'Kala Flash',
-  'muse_image': 'Kala Canvas',
-  'muse_image_edit': 'Kala Canvas',
-  'xai_tts': 'Kala Voice',
-  'qwen_voice_design': 'Kala Speech',
-  'qwen_voice_clone': 'Kala Speech Clone',
-  'ace_step_music': 'Kala Song',
-  'minimax_music_26': 'Kala Song Pro',
-  'recraft_crisp_upscale': 'Crisp Upscale',
-  'realesrgan_upscale': 'General Upscale',
-  'p_image_upscale': 'Fine Upscale',
-  'runware:400@2': 'Kala Flash',
-  'meta:muse@image': 'Kala Canvas',
-  'xai:tts@0': 'Kala Voice',
-  'alibaba:qwen@3-tts-1.7b-voicedesign': 'Kala Speech',
-  'alibaba:qwen@3-tts-1.7b-base': 'Kala Speech Clone',
-  'runware:ace-step@v1.5-xl-sft': 'Kala Song',
-  'minimax:music@2.6': 'Kala Song Pro',
-};
 
 /// =============================================================================
 /// SHARED ANIMATION CONTROLLER FOR PROCESSING JOBS
@@ -723,7 +680,7 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return PopScope(
+    final page = PopScope(
       canPop: !widget.asTab,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop || !widget.asTab) return;
@@ -731,7 +688,7 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
         _handleSystemBack();
       },
       child: Scaffold(
-      backgroundColor: cs.surface,
+      backgroundColor: backlitScaffoldColor(context, cs),
       appBar: AppBar(
         leading: widget.asTab ? const AppMenuButton() : null,
         automaticallyImplyLeading: !widget.asTab,
@@ -756,7 +713,7 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
                       color: cs.onSurface,
                     ),
                   ),
-        backgroundColor: cs.surface,
+        backgroundColor: backlitScaffoldColor(context, cs),
         elevation: 0,
         actions: _isSelectionMode
             ? [
@@ -1024,6 +981,14 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
       ),
     ),
     );
+
+    if (widget.asTab) return page;
+    return Stack(
+      children: [
+        const Positioned.fill(child: BacklitWash()),
+        page,
+      ],
+    );
   }
 }
 
@@ -1057,12 +1022,31 @@ class _JobCardState extends State<JobCard> {
       widget.job.localFilePath != null &&
       File(widget.job.localFilePath!).existsSync();
 
+  bool _jobHasAudio(JobModel job, String path) {
+    if (job.isAudioOutput) return true;
+    final ext = path.split('.').last.toLowerCase();
+    return ext == 'mp3' ||
+        ext == 'wav' ||
+        ext == 'm4a' ||
+        ext == 'aac' ||
+        ext == 'ogg' ||
+        ext == 'flac';
+  }
+
   Future<void> _openPreview(BuildContext context) async {
     if (_openingPreview) return;
     _openingPreview = true;
 
     try {
       String? path = widget.job.localFilePath;
+      final liveTracks = audioTracksFromJob(widget.job);
+      if (liveTracks.isNotEmpty &&
+          (path == null || !File(path).existsSync())) {
+        if (context.mounted) {
+          await FileService.openAudioTracks(context, tracks: liveTracks);
+        }
+        return;
+      }
 
       // If file doesn't exist locally, trigger download first (same as download button)
       if (path == null || !File(path).existsSync()) {
@@ -1115,6 +1099,11 @@ class _JobCardState extends State<JobCard> {
             resultFile: File(path),
             originalFile: File(source),
           );
+        } else if (_jobHasAudio(widget.job, path)) {
+          final tracks = liveTracks.isNotEmpty
+              ? liveTracks
+              : <AudioTrackDetails>[AudioTrackDetails.fromJob(widget.job)];
+          await FileService.openAudioTracks(context, tracks: tracks);
         } else {
           FileService.openLocalPreview(
             context,
@@ -1358,7 +1347,9 @@ class _JobCardState extends State<JobCard> {
                 widget.onTap?.call();
                 return;
               }
-              if (job.status == 'completed' && !isExpired && isSaved) {
+              if (_musicResult?.hasPlayableTrack == true) {
+                _openPreview(context);
+              } else if (job.status == 'completed' && !isExpired && isSaved) {
                 _openPreview(context);
               }
             },
@@ -1399,7 +1390,7 @@ class _JobCardState extends State<JobCard> {
                 // ✅ Title: "FriendlyModelName Job-MMDDMMSS"
                 title: Text(
                   job.model.isNotEmpty && job.model != 'unknown'
-                      ? '${_getFriendlyModelName(job.model)} ${job.title}'
+                      ? '${_getFriendlyModelName(job)} ${job.title}'
                       : job.title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -1486,6 +1477,15 @@ class _JobCardState extends State<JobCard> {
                         ],
                       ),
               ),
+              if (_versionCount > 0) _versionRow(cs),
+              if (_musicResult?.anyStreaming == true)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: Text(
+                    'Streaming now. The time updates when the full song is ready.',
+                    style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
+                  ),
+                ),
 
               // ✅ Small linear progress bar
               if (_isDownloading)
@@ -1703,6 +1703,274 @@ class _JobCardState extends State<JobCard> {
     );
   }
 
+  MusicResult? get _musicResult {
+    final raw = widget.job.music;
+    if (raw == null) return null;
+    return MusicResult.fromJson(raw);
+  }
+
+  String get _musicModelId {
+    final snap = widget.job.settingsSnapshot?['modelId'];
+    if (snap is String && snap.isNotEmpty) return snap;
+    return widget.job.model;
+  }
+
+  String get _musicAction {
+    final fromMusic = _musicResult?.action;
+    if (fromMusic != null && fromMusic.isNotEmpty) return fromMusic;
+    final snap = widget.job.settingsSnapshot?['musicAction'];
+    if (snap is String && snap.isNotEmpty) return snap;
+    return 'song';
+  }
+
+  bool get _isHitMaker => _musicModelId == kSunoV6ModelId;
+
+  bool get _hitMakerSong =>
+      _isHitMaker && (_musicAction == 'song' || _musicAction.isEmpty);
+
+  /// HitMaker songs return two versions. Keep the second slot while the job
+  /// is still running, including the stretch where only the first has streamed.
+  int get _versionCount {
+    final tracks = _musicResult?.tracks.length ?? 0;
+    if (_hitMakerSong) {
+      final open = widget.job.status != 'completed' && widget.job.status != 'failed';
+      if (open || tracks > 1) return tracks < 2 ? 2 : tracks;
+      return tracks;
+    }
+    return tracks > 1 ? tracks : 0;
+  }
+
+  bool get _coverGenerationOn {
+    if (!_isHitMaker) return false;
+    if (_musicAction == 'sounds' ||
+        _musicAction == 'video' ||
+        _musicAction == 'stems') {
+      return false;
+    }
+    if (widget.job.settingsSnapshot?['coverEnabled'] == true) return true;
+    final music = _musicResult;
+    if (music == null) return false;
+    if (music.covers.isNotEmpty) return true;
+    if (music.tracks.any((track) => (track.coverUrl ?? '').isNotEmpty)) {
+      return true;
+    }
+    return music.easy && _hitMakerSong;
+  }
+
+  String? _coverUrlFor(MusicTrack? track, {bool allowShared = true}) {
+    if (!_coverGenerationOn) return null;
+    final fromTrack = track?.coverUrl;
+    if (fromTrack != null && fromTrack.isNotEmpty) return fromTrack;
+    if (!allowShared) return null;
+    final covers = _musicResult?.covers ?? const <String>[];
+    if (covers.isNotEmpty) return covers.first;
+    return null;
+  }
+
+  String? get _localCoverPath {
+    if (widget.job.settingsSnapshot?['coverEnabled'] != true) return null;
+    final path = widget.job.settingsSnapshot?['coverPath'];
+    if (path is! String || path.isEmpty) return null;
+    return File(path).existsSync() ? path : null;
+  }
+
+  Future<void> _openMusicVersion(int index) async {
+    final tracks = audioTracksFromJob(widget.job);
+    if (tracks.isEmpty || !mounted) return;
+    final playable = <int>[];
+    final musicTracks = _musicResult?.tracks ?? const <MusicTrack>[];
+    for (var i = 0; i < tracks.length; i++) {
+      if (i < musicTracks.length && musicTracks[i].isPlayable) playable.add(i);
+    }
+    if (playable.isEmpty) return;
+    final start = playable.contains(index) ? index : playable.first;
+    await FileService.openAudioTracks(
+      context,
+      tracks: tracks,
+      initialIndex: start,
+    );
+  }
+
+  Widget _versionRow(ColorScheme cs) {
+    const names = ['A', 'B', 'C', 'D'];
+    final tracks = _musicResult?.tracks ?? const <MusicTrack>[];
+    final count = _versionCount;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Row(
+        children: [
+          for (var i = 0; i < count; i++) ...[
+            if (i > 0) const SizedBox(width: 8),
+            Expanded(
+              child: _versionChip(
+                cs,
+                i < tracks.length ? tracks[i] : null,
+                i,
+                names,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  String _versionState(MusicTrack? track) {
+    if (track == null || !track.isPlayable) return 'On the way';
+    if (track.isStreaming) return 'Streaming';
+    final length = track.knownDuration;
+    if (length == null) return 'Ready';
+    final minutes = length.inMinutes;
+    final seconds = (length.inSeconds % 60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
+
+  Widget _versionChip(
+    ColorScheme cs,
+    MusicTrack? track,
+    int index,
+    List<String> names,
+  ) {
+    final label = index < names.length ? 'Version ${names[index]}' : 'Version ${index + 1}';
+    final playable = track != null && track.isPlayable;
+    final streaming = track?.isStreaming == true;
+    return Material(
+      color: cs.surfaceContainerHighest.withValues(alpha: 0.45),
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: playable ? () => _openMusicVersion(index) : null,
+        child: Padding(
+          padding: const EdgeInsets.all(6),
+          child: Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: SizedBox(
+                  width: 36,
+                  height: 36,
+                  child: _coverArt(
+                    _coverUrlFor(track, allowShared: track != null),
+                    (track?.id ?? '${widget.job.jobId}-$index').hashCode,
+                    cs,
+                    filePath: index == 0 ? _localCoverPath : null,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: cs.onSurface,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      _versionState(track),
+                      style: TextStyle(
+                        color: streaming ? cs.primary : cs.onSurfaceVariant,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _audioThumb(ColorScheme cs, MusicResult? music) {
+    final tracks = music?.tracks ?? const <MusicTrack>[];
+    final cover = _coverUrlFor(tracks.isEmpty ? null : tracks.first);
+    final count = _versionCount;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        _coverArt(
+          cover,
+          widget.job.jobId.hashCode,
+          cs,
+          filePath: _localCoverPath,
+        ),
+        if (count > 1)
+          Positioned(
+            right: 3,
+            bottom: 3,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.72),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                '$count',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _coverArt(String? url, int seed, ColorScheme cs, {String? filePath}) {
+    final palette = CoverPalette.of(seed);
+    final placeholder = Container(
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [palette.glow, palette.warm],
+        ),
+      ),
+      child: Icon(
+        Icons.music_note_rounded,
+        color: Colors.white.withValues(alpha: 0.92),
+        size: 22,
+      ),
+    );
+    if (url != null && url.isNotEmpty) {
+      return Image.network(
+        url,
+        fit: BoxFit.cover,
+        width: 58,
+        height: 58,
+        errorBuilder: (_, __, ___) => _coverFile(filePath) ?? placeholder,
+        loadingBuilder: (context, child, progress) {
+          if (progress == null) return child;
+          return _coverFile(filePath) ?? placeholder;
+        },
+      );
+    }
+    return _coverFile(filePath) ?? placeholder;
+  }
+
+  Widget? _coverFile(String? filePath) {
+    if (filePath == null || !File(filePath).existsSync()) return null;
+    return Image.file(
+      File(filePath),
+      fit: BoxFit.cover,
+      width: 58,
+      height: 58,
+      cacheWidth: 174,
+      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+    );
+  }
+
   // ✅ Thumbnail widget - uses cached thumbnails for large images
   //
   // Three visual states:
@@ -1719,6 +1987,7 @@ class _JobCardState extends State<JobCard> {
         File(widget.job.localFilePath!).existsSync();
     final isProcessing = widget.job.status == 'processing';
     final jobCategory = _getJobCategory(widget.job);
+    final music = _musicResult;
 
     // Check if file is a text file (text output type or text file extension)
     final isTextFile = jobCategory == 'text' ||
@@ -1732,7 +2001,12 @@ class _JobCardState extends State<JobCard> {
             widget.job.localFilePath!.toLowerCase().endsWith('.mov') ||
             widget.job.localFilePath!.toLowerCase().endsWith('.avi'));
 
-    if (isDownloaded && !isTextFile) {
+    if (widget.job.isAudioOutput ||
+        (music != null &&
+            !widget.job.isVideoOutput &&
+            !widget.job.isImageOutput)) {
+      thumbnailContent = _audioThumb(cs, music);
+    } else if (isDownloaded && !isTextFile) {
       if (!isVideoFile) {
         // Image file on disk → use Flutter's native Image.file for reliable decoding
         thumbnailContent = Stack(
@@ -2053,6 +2327,12 @@ class _JobCardState extends State<JobCard> {
         job.status == 'reviewing') {
       String statusText = "${job.status.toUpperCase()}…";
       if (job.status == 'reviewing') statusText = 'REVIEW SCENES';
+      final music = _musicResult;
+      if (music != null) {
+        statusText = music.anyStreaming
+            ? 'STREAMING…'
+            : music.statusLine.toUpperCase();
+      }
       if (job.hasMultipleVariations && job.variationResults != null) {
         final completed = job.variationResults!
             .where((v) => v.status == 'completed' || v.status == 'failed')

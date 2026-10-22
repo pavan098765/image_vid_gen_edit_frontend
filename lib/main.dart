@@ -1,6 +1,7 @@
 // lib/main.dart
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart' as material_ui;
@@ -20,6 +21,9 @@ import 'firebase_options.dart';
 // Existing imports
 import 'core/theme/app_theme.dart';
 import 'core/app_state.dart';
+import 'core/model_display_name.dart';
+import 'core/tool_launch.dart';
+import 'core/widgets/backlit_glass.dart';
 import 'core/services/notification_service.dart';
 import 'core/services/kie_result_saver.dart';
 import 'core/services/user_service.dart';
@@ -87,7 +91,10 @@ Future<void> _mergeAndPersistJobMap(Map<String, dynamic> jobMap) async {
       existing[idx] = {
         ...old,
         'title': old['title'] ?? jobMap['title'] ?? jobId,
-        'model': old['model'] ?? jobMap['model'] ?? 'unknown',
+        'model': preferInternalModelId(
+          old['model']?.toString(),
+          jobMap['model']?.toString(),
+        ),
         'outputType': old['outputType'] ?? jobMap['outputType'] ?? 'image',
         'downloadUrl':
             downloadUrl.isNotEmpty ? downloadUrl : (old['downloadUrl']),
@@ -312,7 +319,7 @@ Future<void> _applyFcmUpdate(Map<String, dynamic> data) async {
       'status': normalizedStatus,
       'downloadUrl': downloadUrl,
       'title': title.isNotEmpty ? title : jobId,
-      'model': model.isNotEmpty ? model : 'unknown',
+      'model': preferInternalModelId(model, 'unknown'),
       'outputType': outputType.isNotEmpty ? outputType : 'image',
       'timestamp': DateTime.now().toIso8601String(),
     });
@@ -402,7 +409,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       existing[idx] = {
         ...old,
         'title': old['title'] ?? title,
-        'model': old['model'] ?? model,
+        'model': preferInternalModelId(old['model']?.toString(), model),
         'outputType': old['outputType'] ?? outputType,
         'downloadUrl':
             downloadUrl.isNotEmpty ? downloadUrl : (old['downloadUrl']),
@@ -421,7 +428,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       existing.insert(0, {
         'jobId': jobId,
         'title': title.isNotEmpty ? title : jobId,
-        'model': model.isNotEmpty ? model : 'unknown',
+        'model': preferInternalModelId(model, 'unknown'),
         'outputType': outputType.isNotEmpty ? outputType : 'image',
         'downloadUrl': downloadUrl.isNotEmpty ? downloadUrl : null,
         'status': normalizedStatus.isNotEmpty ? normalizedStatus : 'processing',
@@ -445,7 +452,10 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       'status': normalizedStatus,
       'downloadUrl': downloadUrl,
       'title': title.isNotEmpty ? title : (idx >= 0 ? existing[idx]['title'] : jobId),
-      'model': model.isNotEmpty ? model : (idx >= 0 ? existing[idx]['model'] : 'unknown'),
+      'model': preferInternalModelId(
+        idx >= 0 ? existing[idx]['model']?.toString() : null,
+        model,
+      ),
       'outputType': outputType.isNotEmpty ? outputType : (idx >= 0 ? existing[idx]['outputType'] : 'image'),
       'timestamp': jobCreatedAt,
     });
@@ -824,7 +834,7 @@ Future<void> initializeApp() async {
       'status': normalizedStatus,
       'downloadUrl': downloadUrl,
       'title': title.isNotEmpty ? title : jobId,
-      'model': model.isNotEmpty ? model : 'unknown',
+      'model': preferInternalModelId(model, 'unknown'),
       'outputType': outputType.isNotEmpty ? outputType : 'image',
       'timestamp': DateTime.now().toIso8601String(),
     });
@@ -896,6 +906,15 @@ Future<void> initializeApp() async {
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
+  FileService.remixAudio = (context, track) {
+    return openMusicRemix(
+      context,
+      filePath: track.filePath,
+      prompt: track.style,
+      lyrics: track.lyrics,
+      modelId: track.modelId,
+    );
+  };
 
   // 🟢 Run the app IMMEDIATELY to show splash screen
   // Heavy initialization happens in the background while splash is visible
@@ -1083,8 +1102,9 @@ class _MainAppScaffold extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
-    return Scaffold(
+    final shell = Scaffold(
       key: appShellKey,
+      backgroundColor: Colors.transparent,
       drawer: Drawer(
         width: MediaQuery.sizeOf(context).width * 0.88,
         child: const SettingsPage(inDrawer: true),
@@ -1111,6 +1131,13 @@ class _MainAppScaffold extends StatelessWidget {
           );
         },
       ),
+    );
+
+    return Stack(
+      children: [
+        const Positioned.fill(child: BacklitWash()),
+        shell,
+      ],
     );
   }
 }
@@ -1142,17 +1169,40 @@ class _ModernBottomNav extends StatelessWidget {
       const _NavItem(icon: LucideIcons.gem, label: 'Store'),
     ];
 
-    return Container(
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: Container(
       decoration: BoxDecoration(
-        color: cs.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: isDark
+              ? [
+                  const Color(0xFF2A1C38).withValues(alpha: 0.82),
+                  const Color(0xFF120C16).withValues(alpha: 0.74),
+                ]
+              : [
+                  Colors.white.withValues(alpha: 0.9),
+                  const Color(0xFFF6F0FF).withValues(alpha: 0.78),
+                ],
+        ),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+        border: Border(
+          top: BorderSide(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.2)
+                : Colors.white,
+            width: 1,
+          ),
+        ),
         boxShadow: [
           BoxShadow(
-            color: isDark 
-                ? Colors.black.withValues(alpha: 0.3)
-                : Colors.black.withValues(alpha: 0.08),
-            blurRadius: 16,
-            offset: const Offset(0, -2),
+            color: (isDark ? Colors.black : const Color(0xFF6A4AD4))
+                .withValues(alpha: isDark ? 0.35 : 0.12),
+            blurRadius: 18,
+            offset: const Offset(0, -6),
           ),
         ],
       ),
@@ -1191,10 +1241,15 @@ class _ModernBottomNav extends StatelessWidget {
                           decoration: BoxDecoration(
                             gradient: isSelected
                                 ? LinearGradient(
-                                    colors: [
-                                      cs.primary.withValues(alpha: 0.2),
-                                      cs.secondary.withValues(alpha: 0.15),
-                                    ],
+                                    colors: isDark
+                                        ? [
+                                            cs.primary.withValues(alpha: 0.34),
+                                            cs.secondary.withValues(alpha: 0.16),
+                                          ]
+                                        : [
+                                            const Color(0xFFE4D9FF),
+                                            const Color(0xFFD7F4FF),
+                                          ],
                                     begin: Alignment.topLeft,
                                     end: Alignment.bottomRight,
                                   )
@@ -1203,9 +1258,22 @@ class _ModernBottomNav extends StatelessWidget {
                             borderRadius: BorderRadius.circular(14),
                             border: isSelected
                                 ? Border.all(
-                                    color: cs.primary.withValues(alpha: 0.3),
+                                    color: isDark
+                                        ? Colors.white.withValues(alpha: 0.16)
+                                        : Colors.white,
                                     width: 1,
                                   )
+                                : null,
+                            boxShadow: isSelected
+                                ? [
+                                    BoxShadow(
+                                      color: cs.primary.withValues(
+                                        alpha: isDark ? 0.28 : 0.16,
+                                      ),
+                                      blurRadius: 12,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ]
                                 : null,
                           ),
                           child: Icon(
@@ -1241,6 +1309,8 @@ class _ModernBottomNav extends StatelessWidget {
               );
             }),
           ),
+        ),
+      ),
         ),
       ),
     );

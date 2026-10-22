@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/job_model.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/music_job.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -278,6 +279,7 @@ Future<void> updateJobFields({
   String? enhancedPrompt,
   bool? promptEnhanced,
   String? originalPrompt,
+  Map<String, dynamic>? music,
 }) async {
   if (await wasJobDeleted(jobId)) {
     final kept =
@@ -321,6 +323,7 @@ Future<void> updateJobFields({
       enhancedPrompt: enhancedPrompt,
       promptEnhanced: promptEnhanced,
       originalPrompt: originalPrompt,
+      music: preferRicherMusic(old.music, music),
     );
     list[idx].stampCloudReady();
 
@@ -360,6 +363,7 @@ Future<void> updateJobFields({
       enhancedPrompt: enhancedPrompt,
       promptEnhanced: promptEnhanced ?? false,
       originalPrompt: originalPrompt,
+      music: music,
     );
     created.stampCloudReady();
     list.insert(0, created);

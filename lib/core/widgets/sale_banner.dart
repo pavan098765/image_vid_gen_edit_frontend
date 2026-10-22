@@ -110,10 +110,10 @@ class _SaleBannerFrameState extends State<_SaleBannerFrame>
         // One smooth inhale/exhale per controller loop (avoids harsh triangle wave).
         final w = 0.5 + 0.5 * math.sin(_pulse.value * 2 * math.pi);
         final borderAlpha =
-            (isDark ? 0.34 : 0.26) + 0.2 * w;
-        final haloNear = 0.12 + 0.2 * w;
-        final haloFar = 0.045 + 0.1 * w;
-        final depthAlpha = (isDark ? 0.26 : 0.075) + 0.06 * w;
+            (isDark ? 0.34 : 0.46) + 0.16 * w;
+        final haloNear = (isDark ? 0.12 : 0.2) + 0.16 * w;
+        final haloFar = (isDark ? 0.045 : 0.08) + 0.08 * w;
+        final depthAlpha = (isDark ? 0.26 : 0.12) + 0.05 * w;
 
         return Container(
           margin: widget.margin,
@@ -841,14 +841,14 @@ class _FlashySaleShowcaseBanner extends StatelessWidget {
             end: Alignment.bottomRight,
             colors: isDark
                 ? const [Color(0xFF1B0A24), Color(0xFF281018), Color(0xFF0F172A)]
-                : const [Color(0xFFFFF7F7), Color(0xFFFFE8EE), Color(0xFFE8F2FF)],
+                : const [Color(0xFFFFD9CC), Color(0xFFFFC9DC), Color(0xFFFFE7C2)],
           )
         : LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: isDark
                 ? const [Color(0xFF0A1628), Color(0xFF141238), Color(0xFF06202A)]
-                : const [Color(0xFFF0F7FF), Color(0xFFF5F0FF), Color(0xFFE8FBFF)],
+                : const [Color(0xFFC9DCFF), Color(0xFFDCCBFF), Color(0xFFB7F0FF)],
           );
 
     final accentRail = live
@@ -892,6 +892,24 @@ class _FlashySaleShowcaseBanner extends StatelessWidget {
                   ),
                 ),
               ),
+              if (!isDark)
+                const Positioned.fill(
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Color(0x8CFFFFFF),
+                            Color(0x00FFFFFF),
+                          ],
+                          stops: [0.0, 0.46],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               Positioned.fill(
                 child: IgnorePointer(
                   child: DecoratedBox(
@@ -901,7 +919,7 @@ class _FlashySaleShowcaseBanner extends StatelessWidget {
                         end: Alignment.bottomLeft,
                         colors: [
                           (live ? const Color(0xFFFF6B35) : const Color(0xFF7C4DFF))
-                              .withValues(alpha: isDark ? 0.1 : 0.06),
+                              .withValues(alpha: isDark ? 0.1 : 0.16),
                           Colors.transparent,
                         ],
                       ),
@@ -968,7 +986,8 @@ class _FlashySaleShowcaseBanner extends StatelessWidget {
                                 style: tt.labelSmall?.copyWith(
                                       color: isDark
                                           ? Colors.white.withValues(alpha: 0.62)
-                                          : Colors.black.withValues(alpha: 0.48),
+                                          : const Color(0xFF2A2140)
+                                              .withValues(alpha: 0.72),
                                       fontWeight: FontWeight.w600,
                                       fontSize: 10.5,
                                       height: 1.15,
@@ -976,7 +995,8 @@ class _FlashySaleShowcaseBanner extends StatelessWidget {
                                     TextStyle(
                                       color: isDark
                                           ? Colors.white.withValues(alpha: 0.62)
-                                          : Colors.black.withValues(alpha: 0.48),
+                                          : const Color(0xFF2A2140)
+                                              .withValues(alpha: 0.72),
                                       fontWeight: FontWeight.w600,
                                       fontSize: 10.5,
                                       height: 1.15,
@@ -1022,20 +1042,26 @@ class _SaleEyebrowPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final chipFill = isDark
+        ? Colors.black.withValues(alpha: 0.38)
+        : (live ? const Color(0xFF8A3418) : const Color(0xFF3A2778));
+    final chipInk = isDark ? const Color(0xFFFFE082) : Colors.white;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: isDark ? 0.38 : 0.07),
+        color: chipFill,
         borderRadius: BorderRadius.circular(999),
         border: Border.all(
-          color: (live ? const Color(0xFFFFB74D) : const Color(0xFF64FFDA))
-              .withValues(alpha: 0.42),
+          color: isDark
+              ? (live ? const Color(0xFFFFB74D) : const Color(0xFF64FFDA))
+                  .withValues(alpha: 0.42)
+              : Colors.white.withValues(alpha: 0.4),
           width: 1,
         ),
         boxShadow: [
           BoxShadow(
-            color: (live ? const Color(0xFFFF6B35) : const Color(0xFF00BCD4))
-                .withValues(alpha: 0.2),
+            color: (live ? const Color(0xFFFF6B35) : const Color(0xFF5B3FD6))
+                .withValues(alpha: isDark ? 0.2 : 0.28),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -1051,7 +1077,7 @@ class _SaleEyebrowPill extends StatelessWidget {
           Text(
             live ? 'SALE LIVE!' : 'NEXT SALE',
             style: TextStyle(
-              color: live ? const Color(0xFFFFE082) : const Color(0xFFFFE082),
+              color: chipInk,
               fontSize: 12,
               fontWeight: FontWeight.w900,
               letterSpacing: 1.15,
@@ -1109,8 +1135,12 @@ class _SalePercentHero extends StatelessWidget {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: live
-                ? const [Color(0xFFFFFDE7), Color(0xFFFFAB40), Color(0xFFFF3D00)]
-                : const [Color(0xFFE1F5FE), Color(0xFF7C4DFF), Color(0xFF00BCD4)],
+                ? (isDark
+                    ? const [Color(0xFFFFFDE7), Color(0xFFFFAB40), Color(0xFFFF3D00)]
+                    : const [Color(0xFFB45309), Color(0xFFE11D48), Color(0xFF9A3412)])
+                : (isDark
+                    ? const [Color(0xFFE1F5FE), Color(0xFF7C4DFF), Color(0xFF00BCD4)]
+                    : const [Color(0xFF3B2A9A), Color(0xFF6D4AFF), Color(0xFF0E7490)]),
           ).createShader(bounds),
           child: Text(
             '$discountPercent%',
@@ -1251,13 +1281,15 @@ class _SaleFrostedTimerPanel extends StatelessWidget {
                 end: Alignment.bottomRight,
                 colors: [
                   (isDark ? const Color(0xFF1A1520) : Colors.white)
-                      .withValues(alpha: isDark ? 0.72 : 0.78),
-                  (isDark ? const Color(0xFF120E18) : const Color(0xFFF5F7FA))
-                      .withValues(alpha: isDark ? 0.62 : 0.88),
+                      .withValues(alpha: isDark ? 0.72 : 0.94),
+                  (isDark ? const Color(0xFF120E18) : const Color(0xFFF4EEFF))
+                      .withValues(alpha: isDark ? 0.62 : 0.96),
                 ],
               ),
               border: Border.all(
-                color: Colors.white.withValues(alpha: isDark ? 0.14 : 0.55),
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.14)
+                    : Colors.white,
               ),
             ),
             child: Column(
@@ -1270,8 +1302,12 @@ class _SaleFrostedTimerPanel extends StatelessWidget {
                       LucideIcons.clock,
                       size: 11,
                       color: live
-                          ? const Color(0xFFFFB74D)
-                          : const Color(0xFF4DD0E1),
+                          ? (isDark
+                              ? const Color(0xFFFFB74D)
+                              : const Color(0xFFC2410C))
+                          : (isDark
+                              ? const Color(0xFF4DD0E1)
+                              : const Color(0xFF0F6E86)),
                     ),
                     const SizedBox(width: 5),
                     Text(
@@ -1282,8 +1318,12 @@ class _SaleFrostedTimerPanel extends StatelessWidget {
                         letterSpacing: 1.35,
                         height: 1,
                         color: live
-                            ? const Color(0xFFFFE0B2)
-                            : const Color(0xFFB2EBF2),
+                            ? (isDark
+                                ? const Color(0xFFFFE0B2)
+                                : const Color(0xFF9A3412))
+                            : (isDark
+                                ? const Color(0xFFB2EBF2)
+                                : const Color(0xFF0F6E86)),
                       ),
                     ),
                   ],
@@ -1305,7 +1345,7 @@ class _SaleFrostedTimerPanel extends StatelessWidget {
                               height: 1,
                               color: isDark
                                   ? Colors.white54
-                                  : Colors.black45,
+                                  : const Color(0xFF2A2140).withValues(alpha: 0.45),
                             ),
                           ),
                         ),
@@ -1366,13 +1406,18 @@ class _SaleTimeSegment extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [
-            rim.withValues(alpha: isDark ? 0.22 : 0.14),
-            Colors.black.withValues(alpha: isDark ? 0.4 : 0.05),
-          ],
+          colors: isDark
+              ? [
+                  rim.withValues(alpha: 0.22),
+                  Colors.black.withValues(alpha: 0.4),
+                ]
+              : [
+                  Colors.white,
+                  rim.withValues(alpha: 0.28),
+                ],
         ),
         border: Border.all(
-          color: rim.withValues(alpha: isDark ? 0.55 : 0.42),
+          color: rim.withValues(alpha: isDark ? 0.55 : 0.7),
           width: 1,
         ),
         boxShadow: [
@@ -1411,19 +1456,19 @@ class _SaleHighlightBackdropPainter extends CustomPainter {
     final cool = live ? const Color(0xFFFF4081) : const Color(0xFF5C6BC0);
 
     final orb = Paint()..style = PaintingStyle.fill;
-    orb.color = warm.withValues(alpha: isDark ? 0.085 : 0.055);
+    orb.color = warm.withValues(alpha: isDark ? 0.085 : 0.2);
     canvas.drawCircle(
       Offset(size.width * 0.92, -size.height * 0.08),
       size.width * 0.38,
       orb,
     );
-    orb.color = cool.withValues(alpha: isDark ? 0.065 : 0.045);
+    orb.color = cool.withValues(alpha: isDark ? 0.065 : 0.16);
     canvas.drawCircle(
       Offset(size.width * 0.08, size.height * 1.02),
       size.width * 0.42,
       orb,
     );
-    orb.color = warm.withValues(alpha: isDark ? 0.035 : 0.028);
+    orb.color = warm.withValues(alpha: isDark ? 0.035 : 0.12);
     canvas.drawCircle(
       Offset(size.width * 0.55, size.height * 0.35),
       size.width * 0.22,
