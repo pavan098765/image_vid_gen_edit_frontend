@@ -257,7 +257,11 @@ class FileService {
           _lastSavedPath = localPath;
           debugPrint('📦 Audio saved to app-documents: $localPath');
           if (context.mounted && showPreview) {
-            _showMediaPreviewDialog(context, localPath);
+            _showMediaPreviewDialog(
+              context,
+              localPath,
+              audioTracks: _tracksForSavedAudio(localPath, fileName),
+            );
           }
           return localPath;
         } catch (e) {
@@ -560,6 +564,25 @@ class FileService {
     });
   }
 
+  /// The saved audio belongs to the job whose id was used as the file name.
+  static List<AudioTrackDetails>? _tracksForSavedAudio(
+    String path,
+    String fileName,
+  ) {
+    final bare = fileName.replaceFirst(RegExp(r'\.[^.]+$'), '');
+    for (final job in jobListNotifier.value) {
+      if (job.jobId != bare && job.localFilePath != path) continue;
+      final tracks = audioTracksFromJob(job);
+      if (tracks.isNotEmpty) return tracks;
+      if (job.isAudioOutput ||
+          job.music != null ||
+          job.capabilityId == 'create_music') {
+        return [AudioTrackDetails.fromJob(job)];
+      }
+    }
+    return null;
+  }
+
   /// 🖼️ Displays media preview with optional swipe navigation
   /// Supports both images and videos
   static void _showMediaPreviewDialog(
@@ -843,6 +866,11 @@ class FileService {
     List<AudioTrackDetails>? tracks,
   ) {
     if (tracks != null && tracks.isNotEmpty) return tracks;
+    final saved = _tracksForSavedAudio(
+      filePath,
+      filePath.split(RegExp(r'[\\/]')).last,
+    );
+    if (saved != null && saved.isNotEmpty) return saved;
     return [AudioTrackDetails.fromPath(filePath)];
   }
 

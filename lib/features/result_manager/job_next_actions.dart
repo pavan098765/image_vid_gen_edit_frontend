@@ -8,7 +8,6 @@ import 'package:kala_ai_create_images_videos_with_ai/core/music_job.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/tool_launch.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/user_template_store.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/media_editor/editor_tab_launch.dart';
-import 'package:kala_ai_create_images_videos_with_ai/features/studio/gemini_client.dart';
 
 class JobNextActions extends StatefulWidget {
   final JobModel job;
@@ -235,91 +234,6 @@ class _JobNextActionsState extends State<JobNextActions> {
     );
   }
 
-  Future<void> _writeCoverPrompt() async {
-    final job = widget.job;
-    final music = job.music == null ? null : MusicResult.fromJson(job.music!);
-    final sheets = music?.lyrics ?? const <MusicLyricSheet>[];
-    final lyricParts = <String>[];
-    final snapLyrics = _snapText('lyrics');
-    if (snapLyrics != null) lyricParts.add(snapLyrics);
-    for (final track in music?.tracks ?? const <MusicTrack>[]) {
-      final text = fullerLyrics(track, sheets);
-      if (text != null && text.isNotEmpty && !lyricParts.contains(text)) {
-        lyricParts.add(text);
-      }
-    }
-    if (lyricParts.isEmpty) {
-      for (final sheet in sheets) {
-        if (sheet.text.trim().isNotEmpty) lyricParts.add(sheet.text.trim());
-      }
-    }
-    final idea = _prompt ?? '';
-    final styleParts = <String>[
-      if (_snapText('style') != null) _snapText('style')!,
-      if (_snapText('sunoTitle') != null) 'Title: ${_snapText('sunoTitle')}',
-      if (_snapText('vocalGender') != null)
-        'Vocal: ${_snapText('vocalGender')}',
-      ...?music?.tracks
-          .map((track) => track.tags)
-          .whereType<String>()
-          .where((tag) => tag.trim().isNotEmpty),
-    ];
-    final avoid = _snapText('negativePrompt');
-    if (idea.trim().isEmpty && lyricParts.isEmpty && styleParts.isEmpty) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('This song has no words to paint from yet.')),
-      );
-      return;
-    }
-    if (_config == null) await _load();
-    if (!mounted) return;
-    if (!_capEnabled('create_image')) {
-      await showModelUnavailableDialog(context);
-      return;
-    }
-    final pending = _requestCoverPrompt(
-      idea: idea,
-      style: styleParts.join(', '),
-      avoid: avoid,
-      lyrics: lyricParts.join('\n\n'),
-    );
-    await _openCapability(
-      'create_image',
-      modelId: 'muse_image',
-      inheritModel: false,
-      settings: const {'aspectRatio': '1:1', 'modelId': 'muse_image'},
-      pendingPrompt: pending,
-    );
-  }
-
-  Future<String?> _requestCoverPrompt({
-    required String idea,
-    required String style,
-    required String? avoid,
-    required String lyrics,
-  }) async {
-    final result = await GeminiDirector().generate(
-      step: 'cover_art',
-      systemInstruction:
-          'You write one image prompt for a square album cover. Describe the subject, mood, palette, and light. Do not ask for words, letters, logos, or a title on the image. Keep it under 60 words.',
-      instruction:
-          'Song idea:\n$idea\nStyle: $style\nAvoid: ${avoid ?? ''}\nLyrics:\n$lyrics\nReturn only the JSON prompt.',
-      schema: {
-        'type': 'OBJECT',
-        'properties': {
-          'prompt': {'type': 'STRING'},
-        },
-        'required': ['prompt'],
-      },
-    );
-    final written = (result['prompt'] ?? '').toString().trim();
-    if (written.length < 8) {
-      throw StateError('The cover prompt was too short.');
-    }
-    return written;
-  }
-
   @override
   Widget build(BuildContext context) {
     final job = widget.job;
@@ -375,13 +289,6 @@ class _JobNextActionsState extends State<JobNextActions> {
               const SizedBox(height: 8),
               _chip(
                 cs,
-                icon: Icons.image_outlined,
-                label: 'Cover art',
-                onTap: () => _guard(_writeCoverPrompt),
-              ),
-              const SizedBox(height: 6),
-              _chip(
-                cs,
                 icon: Icons.library_music_outlined,
                 label: 'Remix',
                 onTap: () => _guard(_remixTrack),
@@ -412,14 +319,6 @@ class _JobNextActionsState extends State<JobNextActions> {
     final rows = <Widget>[];
 
     if (musicJob) {
-      final c = _cost('create_image');
-      rows.add(_aiRow(
-        cs,
-        icon: Icons.image_outlined,
-        label: 'Cover art',
-        detail: c != null ? '$c gems' : null,
-        onTap: () => _guard(_writeCoverPrompt),
-      ));
       rows.add(_aiRow(
         cs,
         icon: Icons.library_music_outlined,

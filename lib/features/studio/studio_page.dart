@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/exit_app_dialog.dart';
 
 import 'studio_screens.dart';
 import 'studio_session.dart';
@@ -73,14 +74,7 @@ class _StudioPageState extends State<StudioPage> {
         }
         final leave = await showDialog<bool>(
           context: context,
-          builder: (dialogContext) => AlertDialog(
-            title: const Text('Exit App?'),
-            content: const Text('Are you sure you want to exit?'),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
-              TextButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Exit')),
-            ],
-          ),
+          builder: (_) => const ConfirmExitAppDialog(),
         );
         if (leave == true) SystemNavigator.pop();
       },

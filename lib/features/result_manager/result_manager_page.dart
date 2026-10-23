@@ -20,6 +20,7 @@ import 'package:kala_ai_create_images_videos_with_ai/core/widgets/app_menu_butto
 import 'package:kala_ai_create_images_videos_with_ai/core/music_job.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/audio_result_player.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/backlit_glass.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/exit_app_dialog.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_button.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/studio/studio_job_page.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/studio/studio_page.dart';
@@ -69,11 +70,6 @@ Future<void> _loadModelNameCache() async {
     debugPrint('⚠️ Failed to load model name cache: $e');
     _modelNameCacheLoaded = true; // Mark as loaded to avoid infinite retries
   }
-}
-
-String _getFriendlyModelName(JobModel job) {
-  final snapId = job.settingsSnapshot?['modelId']?.toString();
-  return displayNameForModel(preferInternalModelId(snapId, job.model));
 }
 
 /// =============================================================================
@@ -656,20 +652,7 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
   Future<bool> _handleSystemBack() async {
     final leave = await showDialog<bool>(
           context: context,
-          builder: (dialogContext) => AlertDialog(
-            title: const Text('Leave Kala AI?'),
-            content: const Text('Your creations stay saved on this device.'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext, false),
-                child: const Text('Stay'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext, true),
-                child: const Text('Leave'),
-              ),
-            ],
-          ),
+          builder: (_) => const ConfirmExitAppDialog(),
         ) ??
         false;
     if (leave) SystemNavigator.pop();
@@ -1331,14 +1314,6 @@ class _JobCardState extends State<JobCard> {
     final isExpired = job.showsCloudExpiry;
     final isSaved = job.isSavedLocally;
 
-    final canDownloadAgain = isSaved || job.autoDownloaded;
-    final downloadColor = isExpired
-        ? cs.outline
-        : cs.primary;
-    final downloadIcon = isExpired
-        ? Icons.cloud_off_rounded
-        : Icons.download;
-
     return InkWell(
       onTap: widget.isSelectionMode
           ? widget.onTap
@@ -1387,19 +1362,32 @@ class _JobCardState extends State<JobCard> {
                 // ✅ Thumbnail (always visible, including in selection mode)
                 leading: _buildThumbnail(cs),
 
-                // ✅ Title: "FriendlyModelName Job-MMDDMMSS"
-                title: Text(
-                  job.model.isNotEmpty && job.model != 'unknown'
-                      ? '${_getFriendlyModelName(job)} ${job.title}'
-                      : job.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    height: 1.15,
-                    color: isExpired
-                        ? cs.onSurface.withValues(alpha: 0.7)
-                        : cs.onSurface,
+                title: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _renameJob,
+                  child: Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          job.title.trim().isEmpty ? 'Untitled' : job.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            height: 1.15,
+                            color: isExpired
+                                ? cs.onSurface.withValues(alpha: 0.7)
+                                : cs.onSurface,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Icon(
+                        Icons.edit_outlined,
+                        size: 14,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ],
                   ),
                 ),
 
@@ -1453,20 +1441,31 @@ class _JobCardState extends State<JobCard> {
                                       child: CircularProgressIndicator(
                                           strokeWidth: 2),
                                     )
-                                  : Icon(downloadIcon, color: downloadColor),
+                                  : Icon(
+                                      isExpired
+                                          ? Icons.cloud_off_rounded
+                                          : isSaved
+                                              ? (job.isAudioOutput ||
+                                                      job.isVideoOutput
+                                                  ? Icons.play_arrow_rounded
+                                                  : Icons.visibility_outlined)
+                                              : Icons.download,
+                                      color: isExpired ? cs.outline : cs.primary,
+                                    ),
                               tooltip: isExpired
                                   ? 'Cloud result expired'
-                                  : canDownloadAgain
-                                      ? 'Download again'
+                                  : isSaved
+                                      ? (job.isAudioOutput || job.isVideoOutput
+                                          ? 'Play'
+                                          : 'View')
                                       : 'Save to device',
-                              onPressed: _isDownloading || isExpired
-                                  ? (isExpired
+                              onPressed: _isDownloading
+                                  ? null
+                                  : isExpired
                                       ? () => _showExpiredDialog(context, cs)
-                                      : null)
-                                  : () => _download(
-                                        context,
-                                        fromCloud: canDownloadAgain,
-                                      ),
+                                      : isSaved
+                                          ? () => _openPreview(context)
+                                          : () => _download(context),
                             ),
                           IconButton(
                             icon: Icon(Icons.delete_outline,
@@ -1733,11 +1732,46 @@ class _JobCardState extends State<JobCard> {
   int get _versionCount {
     final tracks = _musicResult?.tracks.length ?? 0;
     if (_hitMakerSong) {
-      final open = widget.job.status != 'completed' && widget.job.status != 'failed';
-      if (open || tracks > 1) return tracks < 2 ? 2 : tracks;
+      final stillMaking =
+          widget.job.status != 'completed' && widget.job.status != 'failed';
+      // A running song keeps two slots. After it finishes, every stored version stays.
+      if (stillMaking) return tracks < 2 ? 2 : tracks;
       return tracks;
     }
     return tracks > 1 ? tracks : 0;
+  }
+
+  Future<void> _renameJob() async {
+    final controller = TextEditingController(text: widget.job.title);
+    final saved = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Rename'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            textInputAction: TextInputAction.done,
+            decoration: const InputDecoration(labelText: 'Name'),
+            onSubmitted: (value) => Navigator.pop(dialogContext, value),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, controller.text),
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+    final name = saved?.trim() ?? '';
+    controller.dispose();
+    if (!mounted || name.isEmpty || name == widget.job.title) return;
+    await addOrUpdateJob(widget.job.copyWith(title: name));
   }
 
   bool get _coverGenerationOn {

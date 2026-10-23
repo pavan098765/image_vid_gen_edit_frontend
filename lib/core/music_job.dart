@@ -149,11 +149,11 @@ int sunoV6CreditCost({required String action, String? stemType}) {
       if (stemType == 'split_stem_advanced') return 120;
       return 80;
     case 'sounds':
-      return 25;
+      return 15;
     case 'replace':
     case 'song':
     default:
-      return 260;
+      return 65;
   }
 }
 
@@ -645,13 +645,16 @@ List<MusicTrack> _mergeTracks(List<MusicTrack> current, List<MusicTrack> incomin
           break;
         }
       }
-    }
-    if (index < 0 && next.title.trim().isNotEmpty && next.title != 'Untitled') {
-      for (var i = 0; i < out.length; i++) {
-        if (out[i].title.trim().toLowerCase() == next.title.trim().toLowerCase()) {
-          index = i;
-          break;
+    } else {
+      // A title match is only safe when this update has no id and exactly one
+      // stored track uses that title. Two HitMaker versions often share a name.
+      final title = next.title.trim().toLowerCase();
+      if (title.isNotEmpty && title != 'untitled') {
+        final matches = <int>[];
+        for (var i = 0; i < out.length; i++) {
+          if (out[i].title.trim().toLowerCase() == title) matches.add(i);
         }
+        if (matches.length == 1) index = matches.first;
       }
     }
     if (index < 0) {

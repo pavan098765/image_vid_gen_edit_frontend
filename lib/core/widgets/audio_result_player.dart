@@ -4,10 +4,13 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/model_display_name.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/music_job.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/backlit_glass.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
 
@@ -194,7 +197,21 @@ List<AudioTrackDetails> audioTracksFromJob(JobModel job) {
     createdAt: job.createdAt,
     modelId: job.model,
   );
-  return _attachSavedFile(job, tracks);
+  final snap = job.settingsSnapshot ?? const <String, dynamic>{};
+  final prompt = _clean(job.originalPrompt) ?? _clean(snap['prompt']);
+  final title = _displayTitle(job.title, prompt);
+  final lyricsFallback = _clean(snap['lyrics']);
+  final styleFallback = _clean(snap['style']) ?? prompt;
+  return [
+    for (final track in _attachSavedFile(job, tracks))
+      track.copyWith(
+        title: _songTitle(track.title, title),
+        style: track.style.trim().isEmpty ? styleFallback : null,
+        lyrics: (track.lyrics == null || track.lyrics!.trim().isEmpty)
+            ? lyricsFallback
+            : null,
+      ),
+  ];
 }
 
 List<AudioTrackDetails> _attachSavedFile(
@@ -212,7 +229,12 @@ List<AudioTrackDetails> _attachSavedFile(
       lower.endsWith('.aac') ||
       lower.endsWith('.ogg');
   if (!audio) return tracks;
-  return [tracks.first.copyWith(filePath: path), ...tracks.skip(1)];
+  if (tracks.any((track) => track.filePath == path)) return tracks;
+  // The saved job file is the first version. Every other version keeps its own URL.
+  return [
+    tracks.first.copyWith(filePath: path, streaming: false),
+    ...tracks.skip(1),
+  ];
 }
 
 String audioModelLabel(String modelId) {
@@ -227,13 +249,34 @@ String? _clean(Object? raw) {
   return text.isEmpty ? null : text;
 }
 
-String _displayTitle(String title, String? prompt) {
-  final trimmed = title.trim();
-  if (trimmed.isNotEmpty && trimmed.toLowerCase() != 'untitled') {
-    return trimmed;
+bool _isBareId(String value) {
+  final text = value.trim();
+  if (text.isEmpty ||
+      text.toLowerCase() == 'untitled' ||
+      text.toLowerCase() == 'audio') {
+    return true;
   }
+  final bare = text.replaceAll(
+    RegExp(r'\.(mp3|wav|m4a|aac|flac|ogg)$', caseSensitive: false),
+    '',
+  );
+  return RegExp(
+    r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+  ).hasMatch(bare);
+}
+
+String _songTitle(String title, String? fallback) {
+  if (!_isBareId(title)) return title.trim();
+  final next = fallback?.trim() ?? '';
+  if (next.isNotEmpty && !_isBareId(next)) return next;
+  return 'Untitled';
+}
+
+String _displayTitle(String title, String? prompt) {
+  if (!_isBareId(title)) return title.trim();
   if (prompt == null) return 'Untitled';
   final line = prompt.split('\n').first.trim();
+  if (line.isEmpty) return 'Untitled';
   if (line.length <= 48) return line;
   return '${line.substring(0, 48).trim()}…';
 }
@@ -330,7 +373,7 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
   int _loadGeneration = 0;
   bool _ready = false;
   bool _shuffle = false;
-  bool _showReady = true;
+  bool _showReady = false;
   bool _styleExpanded = false;
   bool _wordsExpanded = false;
   bool _handledEnd = false;
@@ -339,17 +382,25 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
   bool _adopting = false;
   String? _error;
   String? _reaction;
+  int _reactionToken = 0;
   final Random _random = Random();
   final Set<String> _reloadedUrls = {};
+  late final PageController _coverController;
 
   AudioTrackDetails get _track => _playlist[_index];
 
   @override
   void initState() {
     super.initState();
-    _playlist = List<AudioTrackDetails>.of(widget.tracks);
+    _playlist = _withSavedLibrary(
+      _withJobVersions(List<AudioTrackDetails>.of(widget.tracks)),
+    );
     final maxIndex = _playlist.length - 1;
     _index = widget.initialIndex.clamp(0, maxIndex < 0 ? 0 : maxIndex);
+    _coverController = PageController(
+      initialPage: _index,
+      viewportFraction: 0.72,
+    );
     jobListNotifier.addListener(_syncFromJobs);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _open(_index);
@@ -398,8 +449,11 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
 
   Future<void> _applyJobTracks() async {
     if (!mounted || _adopting) return;
-    var changed = false;
+    final before = _playlist.length;
+    _playlist = _withSavedLibrary(_withJobVersions(_playlist));
+    var changed = _playlist.length != before;
     var reloadIndex = -1;
+    var announceReady = false;
     for (var i = 0; i < _playlist.length; i++) {
       final previous = _playlist[i];
       final fresh = _trackFromJobs(previous);
@@ -419,8 +473,11 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
           kept.networkUrl != null &&
           _clockIsShort(kept.knownDuration) &&
           _reloadedUrls.add(kept.networkUrl!);
-      final reload = !playingFile &&
-          (urlChanged || finished || (durationGrew && !kept.streaming) || stuckOnStream);
+      final reload = finished ||
+          (!playingFile &&
+              (urlChanged ||
+                  (durationGrew && !kept.streaming) ||
+                  stuckOnStream));
       final sameWords = kept.lyrics == previous.lyrics &&
           kept.coverUrl == previous.coverUrl &&
           kept.knownDuration == previous.knownDuration &&
@@ -430,36 +487,40 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
       if (sameWords && !reload) continue;
       _playlist[i] = kept;
       changed = true;
+      if (finished && i == _index && !_playing) announceReady = true;
       if (reload && i == _index) reloadIndex = i;
     }
     if (reloadIndex >= 0) {
       final keep = _controller?.value.position ?? Duration.zero;
       final wasPlaying = _playing;
       _adopting = true;
-      await _open(reloadIndex);
+      await _open(reloadIndex, announceReady: announceReady);
       _adopting = false;
       if (!mounted) return;
       if (keep > const Duration(seconds: 1)) {
         await _controller?.seekTo(keep);
       }
-      if (wasPlaying) await _controller?.play();
+      if (wasPlaying && !announceReady) await _controller?.play();
       return;
     }
     if (changed && mounted) setState(() {});
   }
 
   Future<void> _loadReaction() async {
+    final token = ++_reactionToken;
+    final track = _track;
     final prefs = await SharedPreferences.getInstance();
-    final value = prefs.getString(_reactionKey(_track.filePath));
-    if (!mounted) return;
+    final value = prefs.getString(_reactionKey(track));
+    if (!mounted || token != _reactionToken) return;
     setState(() => _reaction = value);
   }
 
   Future<void> _setReaction(String value) async {
+    final track = _track;
     final next = _reaction == value ? null : value;
     setState(() => _reaction = next);
     final prefs = await SharedPreferences.getInstance();
-    final key = _reactionKey(_track.filePath);
+    final key = _reactionKey(track);
     if (next == null) {
       await prefs.remove(key);
     } else {
@@ -467,7 +528,13 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
     }
   }
 
-  String _reactionKey(String path) => 'audio_mark_${path.hashCode}';
+  String _reactionKey(AudioTrackDetails track) {
+    final job = track.sourceJobId ?? '';
+    final id = track.sourceTrackId ?? '';
+    if (job.isNotEmpty || id.isNotEmpty) return 'audio_mark_$job|$id';
+    if (track.filePath.isNotEmpty) return 'audio_mark_${track.filePath.hashCode}';
+    return 'audio_mark_${track.networkUrl.hashCode}';
+  }
 
   VideoPlayerController? _controllerFor(AudioTrackDetails track) {
     if (track.filePath.isNotEmpty && File(track.filePath).existsSync()) {
@@ -480,15 +547,31 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
     return null;
   }
 
-  Future<void> _open(int index) async {
+  Future<void> _open(int index, {bool announceReady = false}) async {
+    if (index < 0 || index >= _playlist.length) return;
     final generation = ++_loadGeneration;
+    final track = _playlist[index];
+    final changing = index != _index;
+    if (mounted && (changing || announceReady)) {
+      setState(() {
+        _index = index;
+        _ready = false;
+        _playing = false;
+        _error = null;
+        _handledEnd = false;
+        _styleExpanded = false;
+        _wordsExpanded = true;
+        if (changing) _reaction = null;
+        _showReady = announceReady && !track.streaming;
+      });
+      if (changing) unawaited(_loadReaction());
+    }
     final previous = _controller;
     _controller = null;
     previous?.removeListener(_onPlaybackSignal);
     await previous?.dispose();
-    if (index < 0 || index >= _playlist.length) return;
+    if (!mounted || generation != _loadGeneration) return;
 
-    final track = _playlist[index];
     try {
       final controller = _controllerFor(track);
       if (controller == null) {
@@ -507,10 +590,8 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
         _playing = false;
         _error = null;
         _handledEnd = false;
-        _styleExpanded = false;
-        _wordsExpanded = true;
+        _showReady = announceReady && !track.streaming;
       });
-      _loadReaction();
     } catch (_) {
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
@@ -525,7 +606,11 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
     final controller = _controller;
     if (controller == null || !mounted) return;
     final playing = controller.value.isPlaying;
-    if (playing != _playing) setState(() => _playing = playing);
+    if (playing == _playing && !(playing && _showReady)) return;
+    setState(() {
+      _playing = playing;
+      if (playing) _showReady = false;
+    });
   }
 
   void _onClock(Duration position, Duration total) {
@@ -545,6 +630,7 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
   @override
   void dispose() {
     jobListNotifier.removeListener(_syncFromJobs);
+    _coverController.dispose();
     _controller?.removeListener(_onPlaybackSignal);
     _controller?.dispose();
     super.dispose();
@@ -573,7 +659,7 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
       return;
     }
     final next = (_index - 1) < 0 ? _playlist.length - 1 : _index - 1;
-    _open(next);
+    unawaited(_slideTo(next));
   }
 
   void _goNext() {
@@ -581,10 +667,186 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
     if (_shuffle) {
       var next = _random.nextInt(_playlist.length);
       if (next == _index) next = (next + 1) % _playlist.length;
-      _open(next);
+      unawaited(_slideTo(next));
       return;
     }
-    _open((_index + 1) % _playlist.length);
+    unawaited(_slideTo((_index + 1) % _playlist.length));
+  }
+
+  Future<void> _slideTo(int index) async {
+    if (index == _index || index < 0 || index >= _playlist.length) return;
+    if (!_coverController.hasClients) {
+      await _open(index);
+      return;
+    }
+    final distance = (index - _index).abs();
+    if (distance == 1) {
+      await _coverController.animateToPage(
+        index,
+        duration: const Duration(milliseconds: 340),
+        curve: Curves.easeOutCubic,
+      );
+      return;
+    }
+    _coverController.jumpToPage(index);
+  }
+
+  String _trackKey(AudioTrackDetails track) {
+    final job = track.sourceJobId ?? '';
+    final id = track.sourceTrackId ?? '';
+    if (job.isNotEmpty && id.isNotEmpty) return '$job|$id';
+    if (track.filePath.isNotEmpty) return 'file:${track.filePath}';
+    final url = track.networkUrl;
+    if (url != null && url.isNotEmpty) return 'url:$url';
+    return 'title:$job|${track.title}';
+  }
+
+  List<AudioTrackDetails> _withJobVersions(List<AudioTrackDetails> tracks) {
+    final out = List<AudioTrackDetails>.of(tracks);
+    final seen = out.map(_trackKey).toSet();
+    final jobIds = <String>{
+      for (final track in out)
+        if (track.sourceJobId != null && track.sourceJobId!.isNotEmpty)
+          track.sourceJobId!,
+    };
+    for (final jobId in jobIds) {
+      JobModel? job;
+      for (final item in jobListNotifier.value) {
+        if (item.jobId == jobId) {
+          job = item;
+          break;
+        }
+      }
+      if (job == null) continue;
+      for (final track in audioTracksFromJob(job)) {
+        if (seen.add(_trackKey(track))) out.add(track);
+      }
+    }
+    return out;
+  }
+
+  List<AudioTrackDetails> _withSavedLibrary(List<AudioTrackDetails> own) {
+    final out = List<AudioTrackDetails>.of(own);
+    final seen = out.map(_trackKey).toSet();
+    final ownJobs = <String>{
+      for (final track in out)
+        if (track.sourceJobId != null && track.sourceJobId!.isNotEmpty)
+          track.sourceJobId!,
+    };
+    final ownFiles = <String>{
+      for (final track in out)
+        if (track.filePath.isNotEmpty) track.filePath,
+    };
+    for (final job in jobListNotifier.value) {
+      if (ownJobs.contains(job.jobId)) continue;
+      final path = job.localFilePath;
+      if (path == null || path.isEmpty || !File(path).existsSync()) continue;
+      if (!job.isAudioOutput && job.music == null) continue;
+      final tracks = audioTracksFromJob(job);
+      final rows = tracks.isEmpty ? [AudioTrackDetails.fromJob(job)] : tracks;
+      for (final track in rows) {
+        if (track.filePath.isNotEmpty && ownFiles.contains(track.filePath)) {
+          continue;
+        }
+        if (seen.add(_trackKey(track))) out.add(track);
+      }
+    }
+    return out;
+  }
+
+  JobModel? _sourceJob(AudioTrackDetails track) {
+    final id = track.sourceJobId;
+    if (id == null || id.isEmpty) return null;
+    for (final job in jobListNotifier.value) {
+      if (job.jobId == id) return job;
+    }
+    return null;
+  }
+
+  String _visibleTitle(AudioTrackDetails track) {
+    final job = _sourceJob(track);
+    if (job != null) return _songTitle(track.title, _displayTitle(job.title, job.originalPrompt));
+    return _songTitle(track.title, null);
+  }
+
+  String _visibleArtist(AudioTrackDetails track) {
+    final job = _sourceJob(track);
+    if (job == null) return track.artist;
+    return displayNameForModel(
+      preferInternalModelId(job.settingsSnapshot?['modelId']?.toString(), job.model),
+    );
+  }
+
+  String _resolvedStyle(AudioTrackDetails track) {
+    if (track.style.trim().isNotEmpty) return track.style;
+    final job = _sourceJob(track);
+    if (job == null) return '';
+    final snap = job.settingsSnapshot ?? const <String, dynamic>{};
+    return _clean(snap['style']) ??
+        _clean(job.originalPrompt) ??
+        _clean(snap['prompt']) ??
+        '';
+  }
+
+  String? _resolvedLyrics(AudioTrackDetails track) {
+    final own = track.lyrics?.trim();
+    if (own != null && own.isNotEmpty) return track.lyrics;
+    final job = _sourceJob(track);
+    if (job == null) return track.lyrics;
+    final snap = job.settingsSnapshot ?? const <String, dynamic>{};
+    final music = job.music;
+    if (music != null) {
+      final sheet = MusicResult.fromJson(music);
+      final text = sheet.lyrics.isEmpty ? null : sheet.lyrics.first.text;
+      final kept = _clean(text);
+      if (kept != null) return kept;
+    }
+    return _clean(snap['lyrics']) ?? track.lyrics;
+  }
+
+  Future<void> _shareTrack() async {
+    final title = _visibleTitle(_track);
+    var path = _track.filePath;
+    if (path.isEmpty || !File(path).existsSync()) {
+      final url = _track.networkUrl;
+      if (url == null || url.isEmpty) {
+        _toast('Nothing to share yet');
+        return;
+      }
+      try {
+        final response = await http
+            .get(Uri.parse(url))
+            .timeout(const Duration(seconds: 60));
+        if (response.statusCode != 200 || !mounted) {
+          _toast('Could not share this song');
+          return;
+        }
+        final dir = await getTemporaryDirectory();
+        final safe = title.replaceAll(RegExp(r'[\\/:*?"<>|]'), '').trim();
+        final file = File('${dir.path}/${safe.isEmpty ? 'song' : safe}.mp3');
+        await file.writeAsBytes(response.bodyBytes, flush: true);
+        path = file.path;
+      } catch (_) {
+        if (mounted) _toast('Could not share this song');
+        return;
+      }
+    }
+    if (!mounted) return;
+    final box = context.findRenderObject();
+    final origin = box is RenderBox && box.hasSize
+        ? box.localToGlobal(Offset.zero) & box.size
+        : null;
+    await Share.shareXFiles(
+      [XFile(path)],
+      text: title,
+      sharePositionOrigin: origin,
+    );
+  }
+
+  void _toast(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+    );
   }
 
   void _seek(double fraction) {
@@ -640,13 +902,13 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
                   imageUrl: track.coverUrl,
                 ),
                 title: Text(
-                  track.title,
+                  _visibleTitle(track),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(color: Colors.white),
                 ),
                 subtitle: Text(
-                  track.artist,
+                  _visibleArtist(track),
                   style: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
                 ),
                 trailing: selected
@@ -654,7 +916,7 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
                     : null,
                 onTap: () {
                   Navigator.pop(context);
-                  _open(index);
+                  unawaited(_slideTo(index));
                 },
               );
             },
@@ -700,18 +962,46 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
                     children: [
                       _coverRow(),
                       const SizedBox(height: 22),
-                      Text(
-                        _track.title,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 28,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -0.4,
-                        ),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              _visibleTitle(_track),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 28,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: -0.4,
+                              ),
+                            ),
+                          ),
+                          if (_track.streaming) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: const Text(
+                                'Streaming',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        _track.artist,
+                        _visibleArtist(_track),
                         style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.72),
                           fontSize: 16,
@@ -722,11 +1012,10 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
                         children: [
                           _iconAction(
                             icon: Icons.ios_share_rounded,
-                            tooltip: 'Copy song details',
-                            onPressed: () => _copy(
-                              'song details',
-                              '${_track.title}\n${_track.artist}\n${_track.style}',
-                            ),
+                            tooltip: 'Share',
+                            onPressed: () {
+                              unawaited(_shareTrack());
+                            },
                           ),
                           const SizedBox(width: 8),
                           _iconAction(
@@ -742,13 +1031,17 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
                         runSpacing: 8,
                         children: [
                           _pill(
-                            icon: Icons.thumb_up_alt_outlined,
+                            icon: _reaction == 'like'
+                                ? Icons.thumb_up_alt
+                                : Icons.thumb_up_alt_outlined,
                             selected: _reaction == 'like',
                             onTap: () => _setReaction('like'),
                             tooltip: 'Like',
                           ),
                           _pill(
-                            icon: Icons.thumb_down_alt_outlined,
+                            icon: _reaction == 'dislike'
+                                ? Icons.thumb_down_alt
+                                : Icons.thumb_down_alt_outlined,
                             selected: _reaction == 'dislike',
                             onTap: () => _setReaction('dislike'),
                             tooltip: 'Dislike',
@@ -760,7 +1053,7 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
                               onTap: _remix,
                               tooltip: 'Remix in Music',
                             ),
-                          if (_playlist.length > 1)
+                          if (_playlist.isNotEmpty)
                             _pill(
                               icon: Icons.queue_music_rounded,
                               label: 'Playlist',
@@ -770,14 +1063,6 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
                         ],
                       ),
                       const SizedBox(height: 18),
-                      if (_track.streaming)
-                        const Padding(
-                          padding: EdgeInsets.only(bottom: 8),
-                          child: Text(
-                            'Streaming. The full song replaces this when it is ready.',
-                            style: TextStyle(color: Colors.white70, fontSize: 12),
-                          ),
-                        ),
                       AudioPlayClock(
                         controller: _controller,
                         knownDuration: _track.knownDuration ?? Duration.zero,
@@ -802,15 +1087,15 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
                       const SizedBox(height: 12),
                       _infoCard(
                         title: 'Style Description',
-                        body: _track.style.isEmpty
+                        body: _resolvedStyle(_track).isEmpty
                             ? 'No description was saved with this audio.'
-                            : _track.style,
+                            : _resolvedStyle(_track),
                         expanded: _styleExpanded,
                         onToggle: () =>
                             setState(() => _styleExpanded = !_styleExpanded),
-                        onCopy: _track.style.isEmpty
+                        onCopy: _resolvedStyle(_track).isEmpty
                             ? null
-                            : () => _copy('style', _track.style),
+                            : () => _copy('style', _resolvedStyle(_track)),
                       ),
                       const SizedBox(height: 12),
                       _infoCard(
@@ -883,46 +1168,27 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
   }
 
   Widget _coverRow() {
-    final next = _playlist.length > 1
-        ? _playlist[(_index + 1) % _playlist.length]
-        : null;
     return LayoutBuilder(
       builder: (context, constraints) {
-        final size = min(constraints.maxWidth * 0.78, 320.0);
+        final size = min(constraints.maxWidth * 0.72, 300.0);
         return SizedBox(
           height: size,
-          child: GestureDetector(
-            onHorizontalDragEnd: (details) {
-              final velocity = details.primaryVelocity ?? 0;
-              if (velocity < -180) _goNext();
-              if (velocity > 180) _goPrevious();
+          child: PageView.builder(
+            controller: _coverController,
+            itemCount: _playlist.length,
+            onPageChanged: (index) {
+              if (index != _index) unawaited(_open(index));
             },
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                if (next != null)
-                  Positioned(
-                    right: 0,
-                    top: 16,
-                    child: GestureDetector(
-                      onTap: _goNext,
-                      child: Opacity(
-                        opacity: 0.95,
-                        child: _ScribbleCover(
-                          seed: next.coverSeed,
-                          size: size * 0.82,
-                          imageUrl: next.coverUrl,
-                        ),
-                      ),
-                    ),
-                  ),
-                _ScribbleCover(
-                  seed: _track.coverSeed,
-                  size: size,
-                  imageUrl: _track.coverUrl,
+            itemBuilder: (context, index) {
+              final track = _playlist[index];
+              return Center(
+                child: _ScribbleCover(
+                  seed: track.coverSeed,
+                  size: size * 0.92,
+                  imageUrl: track.coverUrl,
                 ),
-              ],
-            ),
+              );
+            },
           ),
         );
       },
@@ -1005,9 +1271,7 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
       children: [
         IconButton(
           tooltip: 'Shuffle',
-          onPressed: _playlist.length < 2
-              ? null
-              : () => setState(() => _shuffle = !_shuffle),
+          onPressed: () => setState(() => _shuffle = !_shuffle),
           icon: Icon(
             Icons.shuffle_rounded,
             color: _shuffle ? Colors.white : Colors.white54,
@@ -1046,7 +1310,7 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
         ),
         IconButton(
           tooltip: 'Queue',
-          onPressed: _playlist.length < 2 ? null : _showQueue,
+          onPressed: _playlist.isEmpty ? null : _showQueue,
           icon: const Icon(Icons.queue_music_rounded, color: Colors.white70),
         ),
       ],
@@ -1113,31 +1377,35 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
   String _aboutLine() {
     final created = _track.createdAt;
     final when = created == null ? null : _formatDate(created);
-    if (when == null) return 'Made with ${_track.artist}';
-    return 'Created on $when with ${_track.artist}';
+    final artist = _visibleArtist(_track);
+    if (when == null) return 'Made with $artist';
+    return 'Created on $when with $artist';
   }
 
   String _wordsBody() {
     if (_track.instrumental) return '[Instrumental]';
-    final lyrics = _track.lyrics;
+    final lyrics = _resolvedLyrics(_track);
     if (lyrics != null && lyrics.isNotEmpty) return lyrics;
-    if (_track.wordsAreScript && _track.style.isNotEmpty) return _track.style;
+    final style = _resolvedStyle(_track);
+    if (_track.wordsAreScript && style.isNotEmpty) return style;
     if (_track.wordsAreScript) return 'No script was saved with this audio.';
     return 'Lyrics were not kept with this creation.';
   }
 
   VoidCallback? _wordsCopy() {
     if (_track.instrumental) return () => _copy('lyrics', '[Instrumental]');
-    final lyrics = _track.lyrics;
+    final lyrics = _resolvedLyrics(_track);
     if (lyrics != null && lyrics.isNotEmpty) return () => _copy('lyrics', lyrics);
-    if (_track.wordsAreScript && _track.style.isNotEmpty) {
-      return () => _copy('script', _track.style);
+    final style = _resolvedStyle(_track);
+    if (_track.wordsAreScript && style.isNotEmpty) {
+      return () => _copy('script', style);
     }
     return null;
   }
 
   void _more() {
-    final lyrics = _track.lyrics;
+    final lyrics = _resolvedLyrics(_track);
+    final style = _resolvedStyle(_track);
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: const Color(0xFF1A1224),
@@ -1149,13 +1417,13 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (_track.style.isNotEmpty)
+              if (style.isNotEmpty)
                 ListTile(
                   leading: const Icon(Icons.copy_rounded, color: Colors.white),
                   title: const Text('Copy style', style: TextStyle(color: Colors.white)),
                   onTap: () {
                     Navigator.pop(context);
-                    _copy('style', _track.style);
+                    _copy('style', style);
                   },
                 ),
               if (lyrics != null && lyrics.isNotEmpty)

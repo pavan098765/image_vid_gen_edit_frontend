@@ -68,9 +68,9 @@ void main() {
   });
 
   test('credit table matches the studio spec', () {
-    expect(sunoV6CreditCost(action: 'song'), 260);
-    expect(sunoV6CreditCost(action: 'sounds'), 25);
-    expect(sunoV6CreditCost(action: 'replace'), 260);
+    expect(sunoV6CreditCost(action: 'song'), 65);
+    expect(sunoV6CreditCost(action: 'sounds'), 15);
+    expect(sunoV6CreditCost(action: 'replace'), 65);
     expect(sunoV6CreditCost(action: 'lyrics'), 20);
     expect(sunoV6CreditCost(action: 'covers'), 40);
     expect(sunoV6CreditCost(action: 'video'), 80);
@@ -157,6 +157,51 @@ void main() {
     expect(merged.tracks.first.playUrl, 'https://example.com/song.mp3');
     expect(merged.tracks.first.isStreaming, isFalse);
     expect(merged.tracks.first.lyrics, contains('[Chorus]'));
+  });
+
+  test('two versions that share a title stay separate', () {
+    final current = MusicResult.fromJson({
+      'action': 'song',
+      'tracks': [
+        {'id': 'audio-a', 'title': 'Same Song', 'audio_url': 'https://example.com/a.mp3'},
+        {'id': 'audio-b', 'title': 'Same Song', 'stream_audio_url': 'https://example.com/b-stream'},
+      ],
+    });
+    final incoming = MusicResult.fromJson({
+      'action': 'song',
+      'tracks': [
+        {'id': 'audio-a', 'title': 'Same Song', 'audio_url': 'https://example.com/a-final.mp3'},
+        {'id': 'audio-b', 'title': 'Same Song', 'audio_url': 'https://example.com/b-final.mp3'},
+      ],
+    });
+
+    final merged = current.absorb(incoming);
+
+    expect(merged.tracks, hasLength(2));
+    expect(merged.tracks[0].id, 'audio-a');
+    expect(merged.tracks[0].playUrl, 'https://example.com/a-final.mp3');
+    expect(merged.tracks[1].id, 'audio-b');
+    expect(merged.tracks[1].playUrl, 'https://example.com/b-final.mp3');
+    expect(merged.tracks[1].isStreaming, isFalse);
+  });
+
+  test('a track with no id merges only when its title is unique', () {
+    final current = MusicResult.fromJson({
+      'tracks': [
+        {'id': 'audio-a', 'title': 'Only Song', 'audio_url': 'https://example.com/a.mp3'},
+      ],
+    });
+    final incoming = MusicResult.fromJson({
+      'tracks': [
+        {'title': 'Only Song', 'lyrics': '[Verse]\nkept'},
+      ],
+    });
+
+    final merged = current.absorb(incoming);
+
+    expect(merged.tracks, hasLength(1));
+    expect(merged.tracks.single.id, 'audio-a');
+    expect(merged.tracks.single.lyrics, contains('kept'));
   });
 
   test('a later file replaces an earlier audio url and reads the cover', () {
