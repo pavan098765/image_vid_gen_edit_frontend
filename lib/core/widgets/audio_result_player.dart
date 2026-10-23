@@ -169,11 +169,11 @@ List<AudioTrackDetails> audioTracksFromMusic(
             lyrics: fullerLyrics(track, music.lyrics),
             tags: track.tags,
             duration: track.duration,
-            audioUrl: track.audioUrl,
+            audioUrl: track.streamsDuring(music.phase) ? null : track.audioUrl,
             streamUrl: track.streamUrl,
             coverUrl: track.coverUrl ??
                 (music.covers.isNotEmpty ? music.covers.first : null),
-            downloadUrl: track.downloadUrl,
+            downloadUrl: track.streamsDuring(music.phase) ? null : track.downloadUrl,
           ),
           jobId: jobId,
           artist: artist,

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -68,7 +69,12 @@ class BacklitWash extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          _field(isDark, upperBloom, sideBloom, glowAlignment),
+          _DriftingLights(
+            isDark: isDark,
+            upper: upperBloom,
+            side: sideBloom,
+            glowAlignment: glowAlignment,
+          ),
           DecoratedBox(
             decoration: BoxDecoration(
               gradient: RadialGradient(
@@ -86,58 +92,123 @@ class BacklitWash extends StatelessWidget {
       ),
     );
   }
+}
 
-  Widget _field(
-    bool isDark,
-    List<Color> upper,
-    List<Color> side,
-    Alignment glowAlignment,
-  ) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final width = constraints.maxWidth <= 0 ? 390.0 : constraints.maxWidth;
-        Widget light(
-          Alignment alignment,
-          double scale,
-          List<Color> colors,
-          double strength,
-        ) {
-          return Align(
-            alignment: alignment,
-            child: _Glow(
-              colors: colors,
-              diameter: width * scale,
-              strength: strength,
-            ),
-          );
+/// Slow drift of the logo lights. A few updates a second is enough,
+/// and the wash repaints on its own so the rest of the screen stays still.
+class _DriftingLights extends StatefulWidget {
+  final bool isDark;
+  final List<Color> upper;
+  final List<Color> side;
+  final Alignment glowAlignment;
+
+  const _DriftingLights({
+    required this.isDark,
+    required this.upper,
+    required this.side,
+    required this.glowAlignment,
+  });
+
+  @override
+  State<_DriftingLights> createState() => _DriftingLightsState();
+}
+
+class _DriftingLightsState extends State<_DriftingLights> {
+  Timer? _timer;
+  double _shift = 0;
+  bool _forward = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(milliseconds: 280), (_) {
+      if (!mounted) return;
+      setState(() {
+        _shift += _forward ? 0.045 : -0.045;
+        if (_shift >= 1) {
+          _shift = 1;
+          _forward = false;
+        } else if (_shift <= 0) {
+          _shift = 0;
+          _forward = true;
         }
+      });
+    });
+  }
 
-        // The two blooms overlap in violet so they read as one logo light.
-        final bridge = [
-          Color.lerp(upper.first, side.first, 0.5)!,
-          const Color(0xFF7B5EFF),
-        ];
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
 
-        if (isDark) {
+  List<Color> _drift(List<Color> colors) {
+    if (colors.length < 2) return colors;
+    final core = Color.lerp(colors[0], colors[1], _shift * 0.55)!;
+    final mid = colors.length > 2
+        ? Color.lerp(colors[1], colors[2], _shift * 0.45)!
+        : colors[1];
+    final edge = colors.length > 2 ? colors[2] : mid;
+    return [core, mid, edge];
+  }
+
+  Alignment _nudge(Alignment base, double dx, double dy) {
+    final wave = (_shift - 0.5) * 2;
+    return Alignment(
+      (base.x + dx * wave).clamp(-1.0, 1.0),
+      (base.y + dy * wave).clamp(-1.0, 1.0),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final upper = _drift(widget.upper);
+    final side = _drift(widget.side);
+    final breathe = 0.92 + (_shift * 0.08);
+    return RepaintBoundary(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final width = constraints.maxWidth <= 0 ? 390.0 : constraints.maxWidth;
+          Widget light(
+            Alignment alignment,
+            double scale,
+            List<Color> colors,
+            double strength,
+          ) {
+            return Align(
+              alignment: alignment,
+              child: _Glow(
+                colors: colors,
+                diameter: width * scale,
+                strength: strength * breathe,
+              ),
+            );
+          }
+
+          final bridge = [
+            Color.lerp(upper.first, side.first, 0.5)!,
+            const Color(0xFF7B5EFF),
+          ];
+          if (widget.isDark) {
+            return Stack(
+              fit: StackFit.expand,
+              children: [
+                light(_nudge(widget.glowAlignment, 0.05, 0.04), 1.62, upper, 0.46),
+                light(_nudge(const Alignment(0.82, -0.18), -0.04, 0.03), 1.28, side, 0.36),
+                light(const Alignment(0.05, 0.62), 1.45, bridge, 0.16),
+              ],
+            );
+          }
           return Stack(
             fit: StackFit.expand,
             children: [
-              light(glowAlignment, 1.62, upper, 0.46),
-              light(const Alignment(0.82, -0.18), 1.28, side, 0.36),
-              light(const Alignment(0.05, 0.62), 1.45, bridge, 0.16),
+              light(_nudge(widget.glowAlignment, 0.04, 0.03), 1.5, upper, 0.2),
+              light(_nudge(const Alignment(0.8, -0.12), -0.03, 0.02), 1.2, side, 0.16),
+              light(const Alignment(0.05, 0.7), 1.35, bridge, 0.1),
             ],
           );
-        }
-
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            light(glowAlignment, 1.5, upper, 0.2),
-            light(const Alignment(0.8, -0.12), 1.2, side, 0.16),
-            light(const Alignment(0.05, 0.7), 1.35, bridge, 0.1),
-          ],
-        );
-      },
+        },
+      ),
     );
   }
 }

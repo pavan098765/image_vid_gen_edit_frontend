@@ -185,6 +185,32 @@ void main() {
     expect(merged.tracks[1].isStreaming, isFalse);
   });
 
+  test('two versions that share a title and have no id stay separate', () {
+    final merged = const MusicResult().absorb(MusicResult.fromJson({
+      'phase': 'first_track',
+      'tracks': [
+        {'title': 'Same Song', 'stream_audio_url': 'https://example.com/a-stream'},
+        {'title': 'Same Song', 'stream_audio_url': 'https://example.com/b-stream'},
+      ],
+    }));
+    expect(merged.tracks, hasLength(2));
+    expect(merged.tracks[0].urlDuring('first_track'), 'https://example.com/a-stream');
+    expect(merged.tracks[1].urlDuring('first_track'), 'https://example.com/b-stream');
+    expect(merged.tracks[0].streamsDuring('first_track'), isTrue);
+  });
+
+  test('a version streams until the song is finished', () {
+    final track = MusicTrack.fromJson({
+      'id': 'audio-1',
+      'audio_url': 'https://example.com/partial.mp3',
+      'stream_audio_url': 'https://example.com/stream',
+    });
+    expect(track.streamsDuring('first_track'), isTrue);
+    expect(track.urlDuring('first_track'), 'https://example.com/stream');
+    expect(track.streamsDuring('complete'), isFalse);
+    expect(track.urlDuring('complete'), 'https://example.com/partial.mp3');
+  });
+
   test('a track with no id merges only when its title is unique', () {
     final current = MusicResult.fromJson({
       'tracks': [

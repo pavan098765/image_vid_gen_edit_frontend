@@ -367,6 +367,19 @@ class MusicTrack {
     return true;
   }
 
+  /// Play the stream while the song is still arriving, even if a file URL is
+  /// already attached. That early file is not the finished download.
+  bool streamsDuring(String phase) {
+    final stream = streamUrl;
+    if (stream == null || stream.isEmpty) return false;
+    return phase == 'first_track' || phase == 'composing';
+  }
+
+  String? urlDuring(String phase) {
+    if (streamsDuring(phase)) return streamUrl;
+    return fileUrl ?? streamUrl;
+  }
+
   /// Play the finished file once it exists. Until then, play the stream.
   String? get playUrl => fileUrl ?? streamUrl;
 
@@ -496,7 +509,8 @@ class MusicResult {
   bool get canFollowUp =>
       isComplete && taskId != null && taskId!.isNotEmpty && tracks.isNotEmpty;
 
-  bool get anyStreaming => tracks.any((track) => track.isStreaming);
+  bool get anyStreaming =>
+      tracks.any((track) => track.streamsDuring(phase) || track.isStreaming);
 
   MusicResult absorb(MusicResult next) {
     final nextRank = sunoV6PhaseRank(next.phase);
@@ -636,18 +650,21 @@ List<T> _mapList<T>(
 
 List<MusicTrack> _mergeTracks(List<MusicTrack> current, List<MusicTrack> incoming) {
   final out = List<MusicTrack>.from(current);
+  final untitledIncoming =
+      incoming.where((track) => _trackKey(track).isEmpty).length;
   for (final next in incoming) {
     var index = -1;
-    if (next.id.isNotEmpty) {
+    final key = _trackKey(next);
+    if (key.isNotEmpty) {
       for (var i = 0; i < out.length; i++) {
-        if (out[i].id == next.id) {
+        if (_trackKey(out[i]) == key) {
           index = i;
           break;
         }
       }
-    } else {
-      // A title match is only safe when this update has no id and exactly one
-      // stored track uses that title. Two HitMaker versions often share a name.
+    } else if (untitledIncoming == 1) {
+      // A title match is only safe for a single update that has no id and no
+      // url. Two HitMaker versions often share a name.
       final title = next.title.trim().toLowerCase();
       if (title.isNotEmpty && title != 'untitled') {
         final matches = <int>[];
@@ -664,6 +681,13 @@ List<MusicTrack> _mergeTracks(List<MusicTrack> current, List<MusicTrack> incomin
     }
   }
   return out;
+}
+
+String _trackKey(MusicTrack track) {
+  if (track.id.isNotEmpty) return 'id:${track.id}';
+  final url = track.audioUrl ?? track.streamUrl ?? track.downloadUrl ?? '';
+  if (url.isNotEmpty) return 'url:$url';
+  return '';
 }
 
 List<MusicLyricSheet> _mergeSheets(

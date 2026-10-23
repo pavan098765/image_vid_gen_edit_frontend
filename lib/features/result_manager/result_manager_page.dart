@@ -1811,10 +1811,13 @@ class _JobCardState extends State<JobCard> {
   Future<void> _openMusicVersion(int index) async {
     final tracks = audioTracksFromJob(widget.job);
     if (tracks.isEmpty || !mounted) return;
+    final phase = _musicResult?.phase ?? '';
     final playable = <int>[];
     final musicTracks = _musicResult?.tracks ?? const <MusicTrack>[];
     for (var i = 0; i < tracks.length; i++) {
-      if (i < musicTracks.length && musicTracks[i].isPlayable) playable.add(i);
+      if (i < musicTracks.length && musicTracks[i].urlDuring(phase) != null) {
+        playable.add(i);
+      }
     }
     if (playable.isEmpty) return;
     final start = playable.contains(index) ? index : playable.first;
@@ -1850,8 +1853,9 @@ class _JobCardState extends State<JobCard> {
   }
 
   String _versionState(MusicTrack? track) {
-    if (track == null || !track.isPlayable) return 'On the way';
-    if (track.isStreaming) return 'Streaming';
+    final phase = _musicResult?.phase ?? '';
+    if (track == null || track.urlDuring(phase) == null) return 'On the way';
+    if (track.streamsDuring(phase)) return 'Streaming';
     final length = track.knownDuration;
     if (length == null) return 'Ready';
     final minutes = length.inMinutes;
@@ -1865,9 +1869,10 @@ class _JobCardState extends State<JobCard> {
     int index,
     List<String> names,
   ) {
+    final phase = _musicResult?.phase ?? '';
     final label = index < names.length ? 'Version ${names[index]}' : 'Version ${index + 1}';
-    final playable = track != null && track.isPlayable;
-    final streaming = track?.isStreaming == true;
+    final playable = track != null && track.urlDuring(phase) != null;
+    final streaming = track?.streamsDuring(phase) == true;
     return Material(
       color: cs.surfaceContainerHighest.withValues(alpha: 0.45),
       borderRadius: BorderRadius.circular(12),
