@@ -3,9 +3,8 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 /// Atmospheric light behind the app.
-/// Dark mode is smoked glass over a deep violet and amber bloom.
-/// Light mode is frosted crystal over a lit lilac and peach page.
-/// Each theme has its own palette. They are not the same wash at a different brightness.
+/// Both blooms are stops on the logo gradient: gold into magenta, cyan into violet.
+/// Dark mode keeps those neons on a near-black field. Light mode uses the same hues, lifted and softer, so type stays readable.
 class BacklitWash extends StatelessWidget {
   final Alignment glowAlignment;
   final Color? glow;
@@ -27,26 +26,41 @@ class BacklitWash extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark =
         forceDark || Theme.of(context).brightness == Brightness.dark;
-    final cool = glow ??
-        (isDark ? const Color(0xFF8B6CFF) : const Color(0xFF7B5EFF));
-    final amber = warm ??
-        (isDark ? const Color(0xFFE08A45) : const Color(0xFFFF9A62));
+    // Logo crystal: gold → magenta on one side, cyan → violet on the other.
+    const gold = Color(0xFFFFB020);
+    const magenta = Color(0xFFFF4D9A);
+    const violet = Color(0xFF7B5EFF);
+    const cyan = Color(0xFF00C8FF);
+    const blue = Color(0xFF3D7CFF);
+
+    // Upper light follows the gold crystal. The other follows the cyan crystal.
+    // A passed color still owns its light, then fades toward the shared violet.
+    final upperBloom = glow == null
+        ? (isDark
+            ? const [gold, magenta, violet]
+            : const [Color(0xFFFFC27A), Color(0xFFFF8EC8), Color(0xFFC9B0FF)])
+        : [glow!, Color.lerp(glow!, magenta, 0.35)!];
+    final sideBloom = warm == null
+        ? (isDark
+            ? const [cyan, blue, violet]
+            : const [Color(0xFF7AD4FF), Color(0xFF8AA6FF), Color(0xFFD4C6FF)])
+        : [warm!, Color.lerp(warm!, violet, 0.4)!];
 
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
           colors: isDark
               ? const [
-                  Color(0xFF1A1024),
-                  Color(0xFF100C16),
-                  Color(0xFF16100E),
+                  Color(0xFF140818),
+                  Color(0xFF0A0814),
+                  Color(0xFF07101C),
                 ]
               : const [
-                  Color(0xFFF3E9FF),
-                  Color(0xFFFBF7FF),
-                  Color(0xFFFFF0E4),
+                  Color(0xFFFFF7F2),
+                  Color(0xFFF8F4FF),
+                  Color(0xFFF3F7FF),
                 ],
           stops: const [0.0, 0.48, 1.0],
         ),
@@ -54,15 +68,15 @@ class BacklitWash extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          _field(isDark, cool, amber),
+          _field(isDark, upperBloom, sideBloom, glowAlignment),
           DecoratedBox(
             decoration: BoxDecoration(
               gradient: RadialGradient(
                 radius: 1.15,
                 colors: [
                   Colors.transparent,
-                  (isDark ? Colors.black : const Color(0xFF5C4788))
-                      .withValues(alpha: isDark ? 0.42 : 0.07),
+                  (isDark ? Colors.black : const Color(0xFF3A2A66))
+                      .withValues(alpha: isDark ? 0.45 : 0.06),
                 ],
                 stops: const [0.58, 1],
               ),
@@ -73,29 +87,44 @@ class BacklitWash extends StatelessWidget {
     );
   }
 
-  Widget _field(bool isDark, Color cool, Color amber) {
+  Widget _field(
+    bool isDark,
+    List<Color> upper,
+    List<Color> side,
+    Alignment glowAlignment,
+  ) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth <= 0 ? 390.0 : constraints.maxWidth;
-        Widget light(Alignment alignment, double scale, Color color, double strength) {
+        Widget light(
+          Alignment alignment,
+          double scale,
+          List<Color> colors,
+          double strength,
+        ) {
           return Align(
             alignment: alignment,
             child: _Glow(
-              color: color,
+              colors: colors,
               diameter: width * scale,
               strength: strength,
             ),
           );
         }
 
+        // The two blooms overlap in violet so they read as one logo light.
+        final bridge = [
+          Color.lerp(upper.first, side.first, 0.5)!,
+          const Color(0xFF7B5EFF),
+        ];
+
         if (isDark) {
           return Stack(
             fit: StackFit.expand,
             children: [
-              light(glowAlignment, 1.55, cool, 0.42),
-              light(const Alignment(0.9, -0.35), 1.05, const Color(0xFF5B3CC4), 0.28),
-              light(const Alignment(0.15, 0.72), 1.35, amber, 0.26),
-              light(const Alignment(-0.8, 0.25), 0.7, const Color(0xFF3D8BFF), 0.12),
+              light(glowAlignment, 1.62, upper, 0.46),
+              light(const Alignment(0.82, -0.18), 1.28, side, 0.36),
+              light(const Alignment(0.05, 0.62), 1.45, bridge, 0.16),
             ],
           );
         }
@@ -103,10 +132,9 @@ class BacklitWash extends StatelessWidget {
         return Stack(
           fit: StackFit.expand,
           children: [
-            light(glowAlignment, 1.45, cool, 0.22),
-            light(const Alignment(0.85, -0.2), 1.05, const Color(0xFFC4B0FF), 0.2),
-            light(const Alignment(0.25, 0.85), 1.3, amber, 0.18),
-            light(const Alignment(-0.7, 0.35), 0.75, const Color(0xFF8FD8FF), 0.14),
+            light(glowAlignment, 1.5, upper, 0.2),
+            light(const Alignment(0.8, -0.12), 1.2, side, 0.16),
+            light(const Alignment(0.05, 0.7), 1.35, bridge, 0.1),
           ],
         );
       },
@@ -115,18 +143,21 @@ class BacklitWash extends StatelessWidget {
 }
 
 class _Glow extends StatelessWidget {
-  final Color color;
+  final List<Color> colors;
   final double diameter;
   final double strength;
 
   const _Glow({
-    required this.color,
+    required this.colors,
     required this.diameter,
     required this.strength,
   });
 
   @override
   Widget build(BuildContext context) {
+    final core = colors.first;
+    final mid = colors.length > 1 ? colors[1] : core;
+    final edge = colors.length > 2 ? colors[2] : mid;
     return IgnorePointer(
       child: Container(
         width: diameter,
@@ -135,12 +166,12 @@ class _Glow extends StatelessWidget {
           shape: BoxShape.circle,
           gradient: RadialGradient(
             colors: [
-              color.withValues(alpha: strength),
-              color.withValues(alpha: strength * 0.42),
-              color.withValues(alpha: strength * 0.12),
-              color.withValues(alpha: 0),
+              core.withValues(alpha: strength),
+              mid.withValues(alpha: strength * 0.55),
+              edge.withValues(alpha: strength * 0.16),
+              edge.withValues(alpha: 0),
             ],
-            stops: const [0.0, 0.32, 0.62, 1.0],
+            stops: const [0.0, 0.28, 0.58, 1.0],
           ),
         ),
       ),
@@ -282,10 +313,16 @@ class FrostedPane extends StatelessWidget {
             offset: const Offset(0, 12),
           ),
           BoxShadow(
-            color: (isDark ? const Color(0xFF7B5EFF) : const Color(0xFF8A6BFF))
-                .withValues(alpha: isDark ? 0.16 : 0.12),
+            color: const Color(0xFFFF4D9A)
+                .withValues(alpha: isDark ? 0.14 : 0.1),
             blurRadius: 28,
-            offset: const Offset(0, 8),
+            offset: const Offset(-6, 8),
+          ),
+          BoxShadow(
+            color: const Color(0xFF00C8FF)
+                .withValues(alpha: isDark ? 0.12 : 0.1),
+            blurRadius: 28,
+            offset: const Offset(8, 10),
           ),
         ],
       ),
