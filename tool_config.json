@@ -322,8 +322,8 @@
           "✨ Popular"
         ],
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "qwen2_1_i2i",
+        "preferred_model": "qwen2_1_i2i",
         "job_config": {
           "prompt": "Professional photo enhancement, soft glowing skin, balanced lighting, subtle retouching, natural look, high quality"
         }
@@ -340,8 +340,8 @@
           "Professional"
         ],
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "qwen2_1_i2i",
+        "preferred_model": "qwen2_1_i2i",
         "job_config": {
           "prompt": "Professional headshot photo, studio lighting, clean background, sharp focus, business attire appearance, LinkedIn profile quality"
         }
@@ -358,8 +358,8 @@
           "🎨 Art"
         ],
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "flux2_klein_9b_edit",
+        "preferred_model": "flux2_klein_9b_edit",
         "job_config": {
           "prompt": "Anime style portrait, detailed eyes, soft shading, studio ghibli inspired, vibrant colors, clean linework, beautiful anime character"
         }
@@ -376,10 +376,10 @@
           "⚡ Quick"
         ],
         "capability": "remove_background",
-        "model": "basic_utils",
-        "preferred_model": "basic_utils",
+        "model": "recraft_remove_background",
+        "preferred_model": "recraft_remove_background",
         "job_config": {
-          "scale_factor": 2
+          "scale_factor": 1
         }
       },
       "hd_upscale": {
@@ -394,10 +394,11 @@
           "HD"
         ],
         "capability": "upscale",
-        "model": "aurasrv2",
-        "preferred_model": "aurasrv2",
+        "model": "realesrgan_upscale",
+        "preferred_model": "realesrgan_upscale",
         "job_config": {
-          "scale_factor": 4
+          "scale_factor": 1,
+          "upscale_factor": 4
         }
       },
       "anime_upscale": {
@@ -413,10 +414,11 @@
           "4K"
         ],
         "capability": "upscale",
-        "model": "aurasrv2",
-        "preferred_model": "aurasrv2",
+        "model": "realesrgan_upscale",
+        "preferred_model": "realesrgan_upscale",
         "job_config": {
-          "scale_factor": 4
+          "scale_factor": 1,
+          "upscale_factor": 4
         }
       },
       "portrait_enhance": {
@@ -432,10 +434,13 @@
           "HD"
         ],
         "capability": "upscale",
-        "model": "face_enhancer",
-        "preferred_model": "face_enhancer",
+        "model": "p_image_upscale",
+        "preferred_model": "p_image_upscale",
         "job_config": {
-          "scale_factor": 4
+          "scale_factor": 1,
+          "upscale_factor": 4,
+          "enhance_details": true,
+          "realism": true
         }
       },
       "face_restore": {
@@ -451,12 +456,13 @@
           "AI Face"
         ],
         "capability": "upscale",
-        "model": "face_enhancer",
-        "preferred_model": "face_enhancer",
+        "model": "p_image_upscale",
+        "preferred_model": "p_image_upscale",
         "job_config": {
-          "scale_factor": 2,
-          "mode": "v1.4",
-          "enhance_faces": true
+          "scale_factor": 1,
+          "upscale_factor": 2,
+          "enhance_details": true,
+          "realism": true
         }
       },
       "photo_restore": {
@@ -472,10 +478,12 @@
           "HD"
         ],
         "capability": "upscale",
-        "model": "aurasrv2",
-        "preferred_model": "aurasrv2",
+        "model": "p_image_upscale",
+        "preferred_model": "p_image_upscale",
         "job_config": {
-          "scale_factor": 4
+          "scale_factor": 1,
+          "upscale_factor": 4,
+          "enhance_details": true
         }
       },
       "cinematic_video": {
@@ -573,8 +581,8 @@
           "🎨 Art"
         ],
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "flux2_klein_9b_edit",
+        "preferred_model": "flux2_klein_9b_edit",
         "job_config": {
           "prompt": "Oil painting style, rich brushstrokes, classical art technique, museum quality, vivid colors, canvas texture, masterpiece painting"
         }
@@ -591,8 +599,8 @@
           "🌆 Sci-Fi"
         ],
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "flux2_klein_9b_edit",
+        "preferred_model": "flux2_klein_9b_edit",
         "job_config": {
           "prompt": "Cyberpunk style, neon lights, futuristic cityscape background, holographic effects, rain-soaked streets, blade runner aesthetic, vibrant pink and blue lighting"
         }
@@ -609,8 +617,8 @@
           "🎭 Fun"
         ],
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "flux2_klein_9b_edit",
+        "preferred_model": "flux2_klein_9b_edit",
         "job_config": {
           "prompt": "3D cartoon style, Pixar animation quality, expressive features, smooth render, vibrant colors, friendly character design, CGI quality"
         }
@@ -627,8 +635,8 @@
           "📷 Retro"
         ],
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "qwen2_1_i2i",
+        "preferred_model": "qwen2_1_i2i",
         "job_config": {
           "prompt": "Vintage film photography, warm color grading, subtle film grain, nostalgic mood, 1970s aesthetic, soft vignette, analog camera look"
         }
@@ -664,8 +672,8 @@
           "🎨 Art"
         ],
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "flux2_klein_9b_edit",
+        "preferred_model": "flux2_klein_9b_edit",
         "job_config": {
           "prompt": "Watercolor painting style, soft washes, flowing colors, delicate brush strokes, artistic paper texture, dreamy atmosphere, professional watercolor art"
         }
@@ -682,8 +690,8 @@
           "✏️ Classic"
         ],
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "flux2_klein_9b_edit",
+        "preferred_model": "flux2_klein_9b_edit",
         "job_config": {
           "prompt": "Pencil sketch portrait, detailed shading, graphite drawing, realistic charcoal art, fine lines, artistic hatching, professional sketch"
         }
@@ -700,8 +708,8 @@
           "🎨 Retro"
         ],
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "flux2_klein_9b_edit",
+        "preferred_model": "flux2_klein_9b_edit",
         "job_config": {
           "prompt": "Pop art style, bold colors, high contrast, Andy Warhol inspired, comic book halftone dots, vibrant artistic poster"
         }
@@ -718,8 +726,8 @@
           "✨ Glow"
         ],
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "flux2_klein_9b_edit",
+        "preferred_model": "flux2_klein_9b_edit",
         "job_config": {
           "prompt": "Neon glow effect, electric light trails, vibrant pink and blue neon, dark background, glowing outlines, synthwave aesthetic, dramatic lighting"
         }
@@ -736,8 +744,8 @@
           "🎮 Retro"
         ],
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "flux2_klein_9b_edit",
+        "preferred_model": "flux2_klein_9b_edit",
         "job_config": {
           "prompt": "Pixel art style, 8-bit retro gaming aesthetic, blocky pixels, limited color palette, nostalgic video game character, sprite art"
         }
@@ -754,8 +762,8 @@
           "😂 Fun"
         ],
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "flux2_klein_9b_edit",
+        "preferred_model": "flux2_klein_9b_edit",
         "job_config": {
           "prompt": "Caricature art style, exaggerated features, humorous portrait, cartoon proportions, expressive face, professional caricature artist quality"
         }
@@ -772,8 +780,8 @@
           "💥 Hero"
         ],
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "flux2_klein_9b_edit",
+        "preferred_model": "flux2_klein_9b_edit",
         "job_config": {
           "prompt": "Comic book style, bold outlines, dramatic shading, superhero aesthetic, action pose, vibrant colors, Marvel DC inspired, dynamic composition"
         }
@@ -787,8 +795,8 @@
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/youtube_thumbnail.jpg",
         "preview_type": "image",
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "muse_image_edit",
+        "preferred_model": "muse_image_edit",
         "job_config": {
           "prompt": "Keep the same person. Strong subject, empty space on one side for a title the user will add later, no letters or readable text in the image, 16:9 framing, cinematic lighting.",
           "aspect_ratio": "16:9"
@@ -803,8 +811,8 @@
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/reel_cover.jpg",
         "preview_type": "image",
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "muse_image_edit",
+        "preferred_model": "muse_image_edit",
         "job_config": {
           "prompt": "Keep the same person. Vertical cover, subject centered, no caption text or letters in the image, 9:16 framing.",
           "aspect_ratio": "9:16"
@@ -819,8 +827,8 @@
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/instagram_post.jpg",
         "preview_type": "image",
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "muse_image_edit",
+        "preferred_model": "muse_image_edit",
         "job_config": {
           "prompt": "Keep the same person or product. Square social still, subject clear and centered, no overlay text or letters in the image, 1:1 framing.",
           "aspect_ratio": "1:1"
@@ -835,8 +843,8 @@
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/cinematic_portrait.jpg",
         "preview_type": "image",
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "qwen2_1_i2i",
+        "preferred_model": "qwen2_1_i2i",
         "job_config": {
           "prompt": "Keep the same person's identity. Cinematic light and color. Do not change clothing beyond what is already visible. No invented text.",
           "aspect_ratio": "3:4"
@@ -851,8 +859,8 @@
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/product_photo.jpg",
         "preview_type": "image",
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "qwen2_1_i2i",
+        "preferred_model": "qwen2_1_i2i",
         "job_config": {
           "prompt": "Keep the product's shape, color, and label as they are. Clean studio background. Do not invent readable packaging text. No extra objects.",
           "aspect_ratio": "1:1"
@@ -867,8 +875,8 @@
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/background_change.jpg",
         "preview_type": "image",
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "qwen2_1_i2i",
+        "preferred_model": "qwen2_1_i2i",
         "show_prompt": true,
         "prompt_placeholder": "Describe the new background",
         "job_config": {
@@ -884,8 +892,8 @@
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/outfit_change.jpg",
         "preview_type": "image",
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "grok_imagine_edit",
+        "preferred_model": "grok_imagine_edit",
         "job_config": {
           "prompt": "Change clothing only. Keep the same face, hair, pose, and background. Do not invent a different person or readable text on the clothes.",
           "aspect_ratio": "3:4"
@@ -908,7 +916,7 @@
           "name": "Kala Imagine",
           "description": "text to image",
           "useExternalApi": true,
-          "cost": 18,
+          "cost": 15,
           "costUpscale": 8,
           "offer": 0,
           "enabled": true,
@@ -924,7 +932,7 @@
           "name": "Kala Dream",
           "description": "text to image",
           "useExternalApi": true,
-          "cost": 18,
+          "cost": 15,
           "costUpscale": 8,
           "offer": 0,
           "enabled": true,
@@ -969,6 +977,74 @@
             "image_search": "{{image_search}}",
             "layout_tools": "{{layout_tools}}",
             "moderation": "{{moderation}}"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        },
+        {
+          "id": "twinflow_z_image",
+          "name": "Kala Glimpse",
+          "description": "Fast text to image",
+          "aliases": ["runware:twinflow-z-image-turbo@0"],
+          "useExternalApi": true,
+          "cost": 6,
+          "costUpscale": 0,
+          "offer": 0,
+          "enabled": true,
+          "params": {
+            "aspect_ratio": "{{aspect_ratio}}"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        },
+        {
+          "id": "juggernaut_lightning",
+          "name": "Kala Vista",
+          "description": "Photoreal text to image",
+          "aliases": ["rundiffusion:110@101"],
+          "useExternalApi": true,
+          "cost": 6,
+          "costUpscale": 0,
+          "offer": 0,
+          "enabled": true,
+          "params": {
+            "aspect_ratio": "{{aspect_ratio}}"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        },
+        {
+          "id": "krea2_turbo",
+          "name": "Kala Palette",
+          "description": "Styled text to image",
+          "aliases": ["krea:krea@2-turbo"],
+          "useExternalApi": true,
+          "cost": 10,
+          "costUpscale": 0,
+          "offer": 0,
+          "enabled": true,
+          "params": {
+            "aspect_ratio": "{{aspect_ratio}}"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        },
+        {
+          "id": "recraft_v41_flash",
+          "name": "Kala Poster",
+          "description": "Posters, logos, and lettering",
+          "aliases": ["recraft:v4.1@flash"],
+          "useExternalApi": true,
+          "cost": 8,
+          "costUpscale": 0,
+          "offer": 0,
+          "enabled": true,
+          "params": {
+            "aspect_ratio": "{{aspect_ratio}}"
           },
           "rootParams": {
             "prompt": "{{prompt}}"
@@ -1025,7 +1101,7 @@
           "name": "Kala Imagine",
           "description": "image edit",
           "useExternalApi": true,
-          "cost": 18,
+          "cost": 15,
           "costUpscale": 8,
           "offer": 0,
           "enabled": true,
@@ -1042,7 +1118,7 @@
           "name": "Kala Dream",
           "description": "image edit",
           "useExternalApi": true,
-          "cost": 18,
+          "cost": 15,
           "costUpscale": 8,
           "offer": 0,
           "enabled": true,
@@ -1089,6 +1165,45 @@
             "image_search": "{{image_search}}",
             "layout_tools": "{{layout_tools}}",
             "moderation": "{{moderation}}"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        },
+        {
+          "id": "krea2_turbo_edit",
+          "name": "Kala Palette",
+          "description": "Match a look from up to 4 references",
+          "aliases": ["krea:krea@2-turbo"],
+          "useExternalApi": true,
+          "cost": 10,
+          "costUpscale": 0,
+          "offer": 0,
+          "enabled": true,
+          "params": {
+            "init_image": "{{init_image}}"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        },
+        {
+          "id": "z_image_turbo_edit",
+          "name": "Kala Touch",
+          "description": "Change one photo",
+          "aliases": ["runware:z-image@turbo"],
+          "useExternalApi": true,
+          "cost": 6,
+          "costUpscale": 0,
+          "offer": 0,
+          "enabled": true,
+          "inputOverrides": {
+            "init_image": {
+              "max": 1
+            }
+          },
+          "params": {
+            "init_image": "{{init_image}}"
           },
           "rootParams": {
             "prompt": "{{prompt}}"
@@ -1181,6 +1296,24 @@
           "rootParams": {
             "prompt": "{{prompt}}"
           }
+        },
+        {
+          "id": "z_image_turbo_inpaint",
+          "name": "Kala Touch",
+          "description": "Fill a painted area",
+          "aliases": ["runware:z-image@turbo"],
+          "useExternalApi": true,
+          "cost": 6,
+          "costUpscale": 0,
+          "offer": 0,
+          "enabled": true,
+          "params": {
+            "init_image": "{{init_image}}",
+            "mask_image": "{{mask_image}}"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
         }
       ],
       "inputs": [
@@ -1195,6 +1328,18 @@
           "id": "mask_image",
           "type": "image",
           "label": "Mask (paint area to edit)"
+        },
+        {
+          "id": "prompt",
+          "type": "text",
+          "label": "What to paint (optional)",
+          "optional": true,
+          "hintExamples": [
+            "Leave this blank to fill the painted area so it matches the surrounding image.",
+            "A clear blue sky with the same light as the rest of the photo.",
+            "Continue the brick wall and the shadow already falling across it.",
+            "Remove the object and restore the background behind it."
+          ]
         }
       ],
       "elements": [
@@ -1205,6 +1350,10 @@
         {
           "type": "painter",
           "input_ref": "mask_image"
+        },
+        {
+          "type": "prompt",
+          "input_ref": "prompt"
         },
         {
           "type": "generate_button"
@@ -1838,7 +1987,7 @@
       "icon": "crop",
       "accent": "#10B981",
       "outputType": "image",
-      "defaultModel": "qwen2_1_i2i",
+      "defaultModel": "z_image_turbo_expand",
       "models": [
         {
           "id": "qwen2_1_i2i",
@@ -1848,7 +1997,7 @@
           "cost": 18,
           "costUpscale": 8,
           "offer": 0,
-          "enabled": true,
+          "enabled": false,
           "params": {
             "init_image": "{{init_image}}",
             "aspect_ratio": "{{aspect_ratio}}"
@@ -1862,8 +2011,44 @@
           "name": "Kala Dream",
           "description": "image edit",
           "useExternalApi": true,
-          "cost": 18,
+          "cost": 15,
           "costUpscale": 8,
+          "offer": 0,
+          "enabled": false,
+          "params": {
+            "init_image": "{{init_image}}",
+            "aspect_ratio": "{{aspect_ratio}}"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        },
+        {
+          "id": "juggernaut_lightning_expand",
+          "name": "Kala Vista",
+          "description": "Extend a photoreal scene",
+          "aliases": ["rundiffusion:110@101"],
+          "useExternalApi": true,
+          "cost": 6,
+          "costUpscale": 0,
+          "offer": 0,
+          "enabled": true,
+          "params": {
+            "init_image": "{{init_image}}",
+            "aspect_ratio": "{{aspect_ratio}}"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        },
+        {
+          "id": "z_image_turbo_expand",
+          "name": "Kala Touch",
+          "description": "Extend a photo",
+          "aliases": ["runware:z-image@turbo"],
+          "useExternalApi": true,
+          "cost": 6,
+          "costUpscale": 0,
           "offer": 0,
           "enabled": true,
           "params": {
@@ -2495,7 +2680,7 @@
           "cost": 100,
           "costUpscale": 0,
           "offer": 0,
-          "enabled": true,
+          "enabled": false,
           "params": {
             "lyrics": "{{lyrics}}",
             "instrumental": "{{instrumental}}",
