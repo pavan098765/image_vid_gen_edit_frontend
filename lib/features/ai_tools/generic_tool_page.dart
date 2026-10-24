@@ -4188,7 +4188,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                     ),
                   ),
                   Text(
-                    '2K costs twice the 1K price.',
+                    '1k or 2k resolution output.',
                     style: TextStyle(
                       color: cs.onSurfaceVariant.withValues(alpha: 0.7),
                       fontSize: 12,

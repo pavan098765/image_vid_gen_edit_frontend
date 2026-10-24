@@ -1908,7 +1908,7 @@ class _JobCardState extends State<JobCard> {
 
   String _versionState(MusicTrack? track) {
     final phase = _musicResult?.phase ?? '';
-    if (track == null || track.urlDuring(phase) == null) return 'On the way';
+    if (track == null || track.urlDuring(phase) == null) return 'Generating..';
     if (track.streamsDuring(phase)) return 'Streaming';
     final length = track.knownDuration;
     if (length == null) return 'Ready';
