@@ -15,6 +15,7 @@ import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/api/submit_payload_helpers.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/model_display_name.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/app_menu_button.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/backlit_glass.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/center_crop.dart';
@@ -1033,6 +1034,7 @@ class _ExploreAIPageState extends State<ExploreAIPage>
       _capabilitiesList =
           parsed['capabilities'] ?? []; // Store raw list for AI tools preview
       _capabilities = _buildCapabilitiesMap(_capabilitiesList);
+      indexModelDisplayNames(parsed);
 
       // Initialize hero slideshow with random templates
       _initHeroSlideUrls();
@@ -1055,6 +1057,7 @@ class _ExploreAIPageState extends State<ExploreAIPage>
         _templates = _exploreConfig?['templates'] ?? {};
         _capabilitiesList = config['capabilities'] ?? [];
         _capabilities = _buildCapabilitiesMap(_capabilitiesList);
+        indexModelDisplayNames(config);
         _initHeroSlideUrls();
         setState(() => _isLoading = false);
         _headerAnimController.forward();

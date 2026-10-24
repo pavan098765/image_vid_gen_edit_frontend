@@ -35,42 +35,44 @@ bool isResultManagerOpen = false;
 /// =============================================================================
 /// MODEL NAME HELPER
 /// =============================================================================
-/// Cache for model ID to friendly name mapping
-final Map<String, String> _modelNameCache = {};
-bool _modelNameCacheLoaded = false;
-
-/// Load model name cache from tool_config.json
+/// Load catalogue names saved with the tool config.
 Future<void> _loadModelNameCache() async {
-  if (_modelNameCacheLoaded) return;
-
   try {
     final prefs = await SharedPreferences.getInstance();
     final configStr = prefs.getString('cached_tool_config_v3');
-    if (configStr == null || configStr.isEmpty) {
-      _modelNameCacheLoaded =
-          true; // Mark as loaded even if empty to avoid retries
-      return;
-    }
+    if (configStr == null || configStr.isEmpty) return;
 
     final config = jsonDecode(configStr) as Map<String, dynamic>;
-    final capabilities = config['capabilities'] as List<dynamic>?;
-
-    if (capabilities == null) {
-      _modelNameCacheLoaded = true;
-      return;
-    }
-
+    if (config['capabilities'] is! List) return;
     indexModelDisplayNames(config);
-    _modelNameCache
-      ..clear()
-      ..addAll(modelDisplayNameCache);
-
-    _modelNameCacheLoaded = true;
-    debugPrint('✅ Loaded ${_modelNameCache.length} model names from config');
   } catch (e) {
     debugPrint('⚠️ Failed to load model name cache: $e');
-    _modelNameCacheLoaded = true; // Mark as loaded to avoid infinite retries
   }
+}
+
+/// User-facing model name, when the catalogue has one.
+String? friendlyModelName(String? modelId) {
+  final id = modelId?.trim() ?? '';
+  if (id.isEmpty) return null;
+  final name = displayNameForModel(id).trim();
+  if (name.isEmpty || name == id) return null;
+  return name;
+}
+
+/// The name stored on the job, or the one kept in its launch snapshot.
+String? modelNameForJob(JobModel job) {
+  return friendlyModelName(job.model) ??
+      friendlyModelName(job.settingsSnapshot?['modelId']?.toString());
+}
+
+/// Card title: the catalogue name, then the job name.
+String jobCardTitle(JobModel job) {
+  final raw = job.title.trim();
+  final label = raw.isEmpty ? 'Untitled' : raw;
+  final modelName = modelNameForJob(job);
+  if (modelName == null) return label;
+  if (label.toLowerCase().startsWith(modelName.toLowerCase())) return label;
+  return '$modelName · $label';
 }
 
 /// =============================================================================
@@ -208,7 +210,9 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
     _refreshJobs();
     _markAllCompletedAsSeen();
     _prefetchDownloadUrls(); // Pre-fetch URLs in background
-    _loadModelNameCache(); // Load model name cache for friendly names
+    _loadModelNameCache().then((_) {
+      if (mounted) setState(() {});
+    });
 
     SharedPreferences.getInstance().then((prefs) async {
       await prefs.reload();
@@ -484,7 +488,8 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
     // Filter by search query
     if (_searchQuery.isNotEmpty) {
       jobs = jobs.where((job) {
-        return job.title.toLowerCase().contains(_searchQuery) ||
+        return jobCardTitle(job).toLowerCase().contains(_searchQuery) ||
+            job.title.toLowerCase().contains(_searchQuery) ||
             job.jobId.toLowerCase().contains(_searchQuery) ||
             job.model.toLowerCase().contains(_searchQuery) ||
             job.status.toLowerCase().contains(_searchQuery);
@@ -502,7 +507,7 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
           comparison = a.status.compareTo(b.status);
           break;
         case 'title':
-          comparison = a.title.compareTo(b.title);
+          comparison = jobCardTitle(a).compareTo(jobCardTitle(b));
           break;
       }
       return _sortAscending ? comparison : -comparison;
@@ -980,6 +985,60 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
   }
 }
 
+/// Owns the text field so it is released only after the dialog route unmounts.
+class _RenameJobDialog extends StatefulWidget {
+  const _RenameJobDialog({required this.initialName});
+
+  final String initialName;
+
+  @override
+  State<_RenameJobDialog> createState() => _RenameJobDialogState();
+}
+
+class _RenameJobDialogState extends State<_RenameJobDialog> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialName);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _close([String? value]) {
+    Navigator.pop(context, value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Rename'),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        textInputAction: TextInputAction.done,
+        decoration: const InputDecoration(labelText: 'Name'),
+        onSubmitted: (_) => _close(_controller.text),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _close,
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () => _close(_controller.text),
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
 class JobCard extends StatefulWidget {
   final JobModel job;
   final bool isSelectionMode;
@@ -1376,7 +1435,7 @@ class _JobCardState extends State<JobCard> {
                     children: [
                       Flexible(
                         child: Text(
-                          job.title.trim().isEmpty ? 'Untitled' : job.title,
+                          jobCardTitle(job),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: textTheme.titleSmall?.copyWith(
@@ -1796,34 +1855,11 @@ class _JobCardState extends State<JobCard> {
   }
 
   Future<void> _renameJob() async {
-    final controller = TextEditingController(text: widget.job.title);
     final saved = await showDialog<String>(
       context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Rename'),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            textInputAction: TextInputAction.done,
-            decoration: const InputDecoration(labelText: 'Name'),
-            onSubmitted: (value) => Navigator.pop(dialogContext, value),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, controller.text),
-              child: const Text('Save'),
-            ),
-          ],
-        );
-      },
+      builder: (_) => _RenameJobDialog(initialName: widget.job.title),
     );
     final name = saved?.trim() ?? '';
-    controller.dispose();
     if (!mounted || name.isEmpty || name == widget.job.title) return;
     await addOrUpdateJob(widget.job.copyWith(title: name));
   }

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/model_display_name.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/result_manager/result_manager_page.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -140,13 +141,15 @@ class CapabilityConfig {
 
   CapabilityConfig({required this.capabilities});
 
-  factory CapabilityConfig.fromJson(Map<String, dynamic> json) =>
-      CapabilityConfig(
+  factory CapabilityConfig.fromJson(Map<String, dynamic> json) {
+    indexModelDisplayNames(json);
+    return CapabilityConfig(
         capabilities: (json['capabilities'] as List?)
                 ?.map((c) => Capability.fromJson(c))
                 .toList() ??
             [],
       );
+  }
 }
 
 // -------------------- MAIN PAGE --------------------
