@@ -265,4 +265,64 @@ void main() {
     });
     expect(music.covers, ['https://example.com/extra.png']);
   });
+
+  test('sung lyrics stay when the earlier lyric sheet is different', () {
+    final track = MusicTrack.fromJson({
+      'id': 'audio-1',
+      'title': 'Rain',
+      'lyrics': '[Verse]\nRain on the window\nI stay in',
+    });
+    final sheets = [
+      MusicLyricSheet(
+        title: 'Rain',
+        text: '[Verse]\nCity lights and a yellow taxi\nWe drive all night',
+      ),
+    ];
+    expect(fullerLyrics(track, sheets), contains('Rain on the window'));
+
+    final longerCopy = [
+      MusicLyricSheet(
+        title: 'Rain',
+        text: '[Verse]\nRain on the window\nI stay in\n[Chorus]\nLet it fall',
+      ),
+    ];
+    expect(fullerLyrics(track, longerCopy), contains('Let it fall'));
+
+    final waiting = MusicTrack.fromJson({'id': 'audio-2', 'title': 'Rain'});
+    expect(fullerLyrics(waiting, sheets), contains('yellow taxi'));
+  });
+
+  test('a later lyric replaces an earlier draft on the same version', () {
+    final draft = MusicResult.fromJson({
+      'phase': 'first_track',
+      'easy': true,
+      'tracks': [
+        {
+          'id': 'audio-1',
+          'lyrics': '[Verse]\nCity lights and a yellow taxi',
+          'stream_audio_url': 'https://example.com/stream',
+        },
+      ],
+      'lyrics': [
+        {'title': 'Rain', 'text': '[Verse]\nCity lights and a yellow taxi'},
+      ],
+    });
+    final sung = MusicResult.fromJson({
+      'phase': 'complete',
+      'easy': true,
+      'tracks': [
+        {
+          'id': 'audio-1',
+          'lyrics': '[Verse]\nRain on the window',
+          'audio_url': 'https://example.com/song.mp3',
+        },
+      ],
+    });
+    final merged = draft.absorb(sung);
+    expect(merged.tracks.single.lyrics, contains('Rain on the window'));
+    expect(
+      fullerLyrics(merged.tracks.single, merged.lyrics),
+      contains('Rain on the window'),
+    );
+  });
 }

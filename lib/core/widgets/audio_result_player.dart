@@ -951,10 +951,14 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
     final job = _sourceJob(track);
     if (job == null) return track.lyrics;
     final snap = job.settingsSnapshot ?? const <String, dynamic>{};
+    final model = snap['modelId']?.toString();
+    final hitMaker = model == kSunoV6ModelId || job.model == kSunoV6ModelId;
     final music = job.music;
     if (music != null) {
-      final sheet = MusicResult.fromJson(music);
-      final text = sheet.lyrics.isEmpty ? null : sheet.lyrics.first.text;
+      final result = MusicResult.fromJson(music);
+      // Easy mode sings the words that come back on the clip, not the draft.
+      if (hitMaker && result.easy && result.isComplete) return null;
+      final text = result.lyrics.isEmpty ? null : result.lyrics.first.text;
       final kept = _clean(text);
       if (kept != null) return kept;
     }

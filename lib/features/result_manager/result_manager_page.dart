@@ -1753,6 +1753,15 @@ class _JobCardState extends State<JobCard> {
     return url != null && url.isNotEmpty;
   }
 
+  /// Both versions already have a finished file, so the cloud countdown is not
+  /// the status of the song.
+  bool get _musicFullyPlayable {
+    final music = _musicResult;
+    if (music == null || widget.job.status != 'completed') return false;
+    if (music.anyStreaming || music.tracks.isEmpty) return false;
+    return music.tracks.every((track) => track.fileUrl != null);
+  }
+
   /// Stored versions. A finished HitMaker song with only the job file still
   /// shows that one version. The second slot is only a placeholder while it runs.
   List<MusicTrack> get _cardTracks {
@@ -2540,9 +2549,11 @@ class _JobCardState extends State<JobCard> {
 
     // Countdown until the cloud copy times out. Kie jobs are downloaded
     // automatically, so after that timeout they stay a normal result.
+    // A finished song whose versions can already play is a completed result.
     if (job.status == 'completed' &&
         !isExpired &&
         !isSaved &&
+        !_musicFullyPlayable &&
         !(job.usesKieCloud && job.isCloudExpired)) {
       final timeLeft = job.expiryTimeFormatted;
       return Row(

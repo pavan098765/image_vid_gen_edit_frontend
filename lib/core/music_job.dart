@@ -215,12 +215,9 @@ String? fullerLyrics(MusicTrack track, List<MusicLyricSheet> sheets) {
   for (final sheet in sheets) {
     final text = sheet.text.trim();
     if (text.length <= best.length) continue;
-    final titled = sheet.title.trim().isNotEmpty &&
-        track.title.trim().isNotEmpty &&
-        sheet.title.trim().toLowerCase() == track.title.trim().toLowerCase();
-    if (titled || sheets.length == 1 || best.isEmpty || _sameLyric(best, text)) {
-      best = text;
-    }
+    // Easy mode writes a lyric sheet, then the model sings its own words.
+    // Those words come back on the clip. A different sheet must not replace them.
+    if (best.isEmpty || _sameLyric(best, text)) best = text;
   }
   return best.isEmpty ? null : best;
 }
@@ -395,7 +392,13 @@ class MusicTrack {
   }
 
   MusicTrack absorb(MusicTrack next) {
-    final lyrics = _longerText(this.lyrics, next.lyrics);
+    final incomingWords = next.lyrics?.trim() ?? '';
+    final keptWords = lyrics?.trim() ?? '';
+    final words = incomingWords.isEmpty
+        ? lyrics
+        : keptWords.isEmpty || !_sameLyric(keptWords, incomingWords)
+            ? next.lyrics
+            : _longerText(lyrics, next.lyrics);
     final seconds = duration == null
         ? next.duration
         : next.duration == null
@@ -404,7 +407,7 @@ class MusicTrack {
     return MusicTrack(
       id: id.isNotEmpty ? id : next.id,
       title: title != 'Untitled' && title.trim().isNotEmpty ? title : next.title,
-      lyrics: lyrics,
+      lyrics: words,
       tags: _longerText(tags, next.tags),
       duration: seconds,
       audioUrl: next.audioUrl ?? audioUrl,
