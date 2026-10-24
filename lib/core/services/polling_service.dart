@@ -189,6 +189,38 @@ class PollingService {
     debugPrint("PollingService stopped");
   }
 
+  Future<void> refreshJob(String jobId) async {
+    if (jobId.isEmpty) return;
+    try {
+      final token = await _authService.getIdToken();
+      if (token == null) return;
+      final resp = await http
+          .get(
+            Uri.parse("$baseUrl/job_status?job_id=$jobId"),
+            headers: {"Authorization": "Bearer $token"},
+          )
+          .timeout(const Duration(seconds: 15));
+      if (resp.statusCode != 200) return;
+      final data = jsonDecode(resp.body);
+      if (data is! Map) return;
+      final body = Map<String, dynamic>.from(data);
+      var status = (body["status"] ?? "").toString().toLowerCase();
+      if (!allowed.contains(status)) status = "processing";
+      String? downloadUrl;
+      if (status == "completed") {
+        downloadUrl = await getValidDownloadUrl(jobId);
+      }
+      await updateJobFields(
+        jobId: jobId,
+        status: status,
+        downloadUrl: downloadUrl,
+        music: musicMapFromStatus(body["music"]),
+      );
+    } catch (err) {
+      debugPrint("PollingService.refreshJob failed for $jobId: $err");
+    }
+  }
+
   Future<void> _tick() async {
     if (_isTicking) return;
     _isTicking = true;

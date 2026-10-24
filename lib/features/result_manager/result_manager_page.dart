@@ -1,5 +1,6 @@
 // lib/features/result_manager/result_manager_page.dart
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
@@ -290,6 +291,10 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
       // CRITICAL: Background FCM handler writes to this file, and SharedPreferences
       // might not sync across isolates on some platforms!
       final appliedFromFile = await applyPendingFcmUpdatesFromFile();
+      final refreshIds = takeFcmJobsToRefresh();
+      for (final id in refreshIds) {
+        unawaited(PollingService.instance.refreshJob(id));
+      }
       if (appliedFromFile) {
         debugPrint("✅ [ResultManager] Applied FCM updates from file");
         final jobs = jobListNotifier.value;

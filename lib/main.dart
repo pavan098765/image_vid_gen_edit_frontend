@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart' as material_ui;
 import 'package:kala_ai_create_images_videos_with_ai/core/services/file_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/polling_service.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/audio_result_player.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/thumbnail_service.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -136,6 +137,10 @@ Future<void> _reloadJobsToNotifier({bool retryOnEmpty = true}) async {
     // 📁 FIRST: Apply any pending FCM updates from file
     // This is the most reliable cross-isolate sync mechanism
     final appliedFromFile = await applyPendingFcmUpdatesFromFile();
+    final refreshIds = takeFcmJobsToRefresh();
+    for (final id in refreshIds) {
+      unawaited(PollingService.instance.refreshJob(id));
+    }
     if (appliedFromFile) {
       debugPrint("✅ Applied FCM updates from file - job list updated");
       final jobs = jobListNotifier.value;
@@ -340,6 +345,7 @@ Future<void> _applyFcmUpdate(Map<String, dynamic> data) async {
         navigatorKey.currentContext != null) {
       await _reloadJobsToNotifier();
     }
+    unawaited(PollingService.instance.refreshJob(jobId));
   } catch (e, st) {
     debugPrint("⚠️ _applyFcmUpdate failed: $e\n$st");
   }
@@ -1120,16 +1126,22 @@ class _MainAppScaffold extends StatelessWidget {
           },
         ),
       ),
-      bottomNavigationBar: ValueListenableBuilder<int>(
-        valueListenable: selectedIndexNotifier,
-        builder: (_, currentIndex, __) {
-          return _ModernBottomNav(
-            currentIndex: currentIndex,
-            onTap: (i) => selectedIndexNotifier.value = i,
-            colorScheme: cs,
-            isDark: isDark,
-          );
-        },
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const NowPlayingBar(),
+          ValueListenableBuilder<int>(
+            valueListenable: selectedIndexNotifier,
+            builder: (_, currentIndex, __) {
+              return _ModernBottomNav(
+                currentIndex: currentIndex,
+                onTap: (i) => selectedIndexNotifier.value = i,
+                colorScheme: cs,
+                isDark: isDark,
+              );
+            },
+          ),
+        ],
       ),
     );
 

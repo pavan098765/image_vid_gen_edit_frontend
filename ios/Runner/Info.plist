@@ -45,6 +45,10 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
 	<!-- Google Mobile Ads App ID -->
 	<key>GADApplicationIdentifier</key>
 	<string>ca-app-pub-3818647471101496~5829973723</string>

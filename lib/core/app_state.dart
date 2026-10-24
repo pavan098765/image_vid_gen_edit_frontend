@@ -377,7 +377,14 @@ Future<void> updateJobFields({
 // 🔄 FILE-BASED FCM UPDATES (more reliable than SharedPreferences for cross-isolate)
 // ----------------------
 
-/// File name for pending FCM updates (used for cross-isolate sync)
+/// Job ids whose push only carried one file. The next status fetch restores versions.
+final List<String> _fcmJobsToRefresh = [];
+
+List<String> takeFcmJobsToRefresh() {
+  final ids = List<String>.from(_fcmJobsToRefresh);
+  _fcmJobsToRefresh.clear();
+  return ids;
+}
 const String _fcmUpdatesFileName = 'fcm_pending_updates.json';
 
 /// Get the FCM updates file path
@@ -569,6 +576,7 @@ Future<bool> applyPendingFcmUpdatesFromFile() async {
             'status': newStatus,
             if (newUrl != null && newUrl.isNotEmpty) 'downloadUrl': newUrl,
           };
+          if (!_fcmJobsToRefresh.contains(jobId)) _fcmJobsToRefresh.add(jobId);
           debugPrint(
               "📁 [FCM File] ✅ Updated job $jobId: $oldStatus → $newStatus (URL: ${newUrl != null && newUrl.isNotEmpty ? 'present' : 'missing'})");
           anyUpdated = true;
@@ -595,6 +603,7 @@ Future<bool> applyPendingFcmUpdatesFromFile() async {
           'inputImagePath': null,
         };
         jobs.insert(0, newJob);
+        if (!_fcmJobsToRefresh.contains(jobId)) _fcmJobsToRefresh.add(jobId);
         debugPrint(
             "📁 [FCM File] ✅ Created NEW job $jobId (status: $newStatus, URL: ${newUrl != null && newUrl.isNotEmpty ? 'present' : 'missing'}) - was missing from SharedPreferences!");
         anyUpdated = true;

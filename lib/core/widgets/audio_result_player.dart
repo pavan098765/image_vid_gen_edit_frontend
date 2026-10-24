@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/model_display_name.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/music_job.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/services/file_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/backlit_glass.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -159,21 +160,20 @@ List<AudioTrackDetails> audioTracksFromMusic(
   DateTime? createdAt,
   String? modelId,
 }) {
+  final playable = [for (final track in music.tracks) if (track.isPlayable) track];
   return [
-    for (final track in music.tracks)
-      if (track.isPlayable)
+    for (var i = 0; i < playable.length; i++)
         AudioTrackDetails.fromMusicTrack(
           MusicTrack(
-            id: track.id,
-            title: track.title,
-            lyrics: fullerLyrics(track, music.lyrics),
-            tags: track.tags,
-            duration: track.duration,
-            audioUrl: track.streamsDuring(music.phase) ? null : track.audioUrl,
-            streamUrl: track.streamUrl,
-            coverUrl: track.coverUrl ??
-                (music.covers.isNotEmpty ? music.covers.first : null),
-            downloadUrl: track.streamsDuring(music.phase) ? null : track.downloadUrl,
+            id: playable[i].id,
+            title: playable[i].title,
+            lyrics: fullerLyrics(playable[i], music.lyrics),
+            tags: playable[i].tags,
+            duration: playable[i].duration,
+            audioUrl: playable[i].streamsDuring(music.phase) ? null : playable[i].audioUrl,
+            streamUrl: playable[i].streamUrl,
+            coverUrl: _coverForTrack(playable[i], music.covers, i),
+            downloadUrl: playable[i].streamsDuring(music.phase) ? null : playable[i].downloadUrl,
           ),
           jobId: jobId,
           artist: artist,
@@ -182,6 +182,16 @@ List<AudioTrackDetails> audioTracksFromMusic(
           modelId: modelId,
         ),
   ];
+}
+
+String? _coverForTrack(MusicTrack track, List<String> covers, int index) {
+  final own = track.coverUrl;
+  if (own != null && own.isNotEmpty) return own;
+  if (index >= 0 && index < covers.length && covers[index].isNotEmpty) {
+    return covers[index];
+  }
+  if (covers.isNotEmpty) return covers.first;
+  return null;
 }
 
 List<AudioTrackDetails> audioTracksFromJob(JobModel job) {
@@ -395,12 +405,73 @@ typedef AudioRemixHandler = Future<void> Function(
   AudioTrackDetails track,
 );
 
+/// Playback that stays alive after the player screen closes.
+class AudioNowPlaying extends ChangeNotifier {
+  VideoPlayerController? controller;
+  List<AudioTrackDetails> tracks = const [];
+  int index = 0;
+  bool sheetOpen = false;
+
+  bool get hasAudio => controller != null;
+
+  bool matches(List<AudioTrackDetails> next) {
+    if (controller == null || tracks.length != next.length) return false;
+    for (var i = 0; i < tracks.length; i++) {
+      if (tracks[i].sourceJobId != next[i].sourceJobId) return false;
+      if (tracks[i].sourceTrackId != next[i].sourceTrackId) return false;
+      if (tracks[i].networkUrl != next[i].networkUrl) return false;
+    }
+    return true;
+  }
+
+  void hold({
+    required VideoPlayerController controller,
+    required List<AudioTrackDetails> tracks,
+    required int index,
+  }) {
+    if (!identical(this.controller, controller)) {
+      this.controller?.removeListener(_onPlayer);
+      this.controller = controller;
+      controller.addListener(_onPlayer);
+    }
+    this.tracks = tracks;
+    this.index = index;
+    sheetOpen = false;
+    notifyListeners();
+  }
+
+  void _onPlayer() => notifyListeners();
+
+  void detachController() {
+    controller?.removeListener(_onPlayer);
+    controller = null;
+  }
+
+  void markSheet(bool open) {
+    sheetOpen = open;
+    notifyListeners();
+  }
+
+  Future<void> stop() async {
+    final current = controller;
+    current?.removeListener(_onPlayer);
+    controller = null;
+    tracks = const [];
+    sheetOpen = false;
+    notifyListeners();
+    await current?.dispose();
+  }
+}
+
+final audioNowPlaying = AudioNowPlaying();
+
 /// Full-screen player for a finished audio job.
 class AudioResultPlayer extends StatefulWidget {
   final List<AudioTrackDetails> tracks;
   final int initialIndex;
   final VoidCallback onClose;
   final AudioRemixHandler? onRemix;
+  final VideoPlayerController? adoptedController;
 
   const AudioResultPlayer({
     super.key,
@@ -408,6 +479,7 @@ class AudioResultPlayer extends StatefulWidget {
     required this.onClose,
     this.initialIndex = 0,
     this.onRemix,
+    this.adoptedController,
   });
 
   @override
@@ -450,9 +522,20 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
       viewportFraction: 0.72,
     );
     jobListNotifier.addListener(_syncFromJobs);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _open(_index);
-    });
+    final adopted = widget.adoptedController;
+    if (adopted != null &&
+        adopted.value.isInitialized &&
+        widget.initialIndex == audioNowPlaying.index) {
+      _controller = adopted;
+      _ready = true;
+      _playing = adopted.value.isPlaying;
+      adopted.addListener(_onPlaybackSignal);
+    } else {
+      if (adopted != null) _controller = adopted;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _open(_index);
+      });
+    }
     _loadReaction();
   }
 
@@ -585,12 +668,13 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
   }
 
   VideoPlayerController? _controllerFor(AudioTrackDetails track) {
+    final options = VideoPlayerOptions(allowBackgroundPlayback: true);
     if (track.filePath.isNotEmpty && File(track.filePath).existsSync()) {
-      return VideoPlayerController.file(File(track.filePath));
+      return VideoPlayerController.file(File(track.filePath), videoPlayerOptions: options);
     }
     final url = track.networkUrl;
     if (url != null && url.isNotEmpty) {
-      return VideoPlayerController.networkUrl(Uri.parse(url));
+      return VideoPlayerController.networkUrl(Uri.parse(url), videoPlayerOptions: options);
     }
     return null;
   }
@@ -617,6 +701,9 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
     final previous = _controller;
     _controller = null;
     previous?.removeListener(_onPlaybackSignal);
+    if (previous != null && identical(previous, audioNowPlaying.controller)) {
+      audioNowPlaying.detachController();
+    }
     await previous?.dispose();
     if (!mounted || generation != _loadGeneration) return;
 
@@ -677,6 +764,24 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
       return;
     }
     controller.pause();
+  }
+
+  bool _dismissed = false;
+
+  void _dismiss() {
+    if (_dismissed) return;
+    _dismissed = true;
+    final controller = _controller;
+    if (controller != null) {
+      controller.removeListener(_onPlaybackSignal);
+      _controller = null;
+      audioNowPlaying.hold(
+        controller: controller,
+        tracks: List<AudioTrackDetails>.from(_playlist),
+        index: _index,
+      );
+    }
+    widget.onClose();
   }
 
   @override
@@ -983,7 +1088,13 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
     final palette = CoverPalette.of(_track.coverSeed);
     final playing = _playing;
 
-    return Material(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _dismiss();
+      },
+      child: Material(
       color: Colors.transparent,
       child: Stack(
         children: [
@@ -1002,7 +1113,7 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
                   alignment: Alignment.centerLeft,
                   child: IconButton(
                     tooltip: 'Close',
-                    onPressed: widget.onClose,
+                    onPressed: _dismiss,
                     icon: const Icon(Icons.keyboard_arrow_down_rounded,
                         color: Colors.white, size: 32),
                   ),
@@ -1166,6 +1277,7 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
           ),
         ],
       ),
+    ),
     );
   }
 
@@ -1587,6 +1699,78 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
       'December',
     ];
     return '${date.day} ${months[date.month - 1]} ${date.year}';
+  }
+}
+
+/// Compact controls shown after the full player is closed.
+class NowPlayingBar extends StatelessWidget {
+  const NowPlayingBar({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: audioNowPlaying,
+      builder: (context, _) {
+        final controller = audioNowPlaying.controller;
+        final tracks = audioNowPlaying.tracks;
+        if (controller == null || audioNowPlaying.sheetOpen || tracks.isEmpty) {
+          return const SizedBox.shrink();
+        }
+        final index = audioNowPlaying.index.clamp(0, tracks.length - 1);
+        final track = tracks[index];
+        final playing = controller.value.isInitialized && controller.value.isPlaying;
+        return Material(
+          color: const Color(0xFF1A1224),
+          child: InkWell(
+            onTap: () => FileService.openAudioTracks(
+              context,
+              tracks: tracks,
+              initialIndex: index,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+              child: Row(
+                children: [
+                  _ScribbleCover(
+                    seed: track.coverSeed,
+                    size: 36,
+                    imageUrl: track.coverUrl,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      track.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: playing ? 'Pause' : 'Play',
+                    onPressed: () async {
+                      if (playing) {
+                        await controller.pause();
+                      } else {
+                        await controller.play();
+                      }
+                    },
+                    icon: Icon(
+                      playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                      color: Colors.white,
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Stop',
+                    onPressed: audioNowPlaying.stop,
+                    icon: const Icon(Icons.close_rounded, color: Colors.white70),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 }
 

@@ -817,6 +817,8 @@ class FileService {
     if (tracks.isEmpty) return;
     if (_isPreviewOpen) return;
     _isPreviewOpen = true;
+    final resume = audioNowPlaying.matches(tracks);
+    audioNowPlaying.markSheet(true);
     await showGeneralDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -824,8 +826,9 @@ class FileService {
       transitionDuration: const Duration(milliseconds: 300),
       pageBuilder: (_, __, ___) {
         return AudioResultPlayer(
-          tracks: tracks,
+          tracks: resume ? audioNowPlaying.tracks : tracks,
           initialIndex: initialIndex.clamp(0, tracks.length - 1),
+          adoptedController: resume ? audioNowPlaying.controller : null,
           onRemix: remixAudio,
           onClose: () {
             _isPreviewOpen = false;
@@ -835,6 +838,7 @@ class FileService {
       },
     );
     _isPreviewOpen = false;
+    audioNowPlaying.markSheet(false);
   }
 
   // ✅ Opens an already-downloaded file like preview
