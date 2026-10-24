@@ -50,6 +50,7 @@ class FileService {
     void Function(double progress)? onProgress,
     int maxRetries = 3,
     String? outputType,
+    bool showPreview = true,
   }) async {
     // Prevent excessive queueing
     if (_downloadQueue.length >= _maxQueuedDownloads) {
@@ -70,6 +71,7 @@ class FileService {
       onProgress: onProgress,
       maxRetries: maxRetries,
       outputType: outputType,
+      showPreview: showPreview,
       completer: completer,
     );
     
@@ -120,6 +122,7 @@ class FileService {
         onProgress: task.onProgress,
         maxRetries: task.maxRetries,
         outputType: task.outputType,
+        showPreview: task.showPreview,
       ).then((result) async {
         task.completer.complete(result);
         _activeDownloads--;
@@ -3120,6 +3123,7 @@ class _DownloadTask {
   final void Function(double progress)? onProgress;
   final int maxRetries;
   final String? outputType;
+  final bool showPreview;
   final Completer<String?> completer;
 
   _DownloadTask({
@@ -3130,6 +3134,7 @@ class _DownloadTask {
     this.onProgress,
     required this.maxRetries,
     this.outputType,
+    this.showPreview = true,
     required this.completer,
   });
 }

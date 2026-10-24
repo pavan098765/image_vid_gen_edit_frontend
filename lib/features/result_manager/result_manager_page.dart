@@ -1231,6 +1231,7 @@ class _JobCardState extends State<JobCard> {
         suggestedFileName: widget.job.jobId,
         maxRetries: 2,
         outputType: widget.job.outputType,
+        showPreview: !_isMusicDownload,
         onProgress: (progress) {
           if (mounted) {
             setState(() => _downloadProgress = progress);
@@ -1313,6 +1314,7 @@ class _JobCardState extends State<JobCard> {
     // after the cloud link times out.
     final isExpired = job.showsCloudExpiry;
     final isSaved = job.isSavedLocally;
+    final playMusic = _canPlayMusic;
 
     return InkWell(
       onTap: widget.isSelectionMode
@@ -1322,7 +1324,7 @@ class _JobCardState extends State<JobCard> {
                 widget.onTap?.call();
                 return;
               }
-              if (_musicResult?.hasPlayableTrack == true) {
+              if (_canPlayMusic) {
                 _openPreview(context);
               } else if (job.status == 'completed' && !isExpired && isSaved) {
                 _openPreview(context);
@@ -1444,8 +1446,9 @@ class _JobCardState extends State<JobCard> {
                                   : Icon(
                                       isExpired
                                           ? Icons.cloud_off_rounded
-                                          : isSaved
-                                              ? (job.isAudioOutput ||
+                                          : (playMusic || isSaved)
+                                              ? (playMusic ||
+                                                      job.isAudioOutput ||
                                                       job.isVideoOutput
                                                   ? Icons.play_arrow_rounded
                                                   : Icons.visibility_outlined)
@@ -1454,16 +1457,18 @@ class _JobCardState extends State<JobCard> {
                                     ),
                               tooltip: isExpired
                                   ? 'Cloud result expired'
-                                  : isSaved
-                                      ? (job.isAudioOutput || job.isVideoOutput
-                                          ? 'Play'
-                                          : 'View')
-                                      : 'Save to device',
+                                  : playMusic
+                                      ? 'Play'
+                                      : isSaved
+                                          ? (job.isAudioOutput || job.isVideoOutput
+                                              ? 'Play'
+                                              : 'View')
+                                          : 'Save to device',
                               onPressed: _isDownloading
                                   ? null
                                   : isExpired
                                       ? () => _showExpiredDialog(context, cs)
-                                      : isSaved
+                                      : (playMusic || isSaved)
                                           ? () => _openPreview(context)
                                           : () => _download(context),
                             ),
@@ -1727,6 +1732,40 @@ class _JobCardState extends State<JobCard> {
   bool get _hitMakerSong =>
       _isHitMaker && (_musicAction == 'song' || _musicAction.isEmpty);
 
+  bool get _isMusicDownload =>
+      widget.job.isAudioOutput || _isHitMaker || widget.job.music != null;
+
+  /// Play as soon as a real clip exists. A finished song does not need a save first.
+  bool get _canPlayMusic {
+    if (_musicResult?.hasPlayableTrack == true) return true;
+    final musicJob = widget.job.isAudioOutput ||
+        _isHitMaker ||
+        widget.job.capabilityId == 'create_music';
+    if (!musicJob || widget.job.status != 'completed') return false;
+    final path = widget.job.localFilePath;
+    if (path != null && path.isNotEmpty && File(path).existsSync()) return true;
+    final url = widget.job.downloadUrl;
+    return url != null && url.isNotEmpty;
+  }
+
+  /// Stored versions. A finished HitMaker song with only the job file still
+  /// shows that one version. The second slot is only a placeholder while it runs.
+  List<MusicTrack> get _cardTracks {
+    final tracks = _musicResult?.tracks ?? const <MusicTrack>[];
+    if (tracks.isNotEmpty) return tracks;
+    if (!_hitMakerSong || widget.job.status != 'completed') return tracks;
+    final url = widget.job.downloadUrl;
+    if (url == null || url.isEmpty) return tracks;
+    return [
+      MusicTrack(
+        id: widget.job.jobId,
+        title: widget.job.title.trim().isEmpty ? 'Version A' : widget.job.title,
+        audioUrl: url,
+        downloadUrl: url,
+      ),
+    ];
+  }
+
   /// HitMaker songs return two versions. Keep the second slot while the job
   /// is still running, including the stretch where only the first has streamed.
   int get _versionCount {
@@ -1734,9 +1773,10 @@ class _JobCardState extends State<JobCard> {
     if (_hitMakerSong) {
       final stillMaking =
           widget.job.status != 'completed' && widget.job.status != 'failed';
-      // A running song keeps two slots. After it finishes, every stored version stays.
+      // A running song keeps two slots. After it finishes, only real versions stay.
       if (stillMaking) return tracks < 2 ? 2 : tracks;
-      return tracks;
+      if (tracks > 0) return tracks;
+      return _cardTracks.length;
     }
     return tracks > 1 ? tracks : 0;
   }
@@ -1813,7 +1853,7 @@ class _JobCardState extends State<JobCard> {
     if (tracks.isEmpty || !mounted) return;
     final phase = _musicResult?.phase ?? '';
     final playable = <int>[];
-    final musicTracks = _musicResult?.tracks ?? const <MusicTrack>[];
+    final musicTracks = _cardTracks;
     for (var i = 0; i < tracks.length; i++) {
       if (i < musicTracks.length && musicTracks[i].urlDuring(phase) != null) {
         playable.add(i);
@@ -1830,7 +1870,7 @@ class _JobCardState extends State<JobCard> {
 
   Widget _versionRow(ColorScheme cs) {
     const names = ['A', 'B', 'C', 'D'];
-    final tracks = _musicResult?.tracks ?? const <MusicTrack>[];
+    final tracks = _cardTracks;
     final count = _versionCount;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),

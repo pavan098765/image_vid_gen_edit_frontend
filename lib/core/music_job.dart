@@ -355,9 +355,10 @@ class MusicTrack {
   }
 
   /// The finished file. A stream can start earlier and has no stable length.
+  /// The minted download link is the one the player can actually open.
   String? get fileUrl {
-    if (_isFinishedFile(audioUrl)) return audioUrl;
     if (_isFinishedFile(downloadUrl)) return downloadUrl;
+    if (_isFinishedFile(audioUrl)) return audioUrl;
     return null;
   }
 

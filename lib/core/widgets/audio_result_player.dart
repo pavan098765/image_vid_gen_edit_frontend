@@ -185,8 +185,20 @@ List<AudioTrackDetails> audioTracksFromMusic(
 }
 
 List<AudioTrackDetails> audioTracksFromJob(JobModel job) {
+  final snap = job.settingsSnapshot ?? const <String, dynamic>{};
+  final prompt = _clean(job.originalPrompt) ?? _clean(snap['prompt']);
+  final title = _displayTitle(job.title, prompt);
+  final lyricsFallback = _clean(snap['lyrics']);
+  final styleFallback = _clean(snap['style']) ?? prompt;
   final raw = job.music;
-  if (raw == null) return const [];
+  if (raw == null) {
+    return _audioFallbackFromJob(
+      job,
+      title: title,
+      lyrics: lyricsFallback,
+      style: styleFallback,
+    );
+  }
   final music = MusicResult.fromJson(raw);
   final tracks = audioTracksFromMusic(
     music,
@@ -197,12 +209,7 @@ List<AudioTrackDetails> audioTracksFromJob(JobModel job) {
     createdAt: job.createdAt,
     modelId: job.model,
   );
-  final snap = job.settingsSnapshot ?? const <String, dynamic>{};
-  final prompt = _clean(job.originalPrompt) ?? _clean(snap['prompt']);
-  final title = _displayTitle(job.title, prompt);
-  final lyricsFallback = _clean(snap['lyrics']);
-  final styleFallback = _clean(snap['style']) ?? prompt;
-  return [
+  final prepared = [
     for (final track in _attachSavedFile(job, tracks))
       track.copyWith(
         title: _songTitle(track.title, title),
@@ -211,6 +218,47 @@ List<AudioTrackDetails> audioTracksFromJob(JobModel job) {
             ? lyricsFallback
             : null,
       ),
+  ];
+  if (prepared.isNotEmpty) return prepared;
+  return _audioFallbackFromJob(
+    job,
+    title: title,
+    lyrics: lyricsFallback,
+    style: styleFallback,
+  );
+}
+
+/// A finished music job whose track list was never stored still has one file.
+List<AudioTrackDetails> _audioFallbackFromJob(
+  JobModel job, {
+  required String title,
+  String? lyrics,
+  String? style,
+}) {
+  if (job.status != 'completed') return const [];
+  final musicJob = job.isAudioOutput ||
+      job.capabilityId == 'create_music' ||
+      job.model == kSunoV6ModelId;
+  if (!musicJob) return const [];
+  final path = job.localFilePath;
+  final localOk = path != null && path.isNotEmpty && File(path).existsSync();
+  final url = job.downloadUrl;
+  if (!localOk && (url == null || url.isEmpty)) return const [];
+  return [
+    AudioTrackDetails(
+      filePath: localOk ? path : '',
+      title: title,
+      artist: displayNameForModel(
+        preferInternalModelId(job.settingsSnapshot?['modelId']?.toString(), job.model),
+      ),
+      style: style ?? '',
+      lyrics: lyrics,
+      networkUrl: localOk ? null : url,
+      createdAt: job.createdAt,
+      modelId: job.model,
+      coverSeed: job.jobId.hashCode,
+      sourceJobId: job.jobId,
+    ),
   ];
 }
 
@@ -572,12 +620,15 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
     await previous?.dispose();
     if (!mounted || generation != _loadGeneration) return;
 
+    VideoPlayerController? controller;
     try {
-      final controller = _controllerFor(track);
+      controller = _controllerFor(track);
       if (controller == null) {
         throw StateError('no audio source');
       }
-      await controller.initialize();
+      final opening = controller.initialize();
+      unawaited(opening.then<void>((_) {}, onError: (_) {}));
+      await opening.timeout(const Duration(seconds: 20));
       if (!mounted || generation != _loadGeneration) {
         await controller.dispose();
         return;
@@ -593,6 +644,7 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
         _showReady = announceReady && !track.streaming;
       });
     } catch (_) {
+      await controller?.dispose();
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _index = index;

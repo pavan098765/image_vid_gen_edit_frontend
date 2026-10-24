@@ -324,8 +324,12 @@ class PollingService {
             final inputThumb = job.inputImagePath;
 
             // If preview not already stored, fetch it
-            if (job.localFilePath == null ||
-                !(File(job.localFilePath!).existsSync())) {
+            final skipImagePreview = job.isAudioOutput ||
+                job.music != null ||
+                job.capabilityId == 'create_music';
+            if (!skipImagePreview &&
+                (job.localFilePath == null ||
+                    !(File(job.localFilePath!).existsSync()))) {
               final tempPath = await FileService.previewFileAndReturnPath(
                 navigatorKey.currentContext!, // ✅ safe global context
                 downloadUrl,

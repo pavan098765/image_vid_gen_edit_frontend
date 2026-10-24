@@ -249,6 +249,14 @@ void main() {
     expect(ready.coverUrl, 'https://example.com/cover.jpeg');
     expect(ready.knownDuration, const Duration(milliseconds: 198440));
 
+    final minted = ready.absorb(MusicTrack.fromJson({
+      'id': 'audio-1',
+      'download_url': 'https://example.com/minted.mp3',
+    }));
+    expect(minted.playUrl, 'https://example.com/minted.mp3');
+    expect(minted.urlDuring('complete'), 'https://example.com/minted.mp3');
+    expect(minted.urlDuring('first_track'), 'https://example.com/stream');
+
     final music = MusicResult.fromJson({
       'action': 'song',
       'covers': [
