@@ -50,29 +50,15 @@ Future<void> _loadModelNameCache() async {
   }
 }
 
-/// User-facing model name, when the catalogue has one.
-String? friendlyModelName(String? modelId) {
-  final id = modelId?.trim() ?? '';
-  if (id.isEmpty) return null;
-  final name = displayNameForModel(id).trim();
-  if (name.isEmpty || name == id) return null;
-  return name;
-}
-
 /// The name stored on the job, or the one kept in its launch snapshot.
 String? modelNameForJob(JobModel job) {
   return friendlyModelName(job.model) ??
       friendlyModelName(job.settingsSnapshot?['modelId']?.toString());
 }
 
-/// Card title: the catalogue name, then the job name.
-String jobCardTitle(JobModel job) {
+String _jobTitle(JobModel job) {
   final raw = job.title.trim();
-  final label = raw.isEmpty ? 'Untitled' : raw;
-  final modelName = modelNameForJob(job);
-  if (modelName == null) return label;
-  if (label.toLowerCase().startsWith(modelName.toLowerCase())) return label;
-  return '$modelName · $label';
+  return raw.isEmpty ? 'Untitled' : raw;
 }
 
 /// =============================================================================
@@ -488,7 +474,9 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
     // Filter by search query
     if (_searchQuery.isNotEmpty) {
       jobs = jobs.where((job) {
-        return jobCardTitle(job).toLowerCase().contains(_searchQuery) ||
+        final modelName = modelNameForJob(job)?.toLowerCase() ?? '';
+        return _jobTitle(job).toLowerCase().contains(_searchQuery) ||
+            modelName.contains(_searchQuery) ||
             job.title.toLowerCase().contains(_searchQuery) ||
             job.jobId.toLowerCase().contains(_searchQuery) ||
             job.model.toLowerCase().contains(_searchQuery) ||
@@ -507,7 +495,7 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
           comparison = a.status.compareTo(b.status);
           break;
         case 'title':
-          comparison = jobCardTitle(a).compareTo(jobCardTitle(b));
+          comparison = a.title.compareTo(b.title);
           break;
       }
       return _sortAscending ? comparison : -comparison;
@@ -1435,7 +1423,7 @@ class _JobCardState extends State<JobCard> {
                     children: [
                       Flexible(
                         child: Text(
-                          jobCardTitle(job),
+                          _jobTitle(job),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: textTheme.titleSmall?.copyWith(
@@ -1466,7 +1454,25 @@ class _JobCardState extends State<JobCard> {
                       child: currentChild,
                     );
                   },
-                  child: _buildStatus(cs),
+                  child: widget.isSelectionMode
+                      ? Column(
+                          key: ValueKey('select-${job.jobId}'),
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (modelNameForJob(job) case final modelName?)
+                              Text(
+                                modelName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: textTheme.bodySmall?.copyWith(
+                                  color: cs.onSurfaceVariant,
+                                ),
+                              ),
+                            _buildStatus(cs),
+                          ],
+                        )
+                      : _buildStatus(cs),
                 ),
 
                 // ✅ Trailing: Checkbox in selection mode, or action buttons in normal mode

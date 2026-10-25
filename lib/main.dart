@@ -23,6 +23,7 @@ import 'firebase_options.dart';
 import 'core/theme/app_theme.dart';
 import 'core/app_state.dart';
 import 'core/model_display_name.dart';
+import 'core/playback_session.dart';
 import 'core/tool_launch.dart';
 import 'core/widgets/backlit_glass.dart';
 import 'core/services/notification_service.dart';
@@ -46,6 +47,59 @@ import 'package:media_kit/media_kit.dart';
 
 // Global navigator key
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+/// Tracks full-screen routes so the mini player can sit on pages above the tabs.
+class AppRouteStack extends NavigatorObserver with ChangeNotifier {
+  final List<Route<dynamic>> _routes = [];
+
+  bool get pageCoversShell {
+    for (var i = _routes.length - 1; i >= 0; i--) {
+      final route = _routes[i];
+      if (route is PopupRoute) continue;
+      if (route is PageRoute<dynamic>) return !route.isFirst;
+      return false;
+    }
+    return false;
+  }
+
+  void _changed() => notifyListeners();
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _routes.add(route);
+    _changed();
+  }
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _routes.remove(route);
+    _changed();
+  }
+
+  @override
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _routes.remove(route);
+    _changed();
+  }
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
+    if (oldRoute != null) {
+      final index = _routes.indexOf(oldRoute);
+      if (index >= 0 && newRoute != null) {
+        _routes[index] = newRoute;
+      } else {
+        _routes.remove(oldRoute);
+        if (newRoute != null) _routes.add(newRoute);
+      }
+    } else if (newRoute != null) {
+      _routes.add(newRoute);
+    }
+    _changed();
+  }
+}
+
+final appRouteStack = AppRouteStack();
 
 /// Pending navigations queued before UI ready.
 /// Stores tuple-like map {jobId, config}
@@ -934,6 +988,7 @@ Future<void> main() async {
   );
 
   debugPrint("✅ runApp() executed - splash visible now");
+  unawaited(PlaybackSession.prepare());
 
   // Execute queued navigations after first frame (UI ready)
   WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -1072,6 +1127,41 @@ class _KalaAIAppState extends State<KalaAIApp> {
           themeMode: themeMode,
 
           navigatorKey: navigatorKey,
+          navigatorObservers: [appRouteStack],
+          builder: (context, child) {
+            return ListenableBuilder(
+              listenable: Listenable.merge([audioNowPlaying, appRouteStack]),
+              builder: (context, _) {
+                final showOverlay = appRouteStack.pageCoversShell &&
+                    audioNowPlaying.hasAudio &&
+                    !audioNowPlaying.sheetOpen &&
+                    audioNowPlaying.tracks.isNotEmpty;
+                final media = MediaQuery.of(context);
+                final padded = showOverlay
+                    ? media.copyWith(
+                        padding: media.padding.copyWith(
+                          bottom: media.padding.bottom + kNowPlayingBarHeight,
+                        ),
+                      )
+                    : media;
+                return Stack(
+                  children: [
+                    MediaQuery(
+                      data: padded,
+                      child: child ?? const SizedBox.shrink(),
+                    ),
+                    if (showOverlay)
+                      const Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: NowPlayingBar(includeSafeArea: true),
+                      ),
+                  ],
+                );
+              },
+            );
+          },
           debugShowCheckedModeBanner: false,
 
           home: AnimatedSwitcher(

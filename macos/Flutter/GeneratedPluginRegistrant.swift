@@ -6,6 +6,8 @@ import FlutterMacOS
 import Foundation
 
 import app_links
+import audio_service
+import audio_session
 import connectivity_plus
 import device_info_plus
 import ffmpeg_kit_flutter_new
@@ -27,6 +29,7 @@ import pro_image_editor
 import pro_video_editor
 import share_plus
 import shared_preferences_foundation
+import sqflite_darwin
 import url_launcher_macos
 import video_player_avfoundation
 import volume_controller
@@ -35,6 +38,8 @@ import webview_flutter_wkwebview
 
 func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {
   AppLinksMacosPlugin.register(with: registry.registrar(forPlugin: "AppLinksMacosPlugin"))
+  AudioServicePlugin.register(with: registry.registrar(forPlugin: "AudioServicePlugin"))
+  AudioSessionPlugin.register(with: registry.registrar(forPlugin: "AudioSessionPlugin"))
   ConnectivityPlusPlugin.register(with: registry.registrar(forPlugin: "ConnectivityPlusPlugin"))
   DeviceInfoPlusMacosPlugin.register(with: registry.registrar(forPlugin: "DeviceInfoPlusMacosPlugin"))
   FFmpegKitFlutterPlugin.register(with: registry.registrar(forPlugin: "FFmpegKitFlutterPlugin"))
@@ -56,6 +61,7 @@ func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {
   ProVideoEditorPlugin.register(with: registry.registrar(forPlugin: "ProVideoEditorPlugin"))
   SharePlusMacosPlugin.register(with: registry.registrar(forPlugin: "SharePlusMacosPlugin"))
   SharedPreferencesPlugin.register(with: registry.registrar(forPlugin: "SharedPreferencesPlugin"))
+  SqflitePlugin.register(with: registry.registrar(forPlugin: "SqflitePlugin"))
   UrlLauncherPlugin.register(with: registry.registrar(forPlugin: "UrlLauncherPlugin"))
   VideoPlayerPlugin.register(with: registry.registrar(forPlugin: "VideoPlayerPlugin"))
   VolumeControllerPlugin.register(with: registry.registrar(forPlugin: "VolumeControllerPlugin"))

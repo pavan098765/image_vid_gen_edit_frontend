@@ -118,3 +118,12 @@ String displayNameForModel(String? modelId) {
   if (cached != null && cached.isNotEmpty && cached != modelId) return cached;
   return modelId;
 }
+
+/// Catalogue name for a model id. Null when the id has no separate name.
+String? friendlyModelName(String? modelId) {
+  final id = modelId?.trim() ?? '';
+  if (id.isEmpty) return null;
+  final name = displayNameForModel(id).trim();
+  if (name.isEmpty || name == id) return null;
+  return name;
+}

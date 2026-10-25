@@ -80,6 +80,7 @@ dependencies:
 
   ### Choose one player below
   video_player: ^2.10.0
+  audio_service: ^0.18.18
   # chewie: ^1.12.1
   # flick_video_player: ^0.9.0
   media_kit: ^1.2.0 # Primary package.

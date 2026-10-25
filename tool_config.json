@@ -2607,7 +2607,8 @@
           "cost": 65,
           "actionCosts": {
             "song": 65,
-            "sounds": 15
+            "sounds": 15,
+            "video": 20
           },
           "costUpscale": 0,
           "offer": 0,

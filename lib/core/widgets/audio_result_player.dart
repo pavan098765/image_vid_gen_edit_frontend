@@ -9,6 +9,7 @@ import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/model_display_name.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/music_job.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/file_service.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/playback_session.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/backlit_glass.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -411,8 +412,14 @@ class AudioNowPlaying extends ChangeNotifier {
   List<AudioTrackDetails> tracks = const [];
   int index = 0;
   bool sheetOpen = false;
+  Future<void> Function(int delta)? onSkip;
+  int _switchGeneration = 0;
 
   bool get hasAudio => controller != null;
+
+  void bindSkip(Future<void> Function(int delta)? skip) {
+    onSkip = skip;
+  }
 
   bool matches(List<AudioTrackDetails> next) {
     if (controller == null || tracks.length != next.length) return false;
@@ -438,9 +445,87 @@ class AudioNowPlaying extends ChangeNotifier {
     this.index = index;
     sheetOpen = false;
     notifyListeners();
+    unawaited(PlaybackSession.activate());
   }
 
-  void _onPlayer() => notifyListeners();
+  void _onPlayer() {
+    notifyListeners();
+    unawaited(PlaybackSession.sync());
+  }
+
+  Future<void> resume() async {
+    final current = controller;
+    if (current == null || !current.value.isInitialized) return;
+    await current.play();
+  }
+
+  Future<void> pause() async {
+    final current = controller;
+    if (current == null || !current.value.isInitialized) return;
+    await current.pause();
+  }
+
+  /// Moves to another version. The open player handles this itself.
+  Future<void> skip(int delta) async {
+    final bound = onSkip;
+    if (bound != null) {
+      await bound(delta);
+      return;
+    }
+    if (controller != null && tracks.length < 2) {
+      if (delta < 0) await controller!.seekTo(Duration.zero);
+      return;
+    }
+    if (tracks.length < 2) return;
+    final count = tracks.length;
+    final next = (index + delta) % count;
+    await _switchTo(next < 0 ? next + count : next);
+  }
+
+  Future<void> _switchTo(int next) async {
+    if (next < 0 || next >= tracks.length) return;
+    final generation = ++_switchGeneration;
+    final track = tracks[next];
+    final created = _controllerForTrack(track);
+    if (created == null) return;
+    try {
+      await created.initialize().timeout(const Duration(seconds: 20));
+    } catch (_) {
+      await created.dispose();
+      return;
+    }
+    if (generation != _switchGeneration) {
+      await created.dispose();
+      return;
+    }
+    final previous = controller;
+    previous?.removeListener(_onPlayer);
+    controller = created;
+    index = next;
+    created.addListener(_onPlayer);
+    notifyListeners();
+    await created.play();
+    if (!identical(previous, created)) await previous?.dispose();
+    unawaited(PlaybackSession.sync());
+  }
+
+  VideoPlayerController? _controllerForTrack(AudioTrackDetails track) {
+    final options = VideoPlayerOptions(allowBackgroundPlayback: true);
+    if (track.filePath.isNotEmpty && File(track.filePath).existsSync()) {
+      return VideoPlayerController.file(
+        File(track.filePath),
+        videoPlayerOptions: options,
+      );
+    }
+    final url = track.networkUrl;
+    if (url != null && url.isNotEmpty) {
+      return VideoPlayerController.networkUrl(
+        Uri.parse(url),
+        videoPlayerOptions: options,
+      );
+    }
+    return null;
+  }
 
   void detachController() {
     controller?.removeListener(_onPlayer);
@@ -453,17 +538,48 @@ class AudioNowPlaying extends ChangeNotifier {
   }
 
   Future<void> stop() async {
+    _switchGeneration++;
     final current = controller;
     current?.removeListener(_onPlayer);
     controller = null;
     tracks = const [];
+    index = 0;
     sheetOpen = false;
+    onSkip = null;
     notifyListeners();
     await current?.dispose();
+    await PlaybackSession.deactivate();
+  }
+
+  void bindPlaybackSession() {
+    PlaybackSession.read = () {
+      final current = controller;
+      if (current == null || tracks.isEmpty) return null;
+      final currentIndex = index.clamp(0, tracks.length - 1);
+      final track = tracks[currentIndex];
+      final value = current.value;
+      return PlaybackSnapshot(
+        title: track.title,
+        artist: track.artist,
+        artUrl: track.coverUrl,
+        position: value.isInitialized ? value.position : Duration.zero,
+        duration: value.isInitialized && value.duration > Duration.zero
+            ? value.duration
+            : (track.knownDuration ?? Duration.zero),
+        playing: value.isInitialized && value.isPlaying,
+        ready: value.isInitialized,
+        index: currentIndex,
+        canSkip: tracks.length > 1,
+      );
+    };
+    PlaybackSession.onPlay = resume;
+    PlaybackSession.onPause = pause;
+    PlaybackSession.onStop = stop;
+    PlaybackSession.onSkip = skip;
   }
 }
 
-final audioNowPlaying = AudioNowPlaying();
+final audioNowPlaying = AudioNowPlaying()..bindPlaybackSession();
 
 /// Full-screen player for a finished audio job.
 class AudioResultPlayer extends StatefulWidget {
@@ -522,6 +638,7 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
       viewportFraction: 0.72,
     );
     jobListNotifier.addListener(_syncFromJobs);
+    audioNowPlaying.bindSkip(_skipFromSession);
     final adopted = widget.adoptedController;
     if (adopted != null &&
         adopted.value.isInitialized &&
@@ -768,19 +885,31 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
 
   bool _dismissed = false;
 
+  Future<void> _skipFromSession(int delta) async {
+    if (delta < 0) {
+      _goPrevious();
+    } else {
+      _goNext();
+    }
+  }
+
+  void _handOffController() {
+    final controller = _controller;
+    if (controller == null) return;
+    controller.removeListener(_onPlaybackSignal);
+    _controller = null;
+    audioNowPlaying.hold(
+      controller: controller,
+      tracks: List<AudioTrackDetails>.from(_playlist),
+      index: _index,
+    );
+  }
+
   void _dismiss() {
     if (_dismissed) return;
     _dismissed = true;
-    final controller = _controller;
-    if (controller != null) {
-      controller.removeListener(_onPlaybackSignal);
-      _controller = null;
-      audioNowPlaying.hold(
-        controller: controller,
-        tracks: List<AudioTrackDetails>.from(_playlist),
-        index: _index,
-      );
-    }
+    audioNowPlaying.bindSkip(null);
+    _handOffController();
     widget.onClose();
   }
 
@@ -788,8 +917,11 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
   void dispose() {
     jobListNotifier.removeListener(_syncFromJobs);
     _coverController.dispose();
-    _controller?.removeListener(_onPlaybackSignal);
-    _controller?.dispose();
+    if (!_dismissed) {
+      _dismissed = true;
+      audioNowPlaying.bindSkip(null);
+      _handOffController();
+    }
     super.dispose();
   }
 
@@ -1706,13 +1838,18 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
   }
 }
 
+/// Height of the mini player row, without the system gesture inset.
+const double kNowPlayingBarHeight = 64;
+
 /// Compact controls shown after the full player is closed.
 class NowPlayingBar extends StatelessWidget {
-  const NowPlayingBar({super.key});
+  final bool includeSafeArea;
+
+  const NowPlayingBar({super.key, this.includeSafeArea = false});
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
+    final bar = ListenableBuilder(
       listenable: audioNowPlaying,
       builder: (context, _) {
         final controller = audioNowPlaying.controller;
@@ -1775,6 +1912,8 @@ class NowPlayingBar extends StatelessWidget {
         );
       },
     );
+    if (!includeSafeArea) return bar;
+    return SafeArea(top: false, child: bar);
   }
 }
 

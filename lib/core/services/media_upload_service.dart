@@ -230,4 +230,62 @@ class MediaUploadService {
       return (null, 'Network error: $e');
     }
   }
+
+  /// POST `/suggest_prompt`. Returns `(prompt, null)` or `(null, errorMessage)`.
+  static Future<(String?, String?)> suggestPrompt({
+    required String baseUrl,
+    required String authToken,
+    required String modelId,
+    required String field,
+    String text = '',
+    String? caption,
+  }) async {
+    final root = baseUrl.replaceAll(RegExp(r'/$'), '');
+    final body = <String, dynamic>{
+      'model_id': modelId,
+      'field': field,
+      'text': text,
+    };
+    final picture = caption?.trim();
+    if (picture != null && picture.isNotEmpty) {
+      body['caption'] = picture;
+    }
+    try {
+      final resp = await http
+          .post(
+            Uri.parse('$root/suggest_prompt'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $authToken',
+            },
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 45));
+
+      if (resp.statusCode != 200) {
+        debugPrint('⚠️ suggest_prompt: ${resp.statusCode} ${resp.body}');
+        return (null, _errorFromBody(resp.body) ?? 'Auto-prompt failed (${resp.statusCode})');
+      }
+
+      final data = jsonDecode(resp.body) as Map<String, dynamic>?;
+      final prompt = data?['prompt'] as String?;
+      if (prompt == null || prompt.trim().isEmpty) {
+        return (null, 'Empty prompt in response');
+      }
+      return (prompt.trim(), null);
+    } catch (e) {
+      debugPrint('⚠️ suggest_prompt error: $e');
+      return (null, 'Network error: $e');
+    }
+  }
+
+  static String? _errorFromBody(String body) {
+    try {
+      final decoded = jsonDecode(body) as Map<String, dynamic>?;
+      final detail = decoded?['detail'];
+      if (detail is String && detail.trim().isNotEmpty) return detail.trim();
+      if (detail is List && detail.isNotEmpty) return detail.first.toString();
+    } catch (_) {}
+    return null;
+  }
 }

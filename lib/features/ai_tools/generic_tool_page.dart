@@ -953,8 +953,10 @@ class _GenericToolPageState extends State<GenericToolPage>
   final Map<String, List<String>> _loraAdaptersByModel = {};
   bool _loading = false;
 
-  /// True while R2 upload + `/describe_asset_for_prompt` runs from the composer.
+  /// True while a sparkles request is writing one prompt field.
   bool _composerAutoPromptLoading = false;
+  String? _autoPromptField;
+  final Map<String, int> _promptFillTicks = {};
   bool _autoOpenMaskAfterPick = false;
   String? _selectedModeKey;
   String? _activeJobId;
@@ -1829,12 +1831,6 @@ class _GenericToolPageState extends State<GenericToolPage>
   bool _musicExpanding = false;
   String? _easyMusicPrompt;
   bool _promptFilling = false;
-
-  /// Composer auto-prompt is hidden only for Create Image / Create Video tools.
-  bool get _hideComposerAutoPromptButton {
-    final id = widget.config.capabilityId;
-    return id == 'create_image' || id == 'create_video' || _isAudioTool;
-  }
 
   /// Check if this is an expand scene (outpaint) category tool
   bool get _isExpandSceneTool => _isOutpaint;
@@ -4043,7 +4039,13 @@ class _GenericToolPageState extends State<GenericToolPage>
                             ),
                             if (!_isUpscalerTool &&
                                 _advancedSettings.upscaleOutput)
-                              _buildOutputUpscalePicker(cs, setSheetState),
+                              _buildCard(
+                                margin: EdgeInsets.zero,
+                                padding:
+                                    const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                                child: _buildOutputUpscalePicker(
+                                    cs, setSheetState),
+                              ),
 
                             const SizedBox(height: 12),
                             if (widget.config.capabilityId == 'edit_image' &&
@@ -4067,7 +4069,13 @@ class _GenericToolPageState extends State<GenericToolPage>
                                 },
                               ),
                               const SizedBox(height: 12),
-                              _buildQwenResolutionChoice(cs, setSheetState),
+                              _buildCard(
+                                margin: EdgeInsets.zero,
+                                padding:
+                                    const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                                child: _buildQwenResolutionChoice(
+                                    cs, setSheetState),
+                              ),
                               const SizedBox(height: 12),
                             ],
                             const SizedBox(height: 4),
@@ -4080,8 +4088,13 @@ class _GenericToolPageState extends State<GenericToolPage>
                               !_isUpscalerTool &&
                               !_isInpaintEraseTool &&
                               !_isRemoveBackgroundTool) ...[
-                            _buildAdvancedAspectRatioChipSelector(
-                                cs, setSheetState),
+                            _buildCard(
+                              margin: EdgeInsets.zero,
+                              padding:
+                                  const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                              child: _buildAdvancedAspectRatioChipSelector(
+                                  cs, setSheetState),
+                            ),
                             const SizedBox(height: 16),
                           ],
 
@@ -4093,14 +4106,26 @@ class _GenericToolPageState extends State<GenericToolPage>
                           // Variations chips (image + video tools; max from VIP tier)
                           if (widget.config.outputType == 'image' ||
                               widget.config.outputType == 'video') ...[
-                            _buildVariationsChipSelector(cs, setSheetState),
+                            _buildCard(
+                              margin: EdgeInsets.zero,
+                              padding:
+                                  const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                              child: _buildVariationsChipSelector(
+                                  cs, setSheetState),
+                            ),
                             const SizedBox(height: 16),
                           ],
 
                           // Duration chips (create / animate video; min 5s when model allows)
                           if (widget.config.outputType == 'video' &&
                               !_isVideoUpscalerTool) ...[
-                            _buildDurationChipSelector(cs, setSheetState),
+                            _buildCard(
+                              margin: EdgeInsets.zero,
+                              padding:
+                                  const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                              child:
+                                  _buildDurationChipSelector(cs, setSheetState),
+                            ),
                             const SizedBox(height: 16),
                           ],
 
@@ -4317,17 +4342,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   }) {
     return Container(
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: value
-            ? cs.primaryContainer.withValues(alpha: 0.3)
-            : cs.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: value
-              ? cs.primary.withValues(alpha: 0.3)
-              : cs.outlineVariant.withValues(alpha: 0.2),
-        ),
-      ),
+      decoration: AppStyles.cardDecoration(cs),
       child: Row(
         children: [
           Container(
@@ -5080,26 +5095,15 @@ class _GenericToolPageState extends State<GenericToolPage>
         width: 150,
         height: 110, // Fixed height to prevent overflow
         padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? cs.primary.withValues(alpha: 0.12)
-              : cs.surfaceContainerHigh,
-          borderRadius: BorderRadius.circular(14),
+        decoration: AppStyles.cardDecoration(cs).copyWith(
           border: Border.all(
             color: isSelected
-                ? cs.primary.withValues(alpha: 0.5)
-                : cs.outlineVariant.withValues(alpha: 0.2),
+                ? cs.primary
+                : (cs.brightness == Brightness.dark
+                    ? Colors.white.withValues(alpha: 0.12)
+                    : Colors.white.withValues(alpha: 0.9)),
             width: isSelected ? 1.5 : 1,
           ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: cs.primary.withValues(alpha: 0.15),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ]
-              : null,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -7322,7 +7326,6 @@ class _GenericToolPageState extends State<GenericToolPage>
     final isBulkMode = _advancedSettings.bulkEditEnabled && _supportsBulkEdit;
     final showComposerAttachRow =
         attachments.isNotEmpty || (isBulkMode && canAttach);
-    final canAutoPrompt = _composerCanAutoPrompt(attachments);
 
     return Stack(
       children: [
@@ -7555,23 +7558,19 @@ class _GenericToolPageState extends State<GenericToolPage>
                           () => _promptStylesVisible = !_promptStylesVisible),
                       active: _promptStylesVisible,
                     ),
-                  if (!_hideComposerAutoPromptButton) ...[
-                    const SizedBox(width: 6),
-                    _ComposerIconButton(
-                      icon: LucideIcons.sparkles,
-                      tooltip: canAutoPrompt
-                          ? 'Auto-fill prompt from attached media'
-                          : (kIsWeb
-                              ? 'Add an image to auto-fill the prompt (video: use the app on mobile)'
-                              : 'Attach an image or video to auto-fill the prompt'),
-                      onTap: canAutoPrompt && !_composerAutoPromptLoading
-                          ? () => unawaited(_onComposerAutoPromptTapped(ref))
-                          : () {},
-                      active: false,
-                      busy: _composerAutoPromptLoading,
-                      enabled: canAutoPrompt && !_composerAutoPromptLoading,
-                    ),
-                  ],
+                  const SizedBox(width: 6),
+                  _autoPromptButton(
+                    fieldRef: ref,
+                    suggestField: 'prompt',
+                    currentText: _promptController.text,
+                    apply: (value) {
+                      _promptController.value = TextEditingValue(
+                        text: value,
+                        selection: TextSelection.collapsed(offset: value.length),
+                      );
+                      _inputs[ref] = value;
+                    },
+                  ),
                   if (!_isInpaintEraseTool) ...[
                     const SizedBox(width: 6),
                     _ComposerIconButton(
@@ -7972,22 +7971,170 @@ class _GenericToolPageState extends State<GenericToolPage>
     return out;
   }
 
-  bool _composerCanAutoPrompt(List<_ComposerAttachment> attachments) {
-    for (final a in attachments) {
-      if (a.kind == _ComposerAttachmentKind.image ||
-          a.kind == _ComposerAttachmentKind.bulkImage) {
-        final b = a.thumbBytes;
-        if (b != null && b.isNotEmpty) return true;
+  bool _isPromptStyleRef(String ref) {
+    switch (ref) {
+      case 'prompt':
+      case 'lyrics':
+      case 'style':
+      case 'negative':
+      case 'negative_prompt':
+      case 'negative_tags':
+      case 'voice_description':
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  String _suggestFieldForRef(String ref) {
+    switch (ref) {
+      case 'lyrics':
+      case 'style':
+      case 'voice_description':
+        return ref;
+      case 'negative':
+      case 'negative_prompt':
+      case 'negative_tags':
+        return 'negative';
+      default:
+        return 'prompt';
+    }
+  }
+
+  bool get _captionFromAttachment {
+    final id = widget.config.capabilityId;
+    return id == 'edit_image' || id == 'expand_scene' || _isOutpaint;
+  }
+
+  Widget _autoPromptButton({
+    required String fieldRef,
+    required String suggestField,
+    required String currentText,
+    required void Function(String value) apply,
+    StateSetter? sheetSetter,
+  }) {
+    final busy = _composerAutoPromptLoading && _autoPromptField == fieldRef;
+    final empty = currentText.trim().isEmpty;
+    return _ComposerIconButton(
+      icon: LucideIcons.sparkles,
+      tooltip: empty ? 'Write a prompt' : 'Refine this prompt',
+      onTap: _composerAutoPromptLoading
+          ? () {}
+          : () => unawaited(_suggestForField(
+                fieldRef: fieldRef,
+                suggestField: suggestField,
+                currentText: currentText,
+                apply: apply,
+                sheetSetter: sheetSetter,
+              )),
+      busy: busy,
+      enabled: !_composerAutoPromptLoading,
+    );
+  }
+
+  Future<String?> _captionForAutoPrompt(Uint8List bytes, String token) async {
+    final urls = await MediaUploadService.getMediaUploadUrls(
+      count: 1,
+      mediaType: 'image',
+      authToken: token,
+      baseUrl: controllerUrl,
+    );
+    if (!mounted) return null;
+    if (urls == null || urls.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not get upload URL. Check your connection.'),
+        ),
+      );
+      return null;
+    }
+    final putOk = await MediaUploadService.uploadToR2(
+      urls.first.uploadUrl,
+      bytes,
+      contentType: 'image/jpeg',
+    );
+    if (!mounted) return null;
+    if (!putOk) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Upload failed. Try again.')),
+      );
+      return null;
+    }
+    final (caption, err) = await MediaUploadService.describeAssetForPrompt(
+      baseUrl: controllerUrl,
+      authToken: token,
+      inputR2Key: urls.first.r2Key,
+      contentType: 'image/jpeg',
+    );
+    if (!mounted) return null;
+    if (caption == null || caption.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(err ?? 'Could not read the picture.')),
+      );
+      return null;
+    }
+    return caption.trim();
+  }
+
+  Future<void> _suggestForField({
+    required String fieldRef,
+    required String suggestField,
+    required String currentText,
+    required void Function(String value) apply,
+    StateSetter? sheetSetter,
+  }) async {
+    if (_composerAutoPromptLoading) return;
+    final typed = currentText.trim();
+    setState(() {
+      _composerAutoPromptLoading = true;
+      _autoPromptField = fieldRef;
+    });
+    sheetSetter?.call(() {});
+    try {
+      final token = await _authService.getIdToken();
+      if (!mounted) return;
+      if (token == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Sign in to use auto-prompt.')),
+        );
+        return;
       }
-      if (!kIsWeb &&
-          (a.kind == _ComposerAttachmentKind.video ||
-              a.kind == _ComposerAttachmentKind.bulkVideo ||
-              a.kind == _ComposerAttachmentKind.bulkCineRealRefVideo)) {
-        final p = a.filePath;
-        if (p != null && p.isNotEmpty) return true;
+      String? caption;
+      if (typed.isEmpty && _captionFromAttachment) {
+        final bytes = await _bytesForComposerAutoPrompt();
+        if (!mounted) return;
+        if (bytes != null && bytes.isNotEmpty) {
+          caption = await _captionForAutoPrompt(bytes, token);
+          if (!mounted || caption == null) return;
+        }
+      }
+      final (prompt, err) = await MediaUploadService.suggestPrompt(
+        baseUrl: controllerUrl,
+        authToken: token,
+        modelId: _selectedModelId ?? widget.config.model,
+        field: suggestField,
+        text: typed,
+        caption: caption,
+      );
+      if (!mounted) return;
+      if (prompt == null || prompt.trim().isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(err ?? 'Auto-prompt failed.')),
+        );
+        return;
+      }
+      apply(prompt.trim());
+      setState(() {});
+      sheetSetter?.call(() {});
+    } finally {
+      if (mounted) {
+        setState(() {
+          _composerAutoPromptLoading = false;
+          _autoPromptField = null;
+        });
+        sheetSetter?.call(() {});
       }
     }
-    return false;
   }
 
   Future<Uint8List?> _bytesForComposerAutoPrompt() async {
@@ -8021,86 +8168,6 @@ class _GenericToolPageState extends State<GenericToolPage>
       }
     }
     return null;
-  }
-
-  Future<void> _onComposerAutoPromptTapped(String promptRef) async {
-    if (_composerAutoPromptLoading) return;
-    final bytes = await _bytesForComposerAutoPrompt();
-    if (!mounted) return;
-    if (bytes == null || bytes.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            kIsWeb
-                ? 'Add an image to auto-fill the prompt.'
-                : 'Add an image or video to auto-fill the prompt.',
-          ),
-        ),
-      );
-      return;
-    }
-
-    setState(() => _composerAutoPromptLoading = true);
-    try {
-      final token = await _authService.getIdToken();
-      if (!mounted) return;
-      if (token == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Sign in to use auto-prompt.')),
-        );
-        return;
-      }
-
-      final urls = await MediaUploadService.getMediaUploadUrls(
-        count: 1,
-        mediaType: 'image',
-        authToken: token,
-        baseUrl: controllerUrl,
-      );
-      if (!mounted) return;
-      if (urls == null || urls.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Could not get upload URL. Check your connection.'),
-          ),
-        );
-        return;
-      }
-
-      final putOk = await MediaUploadService.uploadToR2(
-        urls.first.uploadUrl,
-        bytes,
-        contentType: 'image/jpeg',
-      );
-      if (!mounted) return;
-      if (!putOk) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Upload failed. Try again.')),
-        );
-        return;
-      }
-
-      final (prompt, err) = await MediaUploadService.describeAssetForPrompt(
-        baseUrl: controllerUrl,
-        authToken: token,
-        inputR2Key: urls.first.r2Key,
-        contentType: 'image/jpeg',
-      );
-      if (!mounted) return;
-      if (prompt != null) {
-        _promptController.text = prompt;
-        _inputs[promptRef] = prompt;
-        setState(() {});
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(err ?? 'Auto-prompt failed.')),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _composerAutoPromptLoading = false);
-      }
-    }
   }
 
   /// Inputs on this tool that can be attached through the composer's + sheet.
@@ -10269,6 +10336,8 @@ class _GenericToolPageState extends State<GenericToolPage>
     final maxLines = (input['maxLines'] as int?) ?? (multiline ? 6 : 1);
     final maxLength = input['maxLength'] as int?;
     _inputs[ref] ??= input['default']?.toString() ?? '';
+    final currentText = _inputs[ref] as String? ?? '';
+    final suggestThis = _isPromptStyleRef(ref);
 
     return _buildCard(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
@@ -10285,7 +10354,8 @@ class _GenericToolPageState extends State<GenericToolPage>
           ),
           const SizedBox(height: 8),
           TextFormField(
-            initialValue: _inputs[ref] as String? ?? '',
+            key: ValueKey('$ref-${_promptFillTicks[ref] ?? 0}'),
+            initialValue: currentText,
             onChanged: (v) {
               void apply() => _inputs[ref] = v;
               if (sheetSetter != null) {
@@ -10329,6 +10399,22 @@ class _GenericToolPageState extends State<GenericToolPage>
                   const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             ),
           ),
+          if (suggestThis) ...[
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: _autoPromptButton(
+                fieldRef: ref,
+                suggestField: _suggestFieldForRef(ref),
+                currentText: currentText,
+                sheetSetter: sheetSetter,
+                apply: (value) {
+                  _inputs[ref] = value;
+                  _promptFillTicks[ref] = (_promptFillTicks[ref] ?? 0) + 1;
+                },
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -15857,7 +15943,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             )
           else
             TextFormField(
-              key: ValueKey(inputId),
+              key: ValueKey('$inputId-${_promptFillTicks[inputId] ?? 0}'),
               initialValue: current,
               minLines: minLines,
               maxLines: _kComposerPromptMaxLines,
@@ -15877,7 +15963,39 @@ class _GenericToolPageState extends State<GenericToolPage>
           Row(
             children: [
               const Spacer(),
+              _autoPromptButton(
+                fieldRef: inputId ??
+                    (identical(controller, _sunoStyleController)
+                        ? 'style'
+                        : 'prompt'),
+                suggestField: _suggestFieldForRef(
+                  inputId ??
+                      (identical(controller, _sunoStyleController)
+                          ? 'style'
+                          : 'prompt'),
+                ),
+                currentText: current,
+                apply: (value) {
+                  if (controller != null) {
+                    controller.value = TextEditingValue(
+                      text: value,
+                      selection:
+                          TextSelection.collapsed(offset: value.length),
+                    );
+                    if (identical(controller, _sunoStyleController)) {
+                      _inputs['style'] = value;
+                    } else {
+                      _inputs['prompt'] = value;
+                    }
+                  } else if (inputId != null) {
+                    _inputs[inputId] = value;
+                    _promptFillTicks[inputId] =
+                        (_promptFillTicks[inputId] ?? 0) + 1;
+                  }
+                },
+              ),
               if (showSettings) ...[
+                const SizedBox(width: 6),
                 _ComposerIconButton(
                   icon: LucideIcons.settings,
                   tooltip: modelName.isEmpty
@@ -15886,8 +16004,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                   onTap: _showAdvancedSettings,
                   active: false,
                 ),
-                const SizedBox(width: 6),
               ],
+              const SizedBox(width: 6),
               Text(
                 current.isEmpty ? '' : '${current.length}',
                 style: TextStyle(
@@ -16050,6 +16168,19 @@ class _GenericToolPageState extends State<GenericToolPage>
           Row(
             children: [
               const Spacer(),
+              _autoPromptButton(
+                fieldRef: 'prompt',
+                suggestField: 'prompt',
+                currentText: idea,
+                apply: (value) {
+                  _promptController.value = TextEditingValue(
+                    text: value,
+                    selection: TextSelection.collapsed(offset: value.length),
+                  );
+                  _inputs['prompt'] = value;
+                },
+              ),
+              const SizedBox(width: 6),
               _ComposerIconButton(
                 icon: LucideIcons.settings,
                 tooltip: 'Settings',
@@ -19091,6 +19222,27 @@ Return only the JSON fields.
               }
               if (widget.config.capabilityId == 'expand_scene') {
                 final modelId = _selectedModelId ?? widget.config.model;
+                final runwareExpand = modelId == 'juggernaut_lightning_expand' ||
+                    modelId == 'z_image_turbo_expand';
+                if (runwareExpand) {
+                  final plan = buildRunwareOutpaint(rawImageList.first, _inputs);
+                  if (plan.error != null || plan.image == null) {
+                    throw Exception(
+                      plan.error ?? 'Could not prepare that image to expand.',
+                    );
+                  }
+                  rawImageList = [plan.image!];
+                  paramsForSubmit
+                    ..['outpaint_top'] = plan.top
+                    ..['outpaint_bottom'] = plan.bottom
+                    ..['outpaint_left'] = plan.left
+                    ..['outpaint_right'] = plan.right
+                    ..['outpaint_blur'] = 16
+                    ..['width'] = plan.width
+                    ..['height'] = plan.height
+                    ..remove('aspect_ratio');
+                } else {
+                final modelId = _selectedModelId ?? widget.config.model;
                 if (modelId == 'grok_imagine_edit') {
                   const allowed = {
                     '1:1',
@@ -19129,6 +19281,7 @@ Return only the JSON fields.
                       ratio.toLowerCase() != 'custom') {
                     paramsForSubmit['aspect_ratio'] = ratio;
                   }
+                }
                 }
               }
               final imageKeys = await MediaUploadService.uploadMediaBatch(
@@ -19667,14 +19820,20 @@ Return only the JSON fields.
         return;
       } catch (e) {
         debugPrint("❌ Job submission attempt $attempt failed: $e");
-        if (attempt >= maxRetries) {
+        final raw = e.toString();
+        final localPrep = raw.contains('too large for that shape') ||
+            raw.contains('too small to expand') ||
+            raw.contains('Could not read that image') ||
+            raw.contains('Could not prepare that image');
+        if (localPrep || attempt >= maxRetries) {
           dismissDialog();
           _isSubmittingJob = false;
           if (mounted) {
+            final shown = localPrep
+                ? raw.replaceFirst('Exception: ', '')
+                : "Error submitting job after $maxRetries retries: $e";
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                  content: Text(
-                      "Error submitting job after $maxRetries retries: $e")),
+              SnackBar(content: Text(shown)),
             );
           }
           return;

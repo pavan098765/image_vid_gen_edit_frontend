@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/cached_tool_config.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/model_display_name.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/music_job.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/suno_v6_client.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/tool_launch.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/user_template_store.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/media_editor/editor_tab_launch.dart';
@@ -22,6 +24,14 @@ class _JobNextActionsState extends State<JobNextActions> {
   Map<String, dynamic>? _config;
   bool _busy = false;
   bool _optionsOpen = false;
+
+  String get _nextActionsLabel {
+    final job = widget.job;
+    final name = friendlyModelName(job.model) ??
+        friendlyModelName(job.settingsSnapshot?['modelId']?.toString());
+    if (name == null) return 'Next actions';
+    return '$name · Next actions';
+  }
 
   @override
   void initState() {
@@ -207,6 +217,84 @@ class _JobNextActionsState extends State<JobNextActions> {
     return text.isEmpty ? null : text;
   }
 
+  int _musicVideoGems() {
+    final cap = _config == null ? null : capabilityById(_config!, 'create_music');
+    final models = cap?['models'];
+    if (models is List) {
+      for (final model in models) {
+        if (model is! Map || model['id'] != kSunoV6ModelId) continue;
+        final costs = model['actionCosts'];
+        final video = costs is Map ? costs['video'] : null;
+        if (video is num) return video.toInt();
+      }
+    }
+    return 20;
+  }
+
+  List<({String taskId, String audioId, String title})> _hitMakerVideoTargets() {
+    final job = widget.job;
+    final snapModel = job.settingsSnapshot?['modelId'];
+    final model = snapModel is String && snapModel.isNotEmpty ? snapModel : job.model;
+    if (model != kSunoV6ModelId || job.music == null) return const [];
+    final music = MusicResult.fromJson(job.music!);
+    if (music.action != 'song') return const [];
+    final taskId = music.taskId;
+    if (taskId == null || taskId.isEmpty) return const [];
+    return [
+      for (final track in music.tracks)
+        if (track.id.isNotEmpty)
+          (
+            taskId: taskId,
+            audioId: track.id,
+            title: track.title.trim().isEmpty ? 'Version' : track.title.trim(),
+          ),
+    ];
+  }
+
+  Future<void> _createMusicVideo(
+    ({String taskId, String audioId, String title}) target,
+  ) async {
+    final song = widget.job;
+    try {
+      final result = await submitSunoV6(
+        prompt: _prompt ?? target.title,
+        params: {
+          'action': 'video',
+          'source_task_id': target.taskId,
+          'audio_id': target.audioId,
+        },
+      );
+      final created = JobModel(
+        jobId: result.jobId,
+        title: await generateFriendlyJobName(),
+        model: kSunoV6ModelId,
+        outputType: 'video',
+        status: 'processing',
+        capabilityId: 'create_music',
+        parentJobId: song.jobId,
+        originalPrompt: _prompt,
+        creditsCharged: _musicVideoGems(),
+        settingsSnapshot: {
+          'modelId': kSunoV6ModelId,
+          'action': 'video',
+          'source_task_id': target.taskId,
+          'audio_id': target.audioId,
+          if (_prompt != null) 'prompt': _prompt,
+        },
+      );
+      await addOrUpdateJob(created);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Music video added to Creations.')),
+      );
+    } on SunoFormException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    }
+  }
+
   Future<void> _remixTrack() async {
     final file = _resultFile;
     if (file == null) {
@@ -325,6 +413,20 @@ class _JobNextActionsState extends State<JobNextActions> {
         label: 'Remix',
         onTap: () => _guard(_remixTrack),
       ));
+      final videos = _hitMakerVideoTargets();
+      final gems = _musicVideoGems();
+      for (final target in videos) {
+        final label = videos.length > 1
+            ? 'Create music video · ${target.title}'
+            : 'Create music video';
+        rows.add(_aiRow(
+          cs,
+          icon: Icons.movie_creation_outlined,
+          label: label,
+          detail: '$gems gems',
+          onTap: () => _guard(() => _createMusicVideo(target)),
+        ));
+      }
     }
 
     if (job.isImageOutput && result != null) {
@@ -425,7 +527,7 @@ class _JobNextActionsState extends State<JobNextActions> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Next actions',
+                        _nextActionsLabel,
                         style: TextStyle(
                           color: cs.onSurface,
                           fontWeight: FontWeight.w600,
