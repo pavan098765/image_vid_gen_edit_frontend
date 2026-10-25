@@ -94,31 +94,71 @@ class _BeforeAfterPreviewPageState extends State<BeforeAfterPreviewPage> {
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-          child: Semantics(
-            image: true,
-            label: label,
-            child: GestureDetector(
-              onDoubleTapDown: (details) =>
-                  _doubleTapPoint = details.localPosition,
-              onDoubleTap: _toggleZoom,
-              child: InteractiveViewer(
-                transformationController: _zoom,
-                minScale: 1,
-                maxScale: 5,
-                child: Image.file(
-                  file,
-                  key: ValueKey<String>(file.path + label),
-                  fit: BoxFit.contain,
-                  width: double.infinity,
-                  height: double.infinity,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final width = _finiteExtent(constraints.maxWidth);
+              final height = _finiteExtent(constraints.maxHeight);
+              if (width == null || height == null) {
+                return const SizedBox.shrink();
+              }
+              return Semantics(
+                image: true,
+                label: label,
+                child: GestureDetector(
+                  onDoubleTapDown: (details) =>
+                      _doubleTapPoint = details.localPosition,
+                  onDoubleTap: _toggleZoom,
+                  child: InteractiveViewer(
+                    transformationController: _zoom,
+                    minScale: 1,
+                    maxScale: 5,
+                    child: Image.file(
+                      file,
+                      key: ValueKey<String>(file.path + label),
+                      fit: BoxFit.contain,
+                      width: width,
+                      height: height,
+                      cacheWidth: _previewCacheEdge(
+                        width,
+                        MediaQuery.devicePixelRatioOf(context),
+                      ),
+                      errorBuilder: (context, error, stackTrace) {
+                        return SizedBox(
+                          width: width,
+                          height: height,
+                          child: const Center(
+                            child: Icon(
+                              Icons.broken_image_rounded,
+                              color: Colors.white38,
+                              size: 48,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
                 ),
-              ),
-            ),
+              );
+            },
           ),
         ),
       ),
     );
   }
+}
+
+double? _finiteExtent(double value) {
+  if (value <= 0 || !value.isFinite) return null;
+  return value;
+}
+
+/// One decode edge. Null until the viewport has a real width.
+int? _previewCacheEdge(double logicalWidth, double devicePixelRatio) {
+  if (logicalWidth <= 0 || !logicalWidth.isFinite) return null;
+  if (devicePixelRatio <= 0 || !devicePixelRatio.isFinite) return null;
+  final edge = (logicalWidth * devicePixelRatio).round();
+  if (edge <= 0) return null;
+  return edge > 4096 ? 4096 : edge;
 }
 
 void openBeforeAfterPreview(

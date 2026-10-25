@@ -121,7 +121,7 @@ class _SplashScreenState extends State<SplashScreen>
       body: Stack(
         fit: StackFit.expand,
         children: [
-          const BacklitWash(forceDark: true),
+          const BacklitWash(forceDark: true, drift: false),
           SafeArea(
             child: LayoutBuilder(
               builder: (context, constraints) {
@@ -142,7 +142,7 @@ class _SplashScreenState extends State<SplashScreen>
                   children: [
                     Center(
                       child: _SplashBacklight(
-                        width: cardWidth + 150,
+                        width: cardWidth + 220,
                         reveal: _lightReveal,
                         animate: !reduceMotion,
                       ),
@@ -177,9 +177,9 @@ class _SplashScreenState extends State<SplashScreen>
     required double loaderWidth,
     required bool animateLoader,
   }) {
-    final afterMark = compact ? 16.0 : 26.0;
-    final afterTitle = compact ? 10.0 : 14.0;
-    final beforeLoader = compact ? 18.0 : 28.0;
+    final afterMark = compact ? 14.0 : 22.0;
+    final afterTitle = compact ? 8.0 : 12.0;
+    final beforeLoader = compact ? 16.0 : 24.0;
 
     // No Opacity, scroll view, or scale around this panel. Those layers
     // isolate BackdropFilter, so the frost would miss the backlight.
@@ -192,11 +192,11 @@ class _SplashScreenState extends State<SplashScreen>
         borderRadius: const BorderRadius.all(Radius.circular(32)),
         padding: EdgeInsets.fromLTRB(
           horizontalPadding,
-          compact ? 28 : 40,
+          compact ? 24 : 36,
           horizontalPadding,
-          compact ? 22 : 28,
+          compact ? 20 : 26,
         ),
-        tint: const Color(0xFF160E1C).withValues(alpha: 0.5),
+        tint: const Color(0xFF160E1C).withValues(alpha: 0.38),
         child: AnimatedBuilder(
           animation: _entranceController,
           builder: (context, _) {
@@ -349,27 +349,27 @@ class _BacklightField extends StatelessWidget {
             children: [
               _PositionedGlow(
                 alignment: Alignment(-0.42, -0.48),
-                diameterFactor: 0.58,
+                diameterFactor: 0.92,
                 color: KalaColors.magenta,
-                alpha: 0.58,
+                alpha: 0.42,
               ),
               _PositionedGlow(
                 alignment: Alignment(0.02, -0.28),
-                diameterFactor: 0.7,
+                diameterFactor: 1.05,
                 color: KalaColors.purple,
-                alpha: 0.5,
+                alpha: 0.36,
               ),
               _PositionedGlow(
                 alignment: Alignment(0.46, -0.12),
-                diameterFactor: 0.52,
+                diameterFactor: 0.84,
                 color: KalaColors.cyan,
-                alpha: 0.46,
+                alpha: 0.32,
               ),
               _PositionedGlow(
                 alignment: Alignment(-0.2, -0.36),
-                diameterFactor: 0.4,
+                diameterFactor: 0.64,
                 color: KalaColors.gold,
-                alpha: 0.3,
+                alpha: 0.2,
               ),
             ],
           ),
@@ -409,7 +409,7 @@ class _PositionedGlow extends StatelessWidget {
                   color.withValues(alpha: alpha * 0.4),
                   color.withValues(alpha: 0),
                 ],
-                stops: const [0.0, 0.42, 1.0],
+                stops: const [0.0, 0.55, 1.0],
               ),
             ),
           ),

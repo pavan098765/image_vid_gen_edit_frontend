@@ -15,18 +15,21 @@ class BacklitWash extends StatelessWidget {
   /// The audio player uses this so its white type stays readable.
   final bool forceDark;
 
+  /// Slow movement of the blooms. The splash leaves this off.
+  final bool drift;
+
   const BacklitWash({
     super.key,
     this.glowAlignment = const Alignment(-0.55, -0.72),
     this.glow,
     this.warm,
     this.forceDark = false,
+    this.drift = true,
   });
 
   @override
   Widget build(BuildContext context) {
-    final isDark =
-        forceDark || Theme.of(context).brightness == Brightness.dark;
+    final isDark = forceDark || Theme.of(context).brightness == Brightness.dark;
     // Logo crystal: gold → magenta on one side, cyan → violet on the other.
     const gold = Color(0xFFFFB020);
     const magenta = Color(0xFFFF4D9A);
@@ -38,13 +41,13 @@ class BacklitWash extends StatelessWidget {
     // A passed color still owns its light, then fades toward the shared violet.
     final upperBloom = glow == null
         ? (isDark
-            ? const [gold, magenta, violet]
-            : const [Color(0xFFFFC27A), Color(0xFFFF8EC8), Color(0xFFC9B0FF)])
+              ? const [gold, magenta, violet]
+              : const [Color(0xFFFFC27A), Color(0xFFFF8EC8), Color(0xFFC9B0FF)])
         : [glow!, Color.lerp(glow!, magenta, 0.35)!];
     final sideBloom = warm == null
         ? (isDark
-            ? const [cyan, blue, violet]
-            : const [Color(0xFF7AD4FF), Color(0xFF8AA6FF), Color(0xFFD4C6FF)])
+              ? const [cyan, blue, violet]
+              : const [Color(0xFF7AD4FF), Color(0xFF8AA6FF), Color(0xFFD4C6FF)])
         : [warm!, Color.lerp(warm!, violet, 0.4)!];
 
     return DecoratedBox(
@@ -53,16 +56,8 @@ class BacklitWash extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: isDark
-              ? const [
-                  Color(0xFF140818),
-                  Color(0xFF0A0814),
-                  Color(0xFF07101C),
-                ]
-              : const [
-                  Color(0xFFFFF7F2),
-                  Color(0xFFF8F4FF),
-                  Color(0xFFF3F7FF),
-                ],
+              ? const [Color(0xFF140818), Color(0xFF0A0814), Color(0xFF07101C)]
+              : const [Color(0xFFFFF7F2), Color(0xFFF8F4FF), Color(0xFFF3F7FF)],
           stops: const [0.0, 0.48, 1.0],
         ),
       ),
@@ -74,6 +69,7 @@ class BacklitWash extends StatelessWidget {
             upper: upperBloom,
             side: sideBloom,
             glowAlignment: glowAlignment,
+            drift: drift,
           ),
           DecoratedBox(
             decoration: BoxDecoration(
@@ -81,8 +77,9 @@ class BacklitWash extends StatelessWidget {
                 radius: 1.15,
                 colors: [
                   Colors.transparent,
-                  (isDark ? Colors.black : const Color(0xFF3A2A66))
-                      .withValues(alpha: isDark ? 0.5 : 0.07),
+                  (isDark ? Colors.black : const Color(0xFF3A2A66)).withValues(
+                    alpha: isDark ? 0.5 : 0.07,
+                  ),
                 ],
                 stops: const [0.42, 1.0],
               ),
@@ -101,12 +98,14 @@ class _DriftingLights extends StatefulWidget {
   final List<Color> upper;
   final List<Color> side;
   final Alignment glowAlignment;
+  final bool drift;
 
   const _DriftingLights({
     required this.isDark,
     required this.upper,
     required this.side,
     required this.glowAlignment,
+    required this.drift,
   });
 
   @override
@@ -123,7 +122,20 @@ class _DriftingLightsState extends State<_DriftingLights>
     _clock = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 12),
-    )..repeat();
+    );
+    if (widget.drift) _clock.repeat();
+  }
+
+  @override
+  void didUpdateWidget(covariant _DriftingLights oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.drift == oldWidget.drift) return;
+    if (widget.drift) {
+      _clock.repeat();
+    } else {
+      _clock.stop();
+      _clock.value = 0;
+    }
   }
 
   @override
@@ -147,10 +159,11 @@ class _DriftingLightsState extends State<_DriftingLights>
 
           return LayoutBuilder(
             builder: (context, constraints) {
-              final width =
-                  constraints.maxWidth <= 0 ? 390.0 : constraints.maxWidth;
-              final height = constraints.maxHeight.isFinite &&
-                      constraints.maxHeight > 0
+              final width = constraints.maxWidth <= 0
+                  ? 390.0
+                  : constraints.maxWidth;
+              final height =
+                  constraints.maxHeight.isFinite && constraints.maxHeight > 0
                   ? constraints.maxHeight
                   : width * 2;
 
@@ -167,10 +180,7 @@ class _DriftingLightsState extends State<_DriftingLights>
                   top: height * cy - diameter / 2,
                   width: diameter,
                   height: diameter,
-                  child: _Glow(
-                    colors: colors,
-                    strength: strength * breathe,
-                  ),
+                  child: _Glow(colors: colors, strength: strength * breathe),
                 );
               }
 
@@ -248,10 +258,7 @@ class _Glow extends StatelessWidget {
   final List<Color> colors;
   final double strength;
 
-  const _Glow({
-    required this.colors,
-    required this.strength,
-  });
+  const _Glow({required this.colors, required this.strength});
 
   @override
   Widget build(BuildContext context) {
@@ -280,10 +287,7 @@ class _Glow extends StatelessWidget {
 }
 
 /// Shared card fill for tiles that should sit in the wash without a blur cost.
-BoxDecoration kalaGlassDecoration({
-  required bool isDark,
-  double radius = 16,
-}) {
+BoxDecoration kalaGlassDecoration({required bool isDark, double radius = 16}) {
   return BoxDecoration(
     gradient: LinearGradient(
       begin: Alignment.topCenter,
@@ -300,15 +304,14 @@ BoxDecoration kalaGlassDecoration({
     ),
     borderRadius: BorderRadius.circular(radius),
     border: Border.all(
-      color: isDark
-          ? Colors.white.withValues(alpha: 0.22)
-          : Colors.white,
+      color: isDark ? Colors.white.withValues(alpha: 0.22) : Colors.white,
       width: 1,
     ),
     boxShadow: [
       BoxShadow(
-        color: (isDark ? Colors.black : const Color(0xFF6A4AD4))
-            .withValues(alpha: isDark ? 0.28 : 0.08),
+        color: (isDark ? Colors.black : const Color(0xFF6A4AD4)).withValues(
+          alpha: isDark ? 0.28 : 0.08,
+        ),
         blurRadius: 16,
         offset: const Offset(0, 8),
       ),
@@ -356,8 +359,7 @@ class BacklitGlass extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark =
-        forceDark || Theme.of(context).brightness == Brightness.dark;
+    final isDark = forceDark || Theme.of(context).brightness == Brightness.dark;
     final hairline = role == BacklitGlassRole.bar;
     final bordered = !hairline;
     final sigma = role == BacklitGlassRole.bar ? 24.0 : 18.0;
@@ -401,33 +403,36 @@ class BacklitGlass extends StatelessWidget {
 
   LinearGradient _fill(bool isDark) {
     final (Color top, Color bottom) = switch (role) {
-      BacklitGlassRole.bar => isDark
-          ? (
-              const Color(0xFF32243C).withValues(alpha: 0.44),
-              const Color(0xFF120C18).withValues(alpha: 0.68),
-            )
-          : (
-              Colors.white.withValues(alpha: 0.68),
-              const Color(0xFFF4ECFF).withValues(alpha: 0.84),
-            ),
-      BacklitGlassRole.chip => isDark
-          ? (
-              const Color(0xFF2A1C36).withValues(alpha: 0.62),
-              const Color(0xFF161018).withValues(alpha: 0.72),
-            )
-          : (
-              Colors.white.withValues(alpha: 0.78),
-              const Color(0xFFF6F0FF).withValues(alpha: 0.7),
-            ),
-      BacklitGlassRole.pane => isDark
-          ? (
-              const Color(0xFF2A1C36).withValues(alpha: 0.78),
-              const Color(0xFF120C16).withValues(alpha: 0.62),
-            )
-          : (
-              Colors.white.withValues(alpha: 0.82),
-              const Color(0xFFF4ECFF).withValues(alpha: 0.66),
-            ),
+      BacklitGlassRole.bar =>
+        isDark
+            ? (
+                const Color(0xFF32243C).withValues(alpha: 0.44),
+                const Color(0xFF120C18).withValues(alpha: 0.68),
+              )
+            : (
+                Colors.white.withValues(alpha: 0.68),
+                const Color(0xFFF4ECFF).withValues(alpha: 0.84),
+              ),
+      BacklitGlassRole.chip =>
+        isDark
+            ? (
+                const Color(0xFF2A1C36).withValues(alpha: 0.62),
+                const Color(0xFF161018).withValues(alpha: 0.72),
+              )
+            : (
+                Colors.white.withValues(alpha: 0.78),
+                const Color(0xFFF6F0FF).withValues(alpha: 0.7),
+              ),
+      BacklitGlassRole.pane =>
+        isDark
+            ? (
+                const Color(0xFF2A1C36).withValues(alpha: 0.78),
+                const Color(0xFF120C16).withValues(alpha: 0.62),
+              )
+            : (
+                Colors.white.withValues(alpha: 0.82),
+                const Color(0xFFF4ECFF).withValues(alpha: 0.66),
+              ),
     };
     return LinearGradient(
       begin: Alignment.topCenter,
@@ -474,50 +479,53 @@ class BacklitGlass extends StatelessWidget {
   List<BoxShadow> _shadows(bool isDark) {
     return switch (role) {
       BacklitGlassRole.bar => [
-          BoxShadow(
-            color: const Color(0xFF7B5EFF).withValues(alpha: isDark ? 0.32 : 0.16),
-            blurRadius: 28,
-            offset: const Offset(0, -8),
-          ),
-          BoxShadow(
-            color: const Color(0xFFFF4D9A).withValues(alpha: isDark ? 0.14 : 0.08),
-            blurRadius: 22,
-            offset: const Offset(-10, -2),
-          ),
-        ],
+        BoxShadow(
+          color: const Color(
+            0xFF7B5EFF,
+          ).withValues(alpha: isDark ? 0.32 : 0.16),
+          blurRadius: 28,
+          offset: const Offset(0, -8),
+        ),
+        BoxShadow(
+          color: const Color(
+            0xFFFF4D9A,
+          ).withValues(alpha: isDark ? 0.14 : 0.08),
+          blurRadius: 22,
+          offset: const Offset(-10, -2),
+        ),
+      ],
       BacklitGlassRole.chip => [
-          BoxShadow(
-            color: (isDark ? Colors.black : const Color(0xFF6A4AD4))
-                .withValues(alpha: isDark ? 0.28 : 0.08),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
+        BoxShadow(
+          color: (isDark ? Colors.black : const Color(0xFF6A4AD4)).withValues(
+            alpha: isDark ? 0.28 : 0.08,
           ),
-        ],
+          blurRadius: 16,
+          offset: const Offset(0, 8),
+        ),
+      ],
       BacklitGlassRole.pane => [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.06),
-            blurRadius: 22,
-            offset: const Offset(0, 12),
-          ),
-          BoxShadow(
-            color: const Color(0xFFFF4D9A).withValues(alpha: isDark ? 0.14 : 0.1),
-            blurRadius: 28,
-            offset: const Offset(-6, 8),
-          ),
-          BoxShadow(
-            color: const Color(0xFF00C8FF).withValues(alpha: isDark ? 0.12 : 0.1),
-            blurRadius: 28,
-            offset: const Offset(8, 10),
-          ),
-        ],
+        BoxShadow(
+          color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.06),
+          blurRadius: 22,
+          offset: const Offset(0, 12),
+        ),
+        BoxShadow(
+          color: const Color(0xFFFF4D9A).withValues(alpha: isDark ? 0.14 : 0.1),
+          blurRadius: 28,
+          offset: const Offset(-6, 8),
+        ),
+        BoxShadow(
+          color: const Color(0xFF00C8FF).withValues(alpha: isDark ? 0.12 : 0.1),
+          blurRadius: 28,
+          offset: const Offset(8, 10),
+        ),
+      ],
     };
   }
 
   static BorderRadius _deflate(BorderRadius radius, double inset) {
-    Radius shrink(Radius r) => Radius.elliptical(
-          math.max(0, r.x - inset),
-          math.max(0, r.y - inset),
-        );
+    Radius shrink(Radius r) =>
+        Radius.elliptical(math.max(0, r.x - inset), math.max(0, r.y - inset));
     return BorderRadius.only(
       topLeft: shrink(radius.topLeft),
       topRight: shrink(radius.topRight),
@@ -549,14 +557,10 @@ class _GlassChromePainter extends CustomPainter {
             BacklitGlassRole.pane => 0.7,
           };
     final sheen = Paint()
-      ..shader = ui.Gradient.linear(
-        Offset.zero,
-        Offset(0, sheenHeight),
-        [
-          Colors.white.withValues(alpha: sheenAlpha),
-          Colors.white.withValues(alpha: 0),
-        ],
-      );
+      ..shader = ui.Gradient.linear(Offset.zero, Offset(0, sheenHeight), [
+        Colors.white.withValues(alpha: sheenAlpha),
+        Colors.white.withValues(alpha: 0),
+      ]);
     canvas.drawRect(Rect.fromLTWH(0, 0, size.width, sheenHeight), sheen);
 
     final noiseAlpha = switch (role) {
