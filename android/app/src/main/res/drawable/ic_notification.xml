@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Notification icon for Kala AI -->
-<!-- This references the launcher foreground as notification icon -->
-<!-- For best results, run: dart run flutter_launcher_icons -->
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item
-        android:drawable="@drawable/ic_launcher_foreground"
-        android:gravity="center"
-        android:width="24dp"
-        android:height="24dp" />
-</layer-list>
+<!-- Status-bar icon. Android only draws the media seek bar for a white glyph on a transparent background. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12,3v10.55c-0.59,-0.34 -1.27,-0.55 -2,-0.55 -2.21,0 -4,1.79 -4,4s1.79,4 4,4 4,-1.79 4,-4V7h4V3h-6z" />
+</vector>

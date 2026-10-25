@@ -1,5 +1,6 @@
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart';
 
 /// What the system media notification needs from the live player.
 class PlaybackSnapshot {
@@ -33,6 +34,7 @@ class PlaybackSession {
   static Future<void> Function()? onPause;
   static Future<void> Function()? onStop;
   static Future<void> Function(int delta)? onSkip;
+  static Future<void> Function(Duration position)? onSeek;
 
   static _KalaPlaybackHandler? _handler;
   static bool closing = false;
@@ -56,6 +58,8 @@ class PlaybackSession {
           androidNotificationChannelName: 'Playback',
           androidStopForegroundOnPause: false,
           androidNotificationIcon: 'drawable/ic_notification',
+          // Android draws the seek bar only when this accent is opaque.
+          notificationColor: Color(0xFF7B5EFF),
         ),
       );
       _handler = handler;
@@ -93,27 +97,37 @@ class PlaybackSession {
 
 class _KalaPlaybackHandler extends BaseAudioHandler {
   String? _publishedId;
+  Duration? _publishedDuration;
+  String? _publishedArt;
 
   void publish(PlaybackSnapshot snapshot) {
     try {
       final art = _artUri(snapshot.artUrl);
       final id = '${snapshot.index}:${snapshot.title}';
+      final duration =
+          snapshot.duration > Duration.zero ? snapshot.duration : null;
       final item = MediaItem(
         id: id,
         title: snapshot.title,
         artist: snapshot.artist.isEmpty ? 'Kala AI' : snapshot.artist,
         artUri: art,
-        duration: snapshot.duration > Duration.zero ? snapshot.duration : null,
+        duration: duration,
       );
-      if (_publishedId != id) {
+      // Android only draws a seek bar after the media item has a duration.
+      // The length often arrives after the first publish, so send it again.
+      final artKey = art?.toString();
+      if (_publishedId != id ||
+          _publishedDuration != duration ||
+          _publishedArt != artKey) {
         _publishedId = id;
+        _publishedDuration = duration;
+        _publishedArt = artKey;
         mediaItem.add(item);
         queue.add([item]);
       }
       final controls = <MediaControl>[
         if (snapshot.canSkip) MediaControl.skipToPrevious,
         snapshot.playing ? MediaControl.pause : MediaControl.play,
-        MediaControl.stop,
         if (snapshot.canSkip) MediaControl.skipToNext,
       ];
       playbackState.add(playbackState.value.copyWith(
@@ -121,13 +135,12 @@ class _KalaPlaybackHandler extends BaseAudioHandler {
         systemActions: const {
           MediaAction.play,
           MediaAction.pause,
-          MediaAction.stop,
           MediaAction.seek,
           MediaAction.skipToNext,
           MediaAction.skipToPrevious,
         },
         androidCompactActionIndices:
-            snapshot.canSkip ? const [0, 1, 3] : const [0, 1],
+            snapshot.canSkip ? const [0, 1, 2] : const [0],
         processingState: snapshot.ready
             ? AudioProcessingState.ready
             : AudioProcessingState.buffering,
@@ -146,6 +159,8 @@ class _KalaPlaybackHandler extends BaseAudioHandler {
 
   void publishIdle() {
     _publishedId = null;
+    _publishedDuration = null;
+    _publishedArt = null;
     playbackState.add(playbackState.value.copyWith(
       controls: const [],
       processingState: AudioProcessingState.idle,
@@ -210,6 +225,16 @@ class _KalaPlaybackHandler extends BaseAudioHandler {
       await PlaybackSession.onSkip?.call(-1);
     } catch (error, stack) {
       debugPrint('Notification skip failed: $error');
+      debugPrint('$stack');
+    }
+  }
+
+  @override
+  Future<void> seek(Duration position) async {
+    try {
+      await PlaybackSession.onSeek?.call(position);
+    } catch (error, stack) {
+      debugPrint('Notification seek failed: $error');
       debugPrint('$stack');
     }
   }

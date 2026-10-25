@@ -819,26 +819,28 @@ class FileService {
     _isPreviewOpen = true;
     final resume = audioNowPlaying.matches(tracks);
     audioNowPlaying.markSheet(true);
-    await showGeneralDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      barrierColor: Colors.transparent,
-      transitionDuration: const Duration(milliseconds: 300),
-      pageBuilder: (_, __, ___) {
-        return AudioResultPlayer(
-          tracks: resume ? audioNowPlaying.tracks : tracks,
-          initialIndex: initialIndex.clamp(0, tracks.length - 1),
-          adoptedController: resume ? audioNowPlaying.controller : null,
-          onRemix: remixAudio,
-          onClose: () {
-            _isPreviewOpen = false;
-            Navigator.of(context, rootNavigator: true).pop();
-          },
-        );
-      },
-    );
-    _isPreviewOpen = false;
-    audioNowPlaying.markSheet(false);
+    try {
+      await showGeneralDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        barrierColor: Colors.transparent,
+        transitionDuration: const Duration(milliseconds: 300),
+        pageBuilder: (_, __, ___) {
+          return AudioResultPlayer(
+            tracks: resume ? audioNowPlaying.tracks : tracks,
+            initialIndex: initialIndex.clamp(0, tracks.length - 1),
+            onRemix: remixAudio,
+            onClose: () {
+              _isPreviewOpen = false;
+              Navigator.of(context, rootNavigator: true).pop();
+            },
+          );
+        },
+      );
+    } finally {
+      _isPreviewOpen = false;
+      audioNowPlaying.markSheet(false);
+    }
   }
 
   // ✅ Opens an already-downloaded file like preview
