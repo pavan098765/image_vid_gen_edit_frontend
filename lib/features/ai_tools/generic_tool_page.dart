@@ -2720,26 +2720,38 @@ class _GenericToolPageState extends State<GenericToolPage>
           'Save Template',
           style: TextStyle(color: cs.onSurface, fontWeight: FontWeight.bold),
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Save your current prompt and settings as a reusable template.',
-              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: nameController,
-              autofocus: true,
-              decoration: InputDecoration(
-                labelText: 'Template Name',
-                hintText: 'e.g., My Portrait Style',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+        content: StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Save your current prompt and settings as a reusable template.',
+                  style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
                 ),
-              ),
-            ),
-          ],
+                const SizedBox(height: 16),
+                TextField(
+                  controller: nameController,
+                  autofocus: true,
+                  onChanged: (_) => setDialogState(() {}),
+                  decoration: InputDecoration(
+                    labelText: 'Template Name',
+                    hintText: 'e.g., My Portrait Style',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    suffixIcon: _clearTextButton(
+                      visible: nameController.text.isNotEmpty,
+                      onPressed: () {
+                        nameController.clear();
+                        setDialogState(() {});
+                      },
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
         ),
         actions: [
           TextButton(
@@ -7511,24 +7523,11 @@ class _GenericToolPageState extends State<GenericToolPage>
                       border: InputBorder.none,
                       enabledBorder: InputBorder.none,
                       focusedBorder: InputBorder.none,
-                      suffixIcon: _promptController.text.isNotEmpty
-                          ? IconButton(
-                              tooltip: 'Clear prompt',
-                              icon: Icon(
-                                LucideIcons.x,
-                                size: 16,
-                                color: cs.onSurfaceVariant.withValues(alpha: 0.6),
-                              ),
-                              onPressed: () {
-                                _promptController.clear();
-                                _inputs[ref] = '';
-                                if (_selectedStyle != null) {
-                                  setState(() => _selectedStyle = null);
-                                }
-                                setState(() {});
-                              },
-                            )
-                          : null,
+                      suffixIcon: _clearTextButton(
+                        visible: _promptController.text.isNotEmpty,
+                        tooltip: 'Clear prompt',
+                        onPressed: () => _clearPromptField(ref),
+                      ),
                     ),
                   ),
                   if (showStreamingHint)
@@ -10377,6 +10376,45 @@ class _GenericToolPageState extends State<GenericToolPage>
     }
   }
 
+  /// Same clear control as the Create Image prompt, for every free-text field.
+  Widget? _clearTextButton({
+    required bool visible,
+    required VoidCallback onPressed,
+    String tooltip = 'Clear text',
+  }) {
+    if (!visible) return null;
+    final cs = Theme.of(context).colorScheme;
+    return IconButton(
+      tooltip: tooltip,
+      visualDensity: VisualDensity.compact,
+      icon: Icon(
+        LucideIcons.x,
+        size: 16,
+        color: cs.onSurfaceVariant.withValues(alpha: 0.6),
+      ),
+      onPressed: onPressed,
+    );
+  }
+
+  void _clearPromptField(String ref) {
+    _promptController.clear();
+    _inputs[ref] = '';
+    setState(() => _selectedStyle = null);
+  }
+
+  void _clearBoundText(String ref, {StateSetter? sheetSetter}) {
+    void apply() {
+      _inputs[ref] = '';
+      _promptFillTicks[ref] = (_promptFillTicks[ref] ?? 0) + 1;
+    }
+
+    if (sheetSetter != null) {
+      sheetSetter(() => setState(apply));
+    } else {
+      setState(apply);
+    }
+  }
+
   // ── 3. text_input ───────────────────────────────────────────────────────
   Widget _buildTextInput(String ref, {StateSetter? sheetSetter}) {
     final cs = Theme.of(context).colorScheme;
@@ -10450,6 +10488,11 @@ class _GenericToolPageState extends State<GenericToolPage>
               ),
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              suffixIcon: _clearTextButton(
+                visible: currentText.isNotEmpty,
+                onPressed: () =>
+                    _clearBoundText(ref, sheetSetter: sheetSetter),
+              ),
             ),
           ),
           if (suggestThis) ...[
@@ -11392,23 +11435,11 @@ class _GenericToolPageState extends State<GenericToolPage>
                 horizontal: 16,
                 vertical: 14,
               ),
-              suffixIcon: _promptController.text.isNotEmpty
-                  ? IconButton(
-                      icon: Icon(
-                        LucideIcons.x,
-                        size: 18,
-                        color: cs.onSurfaceVariant.withValues(alpha: 0.6),
-                      ),
-                      onPressed: () {
-                        _promptController.clear();
-                        _inputs[ref] = '';
-                        if (_selectedStyle != null) {
-                          setState(() => _selectedStyle = null);
-                        }
-                        setState(() {});
-                      },
-                    )
-                  : null,
+              suffixIcon: _clearTextButton(
+                visible: _promptController.text.isNotEmpty,
+                tooltip: 'Clear prompt',
+                onPressed: () => _clearPromptField(ref),
+              ),
             ),
             style: TextStyle(
               color: cs.onSurface,
@@ -15954,20 +15985,26 @@ class _GenericToolPageState extends State<GenericToolPage>
       fontSize: 15,
       height: 1.45,
     );
-    final fieldDecoration = InputDecoration(
-      isCollapsed: true,
-      contentPadding: const EdgeInsets.symmetric(vertical: 4),
-      hintText: hint,
-      hintStyle: TextStyle(
-        color: cs.onSurfaceVariant.withValues(alpha: 0.55),
-        fontSize: 15,
-        height: 1.45,
-      ),
-      filled: false,
-      border: InputBorder.none,
-      enabledBorder: InputBorder.none,
-      focusedBorder: InputBorder.none,
-    );
+    InputDecoration fieldDecoration({
+      required bool showClear,
+      required VoidCallback onClear,
+    }) {
+      return InputDecoration(
+        isCollapsed: true,
+        contentPadding: const EdgeInsets.symmetric(vertical: 4),
+        hintText: hint,
+        hintStyle: TextStyle(
+          color: cs.onSurfaceVariant.withValues(alpha: 0.55),
+          fontSize: 15,
+          height: 1.45,
+        ),
+        filled: false,
+        border: InputBorder.none,
+        enabledBorder: InputBorder.none,
+        focusedBorder: InputBorder.none,
+        suffixIcon: _clearTextButton(visible: showClear, onPressed: onClear),
+      );
+    }
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 6),
@@ -15991,7 +16028,21 @@ class _GenericToolPageState extends State<GenericToolPage>
               minLines: minLines,
               maxLines: _kComposerPromptMaxLines,
               style: fieldStyle,
-              decoration: fieldDecoration,
+              decoration: fieldDecoration(
+                showClear: controller.text.isNotEmpty,
+                onClear: () {
+                  final clearsPrompt =
+                      !identical(controller, _sunoStyleController);
+                  controller.clear();
+                  if (clearsPrompt) {
+                    _inputs['prompt'] = '';
+                    _selectedStyle = null;
+                  } else {
+                    _inputs['style'] = '';
+                  }
+                  setState(() {});
+                },
+              ),
               onChanged: (value) {
                 if (identical(controller, _sunoStyleController)) {
                   _inputs['style'] = value;
@@ -16008,7 +16059,13 @@ class _GenericToolPageState extends State<GenericToolPage>
               minLines: minLines,
               maxLines: _kComposerPromptMaxLines,
               style: fieldStyle,
-              decoration: fieldDecoration,
+              decoration: fieldDecoration(
+                showClear: current.isNotEmpty,
+                onClear: () {
+                  if (inputId == null) return;
+                  _clearBoundText(inputId);
+                },
+              ),
               onChanged: (value) {
                 if (inputId == null) return;
                 setState(() => _inputs[inputId] = value);
@@ -16139,6 +16196,11 @@ class _GenericToolPageState extends State<GenericToolPage>
               border: InputBorder.none,
               enabledBorder: InputBorder.none,
               focusedBorder: InputBorder.none,
+              suffixIcon: _clearTextButton(
+                visible: _promptController.text.isNotEmpty,
+                tooltip: 'Clear prompt',
+                onPressed: () => _clearPromptField('prompt'),
+              ),
             ),
             onChanged: (value) {
               _inputs['prompt'] = value;
