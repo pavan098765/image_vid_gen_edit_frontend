@@ -917,7 +917,7 @@
           "description": "text to image",
           "useExternalApi": true,
           "cost": 15,
-          "costUpscale": 8,
+          "costUpscale": 4,
           "offer": 0,
           "enabled": true,
           "params": {
@@ -933,7 +933,7 @@
           "description": "text to image",
           "useExternalApi": true,
           "cost": 15,
-          "costUpscale": 8,
+          "costUpscale": 4,
           "offer": 0,
           "enabled": true,
           "params": {
@@ -1102,7 +1102,7 @@
           "description": "image edit",
           "useExternalApi": true,
           "cost": 15,
-          "costUpscale": 8,
+          "costUpscale": 4,
           "offer": 0,
           "enabled": true,
           "params": {
@@ -1119,7 +1119,7 @@
           "description": "image edit",
           "useExternalApi": true,
           "cost": 15,
-          "costUpscale": 8,
+          "costUpscale": 4,
           "offer": 0,
           "enabled": true,
           "params": {
@@ -1995,7 +1995,7 @@
           "description": "image edit",
           "useExternalApi": true,
           "cost": 18,
-          "costUpscale": 8,
+          "costUpscale": 4,
           "offer": 0,
           "enabled": false,
           "params": {
@@ -2012,7 +2012,7 @@
           "description": "image edit",
           "useExternalApi": true,
           "cost": 15,
-          "costUpscale": 8,
+          "costUpscale": 4,
           "offer": 0,
           "enabled": false,
           "params": {
