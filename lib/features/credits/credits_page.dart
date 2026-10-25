@@ -13,6 +13,7 @@ import 'package:kala_ai_create_images_videos_with_ai/core/services/user_service.
     hide userCreditsNotifier, currentUserNotifier, isLoadingUserNotifier, UserData;
 import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/app_menu_button.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/backlit_glass.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_button.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/sign_in_prompt.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/credits/offerwall_screen.dart';
@@ -775,11 +776,12 @@ class _CreditsPageState extends State<CreditsPage> {
     
     showModalBottomSheet(
       context: context,
-      backgroundColor: cs.surface,
+      backgroundColor: Colors.transparent,
+      elevation: 0,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
-      builder: (context) => SafeArea(
+      builder: (context) => glassSheet(SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
@@ -849,6 +851,7 @@ class _CreditsPageState extends State<CreditsPage> {
             ],
           ),
         ),
+        ),
       ),
     );
   }
@@ -858,11 +861,12 @@ class _CreditsPageState extends State<CreditsPage> {
     
     showModalBottomSheet(
       context: context,
-      backgroundColor: cs.surface,
+      backgroundColor: Colors.transparent,
+      elevation: 0,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
-      builder: (context) => SafeArea(
+      builder: (context) => glassSheet(SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
@@ -1056,6 +1060,7 @@ class _CreditsPageState extends State<CreditsPage> {
               ),
             ],
           ),
+        ),
         ),
       ),
     );
@@ -3076,16 +3081,17 @@ class _CreditsPageState extends State<CreditsPage> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: cs.surface,
+      backgroundColor: Colors.transparent,
+      elevation: 0,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
       builder: (context) => DraggableScrollableSheet(
         initialChildSize: 0.85,
         minChildSize: 0.5,
         maxChildSize: 0.95,
         expand: false,
-        builder: (context, scrollController) => Column(
+        builder: (context, scrollController) => glassSheet(Column(
           children: [
             // Handle bar
             Container(
@@ -3200,6 +3206,7 @@ class _CreditsPageState extends State<CreditsPage> {
               ),
             ),
           ],
+          ),
         ),
       ),
     );
@@ -3231,12 +3238,13 @@ class _CreditsPageState extends State<CreditsPage> {
     
     showModalBottomSheet(
       context: context,
-      backgroundColor: cs.surface,
+      backgroundColor: Colors.transparent,
+      elevation: 0,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
-      builder: (context) => StatefulBuilder(
+      builder: (context) => glassSheet(StatefulBuilder(
         builder: (context, setSheetState) {
           return SafeArea(
             child: SingleChildScrollView(
@@ -3348,6 +3356,7 @@ class _CreditsPageState extends State<CreditsPage> {
             ),
           );
         },
+      ),
       ),
     );
   }
@@ -3990,12 +3999,13 @@ class _CreditsPageState extends State<CreditsPage> {
     // Show confirmation bottom sheet
     showModalBottomSheet(
       context: context,
-      backgroundColor: cs.surface,
+      backgroundColor: Colors.transparent,
+      elevation: 0,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
-      builder: (context) => Padding(
+      builder: (context) => glassSheet(Padding(
         padding: EdgeInsets.only(
           left: 20,
           right: 20,
@@ -4112,6 +4122,7 @@ class _CreditsPageState extends State<CreditsPage> {
             ),
           ],
         ),
+        ),
       ),
     );
   }
@@ -4119,12 +4130,13 @@ class _CreditsPageState extends State<CreditsPage> {
   void _showVipPurchaseSheet(ColorScheme cs) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: cs.surface,
+      backgroundColor: Colors.transparent,
+      elevation: 0,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
-      builder: (sheetContext) => Padding(
+      builder: (sheetContext) => glassSheet(Padding(
         padding: EdgeInsets.only(
           left: 20,
           right: 20,
@@ -4165,6 +4177,7 @@ class _CreditsPageState extends State<CreditsPage> {
               ),
             ),
           ],
+        ),
         ),
       ),
     );

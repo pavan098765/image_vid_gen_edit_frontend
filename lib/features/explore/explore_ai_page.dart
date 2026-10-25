@@ -2987,12 +2987,8 @@ class _ExploreAIPageState extends State<ExploreAIPage>
       context: context,
       backgroundColor: Colors.transparent,
       builder: (ctx) {
-        return Container(
-          decoration: BoxDecoration(
-            color: cs.surface,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-          ),
-          child: SafeArea(
+        return glassSheet(
+          SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(24),
               child: Column(
@@ -5719,12 +5715,8 @@ class _CategoryTemplatesPageState extends State<_CategoryTemplatesPage> {
     await showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        decoration: BoxDecoration(
-          color: cs.surface,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-        ),
-        child: SafeArea(
+      builder: (ctx) => glassSheet(
+        SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(24),
             child: Column(
@@ -5797,10 +5789,13 @@ class _CategoryTemplatesPageState extends State<_CategoryTemplatesPage> {
     final color = _parseHexColor(colorHex);
     final iconName = widget.category['icon'] as String? ?? 'grid';
 
-    return Scaffold(
-      backgroundColor: cs.surface,
+    return Stack(
+      children: [
+        const Positioned.fill(child: BacklitWash()),
+        Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        backgroundColor: cs.surface,
+        backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
           icon: Icon(LucideIcons.arrowLeft, color: cs.onSurface),
@@ -5870,6 +5865,8 @@ class _CategoryTemplatesPageState extends State<_CategoryTemplatesPage> {
           ],
         ),
       ),
+        ),
+      ],
     );
   }
 }

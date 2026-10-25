@@ -1,7 +1,6 @@
 // lib/main.dart
 import 'dart:async';
 import 'dart:convert';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart' as material_ui;
@@ -1271,43 +1270,10 @@ class _ModernBottomNav extends StatelessWidget {
       const _NavItem(icon: LucideIcons.gem, label: 'Store'),
     ];
 
-    return ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-        child: Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: isDark
-              ? [
-                  const Color(0xFF2A1C38).withValues(alpha: 0.82),
-                  const Color(0xFF120C16).withValues(alpha: 0.74),
-                ]
-              : [
-                  Colors.white.withValues(alpha: 0.9),
-                  const Color(0xFFF6F0FF).withValues(alpha: 0.78),
-                ],
-        ),
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
-        border: Border(
-          top: BorderSide(
-            color: isDark
-                ? Colors.white.withValues(alpha: 0.2)
-                : Colors.white,
-            width: 1,
-          ),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: (isDark ? Colors.black : const Color(0xFF6A4AD4))
-                .withValues(alpha: isDark ? 0.35 : 0.12),
-            blurRadius: 18,
-            offset: const Offset(0, -6),
-          ),
-        ],
-      ),
+    return BacklitGlass(
+      role: BacklitGlassRole.bar,
+      blur: true,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
       child: SafeArea(
         top: false,
         child: Padding(
@@ -1343,39 +1309,28 @@ class _ModernBottomNav extends StatelessWidget {
                           decoration: BoxDecoration(
                             gradient: isSelected
                                 ? LinearGradient(
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
                                     colors: isDark
                                         ? [
-                                            cs.primary.withValues(alpha: 0.34),
-                                            cs.secondary.withValues(alpha: 0.16),
+                                            Colors.white.withValues(alpha: 0.16),
+                                            Colors.white.withValues(alpha: 0.06),
                                           ]
                                         : [
-                                            const Color(0xFFE4D9FF),
-                                            const Color(0xFFD7F4FF),
+                                            Colors.white.withValues(alpha: 0.92),
+                                            const Color(0xFFE7DEFF)
+                                                .withValues(alpha: 0.72),
                                           ],
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
                                   )
                                 : null,
-                            color: isSelected ? null : Colors.transparent,
                             borderRadius: BorderRadius.circular(14),
                             border: isSelected
                                 ? Border.all(
                                     color: isDark
-                                        ? Colors.white.withValues(alpha: 0.16)
+                                        ? Colors.white.withValues(alpha: 0.22)
                                         : Colors.white,
                                     width: 1,
                                   )
-                                : null,
-                            boxShadow: isSelected
-                                ? [
-                                    BoxShadow(
-                                      color: cs.primary.withValues(
-                                        alpha: isDark ? 0.28 : 0.16,
-                                      ),
-                                      blurRadius: 12,
-                                      offset: const Offset(0, 4),
-                                    ),
-                                  ]
                                 : null,
                           ),
                           child: Icon(
@@ -1411,8 +1366,6 @@ class _ModernBottomNav extends StatelessWidget {
               );
             }),
           ),
-        ),
-      ),
         ),
       ),
     );

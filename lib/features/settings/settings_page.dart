@@ -10,6 +10,7 @@ import 'package:kala_ai_create_images_videos_with_ai/core/services/file_service.
 import 'package:kala_ai_create_images_videos_with_ai/core/services/thumbnail_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/user_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/backlit_glass.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_button.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -237,11 +238,12 @@ class _SettingsPageState extends State<SettingsPage> {
     final cs = Theme.of(context).colorScheme;
     showModalBottomSheet(
       context: context,
-      backgroundColor: cs.surface,
+      backgroundColor: Colors.transparent,
+      elevation: 0,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
-      builder: (context) => SafeArea(
+      builder: (context) => glassSheet(SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: Column(
@@ -280,6 +282,7 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ],
           ),
+        ),
         ),
       ),
     );
@@ -347,20 +350,20 @@ class _SettingsPageState extends State<SettingsPage> {
   // ============================================================
 
   void _showAuthSheet() {
-    final cs = Theme.of(context).colorScheme;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: cs.surface,
+      backgroundColor: Colors.transparent,
+      elevation: 0,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
-      builder: (context) => _AuthSheet(
+      builder: (context) => glassSheet(_AuthSheet(
         onSignInWithEmail: _handleEmailSignIn,
         onSignUpWithEmail: _handleEmailSignUp,
         onSignInWithGoogle: _handleGoogleSignIn,
         onForgotPassword: _handleForgotPassword,
-      ),
+      )),
     );
   }
 
@@ -696,16 +699,17 @@ class _SettingsPageState extends State<SettingsPage> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: cs.surface,
+      backgroundColor: Colors.transparent,
+      elevation: 0,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
       builder: (context) => DraggableScrollableSheet(
         initialChildSize: 0.85,
         minChildSize: 0.5,
         maxChildSize: 0.95,
         expand: false,
-        builder: (context, scrollController) => Column(
+        builder: (context, scrollController) => glassSheet(Column(
           children: [
             // Handle bar
             Container(
@@ -820,6 +824,7 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
           ],
+          ),
         ),
       ),
     );

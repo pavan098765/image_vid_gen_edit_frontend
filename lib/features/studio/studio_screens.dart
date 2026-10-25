@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/app_menu_button.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/backlit_glass.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/video_editor/state/editor_providers.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/video_editor/video_editor_page.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -277,7 +278,7 @@ class _StudioSetupPageState extends State<StudioSetupPage> {
     final cs = Theme.of(context).colorScheme;
     final files = _fileSection(intake);
     return Scaffold(
-      backgroundColor: cs.surface,
+      backgroundColor: Colors.transparent,
       body: SafeArea(
         child: Column(
           children: [
@@ -622,9 +623,10 @@ class StudioAnglesPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final session = StudioScope.of(context);
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final angles = session.draft?.angles ?? const [];
     return Scaffold(
-      backgroundColor: cs.surface,
+      backgroundColor: Colors.transparent,
       body: SafeArea(
         child: Column(
           children: [
@@ -651,9 +653,18 @@ class StudioAnglesPage extends StatelessWidget {
                     Padding(
                       padding: const EdgeInsets.only(bottom: 12),
                       child: Material(
-                        color: session.pickedAngle == i ? cs.secondaryContainer : cs.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(20),
-                        child: InkWell(
+                        color: Colors.transparent,
+                        child: Ink(
+                          decoration: session.pickedAngle == i
+                              ? BoxDecoration(
+                                  color: cs.secondaryContainer,
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                    color: cs.primary.withValues(alpha: 0.45),
+                                  ),
+                                )
+                              : kalaGlassDecoration(isDark: isDark, radius: 20),
+                          child: InkWell(
                           borderRadius: BorderRadius.circular(20),
                           onTap: session.busy
                               ? null
@@ -687,6 +698,7 @@ class StudioAnglesPage extends StatelessWidget {
                               ],
                             ),
                           ),
+                        ),
                         ),
                       ),
                     ),
@@ -723,7 +735,7 @@ class StudioOutlinePage extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final quote = session.quote;
     return Scaffold(
-      backgroundColor: cs.surface,
+      backgroundColor: Colors.transparent,
       body: SafeArea(
         child: Column(
           children: [
@@ -899,7 +911,7 @@ class StudioMakingPage extends ConsumerWidget {
     final cs = Theme.of(context).colorScheme;
     final ready = film?.shots.any((s) => (s.localPath ?? '').isNotEmpty) ?? false;
     return Scaffold(
-      backgroundColor: cs.surface,
+      backgroundColor: Colors.transparent,
       body: SafeArea(
         child: Column(
           children: [
@@ -1157,6 +1169,7 @@ class _MotionChoice extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     const choices = [
       ('auto', 'Auto', 'We pick the feel of each shot.'),
       ('minimax_h3', 'Cinemotion Pro', 'Follows the acting.'),
@@ -1172,14 +1185,16 @@ class _MotionChoice extends StatelessWidget {
               if (i > 0) const SizedBox(width: 8),
               Expanded(
                 child: Material(
-                  color: engine == choices[i].$1 ? cs.primaryContainer : cs.surface,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    side: BorderSide(
-                      color: engine == choices[i].$1 ? cs.primary : cs.outlineVariant,
-                    ),
-                  ),
-                  child: InkWell(
+                  color: Colors.transparent,
+                  child: Ink(
+                    decoration: engine == choices[i].$1
+                        ? BoxDecoration(
+                            color: cs.primaryContainer,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: cs.primary),
+                          )
+                        : kalaGlassDecoration(isDark: isDark, radius: 14),
+                    child: InkWell(
                     borderRadius: BorderRadius.circular(14),
                     onTap: () {
                       HapticFeedback.selectionClick();
@@ -1196,6 +1211,7 @@ class _MotionChoice extends StatelessWidget {
                           color: engine == choices[i].$1 ? cs.onPrimaryContainer : cs.onSurface,
                         ),
                       ),
+                    ),
                     ),
                   ),
                 ),
@@ -1277,13 +1293,11 @@ class _PictureCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      decoration: BoxDecoration(
-        color: cs.primaryContainer.withValues(alpha: 0.35),
-        borderRadius: BorderRadius.circular(16),
-      ),
+      decoration: kalaGlassDecoration(isDark: isDark, radius: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1314,14 +1328,12 @@ class _SoftField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         DecoratedBox(
-          decoration: BoxDecoration(
-            color: cs.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(20),
-          ),
+          decoration: kalaGlassDecoration(isDark: isDark, radius: 20),
           child: TextField(
             controller: controller,
             minLines: lines,
@@ -1365,11 +1377,19 @@ class _ShapeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final vertical = ratio == '9:16';
     return Material(
-      color: selected ? cs.secondaryContainer : cs.surfaceContainerHighest,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
+      color: Colors.transparent,
+      child: Ink(
+        decoration: selected
+            ? BoxDecoration(
+                color: cs.secondaryContainer,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: cs.primary.withValues(alpha: 0.45)),
+              )
+            : kalaGlassDecoration(isDark: isDark, radius: 16),
+        child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: () {
           HapticFeedback.selectionClick();
@@ -1395,6 +1415,7 @@ class _ShapeCard extends StatelessWidget {
             ],
           ),
         ),
+        ),
       ),
     );
   }
@@ -1418,15 +1439,14 @@ class _SwitchCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Material(
-        color: cs.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: cs.outlineVariant),
-        ),
-        child: SwitchListTile(
+        color: Colors.transparent,
+        child: Ink(
+          decoration: kalaGlassDecoration(isDark: isDark, radius: 16),
+          child: SwitchListTile(
           secondary: Icon(icon, size: 18, color: cs.primary),
           title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
           subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
@@ -1434,6 +1454,7 @@ class _SwitchCard extends StatelessWidget {
           onChanged: onChanged,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+          ),
         ),
       ),
     );

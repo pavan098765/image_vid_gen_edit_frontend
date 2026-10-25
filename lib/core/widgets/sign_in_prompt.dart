@@ -5,6 +5,7 @@ import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/auth_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/user_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/backlit_glass.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_button.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -341,10 +342,13 @@ class _SignInRequiredScreenState extends State<SignInRequiredScreen> {
     final cs = Theme.of(context).colorScheme;
     final bottomSafeArea = MediaQuery.of(context).padding.bottom;
 
-    return Scaffold(
-      backgroundColor: cs.surface,
+    return Stack(
+      children: [
+        const Positioned.fill(child: BacklitWash()),
+        Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        backgroundColor: cs.surface,
+        backgroundColor: Colors.transparent,
         elevation: 0,
         leading: _screenState == _SignInScreenState.showingOptions
             ? IconButton(
@@ -365,6 +369,8 @@ class _SignInRequiredScreenState extends State<SignInRequiredScreen> {
           child: _buildContent(cs),
         ),
       ),
+        ),
+      ],
     );
   }
 

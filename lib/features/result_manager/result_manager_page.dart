@@ -612,14 +612,13 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
   }
 
   Widget _buildCloudStorageInfoBanner(ColorScheme cs) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withValues(alpha: 0.45),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      child: BacklitGlass(
+        role: BacklitGlassRole.chip,
+        borderRadius: BorderRadius.circular(14),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(
         children: [
           Icon(
             Icons.cloud_off_outlined,
@@ -643,6 +642,7 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
             ),
           ),
         ],
+        ),
       ),
     );
   }
@@ -833,21 +833,43 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
           // Search bar - uses consistent AppStyles
           Padding(
             padding: const EdgeInsets.all(AppStyles.spacing12),
-            child: TextField(
-              controller: _searchController,
-              decoration: AppStyles.inputDecoration(
-                cs,
-                hintText: 'Search creations...',
-                prefixIcon: Icons.search,
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: Icon(Icons.clear,
-                            color: cs.onSurfaceVariant, size: 20),
-                        onPressed: () {
-                          _searchController.clear();
-                        },
-                      )
-                    : null,
+            child: BacklitGlass(
+              role: BacklitGlassRole.chip,
+              borderRadius: BorderRadius.circular(AppStyles.radiusMd),
+              child: TextField(
+                controller: _searchController,
+                decoration: AppStyles.inputDecoration(
+                  cs,
+                  hintText: 'Search creations...',
+                  prefixIcon: Icons.search,
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: Icon(Icons.clear,
+                              color: cs.onSurfaceVariant, size: 20),
+                          onPressed: () {
+                            _searchController.clear();
+                          },
+                        )
+                      : null,
+                ).copyWith(
+                  filled: true,
+                  fillColor: Colors.transparent,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppStyles.radiusMd),
+                    borderSide: BorderSide.none,
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppStyles.radiusMd),
+                    borderSide: BorderSide.none,
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppStyles.radiusMd),
+                    borderSide: BorderSide(
+                      color: cs.primary.withValues(alpha: 0.55),
+                      width: 1.5,
+                    ),
+                  ),
+                ),
               ),
             ),
           ),

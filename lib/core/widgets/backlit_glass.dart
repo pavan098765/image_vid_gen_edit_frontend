@@ -1,5 +1,5 @@
-import 'dart:async';
-import 'dart:ui';
+import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
@@ -69,24 +69,24 @@ class BacklitWash extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: RadialGradient(
+                radius: 1.2,
+                colors: [
+                  Colors.transparent,
+                  (isDark ? Colors.black : const Color(0xFF3A2A66))
+                      .withValues(alpha: isDark ? 0.5 : 0.07),
+                ],
+                stops: [isDark ? 0.5 : 0.55, 1.0],
+              ),
+            ),
+          ),
           _DriftingLights(
             isDark: isDark,
             upper: upperBloom,
             side: sideBloom,
             glowAlignment: glowAlignment,
-          ),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: RadialGradient(
-                radius: 1.15,
-                colors: [
-                  Colors.transparent,
-                  (isDark ? Colors.black : const Color(0xFF3A2A66))
-                      .withValues(alpha: isDark ? 0.45 : 0.06),
-                ],
-                stops: const [0.58, 1],
-              ),
-            ),
           ),
         ],
       ),
@@ -94,8 +94,8 @@ class BacklitWash extends StatelessWidget {
   }
 }
 
-/// Slow drift of the logo lights. A few updates a second is enough,
-/// and the wash repaints on its own so the rest of the screen stays still.
+/// Slow drift of the logo lights.
+/// The wash repaints on its own so the rest of the screen stays still.
 class _DriftingLights extends StatefulWidget {
   final bool isDark;
   final List<Color> upper;
@@ -113,99 +113,130 @@ class _DriftingLights extends StatefulWidget {
   State<_DriftingLights> createState() => _DriftingLightsState();
 }
 
-class _DriftingLightsState extends State<_DriftingLights> {
-  Timer? _timer;
-  double _shift = 0;
-  bool _forward = true;
+class _DriftingLightsState extends State<_DriftingLights>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _clock;
 
   @override
   void initState() {
     super.initState();
-    _timer = Timer.periodic(const Duration(milliseconds: 280), (_) {
-      if (!mounted) return;
-      setState(() {
-        _shift += _forward ? 0.045 : -0.045;
-        if (_shift >= 1) {
-          _shift = 1;
-          _forward = false;
-        } else if (_shift <= 0) {
-          _shift = 0;
-          _forward = true;
-        }
-      });
-    });
+    _clock = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 12),
+    )..repeat();
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _clock.dispose();
     super.dispose();
-  }
-
-  List<Color> _drift(List<Color> colors) {
-    if (colors.length < 2) return colors;
-    final core = Color.lerp(colors[0], colors[1], _shift * 0.55)!;
-    final mid = colors.length > 2
-        ? Color.lerp(colors[1], colors[2], _shift * 0.45)!
-        : colors[1];
-    final edge = colors.length > 2 ? colors[2] : mid;
-    return [core, mid, edge];
-  }
-
-  Alignment _nudge(Alignment base, double dx, double dy) {
-    final wave = (_shift - 0.5) * 2;
-    return Alignment(
-      (base.x + dx * wave).clamp(-1.0, 1.0),
-      (base.y + dy * wave).clamp(-1.0, 1.0),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final upper = _drift(widget.upper);
-    final side = _drift(widget.side);
-    final breathe = 0.92 + (_shift * 0.08);
     return RepaintBoundary(
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final width = constraints.maxWidth <= 0 ? 390.0 : constraints.maxWidth;
-          Widget light(
-            Alignment alignment,
-            double scale,
-            List<Color> colors,
-            double strength,
-          ) {
-            return Align(
-              alignment: alignment,
-              child: _Glow(
-                colors: colors,
-                diameter: width * scale,
-                strength: strength * breathe,
-              ),
-            );
-          }
+      child: AnimatedBuilder(
+        animation: _clock,
+        builder: (context, _) {
+          final t = _clock.value;
+          final breathe = 0.94 + 0.06 * math.sin(t * math.pi * 2);
+          double wobbleX(double phase) =>
+              0.028 * math.sin((t + phase) * math.pi * 2);
+          double wobbleY(double phase) =>
+              0.02 * math.cos((t + phase) * math.pi * 2);
 
-          final bridge = [
-            Color.lerp(upper.first, side.first, 0.5)!,
-            const Color(0xFF7B5EFF),
-          ];
-          if (widget.isDark) {
-            return Stack(
-              fit: StackFit.expand,
-              children: [
-                light(_nudge(widget.glowAlignment, 0.05, 0.04), 1.62, upper, 0.46),
-                light(_nudge(const Alignment(0.82, -0.18), -0.04, 0.03), 1.28, side, 0.36),
-                light(const Alignment(0.05, 0.62), 1.45, bridge, 0.16),
-              ],
-            );
-          }
-          return Stack(
-            fit: StackFit.expand,
-            children: [
-              light(_nudge(widget.glowAlignment, 0.04, 0.03), 1.5, upper, 0.2),
-              light(_nudge(const Alignment(0.8, -0.12), -0.03, 0.02), 1.2, side, 0.16),
-              light(const Alignment(0.05, 0.7), 1.35, bridge, 0.1),
-            ],
+          return LayoutBuilder(
+            builder: (context, constraints) {
+              final width =
+                  constraints.maxWidth <= 0 ? 390.0 : constraints.maxWidth;
+              final height = constraints.maxHeight.isFinite &&
+                      constraints.maxHeight > 0
+                  ? constraints.maxHeight
+                  : width * 2;
+
+              Widget light(
+                double cx,
+                double cy,
+                double scale,
+                List<Color> colors,
+                double strength,
+              ) {
+                final diameter = width * scale;
+                return Positioned(
+                  left: width * cx - diameter / 2,
+                  top: height * cy - diameter / 2,
+                  width: diameter,
+                  height: diameter,
+                  child: _Glow(
+                    colors: colors,
+                    strength: strength * breathe,
+                  ),
+                );
+              }
+
+              final bridge = [
+                Color.lerp(widget.upper.first, widget.side.first, 0.5)!,
+                const Color(0xFF7B5EFF),
+              ];
+              // Cores sit just outside the screen so the page gets the falloff,
+              // and the lower pool lands behind the glass bar.
+              final upperCx = -0.12 + widget.glowAlignment.x * 0.06;
+              final upperCy = -0.16 + widget.glowAlignment.y * 0.04;
+              if (widget.isDark) {
+                return Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    light(
+                      upperCx + wobbleX(0),
+                      upperCy + wobbleY(0.1),
+                      2.05,
+                      widget.upper,
+                      0.32,
+                    ),
+                    light(
+                      1.08 + wobbleX(0.33),
+                      -0.06 + wobbleY(0.4),
+                      1.85,
+                      widget.side,
+                      0.24,
+                    ),
+                    light(
+                      0.5 + wobbleX(0.66),
+                      0.92 + wobbleY(0.2),
+                      2.15,
+                      bridge,
+                      0.22,
+                    ),
+                  ],
+                );
+              }
+              return Stack(
+                fit: StackFit.expand,
+                children: [
+                  light(
+                    upperCx + wobbleX(0),
+                    upperCy + wobbleY(0.1),
+                    1.8,
+                    widget.upper,
+                    0.18,
+                  ),
+                  light(
+                    1.06 + wobbleX(0.33),
+                    -0.04 + wobbleY(0.4),
+                    1.6,
+                    widget.side,
+                    0.14,
+                  ),
+                  light(
+                    0.5 + wobbleX(0.66),
+                    0.95 + wobbleY(0.2),
+                    1.9,
+                    bridge,
+                    0.12,
+                  ),
+                ],
+              );
+            },
           );
         },
       ),
@@ -215,12 +246,10 @@ class _DriftingLightsState extends State<_DriftingLights> {
 
 class _Glow extends StatelessWidget {
   final List<Color> colors;
-  final double diameter;
   final double strength;
 
   const _Glow({
     required this.colors,
-    required this.diameter,
     required this.strength,
   });
 
@@ -230,21 +259,21 @@ class _Glow extends StatelessWidget {
     final mid = colors.length > 1 ? colors[1] : core;
     final edge = colors.length > 2 ? colors[2] : mid;
     return IgnorePointer(
-      child: Container(
-        width: diameter,
-        height: diameter,
+      child: DecoratedBox(
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           gradient: RadialGradient(
             colors: [
               core.withValues(alpha: strength),
-              mid.withValues(alpha: strength * 0.55),
-              edge.withValues(alpha: strength * 0.16),
+              mid.withValues(alpha: strength * 0.42),
+              edge.withValues(alpha: strength * 0.14),
+              edge.withValues(alpha: strength * 0.04),
               edge.withValues(alpha: 0),
             ],
-            stops: const [0.0, 0.28, 0.58, 1.0],
+            stops: const [0.0, 0.2, 0.46, 0.72, 1.0],
           ),
         ),
+        child: const SizedBox.expand(),
       ),
     );
   }
@@ -261,30 +290,369 @@ BoxDecoration kalaGlassDecoration({
       end: Alignment.bottomCenter,
       colors: isDark
           ? [
-              const Color(0xFF2A1C38).withValues(alpha: 0.9),
-              const Color(0xFF161018).withValues(alpha: 0.78),
+              const Color(0xFF3A2A48).withValues(alpha: 0.78),
+              const Color(0xFF161018).withValues(alpha: 0.62),
             ]
           : [
-              Colors.white.withValues(alpha: 0.88),
+              Colors.white.withValues(alpha: 0.9),
               const Color(0xFFF6F0FF).withValues(alpha: 0.74),
             ],
     ),
     borderRadius: BorderRadius.circular(radius),
     border: Border.all(
       color: isDark
-          ? Colors.white.withValues(alpha: 0.14)
+          ? Colors.white.withValues(alpha: 0.22)
           : Colors.white,
       width: 1,
     ),
     boxShadow: [
       BoxShadow(
         color: (isDark ? Colors.black : const Color(0xFF6A4AD4))
-            .withValues(alpha: isDark ? 0.32 : 0.1),
-        blurRadius: isDark ? 18 : 16,
+            .withValues(alpha: isDark ? 0.28 : 0.08),
+        blurRadius: 16,
         offset: const Offset(0, 8),
       ),
     ],
   );
+}
+
+/// One frosted sheet. The modal background stays clear so this panel is the surface.
+Widget glassSheet(Widget child, {double radius = 22}) {
+  return BacklitGlass(
+    role: BacklitGlassRole.pane,
+    blur: true,
+    borderRadius: BorderRadius.vertical(top: Radius.circular(radius)),
+    child: child,
+  );
+}
+
+/// How dense the glass is.
+/// [bar] is the shell navigation. [chip] is a field or banner.
+/// [pane] keeps the denser fill the audio player relies on.
+enum BacklitGlassRole { bar, chip, pane }
+
+/// Frosted panel. Blur stays off for chips and lists; one bar-level blur is enough.
+class BacklitGlass extends StatelessWidget {
+  final Widget child;
+  final BacklitGlassRole role;
+  final BorderRadius borderRadius;
+  final EdgeInsetsGeometry padding;
+  final bool blur;
+  final Color? tint;
+
+  /// Keeps the dark glass when the app theme is light.
+  final bool forceDark;
+
+  const BacklitGlass({
+    super.key,
+    required this.child,
+    this.role = BacklitGlassRole.chip,
+    this.borderRadius = const BorderRadius.all(Radius.circular(22)),
+    this.padding = EdgeInsets.zero,
+    this.blur = false,
+    this.tint,
+    this.forceDark = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark =
+        forceDark || Theme.of(context).brightness == Brightness.dark;
+    final hairline = role == BacklitGlassRole.bar;
+    final bordered = !hairline;
+    final sigma = role == BacklitGlassRole.bar ? 24.0 : 18.0;
+
+    final layers = DecoratedBox(
+      decoration: BoxDecoration(
+        color: tint,
+        gradient: tint == null ? _fill(isDark) : null,
+      ),
+      child: DecoratedBox(
+        decoration: BoxDecoration(gradient: _wash(isDark)),
+        child: CustomPaint(
+          painter: _GlassChromePainter(isDark: isDark, role: role),
+          child: Padding(padding: padding, child: child),
+        ),
+      ),
+    );
+
+    final clipped = ClipRRect(
+      borderRadius: bordered ? _deflate(borderRadius, 1) : borderRadius,
+      child: blur
+          ? BackdropFilter(
+              filter: ui.ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+              child: layers,
+            )
+          : layers,
+    );
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: borderRadius,
+        gradient: bordered ? _border(isDark) : null,
+        boxShadow: _shadows(isDark),
+      ),
+      child: Padding(
+        padding: bordered ? const EdgeInsets.all(1) : EdgeInsets.zero,
+        child: clipped,
+      ),
+    );
+  }
+
+  LinearGradient _fill(bool isDark) {
+    final (Color top, Color bottom) = switch (role) {
+      BacklitGlassRole.bar => isDark
+          ? (
+              const Color(0xFF32243C).withValues(alpha: 0.44),
+              const Color(0xFF120C18).withValues(alpha: 0.68),
+            )
+          : (
+              Colors.white.withValues(alpha: 0.68),
+              const Color(0xFFF4ECFF).withValues(alpha: 0.84),
+            ),
+      BacklitGlassRole.chip => isDark
+          ? (
+              const Color(0xFF2A1C36).withValues(alpha: 0.62),
+              const Color(0xFF161018).withValues(alpha: 0.72),
+            )
+          : (
+              Colors.white.withValues(alpha: 0.78),
+              const Color(0xFFF6F0FF).withValues(alpha: 0.7),
+            ),
+      BacklitGlassRole.pane => isDark
+          ? (
+              const Color(0xFF2A1C36).withValues(alpha: 0.78),
+              const Color(0xFF120C16).withValues(alpha: 0.62),
+            )
+          : (
+              Colors.white.withValues(alpha: 0.82),
+              const Color(0xFFF4ECFF).withValues(alpha: 0.66),
+            ),
+    };
+    return LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [top, bottom],
+    );
+  }
+
+  LinearGradient _wash(bool isDark) {
+    final alpha = switch (role) {
+      BacklitGlassRole.bar => isDark ? 0.14 : 0.1,
+      BacklitGlassRole.chip => isDark ? 0.08 : 0.06,
+      BacklitGlassRole.pane => isDark ? 0.07 : 0.05,
+    };
+    return LinearGradient(
+      begin: Alignment.centerLeft,
+      end: Alignment.centerRight,
+      colors: [
+        const Color(0xFFFF4D9A).withValues(alpha: alpha),
+        Colors.transparent,
+        const Color(0xFF00C8FF).withValues(alpha: alpha),
+      ],
+    );
+  }
+
+  LinearGradient _border(bool isDark) {
+    return LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: isDark
+          ? [
+              Colors.white.withValues(alpha: 0.38),
+              const Color(0xFF00C8FF).withValues(alpha: 0.2),
+              const Color(0xFFFF4D9A).withValues(alpha: 0.08),
+            ]
+          : [
+              Colors.white,
+              const Color(0xFFE7DEFF).withValues(alpha: 0.95),
+              Colors.white.withValues(alpha: 0.45),
+            ],
+    );
+  }
+
+  List<BoxShadow> _shadows(bool isDark) {
+    return switch (role) {
+      BacklitGlassRole.bar => [
+          BoxShadow(
+            color: const Color(0xFF7B5EFF).withValues(alpha: isDark ? 0.32 : 0.16),
+            blurRadius: 28,
+            offset: const Offset(0, -8),
+          ),
+          BoxShadow(
+            color: const Color(0xFFFF4D9A).withValues(alpha: isDark ? 0.14 : 0.08),
+            blurRadius: 22,
+            offset: const Offset(-10, -2),
+          ),
+        ],
+      BacklitGlassRole.chip => [
+          BoxShadow(
+            color: (isDark ? Colors.black : const Color(0xFF6A4AD4))
+                .withValues(alpha: isDark ? 0.28 : 0.08),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      BacklitGlassRole.pane => [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.06),
+            blurRadius: 22,
+            offset: const Offset(0, 12),
+          ),
+          BoxShadow(
+            color: const Color(0xFFFF4D9A).withValues(alpha: isDark ? 0.14 : 0.1),
+            blurRadius: 28,
+            offset: const Offset(-6, 8),
+          ),
+          BoxShadow(
+            color: const Color(0xFF00C8FF).withValues(alpha: isDark ? 0.12 : 0.1),
+            blurRadius: 28,
+            offset: const Offset(8, 10),
+          ),
+        ],
+    };
+  }
+
+  static BorderRadius _deflate(BorderRadius radius, double inset) {
+    Radius shrink(Radius r) => Radius.elliptical(
+          math.max(0, r.x - inset),
+          math.max(0, r.y - inset),
+        );
+    return BorderRadius.only(
+      topLeft: shrink(radius.topLeft),
+      topRight: shrink(radius.topRight),
+      bottomLeft: shrink(radius.bottomLeft),
+      bottomRight: shrink(radius.bottomRight),
+    );
+  }
+}
+
+class _GlassChromePainter extends CustomPainter {
+  final bool isDark;
+  final BacklitGlassRole role;
+
+  const _GlassChromePainter({required this.isDark, required this.role});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.isEmpty) return;
+    final sheenHeight = switch (role) {
+      BacklitGlassRole.bar => 36.0,
+      BacklitGlassRole.chip => 22.0,
+      BacklitGlassRole.pane => 42.0,
+    };
+    final sheenAlpha = isDark
+        ? (role == BacklitGlassRole.bar ? 0.14 : 0.1)
+        : switch (role) {
+            BacklitGlassRole.bar => 0.5,
+            BacklitGlassRole.chip => 0.6,
+            BacklitGlassRole.pane => 0.7,
+          };
+    final sheen = Paint()
+      ..shader = ui.Gradient.linear(
+        Offset.zero,
+        Offset(0, sheenHeight),
+        [
+          Colors.white.withValues(alpha: sheenAlpha),
+          Colors.white.withValues(alpha: 0),
+        ],
+      );
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, sheenHeight), sheen);
+
+    final noiseAlpha = switch (role) {
+      BacklitGlassRole.bar => isDark ? 0.55 : 0.4,
+      BacklitGlassRole.chip => isDark ? 0.42 : 0.3,
+      BacklitGlassRole.pane => isDark ? 0.26 : 0.2,
+    };
+    _paintNoise(canvas, size, noiseAlpha);
+
+    if (role == BacklitGlassRole.bar && size.width > 48) {
+      const inset = 20.0;
+      final line = Paint()
+        ..shader = ui.Gradient.linear(
+          const Offset(inset, 0),
+          Offset(size.width - inset, 0),
+          [
+            Colors.transparent,
+            const Color(0xFFFF4D9A).withValues(alpha: isDark ? 0.55 : 0.28),
+            Colors.white.withValues(alpha: isDark ? 0.75 : 0.95),
+            const Color(0xFF00C8FF).withValues(alpha: isDark ? 0.45 : 0.32),
+            Colors.transparent,
+          ],
+          const [0.0, 0.18, 0.48, 0.72, 1.0],
+        );
+      canvas.drawRect(
+        Rect.fromLTWH(inset, 0, size.width - inset * 2, 1.15),
+        line,
+      );
+    }
+  }
+
+  void _paintNoise(Canvas canvas, Size size, double strength) {
+    final image = _GlassNoise.tile();
+    if (image == null || strength <= 0) return;
+    final shader = ui.ImageShader(
+      image,
+      TileMode.repeated,
+      TileMode.repeated,
+      Matrix4.identity().storage,
+    );
+    canvas.drawRect(
+      Offset.zero & size,
+      Paint()
+        ..shader = shader
+        ..blendMode = BlendMode.softLight
+        ..color = Colors.white.withValues(alpha: strength),
+    );
+    shader.dispose();
+  }
+
+  @override
+  bool shouldRepaint(covariant _GlassChromePainter oldDelegate) {
+    return oldDelegate.isDark != isDark || oldDelegate.role != role;
+  }
+}
+
+class _GlassNoise {
+  static ui.Image? _tile;
+  static bool _failed = false;
+
+  static ui.Image? tile() {
+    if (_failed) return null;
+    final cached = _tile;
+    if (cached != null) return cached;
+    try {
+      const size = 96;
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      final paint = Paint();
+      final random = math.Random(41);
+      for (var i = 0; i < 1600; i++) {
+        final bright = random.nextBool();
+        final alpha = 0.15 + random.nextDouble() * 0.55;
+        paint.color = bright
+            ? Colors.white.withValues(alpha: alpha)
+            : Colors.black.withValues(alpha: alpha * 0.45);
+        canvas.drawRect(
+          Rect.fromLTWH(
+            random.nextDouble() * size,
+            random.nextDouble() * size,
+            1,
+            1,
+          ),
+          paint,
+        );
+      }
+      final picture = recorder.endRecording();
+      final image = picture.toImageSync(size, size);
+      picture.dispose();
+      _tile = image;
+      return image;
+    } catch (_) {
+      _failed = true;
+      return null;
+    }
+  }
 }
 
 /// Translucent panel. Blur is optional because a scrolling list of blurs is expensive.
@@ -311,105 +679,15 @@ class FrostedPane extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark =
-        forceDark || Theme.of(context).brightness == Brightness.dark;
-    final fill = tint;
-
-    final body = DecoratedBox(
-      decoration: BoxDecoration(
-        color: fill,
-        gradient: fill == null
-            ? LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: isDark
-                    ? [
-                        const Color(0xFF2A1C36).withValues(alpha: 0.78),
-                        const Color(0xFF120C16).withValues(alpha: 0.62),
-                      ]
-                    : [
-                        Colors.white.withValues(alpha: 0.82),
-                        const Color(0xFFF4ECFF).withValues(alpha: 0.66),
-                      ],
-              )
-            : null,
-      ),
-      child: Stack(
-        children: [
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            height: 42,
-            child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.white.withValues(alpha: isDark ? 0.1 : 0.7),
-                      Colors.white.withValues(alpha: 0),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-          Padding(padding: padding, child: child),
-        ],
-      ),
+    return BacklitGlass(
+      role: BacklitGlassRole.pane,
+      borderRadius: BorderRadius.circular(radius),
+      padding: padding,
+      blur: blur,
+      tint: tint,
+      forceDark: forceDark,
+      child: child,
     );
-
-    final glass = Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(radius),
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: isDark
-              ? [
-                  Colors.white.withValues(alpha: 0.28),
-                  Colors.white.withValues(alpha: 0.05),
-                ]
-              : [
-                  Colors.white,
-                  Colors.white.withValues(alpha: 0.35),
-                ],
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.06),
-            blurRadius: 22,
-            offset: const Offset(0, 12),
-          ),
-          BoxShadow(
-            color: const Color(0xFFFF4D9A)
-                .withValues(alpha: isDark ? 0.14 : 0.1),
-            blurRadius: 28,
-            offset: const Offset(-6, 8),
-          ),
-          BoxShadow(
-            color: const Color(0xFF00C8FF)
-                .withValues(alpha: isDark ? 0.12 : 0.1),
-            blurRadius: 28,
-            offset: const Offset(8, 10),
-          ),
-        ],
-      ),
-      padding: const EdgeInsets.all(1),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(radius - 1),
-        child: blur
-            ? BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-                child: body,
-              )
-            : body,
-      ),
-    );
-
-    return glass;
   }
 }
 
