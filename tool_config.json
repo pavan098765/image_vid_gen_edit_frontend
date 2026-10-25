@@ -1018,7 +1018,7 @@
         },
         {
           "id": "krea2_turbo",
-          "name": "Kala Palette",
+          "name": "Kala Mage",
           "description": "Styled text to image",
           "aliases": ["krea:krea@2-turbo"],
           "useExternalApi": true,
@@ -1035,7 +1035,7 @@
         },
         {
           "id": "recraft_v41_flash",
-          "name": "Kala Poster",
+          "name": "Kala Spectra",
           "description": "Posters, logos, and lettering",
           "aliases": ["recraft:v4.1@flash"],
           "useExternalApi": true,
@@ -1172,7 +1172,7 @@
         },
         {
           "id": "krea2_turbo_edit",
-          "name": "Kala Palette",
+          "name": "Kala Mage",
           "description": "Match a look from up to 4 references",
           "aliases": ["krea:krea@2-turbo"],
           "useExternalApi": true,
@@ -3039,8 +3039,8 @@
         "name": "3D Cartoon",
         "category": "Fun",
         "promptSnippet": "Pixar 3D animation style, colorful, rounded shapes, playful lighting",
-        "icon": "🎪",
-        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/cartoon_3d.jpg",
+        "icon": "",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/cartoon_3d.webp",
         "featured": true
       },
       {
@@ -3048,32 +3048,32 @@
         "name": "Comic Book",
         "category": "Fun",
         "promptSnippet": "comic book style, bold outlines, halftone dots, speech bubbles aesthetic",
-        "icon": "💥",
-        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/comic_book.jpg"
+        "icon": "",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/comic_book.webp"
       },
       {
         "id": "clay_render",
         "name": "Clay Render",
         "category": "Fun",
         "promptSnippet": "claymation style, soft clay texture, stop motion aesthetic, handcrafted look",
-        "icon": "🎨",
-        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/clay_render.jpg"
+        "icon": "",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/clay_render.webp"
       },
       {
         "id": "sticker",
         "name": "Sticker Style",
         "category": "Fun",
         "promptSnippet": "cute sticker design, white outline, kawaii aesthetic, glossy finish",
-        "icon": "🏷️",
-        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/sticker.jpg"
+        "icon": "",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/sticker.webp"
       },
       {
         "id": "photo_real",
         "name": "Photorealistic",
         "category": "Realistic",
         "promptSnippet": "photorealistic, DSLR quality, natural lighting, 8K resolution, sharp details",
-        "icon": "📷",
-        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/photo_real.jpg",
+        "icon": "",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/photo_real.webp",
         "featured": true
       },
       {
@@ -3081,32 +3081,32 @@
         "name": "Product Shot",
         "category": "Realistic",
         "promptSnippet": "professional product photography, studio lighting, clean white background",
-        "icon": "🛍️",
-        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/product_shot.jpg"
+        "icon": "",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/product_shot.webp"
       },
       {
         "id": "fashion",
         "name": "Fashion Editorial",
         "category": "Realistic",
         "promptSnippet": "high fashion editorial, Vogue magazine quality, dramatic pose, designer aesthetic",
-        "icon": "👗",
-        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/fashion.jpg"
+        "icon": "",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/fashion.webp"
       },
       {
         "id": "documentary",
         "name": "Documentary",
         "category": "Realistic",
         "promptSnippet": "documentary photography style, candid moment, natural light, authentic",
-        "icon": "🎞️",
-        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/documentary.jpg"
+        "icon": "",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/documentary.webp"
       },
       {
         "id": "oil_classic",
         "name": "Oil Painting",
         "category": "Artistic",
         "promptSnippet": "classical oil painting, rich brush strokes, Renaissance masters style, museum quality",
-        "icon": "🖼️",
-        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/oil_classic.jpg",
+        "icon": "",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/oil_classic.webp",
         "featured": true
       },
       {
@@ -3114,32 +3114,32 @@
         "name": "Watercolor",
         "category": "Artistic",
         "promptSnippet": "watercolor painting, soft color blends, paper texture, artistic drips",
-        "icon": "💧",
-        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/watercolor.jpg"
+        "icon": "",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/watercolor.webp"
       },
       {
         "id": "impressionist",
         "name": "Impressionist",
         "category": "Artistic",
         "promptSnippet": "impressionist painting, visible brush strokes, light and color emphasis, Monet style",
-        "icon": "🌸",
-        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/impressionist.jpg"
+        "icon": "",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/impressionist.webp"
       },
       {
         "id": "digital_art",
         "name": "Digital Art",
         "category": "Artistic",
         "promptSnippet": "professional digital art, trending on ArtStation, concept art quality",
-        "icon": "💻",
-        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/digital_art.jpg"
+        "icon": "",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/digital_art.webp"
       },
       {
         "id": "anime_modern",
         "name": "Modern Anime",
         "category": "Anime",
         "promptSnippet": "modern anime style, detailed shading, vibrant colors, high quality animation",
-        "icon": "🎌",
-        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/anime_modern.jpg",
+        "icon": "",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/anime_modern.webp",
         "featured": true
       },
       {
@@ -3147,32 +3147,32 @@
         "name": "Studio Ghibli",
         "category": "Anime",
         "promptSnippet": "Studio Ghibli style, Hayao Miyazaki aesthetic, magical realism, detailed backgrounds",
-        "icon": "🏯",
-        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/ghibli.jpg"
+        "icon": "",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/ghibli.webp"
       },
       {
         "id": "manga",
         "name": "Manga Panel",
         "category": "Anime",
         "promptSnippet": "manga illustration style, black and white, screentones, dynamic composition",
-        "icon": "📖",
-        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/manga.jpg"
+        "icon": "",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/manga.webp"
       },
       {
         "id": "chibi",
         "name": "Chibi",
         "category": "Anime",
         "promptSnippet": "chibi style, cute proportions, big head small body, kawaii expressions",
-        "icon": "🥰",
-        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/chibi.jpg"
+        "icon": "",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/chibi.webp"
       },
       {
         "id": "film_noir",
         "name": "Film Noir",
         "category": "Cinematic",
         "promptSnippet": "film noir style, black and white, dramatic shadows, 1940s detective aesthetic",
-        "icon": "🎬",
-        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/film_noir.jpg",
+        "icon": "",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/film_noir.webp",
         "featured": true
       },
       {
@@ -3180,24 +3180,24 @@
         "name": "Blockbuster",
         "category": "Cinematic",
         "promptSnippet": "Hollywood blockbuster look, epic scale, cinematic color grading, anamorphic lens",
-        "icon": "🎥",
-        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/blockbuster.jpg"
+        "icon": "",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/blockbuster.webp"
       },
       {
         "id": "scifi",
         "name": "Sci-Fi Epic",
         "category": "Cinematic",
         "promptSnippet": "science fiction aesthetic, futuristic technology, epic space opera, blade runner vibes",
-        "icon": "🚀",
-        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/scifi.jpg"
+        "icon": "",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/scifi.webp"
       },
       {
         "id": "horror",
         "name": "Horror",
         "category": "Cinematic",
         "promptSnippet": "horror movie aesthetic, unsettling atmosphere, dark shadows, eerie lighting",
-        "icon": "👻",
-        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/horror.jpg"
+        "icon": "",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/horror.webp"
       }
     ]
   },
