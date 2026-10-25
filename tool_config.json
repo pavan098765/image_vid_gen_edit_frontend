@@ -3031,13 +3031,16 @@
       "Realistic",
       "Artistic",
       "Anime",
-      "Cinematic"
+      "Cinematic",
+      "Motion",
+      "Stylized"
     ],
     "presets": [
       {
         "id": "cartoon_3d",
         "name": "3D Cartoon",
         "category": "Fun",
+        "capabilities": ["create_image", "edit_image"],
         "promptSnippet": "Pixar 3D animation style, colorful, rounded shapes, playful lighting",
         "icon": "",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/cartoon_3d.webp",
@@ -3047,6 +3050,7 @@
         "id": "comic_book",
         "name": "Comic Book",
         "category": "Fun",
+        "capabilities": ["create_image", "edit_image"],
         "promptSnippet": "comic book style, bold outlines, halftone dots, speech bubbles aesthetic",
         "icon": "",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/comic_book.webp"
@@ -3055,6 +3059,7 @@
         "id": "clay_render",
         "name": "Clay Render",
         "category": "Fun",
+        "capabilities": ["create_image", "edit_image"],
         "promptSnippet": "claymation style, soft clay texture, stop motion aesthetic, handcrafted look",
         "icon": "",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/clay_render.webp"
@@ -3063,6 +3068,7 @@
         "id": "sticker",
         "name": "Sticker Style",
         "category": "Fun",
+        "capabilities": ["create_image", "edit_image"],
         "promptSnippet": "cute sticker design, white outline, kawaii aesthetic, glossy finish",
         "icon": "",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/sticker.webp"
@@ -3071,6 +3077,7 @@
         "id": "photo_real",
         "name": "Photorealistic",
         "category": "Realistic",
+        "capabilities": ["create_image", "edit_image"],
         "promptSnippet": "photorealistic, DSLR quality, natural lighting, 8K resolution, sharp details",
         "icon": "",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/photo_real.webp",
@@ -3080,6 +3087,7 @@
         "id": "product_shot",
         "name": "Product Shot",
         "category": "Realistic",
+        "capabilities": ["create_image", "edit_image"],
         "promptSnippet": "professional product photography, studio lighting, clean white background",
         "icon": "",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/product_shot.webp"
@@ -3088,6 +3096,7 @@
         "id": "fashion",
         "name": "Fashion Editorial",
         "category": "Realistic",
+        "capabilities": ["create_image", "edit_image"],
         "promptSnippet": "high fashion editorial, Vogue magazine quality, dramatic pose, designer aesthetic",
         "icon": "",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/fashion.webp"
@@ -3096,6 +3105,7 @@
         "id": "documentary",
         "name": "Documentary",
         "category": "Realistic",
+        "capabilities": ["create_image", "edit_image"],
         "promptSnippet": "documentary photography style, candid moment, natural light, authentic",
         "icon": "",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/documentary.webp"
@@ -3104,6 +3114,7 @@
         "id": "oil_classic",
         "name": "Oil Painting",
         "category": "Artistic",
+        "capabilities": ["create_image", "edit_image"],
         "promptSnippet": "classical oil painting, rich brush strokes, Renaissance masters style, museum quality",
         "icon": "",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/oil_classic.webp",
@@ -3113,6 +3124,7 @@
         "id": "watercolor",
         "name": "Watercolor",
         "category": "Artistic",
+        "capabilities": ["create_image", "edit_image"],
         "promptSnippet": "watercolor painting, soft color blends, paper texture, artistic drips",
         "icon": "",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/watercolor.webp"
@@ -3121,6 +3133,7 @@
         "id": "impressionist",
         "name": "Impressionist",
         "category": "Artistic",
+        "capabilities": ["create_image", "edit_image"],
         "promptSnippet": "impressionist painting, visible brush strokes, light and color emphasis, Monet style",
         "icon": "",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/impressionist.webp"
@@ -3129,6 +3142,7 @@
         "id": "digital_art",
         "name": "Digital Art",
         "category": "Artistic",
+        "capabilities": ["create_image", "edit_image"],
         "promptSnippet": "professional digital art, trending on ArtStation, concept art quality",
         "icon": "",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/digital_art.webp"
@@ -3137,6 +3151,7 @@
         "id": "anime_modern",
         "name": "Modern Anime",
         "category": "Anime",
+        "capabilities": ["create_image", "edit_image"],
         "promptSnippet": "modern anime style, detailed shading, vibrant colors, high quality animation",
         "icon": "",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/anime_modern.webp",
@@ -3146,6 +3161,7 @@
         "id": "ghibli",
         "name": "Studio Ghibli",
         "category": "Anime",
+        "capabilities": ["create_image", "edit_image"],
         "promptSnippet": "Studio Ghibli style, Hayao Miyazaki aesthetic, magical realism, detailed backgrounds",
         "icon": "",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/ghibli.webp"
@@ -3154,6 +3170,7 @@
         "id": "manga",
         "name": "Manga Panel",
         "category": "Anime",
+        "capabilities": ["create_image", "edit_image"],
         "promptSnippet": "manga illustration style, black and white, screentones, dynamic composition",
         "icon": "",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/manga.webp"
@@ -3162,6 +3179,7 @@
         "id": "chibi",
         "name": "Chibi",
         "category": "Anime",
+        "capabilities": ["create_image", "edit_image"],
         "promptSnippet": "chibi style, cute proportions, big head small body, kawaii expressions",
         "icon": "",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/chibi.webp"
@@ -3170,6 +3188,7 @@
         "id": "film_noir",
         "name": "Film Noir",
         "category": "Cinematic",
+        "capabilities": ["create_image", "edit_image"],
         "promptSnippet": "film noir style, black and white, dramatic shadows, 1940s detective aesthetic",
         "icon": "",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/film_noir.webp",
@@ -3179,6 +3198,7 @@
         "id": "blockbuster",
         "name": "Blockbuster",
         "category": "Cinematic",
+        "capabilities": ["create_image", "edit_image"],
         "promptSnippet": "Hollywood blockbuster look, epic scale, cinematic color grading, anamorphic lens",
         "icon": "",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/blockbuster.webp"
@@ -3187,6 +3207,7 @@
         "id": "scifi",
         "name": "Sci-Fi Epic",
         "category": "Cinematic",
+        "capabilities": ["create_image", "edit_image"],
         "promptSnippet": "science fiction aesthetic, futuristic technology, epic space opera, blade runner vibes",
         "icon": "",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/scifi.webp"
@@ -3195,9 +3216,158 @@
         "id": "horror",
         "name": "Horror",
         "category": "Cinematic",
+        "capabilities": ["create_image", "edit_image"],
         "promptSnippet": "horror movie aesthetic, unsettling atmosphere, dark shadows, eerie lighting",
         "icon": "",
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/horror.webp"
+      },
+      {
+        "id": "vid_dolly_in",
+        "name": "Dolly In",
+        "category": "Motion",
+        "capabilities": ["create_video", "animate_image"],
+        "promptSnippet": "slow dolly in toward the subject, smooth push, shallow depth of field",
+        "icon": "🎥",
+        "featured": true
+      },
+      {
+        "id": "vid_orbit",
+        "name": "Orbit",
+        "category": "Motion",
+        "capabilities": ["create_video", "animate_image"],
+        "promptSnippet": "camera slowly orbits the subject, subject stays centered, smooth cinematic move",
+        "icon": "🌀"
+      },
+      {
+        "id": "vid_crane",
+        "name": "Crane Up",
+        "category": "Motion",
+        "capabilities": ["create_video", "animate_image"],
+        "promptSnippet": "crane shot rising from low to high, gentle reveal of the scene",
+        "icon": "🏗️"
+      },
+      {
+        "id": "vid_handheld",
+        "name": "Handheld",
+        "category": "Motion",
+        "capabilities": ["create_video", "animate_image"],
+        "promptSnippet": "subtle handheld camera drift, natural documentary motion",
+        "icon": "📹"
+      },
+      {
+        "id": "vid_crash_zoom",
+        "name": "Crash Zoom",
+        "category": "Motion",
+        "capabilities": ["create_video", "animate_image"],
+        "promptSnippet": "fast crash zoom onto the subject, then hold",
+        "icon": "🔍"
+      },
+      {
+        "id": "vid_aerial",
+        "name": "Aerial",
+        "category": "Motion",
+        "capabilities": ["create_video", "animate_image"],
+        "promptSnippet": "smooth aerial drone move, wide establishing shot",
+        "icon": "🛩️"
+      },
+      {
+        "id": "vid_cinematic",
+        "name": "Cinematic",
+        "category": "Cinematic",
+        "capabilities": ["create_video", "animate_image"],
+        "promptSnippet": "cinematic anamorphic look, film grain, 24fps motion, shallow depth of field",
+        "icon": "🎬",
+        "featured": true
+      },
+      {
+        "id": "vid_slow_mo",
+        "name": "Slow Motion",
+        "category": "Cinematic",
+        "capabilities": ["create_video", "animate_image"],
+        "promptSnippet": "smooth slow motion, fluid high-frame-rate movement",
+        "icon": "⏱️",
+        "featured": true
+      },
+      {
+        "id": "vid_noir",
+        "name": "Noir",
+        "category": "Cinematic",
+        "capabilities": ["create_video", "animate_image"],
+        "promptSnippet": "black and white film noir, hard shadows, slow dramatic camera",
+        "icon": "🕶️"
+      },
+      {
+        "id": "vid_golden",
+        "name": "Golden Hour",
+        "category": "Cinematic",
+        "capabilities": ["create_video", "animate_image"],
+        "promptSnippet": "warm golden hour light, soft slow camera drift",
+        "icon": "🌅"
+      },
+      {
+        "id": "vid_doc",
+        "name": "Nature Doc",
+        "category": "Cinematic",
+        "capabilities": ["create_video", "animate_image"],
+        "promptSnippet": "nature documentary, gentle observational camera, natural motion",
+        "icon": "🦌"
+      },
+      {
+        "id": "vid_anime",
+        "name": "Anime",
+        "category": "Stylized",
+        "capabilities": ["create_video", "animate_image"],
+        "promptSnippet": "anime animation, cel shading, vibrant color, smooth character motion",
+        "icon": "🎌",
+        "featured": true
+      },
+      {
+        "id": "vid_3d",
+        "name": "3D Animated",
+        "category": "Stylized",
+        "capabilities": ["create_video", "animate_image"],
+        "promptSnippet": "3D animated film motion, rounded shapes, playful camera",
+        "icon": "🧸"
+      },
+      {
+        "id": "vid_clay",
+        "name": "Claymation",
+        "category": "Stylized",
+        "capabilities": ["create_video", "animate_image"],
+        "promptSnippet": "stop-motion clay animation, slight frame-by-frame motion",
+        "icon": "🧱"
+      },
+      {
+        "id": "vid_neon",
+        "name": "Neon Night",
+        "category": "Stylized",
+        "capabilities": ["create_video", "animate_image"],
+        "promptSnippet": "neon-lit night, wet reflections, slow cyberpunk camera drift",
+        "icon": "🌃"
+      },
+      {
+        "id": "vid_epic",
+        "name": "Epic",
+        "category": "Stylized",
+        "capabilities": ["create_video", "animate_image"],
+        "promptSnippet": "sweeping blockbuster camera, large scale, dramatic motion",
+        "icon": "🌋"
+      },
+      {
+        "id": "vid_dreamy",
+        "name": "Dreamy",
+        "category": "Stylized",
+        "capabilities": ["create_video", "animate_image"],
+        "promptSnippet": "ethereal glow, slow floating motion, soft focus",
+        "icon": "✨"
+      },
+      {
+        "id": "vid_timelapse",
+        "name": "Time Lapse",
+        "category": "Stylized",
+        "capabilities": ["create_video", "animate_image"],
+        "promptSnippet": "time lapse, clouds and light moving quickly, camera locked off",
+        "icon": "⏩"
       }
     ]
   },

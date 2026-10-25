@@ -231,6 +231,15 @@ class StylePreset {
   final String? previewType; // 'image' or 'video' (auto-detected from URL)
   final bool isFeatured;
 
+  /// Tool capability ids that may show this preset. Image styles stay on
+  /// create/edit image. Video styles stay on create video and animate image.
+  final List<String> capabilities;
+
+  static const List<String> imageCapabilities = [
+    'create_image',
+    'edit_image',
+  ];
+
   const StylePreset({
     required this.id,
     required this.name,
@@ -240,6 +249,7 @@ class StylePreset {
     this.previewUrl,
     this.previewType,
     this.isFeatured = false,
+    this.capabilities = imageCapabilities,
   });
 
   factory StylePreset.fromJson(Map<String, dynamic> json) {
@@ -248,6 +258,13 @@ class StylePreset {
     if (url != null) {
       pType = url.endsWith('.mp4') || url.endsWith('.webm') ? 'video' : 'image';
     }
+    final rawCapabilities = json['capabilities'];
+    final capabilities = rawCapabilities is List
+        ? rawCapabilities
+            .map((entry) => entry.toString())
+            .where((entry) => entry.isNotEmpty)
+            .toList()
+        : imageCapabilities;
     return StylePreset(
       id: json['id'] ?? '',
       name: json['name'] ?? '',
@@ -257,6 +274,7 @@ class StylePreset {
       previewUrl: url,
       previewType: pType,
       isFeatured: json['featured'] ?? false,
+      capabilities: capabilities.isEmpty ? imageCapabilities : capabilities,
     );
   }
 }
@@ -1835,6 +1853,11 @@ class _GenericToolPageState extends State<GenericToolPage>
   /// Check if this is an expand scene (outpaint) category tool
   bool get _isExpandSceneTool => _isOutpaint;
 
+  /// Expand Scene keeps the prompt, and hides Style & Tags.
+  bool get _hidesStyleAndTags =>
+      widget.config.capabilityId == 'expand_scene' ||
+      widget.config.title.toLowerCase() == 'expand scene';
+
   /// Check if this is an inpaint & erase category tool
   /// Includes inpaint, lama, and erase tools
   bool get _isInpaintEraseTool {
@@ -2611,9 +2634,38 @@ class _GenericToolPageState extends State<GenericToolPage>
   /// Get the current styles list (config-loaded or fallback)
   List<StylePreset> get _currentStyles => _configStyles ?? allStylePresets;
 
+  /// Capability used to choose image presets vs video presets.
+  String get _styleCapabilityId {
+    final id = widget.config.capabilityId;
+    if (id != null && id.isNotEmpty) return id;
+    if (widget.config.outputType == 'video') {
+      return _isAnimateImageTool ? 'animate_image' : 'create_video';
+    }
+    return _isEditImageTool ? 'edit_image' : 'create_image';
+  }
+
+  /// Presets that belong on the open tool.
+  List<StylePreset> get _stylesForThisTool {
+    final capabilityId = _styleCapabilityId;
+    return _currentStyles
+        .where((style) => style.capabilities.contains(capabilityId))
+        .toList();
+  }
+
   /// Get the current style categories (config-loaded or fallback)
   List<String> get _currentStyleCategories =>
       _configStyleCategories ?? styleCategories;
+
+  /// Category chips that have a preset on this tool. All and Favorites stay.
+  List<String> get _visibleStyleCategories {
+    final usedCategories =
+        _stylesForThisTool.map((style) => style.category).toSet();
+    return _currentStyleCategories.where((category) {
+      return category == 'All' ||
+          category == 'Favorites' ||
+          usedCategories.contains(category);
+    }).toList();
+  }
 
   /// Load user templates from SharedPreferences
   Future<void> _loadUserTemplates() async {
@@ -3215,7 +3267,7 @@ class _GenericToolPageState extends State<GenericToolPage>
 
   /// Get styles filtered by category
   List<StylePreset> _getStylesByCategory(String category) {
-    final styles = _currentStyles;
+    final styles = _stylesForThisTool;
     if (category == 'All') {
       return styles;
     }
@@ -3837,7 +3889,8 @@ class _GenericToolPageState extends State<GenericToolPage>
 
   /// Apply random style
   void _applyRandomStyle() {
-    final styles = _currentStyles;
+    final styles = _stylesForThisTool;
+    if (styles.isEmpty) return;
     final random = Random();
     final randomStyle = styles[random.nextInt(styles.length)];
     _selectStyle(randomStyle);
@@ -7548,7 +7601,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                   ] else ...[
                     const Spacer(),
                   ],
-                  if (!_isAudioTool)
+                  if (!_isAudioTool && !_hidesStyleAndTags)
                     _ComposerIconButton(
                       icon: LucideIcons.palette,
                       tooltip: _promptStylesVisible
@@ -11490,7 +11543,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                 const SizedBox(width: 8),
                 const Spacer(),
                 GestureDetector(
-                  onTap: _applyRandomStyle,
+                  onTap: _stylesForThisTool.isEmpty ? null : _applyRandomStyle,
                   child: Container(
                     padding:
                         const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -11651,12 +11704,14 @@ class _GenericToolPageState extends State<GenericToolPage>
             height: 32,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
-              itemCount: _currentStyleCategories.length,
+              itemCount: _visibleStyleCategories.length,
               itemBuilder: (context, index) {
-                final category = _currentStyleCategories[index];
+                final category = _visibleStyleCategories[index];
                 final isSelected = _selectedStyleCategory == category;
                 final isFavorites = category == 'Favorites';
-                final favCount = _favoriteStyles.length;
+                final favCount = _stylesForThisTool
+                    .where((style) => _favoriteStyles.contains(style.id))
+                    .length;
 
                 return Padding(
                   padding: const EdgeInsets.only(right: 8),
@@ -11749,7 +11804,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                 ),
               ),
             )
-          else
+          else if (styles.isNotEmpty)
             // Styles grid (2 rows of scrollable cards)
             SizedBox(
               height: 90,
@@ -11780,6 +11835,8 @@ class _GenericToolPageState extends State<GenericToolPage>
       'Artistic': const Color(0xFF8B5CF6),
       'Anime': const Color(0xFFEC4899),
       'Cinematic': const Color(0xFFF59E0B),
+      'Motion': const Color(0xFF14B8A6),
+      'Stylized': const Color(0xFFA855F7),
     };
     final accentColor = categoryColors[style.category] ?? cs.secondary;
     final hasPreview = style.previewUrl != null && style.previewUrl!.isNotEmpty;
@@ -14690,7 +14747,10 @@ class _GenericToolPageState extends State<GenericToolPage>
                   ...afterPromptElements.map(renderElement),
 
                   // 6. Relocated Style & Tags panel — only when a prompt exists.
-                  if (hasPromptElement && _promptStylesVisible && !_isAudioTool) ...[
+                  if (hasPromptElement &&
+                      _promptStylesVisible &&
+                      !_isAudioTool &&
+                      !_hidesStyleAndTags) ...[
                     const SizedBox(height: 10),
                     KeyedSubtree(
                       key: _stylesSectionKey,
