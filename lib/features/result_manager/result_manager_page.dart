@@ -12,6 +12,7 @@ import 'package:flutter/services.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/model_display_name.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/motion.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/ad_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/file_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/polling_service.dart';
@@ -885,14 +886,20 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
                   final filteredJobs = _getFilteredAndSortedJobs();
 
                   if (filteredJobs.isEmpty) {
+                    final emptyLabel = _searchQuery.isNotEmpty
+                        ? 'No creations found matching "$_searchQuery"'
+                        : 'No creations yet.';
                     return Center(
-                      child: Text(
-                        _searchQuery.isNotEmpty
-                            ? 'No creations found matching "$_searchQuery"'
-                            : 'No creations yet.',
-                        style: TextStyle(
-                          color: cs.onSurfaceVariant,
-                          fontSize: 15,
+                      child: OnceFadeRise(
+                        token: _searchQuery.isNotEmpty
+                            ? 'creations-empty-search'
+                            : 'creations-empty',
+                        child: Text(
+                          emptyLabel,
+                          style: TextStyle(
+                            color: cs.onSurfaceVariant,
+                            fontSize: 15,
+                          ),
                         ),
                       ),
                     );
@@ -955,25 +962,32 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
                                 }
                               },
                       );
-                      if (isBatchStart) {
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                              child: Text(
-                                '$batchCount from one run',
-                                style: TextStyle(
-                                  color: cs.onSurfaceVariant,
-                                  fontSize: 12,
+                      final tile = isBatchStart
+                          ? Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Padding(
+                                  padding:
+                                      const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                                  child: Text(
+                                    '$batchCount from one run',
+                                    style: TextStyle(
+                                      color: cs.onSurfaceVariant,
+                                      fontSize: 12,
+                                    ),
+                                  ),
                                 ),
-                              ),
-                            ),
-                            card,
-                          ],
-                        );
-                      }
-                      return card;
+                                card,
+                              ],
+                            )
+                          : card;
+                      if (i >= 6) return tile;
+                      return OnceFadeRise(
+                        key: ValueKey(job.jobId),
+                        token: job.jobId,
+                        order: i,
+                        child: tile,
+                      );
                     },
                   );
                 },

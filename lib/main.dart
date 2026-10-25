@@ -24,6 +24,7 @@ import 'core/app_state.dart';
 import 'core/model_display_name.dart';
 import 'core/playback_session.dart';
 import 'core/tool_launch.dart';
+import 'core/motion.dart';
 import 'core/widgets/backlit_glass.dart';
 import 'core/services/notification_service.dart';
 import 'core/services/kie_result_saver.dart';
@@ -1208,9 +1209,12 @@ class _MainAppScaffold extends StatelessWidget {
         child: ValueListenableBuilder<int>(
           valueListenable: selectedIndexNotifier,
           builder: (_, currentIndex, __) {
-            return IndexedStack(
+            return ShellFadeThrough(
               index: currentIndex,
-              children: pages,
+              child: IndexedStack(
+                index: currentIndex,
+                children: pages,
+              ),
             );
           },
         ),

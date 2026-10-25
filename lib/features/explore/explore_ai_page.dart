@@ -16,6 +16,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/api/submit_payload_helpers.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/model_display_name.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/motion.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/app_menu_button.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/backlit_glass.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/center_crop.dart';
@@ -1886,8 +1887,8 @@ class _ExploreAIPageState extends State<ExploreAIPage>
         HapticFeedback.lightImpact();
         Navigator.push(
           context,
-          MaterialPageRoute(
-            builder: (_) => GenericToolPage(
+          sharedAxisRoute(
+            (_) => GenericToolPage(
               config: GenericToolConfig(
                 title: name,
                 model: defaultModel?.id ?? defaultModelId ?? '',

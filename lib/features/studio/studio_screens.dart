@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/motion.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/app_menu_button.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/backlit_glass.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/video_editor/state/editor_providers.dart';
@@ -72,11 +73,11 @@ Future<void> _openFilm(BuildContext context, WorkflowSpec film) async {
         : saved.stage == 'generating'
             ? const StudioMakingPage()
             : const StudioOutlinePage();
-    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
+    await Navigator.of(context).push(sharedAxisRoute((_) => page));
     return;
   }
   await Navigator.of(context).push(
-    MaterialPageRoute(builder: (_) => const StudioSetupPage()),
+    sharedAxisRoute((_) => const StudioSetupPage()),
   );
 }
 
@@ -526,7 +527,7 @@ class _StudioSetupPageState extends State<StudioSetupPage> {
                 final stage = session.draft!.stage;
                 if (stage != 'angles' && stage != 'outline') return;
                 final next = stage == 'angles' ? const StudioAnglesPage() : const StudioOutlinePage();
-                await Navigator.of(context).push(MaterialPageRoute(builder: (_) => next));
+                await Navigator.of(context).push(sharedAxisRoute((_) => next));
               },
             ),
           ],
@@ -714,7 +715,7 @@ class StudioAnglesPage extends StatelessWidget {
                 await session.chooseAngle(session.pickedAngle!);
                 if (!context.mounted || session.draft?.stage != 'outline') return;
                 await Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const StudioOutlinePage()),
+                  sharedAxisRoute((_) => const StudioOutlinePage()),
                 );
               },
             ),
@@ -875,7 +876,7 @@ class StudioOutlinePage extends StatelessWidget {
                 if (!context.mounted) return;
                 if (session.draft?.stage == 'generating') {
                   await Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const StudioMakingPage()),
+                    sharedAxisRoute((_) => const StudioMakingPage()),
                   );
                 }
               },
@@ -976,7 +977,7 @@ class StudioMakingPage extends ConsumerWidget {
                                 final stage = session.draft?.stage;
                                 if (stage != 'angles' && stage != 'outline') return;
                                 final page = stage == 'angles' ? const StudioAnglesPage() : const StudioOutlinePage();
-                                await Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
+                                await Navigator.of(context).push(sharedAxisRoute((_) => page));
                               },
                         child: const Text('Part 2'),
                       ),

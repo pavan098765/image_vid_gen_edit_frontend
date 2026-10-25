@@ -412,10 +412,20 @@ class AudioNowPlaying extends ChangeNotifier {
   List<AudioTrackDetails> tracks = const [];
   int index = 0;
   bool sheetOpen = false;
+  bool finished = false;
+  bool userPaused = false;
   Future<void> Function(int delta)? onSkip;
+  Future<void> Function()? onRecreate;
   int _switchGeneration = 0;
+  int _endStreak = 0;
+  bool _sawNearEnd = false;
+  Duration _lastPosition = Duration.zero;
+  bool _lastPlaying = false;
+  DateTime _lastSync = DateTime.fromMillisecondsSinceEpoch(0);
+  bool _replacing = false;
+  bool _advancing = false;
 
-  bool get hasAudio => controller != null;
+  bool get hasAudio => controller != null && tracks.isNotEmpty;
 
   void bindSkip(Future<void> Function(int delta)? skip) {
     onSkip = skip;
@@ -436,33 +446,168 @@ class AudioNowPlaying extends ChangeNotifier {
     required List<AudioTrackDetails> tracks,
     required int index,
   }) {
-    if (!identical(this.controller, controller)) {
+    final replacing = !identical(this.controller, controller);
+    if (replacing) {
       this.controller?.removeListener(_onPlayer);
       this.controller = controller;
       controller.addListener(_onPlayer);
+      finished = false;
+      userPaused = false;
+      _endStreak = 0;
+      _sawNearEnd = false;
+      _lastPosition = Duration.zero;
+      _advancing = false;
     }
     this.tracks = tracks;
     this.index = index;
-    sheetOpen = false;
     notifyListeners();
     unawaited(PlaybackSession.activate());
   }
 
   void _onPlayer() {
+    final current = controller;
+    if (current == null) return;
+    final value = _valueOf(current);
+    if (value != null && !sheetOpen && !_replacing) {
+      _considerEnd(current, value);
+    }
     notifyListeners();
+    _syncNotification(force: value != null && value.isPlaying != _lastPlaying);
+    if (value != null) _lastPlaying = value.isPlaying;
+  }
+
+  /// The notification clock advances itself. Push state on play, pause, and seeks.
+  void _syncNotification({bool force = false}) {
+    final now = DateTime.now();
+    if (!force && now.difference(_lastSync) < const Duration(seconds: 1)) {
+      return;
+    }
+    _lastSync = now;
     unawaited(PlaybackSession.sync());
   }
 
+  void _considerEnd(VideoPlayerController current, VideoPlayerValue value) {
+    if (userPaused || finished || !value.isInitialized || value.hasError) {
+      if (!value.isPlaying) _endStreak = 0;
+      _lastPosition = value.position;
+      return;
+    }
+    final total = value.duration;
+    final position = value.position;
+    final nearEnd = total > const Duration(milliseconds: 800) &&
+        position >= total - const Duration(milliseconds: 400);
+    final wrapped = _sawNearEnd &&
+        value.isPlaying &&
+        position < const Duration(milliseconds: 700) &&
+        _lastPosition > const Duration(seconds: 1);
+    _lastPosition = position;
+    if (nearEnd && value.isPlaying) {
+      _sawNearEnd = true;
+      _endStreak++;
+    } else {
+      _endStreak = 0;
+    }
+    if (_endStreak < 2 && !wrapped) return;
+    _endStreak = 0;
+    _sawNearEnd = false;
+    if (_advancing) return;
+    _advancing = true;
+    if (tracks.length > 1) {
+      unawaited(skip(1).whenComplete(() => _advancing = false));
+      return;
+    }
+    unawaited(noteFinished().whenComplete(() => _advancing = false));
+  }
+
+  Future<void> noteFinished() async {
+    if (finished) return;
+    finished = true;
+    _endStreak = 0;
+    _sawNearEnd = false;
+    await pause();
+    _syncNotification(force: true);
+  }
+
+  void noteSeek() {
+    finished = false;
+    userPaused = false;
+    _endStreak = 0;
+    _sawNearEnd = false;
+    _syncNotification(force: true);
+  }
+
+  bool _healthy(VideoPlayerController? current) {
+    final value = current == null ? null : _valueOf(current);
+    return value != null && value.isInitialized && !value.hasError;
+  }
+
+  VideoPlayerValue? _valueOf(VideoPlayerController current) {
+    try {
+      return current.value;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> resume() async {
-    final current = controller;
-    if (current == null || !current.value.isInitialized) return;
-    await current.play();
+    userPaused = false;
+    var current = controller;
+    if (!_healthy(current)) {
+      await _replaceCurrent();
+      return;
+    }
+    current = controller;
+    if (current == null) return;
+    try {
+      final value = current.value;
+      if (finished || value.isCompleted) {
+        finished = false;
+        await current.seekTo(Duration.zero);
+      }
+      await current.play();
+    } catch (error, stack) {
+      debugPrint('Playback resume failed: $error');
+      debugPrint('$stack');
+      finished = false;
+      await _replaceCurrent();
+    }
+  }
+
+  Future<void> _replaceCurrent() async {
+    if (_replacing) return;
+    _replacing = true;
+    try {
+      final recreate = onRecreate;
+      if (recreate != null) {
+        await recreate();
+        final next = controller;
+        if (_healthy(next)) {
+          finished = false;
+          await next!.play();
+        }
+        return;
+      }
+      if (tracks.isEmpty) return;
+      await _switchTo(index);
+    } catch (error, stack) {
+      debugPrint('Playback recover failed: $error');
+      debugPrint('$stack');
+    } finally {
+      _replacing = false;
+    }
   }
 
   Future<void> pause() async {
+    userPaused = true;
+    _endStreak = 0;
     final current = controller;
-    if (current == null || !current.value.isInitialized) return;
-    await current.pause();
+    if (!_healthy(current)) return;
+    try {
+      if (current!.value.isPlaying) await current.pause();
+    } catch (error, stack) {
+      debugPrint('Playback pause failed: $error');
+      debugPrint('$stack');
+    }
   }
 
   /// Moves to another version. The open player handles this itself.
@@ -498,15 +643,27 @@ class AudioNowPlaying extends ChangeNotifier {
       await created.dispose();
       return;
     }
+    try {
+      await created.setLooping(true);
+    } catch (_) {}
     final previous = controller;
     previous?.removeListener(_onPlayer);
     controller = created;
     index = next;
+    finished = false;
+    userPaused = false;
+    _endStreak = 0;
+    _sawNearEnd = false;
     created.addListener(_onPlayer);
     notifyListeners();
-    await created.play();
+    try {
+      await created.play();
+    } catch (error, stack) {
+      debugPrint('Playback start failed: $error');
+      debugPrint('$stack');
+    }
     if (!identical(previous, created)) await previous?.dispose();
-    unawaited(PlaybackSession.sync());
+    _syncNotification(force: true);
   }
 
   VideoPlayerController? _controllerForTrack(AudioTrackDetails track) {
@@ -545,7 +702,12 @@ class AudioNowPlaying extends ChangeNotifier {
     tracks = const [];
     index = 0;
     sheetOpen = false;
+    finished = false;
+    userPaused = false;
     onSkip = null;
+    onRecreate = null;
+    _endStreak = 0;
+    _sawNearEnd = false;
     notifyListeners();
     await current?.dispose();
     await PlaybackSession.deactivate();
@@ -557,17 +719,18 @@ class AudioNowPlaying extends ChangeNotifier {
       if (current == null || tracks.isEmpty) return null;
       final currentIndex = index.clamp(0, tracks.length - 1);
       final track = tracks[currentIndex];
-      final value = current.value;
+      final value = _valueOf(current);
+      final ready = value != null && value.isInitialized && !value.hasError;
       return PlaybackSnapshot(
         title: track.title,
         artist: track.artist,
         artUrl: track.coverUrl,
-        position: value.isInitialized ? value.position : Duration.zero,
-        duration: value.isInitialized && value.duration > Duration.zero
+        position: ready ? value.position : Duration.zero,
+        duration: ready && value.duration > Duration.zero
             ? value.duration
             : (track.knownDuration ?? Duration.zero),
-        playing: value.isInitialized && value.isPlaying,
-        ready: value.isInitialized,
+        playing: ready && value.isPlaying,
+        ready: ready,
         index: currentIndex,
         canSkip: tracks.length > 1,
       );
@@ -613,6 +776,8 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
   bool _styleExpanded = false;
   bool _wordsExpanded = false;
   bool _handledEnd = false;
+  int _endStreak = 0;
+  bool _sawNearEnd = false;
   bool _playing = false;
   bool _syncQueued = false;
   bool _adopting = false;
@@ -639,14 +804,24 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
     );
     jobListNotifier.addListener(_syncFromJobs);
     audioNowPlaying.bindSkip(_skipFromSession);
+    audioNowPlaying.onRecreate = _recreateFromSession;
     final adopted = widget.adoptedController;
+    final adoptedValue = adopted == null ? null : _playerValue(adopted);
     if (adopted != null &&
-        adopted.value.isInitialized &&
+        adoptedValue != null &&
+        adoptedValue.isInitialized &&
+        !adoptedValue.hasError &&
         widget.initialIndex == audioNowPlaying.index) {
       _controller = adopted;
       _ready = true;
-      _playing = adopted.value.isPlaying;
+      _playing = adoptedValue.isPlaying;
       adopted.addListener(_onPlaybackSignal);
+      unawaited(_keepAlive(adopted));
+      audioNowPlaying.hold(
+        controller: adopted,
+        tracks: List<AudioTrackDetails>.from(_playlist),
+        index: _index,
+      );
     } else {
       if (adopted != null) _controller = adopted;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -751,7 +926,35 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
       if (wasPlaying && !announceReady) await _controller?.play();
       return;
     }
-    if (changed && mounted) setState(() {});
+    if (changed && mounted) {
+      setState(() {});
+      final current = _controller;
+      if (current != null && identical(current, audioNowPlaying.controller)) {
+        audioNowPlaying.hold(
+          controller: current,
+          tracks: List<AudioTrackDetails>.from(_playlist),
+          index: _index,
+        );
+      }
+    }
+  }
+
+  Future<void> _recreateFromSession() {
+    return _open(_index);
+  }
+
+  VideoPlayerValue? _playerValue(VideoPlayerController controller) {
+    try {
+      return controller.value;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _keepAlive(VideoPlayerController controller) async {
+    try {
+      await controller.setLooping(true);
+    } catch (_) {}
   }
 
   Future<void> _loadReaction() async {
@@ -816,12 +1019,6 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
       if (changing) unawaited(_loadReaction());
     }
     final previous = _controller;
-    _controller = null;
-    previous?.removeListener(_onPlaybackSignal);
-    if (previous != null && identical(previous, audioNowPlaying.controller)) {
-      audioNowPlaying.detachController();
-    }
-    await previous?.dispose();
     if (!mounted || generation != _loadGeneration) return;
 
     VideoPlayerController? controller;
@@ -837,6 +1034,12 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
         await controller.dispose();
         return;
       }
+      await _keepAlive(controller);
+      if (!mounted || generation != _loadGeneration) {
+        await controller.dispose();
+        return;
+      }
+      previous?.removeListener(_onPlaybackSignal);
       controller.addListener(_onPlaybackSignal);
       setState(() {
         _controller = controller;
@@ -845,11 +1048,34 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
         _playing = false;
         _error = null;
         _handledEnd = false;
+        _endStreak = 0;
+        _sawNearEnd = false;
         _showReady = announceReady && !track.streaming;
       });
+      audioNowPlaying.hold(
+        controller: controller,
+        tracks: List<AudioTrackDetails>.from(_playlist),
+        index: index,
+      );
+      if (previous != null && !identical(previous, controller)) {
+        await previous.dispose();
+      }
     } catch (_) {
       await controller?.dispose();
       if (!mounted || generation != _loadGeneration) return;
+      final previousValue = previous == null ? null : _playerValue(previous);
+      final previousAlive = previousValue != null &&
+          previousValue.isInitialized &&
+          !previousValue.hasError;
+      if (previous != null && previousAlive) {
+        setState(() {
+          _controller = previous;
+          _ready = true;
+          _playing = previousValue.isPlaying;
+          _error = null;
+        });
+        return;
+      }
       setState(() {
         _index = index;
         _ready = false;
@@ -861,7 +1087,9 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
   void _onPlaybackSignal() {
     final controller = _controller;
     if (controller == null || !mounted) return;
-    final playing = controller.value.isPlaying;
+    final value = _playerValue(controller);
+    if (value == null) return;
+    final playing = value.isPlaying;
     if (playing == _playing && !(playing && _showReady)) return;
     setState(() {
       _playing = playing;
@@ -871,16 +1099,32 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
 
   void _onClock(Duration position, Duration total) {
     final controller = _controller;
-    if (controller == null || !mounted || _handledEnd) return;
-    final atEnd = total > const Duration(milliseconds: 800) &&
-        position >= total - const Duration(milliseconds: 250);
-    if (!atEnd || !controller.value.isPlaying) return;
+    if (controller == null || !mounted || _handledEnd || audioNowPlaying.userPaused) {
+      return;
+    }
+    final value = _playerValue(controller);
+    if (value == null || !value.isPlaying) {
+      _endStreak = 0;
+      return;
+    }
+    final nearEnd = total > const Duration(milliseconds: 800) &&
+        position >= total - const Duration(milliseconds: 400);
+    final wrapped = _sawNearEnd && position < const Duration(milliseconds: 700);
+    if (nearEnd) {
+      _sawNearEnd = true;
+      _endStreak++;
+    } else {
+      _endStreak = 0;
+    }
+    if (_endStreak < 2 && !wrapped) return;
     _handledEnd = true;
+    _endStreak = 0;
+    _sawNearEnd = false;
     if (_playlist.length > 1) {
       _goNext();
       return;
     }
-    controller.pause();
+    unawaited(audioNowPlaying.noteFinished());
   }
 
   bool _dismissed = false;
@@ -909,6 +1153,7 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
     if (_dismissed) return;
     _dismissed = true;
     audioNowPlaying.bindSkip(null);
+    audioNowPlaying.onRecreate = null;
     _handOffController();
     widget.onClose();
   }
@@ -920,22 +1165,25 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
     if (!_dismissed) {
       _dismissed = true;
       audioNowPlaying.bindSkip(null);
+      audioNowPlaying.onRecreate = null;
       _handOffController();
     }
     super.dispose();
   }
 
   Future<void> _toggle() async {
-    final controller = _controller;
-    if (controller == null || !_ready) return;
-    if (controller.value.isPlaying) {
-      await controller.pause();
+    var controller = _controller;
+    if (controller == null || !_ready) {
+      await _open(_index);
+      controller = _controller;
+      if (controller == null || !_ready) return;
+    }
+    final value = _playerValue(controller);
+    if (value != null && value.isPlaying) {
+      await audioNowPlaying.pause();
     } else {
-      if (_handledEnd) {
-        _handledEnd = false;
-        await controller.seekTo(Duration.zero);
-      }
-      await controller.play();
+      _handledEnd = false;
+      await audioNowPlaying.resume();
       if (_showReady && mounted) setState(() => _showReady = false);
     }
     HapticFeedback.lightImpact();
@@ -944,7 +1192,11 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
 
   void _goPrevious() {
     if (_playlist.length < 2) {
-      _controller?.seekTo(Duration.zero);
+      final controller = _controller;
+      if (controller == null) return;
+      _handledEnd = false;
+      audioNowPlaying.noteSeek();
+      unawaited(_seekController(controller, Duration.zero));
       return;
     }
     final next = (_index - 1) < 0 ? _playlist.length - 1 : _index - 1;
@@ -1150,7 +1402,23 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
     final total = (known > reported ? known : reported).inMilliseconds;
     if (total <= 0) return;
     _handledEnd = false;
-    controller.seekTo(Duration(milliseconds: (total * fraction).round()));
+    _endStreak = 0;
+    _sawNearEnd = false;
+    audioNowPlaying.noteSeek();
+    final target = Duration(milliseconds: (total * fraction).round());
+    unawaited(_seekController(controller, target));
+  }
+
+  Future<void> _seekController(
+    VideoPlayerController controller,
+    Duration position,
+  ) async {
+    try {
+      await controller.seekTo(position);
+    } catch (error, stack) {
+      debugPrint('Playback seek failed: $error');
+      debugPrint('$stack');
+    }
   }
 
   Future<void> _remix() async {
@@ -1859,7 +2127,13 @@ class NowPlayingBar extends StatelessWidget {
         }
         final index = audioNowPlaying.index.clamp(0, tracks.length - 1);
         final track = tracks[index];
-        final playing = controller.value.isInitialized && controller.value.isPlaying;
+        VideoPlayerValue? value;
+        try {
+          value = controller.value;
+        } catch (_) {
+          value = null;
+        }
+        final playing = value != null && value.isInitialized && value.isPlaying;
         return Material(
           color: const Color(0xFF1A1224),
           child: InkWell(
@@ -1888,11 +2162,11 @@ class NowPlayingBar extends StatelessWidget {
                   ),
                   IconButton(
                     tooltip: playing ? 'Pause' : 'Play',
-                    onPressed: () async {
+                    onPressed: () {
                       if (playing) {
-                        await controller.pause();
+                        unawaited(audioNowPlaying.pause());
                       } else {
-                        await controller.play();
+                        unawaited(audioNowPlaying.resume());
                       }
                     },
                     icon: Icon(
@@ -2089,9 +2363,17 @@ class _AudioPlayClockState extends State<AudioPlayClock> {
 
   void _capture({required bool notify}) {
     final controller = widget.controller;
-    final reported = controller?.value.duration ?? Duration.zero;
+    VideoPlayerValue? value;
+    if (controller != null) {
+      try {
+        value = controller.value;
+      } catch (_) {
+        return;
+      }
+    }
+    final reported = value?.duration ?? Duration.zero;
     final total = _fullLength(reported, widget.knownDuration);
-    final position = controller?.value.position ?? Duration.zero;
+    final position = value?.position ?? Duration.zero;
     if (!mounted) return;
     if (notify) widget.onProgress?.call(position, total);
     if (position == _position && total == _total) return;

@@ -2032,7 +2032,7 @@
           "cost": 6,
           "costUpscale": 0,
           "offer": 0,
-          "enabled": true,
+          "enabled": false,
           "params": {
             "init_image": "{{init_image}}",
             "aspect_ratio": "{{aspect_ratio}}"

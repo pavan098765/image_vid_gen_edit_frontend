@@ -92,39 +92,65 @@ class PlaybackSession {
 }
 
 class _KalaPlaybackHandler extends BaseAudioHandler {
+  String? _publishedId;
+
   void publish(PlaybackSnapshot snapshot) {
-    final art = _artUri(snapshot.artUrl);
-    mediaItem.add(MediaItem(
-      id: '${snapshot.index}:${snapshot.title}',
-      title: snapshot.title,
-      artist: snapshot.artist.isEmpty ? 'Kala AI' : snapshot.artist,
-      artUri: art,
-      duration: snapshot.duration > Duration.zero ? snapshot.duration : null,
-    ));
-    final controls = <MediaControl>[
-      if (snapshot.canSkip) MediaControl.skipToPrevious,
-      snapshot.playing ? MediaControl.pause : MediaControl.play,
-      MediaControl.stop,
-      if (snapshot.canSkip) MediaControl.skipToNext,
-    ];
-    playbackState.add(playbackState.value.copyWith(
-      controls: controls,
-      androidCompactActionIndices:
-          snapshot.canSkip ? const [0, 1, 3] : const [0, 1],
-      processingState: snapshot.ready
-          ? AudioProcessingState.ready
-          : AudioProcessingState.buffering,
-      playing: snapshot.playing,
-      updatePosition: snapshot.position,
-      queueIndex: snapshot.index,
-    ));
+    try {
+      final art = _artUri(snapshot.artUrl);
+      final id = '${snapshot.index}:${snapshot.title}';
+      final item = MediaItem(
+        id: id,
+        title: snapshot.title,
+        artist: snapshot.artist.isEmpty ? 'Kala AI' : snapshot.artist,
+        artUri: art,
+        duration: snapshot.duration > Duration.zero ? snapshot.duration : null,
+      );
+      if (_publishedId != id) {
+        _publishedId = id;
+        mediaItem.add(item);
+        queue.add([item]);
+      }
+      final controls = <MediaControl>[
+        if (snapshot.canSkip) MediaControl.skipToPrevious,
+        snapshot.playing ? MediaControl.pause : MediaControl.play,
+        MediaControl.stop,
+        if (snapshot.canSkip) MediaControl.skipToNext,
+      ];
+      playbackState.add(playbackState.value.copyWith(
+        controls: controls,
+        systemActions: const {
+          MediaAction.play,
+          MediaAction.pause,
+          MediaAction.stop,
+          MediaAction.seek,
+          MediaAction.skipToNext,
+          MediaAction.skipToPrevious,
+        },
+        androidCompactActionIndices:
+            snapshot.canSkip ? const [0, 1, 3] : const [0, 1],
+        processingState: snapshot.ready
+            ? AudioProcessingState.ready
+            : AudioProcessingState.buffering,
+        playing: snapshot.playing,
+        // Speed lets the notification advance the clock between updates.
+        // Position is sent only when playback actually jumps or pauses.
+        speed: snapshot.playing ? 1.0 : 0.0,
+        updatePosition: snapshot.position,
+        queueIndex: snapshot.index,
+      ));
+    } catch (error, stack) {
+      debugPrint('Playback notification update failed: $error');
+      debugPrint('$stack');
+    }
   }
 
   void publishIdle() {
+    _publishedId = null;
     playbackState.add(playbackState.value.copyWith(
       controls: const [],
       processingState: AudioProcessingState.idle,
       playing: false,
+      speed: 0.0,
     ));
   }
 
@@ -139,27 +165,71 @@ class _KalaPlaybackHandler extends BaseAudioHandler {
 
   @override
   Future<void> play() async {
-    await PlaybackSession.onPlay?.call();
+    try {
+      await PlaybackSession.onPlay?.call();
+    } catch (error, stack) {
+      debugPrint('Notification play failed: $error');
+      debugPrint('$stack');
+    }
   }
 
   @override
   Future<void> pause() async {
-    await PlaybackSession.onPause?.call();
+    try {
+      await PlaybackSession.onPause?.call();
+    } catch (error, stack) {
+      debugPrint('Notification pause failed: $error');
+      debugPrint('$stack');
+    }
   }
 
   @override
   Future<void> stop() async {
     if (PlaybackSession.closing) return;
-    await PlaybackSession.onStop?.call();
+    try {
+      await PlaybackSession.onStop?.call();
+    } catch (error, stack) {
+      debugPrint('Notification stop failed: $error');
+      debugPrint('$stack');
+    }
   }
 
   @override
   Future<void> skipToNext() async {
-    await PlaybackSession.onSkip?.call(1);
+    try {
+      await PlaybackSession.onSkip?.call(1);
+    } catch (error, stack) {
+      debugPrint('Notification skip failed: $error');
+      debugPrint('$stack');
+    }
   }
 
   @override
   Future<void> skipToPrevious() async {
-    await PlaybackSession.onSkip?.call(-1);
+    try {
+      await PlaybackSession.onSkip?.call(-1);
+    } catch (error, stack) {
+      debugPrint('Notification skip failed: $error');
+      debugPrint('$stack');
+    }
+  }
+
+  @override
+  Future<void> click([MediaButton button = MediaButton.media]) async {
+    switch (button) {
+      case MediaButton.media:
+        if (playbackState.value.playing) {
+          await pause();
+        } else {
+          await play();
+        }
+        return;
+      case MediaButton.next:
+        await skipToNext();
+        return;
+      case MediaButton.previous:
+        await skipToPrevious();
+        return;
+    }
   }
 }

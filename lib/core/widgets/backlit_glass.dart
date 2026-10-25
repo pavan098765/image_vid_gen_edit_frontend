@@ -69,24 +69,24 @@ class BacklitWash extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: RadialGradient(
-                radius: 1.2,
-                colors: [
-                  Colors.transparent,
-                  (isDark ? Colors.black : const Color(0xFF3A2A66))
-                      .withValues(alpha: isDark ? 0.5 : 0.07),
-                ],
-                stops: [isDark ? 0.5 : 0.55, 1.0],
-              ),
-            ),
-          ),
           _DriftingLights(
             isDark: isDark,
             upper: upperBloom,
             side: sideBloom,
             glowAlignment: glowAlignment,
+          ),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: RadialGradient(
+                radius: 1.15,
+                colors: [
+                  Colors.transparent,
+                  (isDark ? Colors.black : const Color(0xFF3A2A66))
+                      .withValues(alpha: isDark ? 0.5 : 0.07),
+                ],
+                stops: const [0.42, 1.0],
+              ),
+            ),
           ),
         ],
       ),
@@ -178,10 +178,10 @@ class _DriftingLightsState extends State<_DriftingLights>
                 Color.lerp(widget.upper.first, widget.side.first, 0.5)!,
                 const Color(0xFF7B5EFF),
               ];
-              // Cores sit just outside the screen so the page gets the falloff,
-              // and the lower pool lands behind the glass bar.
-              final upperCx = -0.12 + widget.glowAlignment.x * 0.06;
-              final upperCy = -0.16 + widget.glowAlignment.y * 0.04;
+              // Gold sits in the upper middle. Cyan overlaps it from the right.
+              // The violet pool stays low, behind the glass bar.
+              final upperCx = 0.36 + widget.glowAlignment.x * 0.04;
+              final upperCy = 0.30 + widget.glowAlignment.y * 0.03;
               if (widget.isDark) {
                 return Stack(
                   fit: StackFit.expand,
@@ -189,23 +189,23 @@ class _DriftingLightsState extends State<_DriftingLights>
                     light(
                       upperCx + wobbleX(0),
                       upperCy + wobbleY(0.1),
-                      2.05,
+                      1.9,
                       widget.upper,
-                      0.32,
+                      0.28,
                     ),
                     light(
-                      1.08 + wobbleX(0.33),
-                      -0.06 + wobbleY(0.4),
-                      1.85,
+                      0.86 + wobbleX(0.33),
+                      0.18 + wobbleY(0.4),
+                      1.65,
                       widget.side,
-                      0.24,
+                      0.22,
                     ),
                     light(
                       0.5 + wobbleX(0.66),
-                      0.92 + wobbleY(0.2),
-                      2.15,
+                      0.94 + wobbleY(0.2),
+                      2.05,
                       bridge,
-                      0.22,
+                      0.26,
                     ),
                   ],
                 );
@@ -216,21 +216,21 @@ class _DriftingLightsState extends State<_DriftingLights>
                   light(
                     upperCx + wobbleX(0),
                     upperCy + wobbleY(0.1),
-                    1.8,
+                    1.75,
                     widget.upper,
-                    0.18,
+                    0.16,
                   ),
                   light(
-                    1.06 + wobbleX(0.33),
-                    -0.04 + wobbleY(0.4),
-                    1.6,
+                    0.84 + wobbleX(0.33),
+                    0.16 + wobbleY(0.4),
+                    1.5,
                     widget.side,
-                    0.14,
+                    0.12,
                   ),
                   light(
                     0.5 + wobbleX(0.66),
-                    0.95 + wobbleY(0.2),
-                    1.9,
+                    0.94 + wobbleY(0.2),
+                    1.85,
                     bridge,
                     0.12,
                   ),
@@ -265,12 +265,12 @@ class _Glow extends StatelessWidget {
           gradient: RadialGradient(
             colors: [
               core.withValues(alpha: strength),
-              mid.withValues(alpha: strength * 0.42),
-              edge.withValues(alpha: strength * 0.14),
-              edge.withValues(alpha: strength * 0.04),
+              mid.withValues(alpha: strength * 0.55),
+              edge.withValues(alpha: strength * 0.22),
+              edge.withValues(alpha: strength * 0.06),
               edge.withValues(alpha: 0),
             ],
-            stops: const [0.0, 0.2, 0.46, 0.72, 1.0],
+            stops: const [0.0, 0.28, 0.55, 0.78, 1.0],
           ),
         ),
         child: const SizedBox.expand(),
@@ -574,9 +574,9 @@ class _GlassChromePainter extends CustomPainter {
           Offset(size.width - inset, 0),
           [
             Colors.transparent,
-            const Color(0xFFFF4D9A).withValues(alpha: isDark ? 0.55 : 0.28),
-            Colors.white.withValues(alpha: isDark ? 0.75 : 0.95),
-            const Color(0xFF00C8FF).withValues(alpha: isDark ? 0.45 : 0.32),
+            const Color(0xFFFF4D9A).withValues(alpha: isDark ? 0.32 : 0.2),
+            Colors.white.withValues(alpha: isDark ? 0.42 : 0.85),
+            const Color(0xFF00C8FF).withValues(alpha: isDark ? 0.26 : 0.22),
             Colors.transparent,
           ],
           const [0.0, 0.18, 0.48, 0.72, 1.0],
