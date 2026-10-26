@@ -674,6 +674,9 @@ class _CapabilityCardState extends State<_CapabilityCard> {
         return LucideIcons.mic;
       case 'music':
         return LucideIcons.music;
+      case 'file-text':
+      case 'filetext':
+        return LucideIcons.fileText;
       case 'headphones':
         return LucideIcons.headphones;
 

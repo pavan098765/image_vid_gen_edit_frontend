@@ -1841,17 +1841,15 @@ class _JobCardState extends State<JobCard> {
   bool get _isMusicDownload =>
       widget.job.isAudioOutput || _isHitMaker || widget.job.music != null;
 
-  /// Play as soon as a real clip exists. A finished song does not need a save first.
+  /// Play only after the song file is on the phone. Until then the card shows Save.
   bool get _canPlayMusic {
-    if (_musicResult?.hasPlayableTrack == true) return true;
     final musicJob = widget.job.isAudioOutput ||
         _isHitMaker ||
-        widget.job.capabilityId == 'create_music';
+        widget.job.capabilityId == 'create_music' ||
+        widget.job.music != null;
     if (!musicJob || widget.job.status != 'completed') return false;
     final path = widget.job.localFilePath;
-    if (path != null && path.isNotEmpty && File(path).existsSync()) return true;
-    final url = widget.job.downloadUrl;
-    return url != null && url.isNotEmpty;
+    return path != null && path.isNotEmpty && File(path).existsSync();
   }
 
   /// Both versions already have a finished file, so the cloud countdown is not

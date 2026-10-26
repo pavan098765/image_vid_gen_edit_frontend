@@ -1103,6 +1103,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     'upscale',
     'remove_background',
     'expand_scene',
+    'glm_ocr',
   };
   static const _videoStudioIds = <String>{
     'create_video',
@@ -7532,7 +7533,7 @@ class _GenericToolPageState extends State<GenericToolPage>
 
   bool get _imageStudioHidesPrompt {
     final id = _tool.capabilityId;
-    return id == 'upscale' || id == 'remove_background';
+    return id == 'upscale' || id == 'remove_background' || id == 'glm_ocr';
   }
 
   void _rememberImageStudioFamily() {
@@ -7580,7 +7581,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   void _placeStudioPhotoOn(GenericToolConfig next) {
     String? sourceRef;
     Object? raw;
-    for (final ref in const ['init_image', 'image']) {
+    for (final ref in const ['init_image', 'image', 'input_image']) {
       if (_firstImageBytes(_inputs[ref]) == null) continue;
       sourceRef = ref;
       raw = _inputs[ref];
@@ -7776,26 +7777,27 @@ class _GenericToolPageState extends State<GenericToolPage>
     }
   }
 
-  List<(String, String, String)> get _studioChipOptions {
+  List<(String, IconData, String)> get _studioChipOptions {
     if (_isVideoStudio) {
       return const [
-        ('create_video', 'Create', 'Create video'),
-        ('animate_image', 'Animate', 'Animate image'),
+        ('create_video', LucideIcons.video, 'Create video'),
+        ('animate_image', LucideIcons.film, 'Animate image'),
       ];
     }
     return const [
-      ('create_image', 'Create', 'Create image'),
-      ('edit_image', 'Edit', 'Edit image'),
-      ('upscale', 'Upscale', 'Upscale image'),
-      ('remove_background', 'Remove', 'Remove background'),
-      ('expand_scene', 'Expand', 'Expand scene'),
+      ('create_image', LucideIcons.wand2, 'Create image'),
+      ('edit_image', LucideIcons.sparkles, 'Edit image'),
+      ('upscale', LucideIcons.maximize2, 'Upscale image'),
+      ('remove_background', LucideIcons.scissors, 'Remove background'),
+      ('expand_scene', LucideIcons.crop, 'Expand scene'),
+      ('glm_ocr', LucideIcons.fileText, 'Extract text'),
     ];
   }
 
   Widget _buildImageStudioChips(ColorScheme cs) {
     final options = _studioChipOptions;
     return SizedBox(
-      height: 32,
+      height: 36,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         physics: const BouncingScrollPhysics(),
@@ -7808,24 +7810,23 @@ class _GenericToolPageState extends State<GenericToolPage>
             button: true,
             selected: selected,
             label: option.$3,
-            child: Material(
-              color: selected
-                  ? cs.primary
-                  : cs.surfaceContainerHigh.withValues(alpha: 0.7),
-              borderRadius: BorderRadius.circular(AppStyles.radiusFull),
-              child: InkWell(
-                onTap: () => unawaited(_switchImageStudio(option.$1)),
+            child: Tooltip(
+              message: option.$3,
+              child: Material(
+                color: selected
+                    ? cs.primary
+                    : cs.surfaceContainerHigh.withValues(alpha: 0.7),
                 borderRadius: BorderRadius.circular(AppStyles.radiusFull),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  child: Center(
-                    child: Text(
+                child: InkWell(
+                  onTap: () => unawaited(_switchImageStudio(option.$1)),
+                  borderRadius: BorderRadius.circular(AppStyles.radiusFull),
+                  child: SizedBox(
+                    width: 36,
+                    height: 36,
+                    child: Icon(
                       option.$2,
-                      style: TextStyle(
-                        color: selected ? cs.onPrimary : cs.onSurface,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
+                      size: 18,
+                      color: selected ? cs.onPrimary : cs.onSurface,
                     ),
                   ),
                 ),
@@ -7897,6 +7898,10 @@ class _GenericToolPageState extends State<GenericToolPage>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (_showStudioChips) ...[
+                _buildImageStudioChips(cs),
+                const SizedBox(height: 10),
+              ],
               // Inline attachment thumbnails (image/video/audio/file) — mirrors
               // _inputs state; tap a chip for actions, × removes it.
               // In bulk mode, keep the row visible (add-task tile) even when empty.
@@ -7916,7 +7921,7 @@ class _GenericToolPageState extends State<GenericToolPage>
               if (showComposerAttachRow) ...[
                 _buildComposerAttachmentsRow(cs, attachments),
                 const SizedBox(height: 10),
-              ] else if (canAttach) ...[
+              ] else if (canAttach && !_isVideoStudio) ...[
                 _buildMediaComposerEmptyHint(cs, attachInputs),
                 const SizedBox(height: 10),
               ],
@@ -7981,7 +7986,9 @@ class _GenericToolPageState extends State<GenericToolPage>
                       setState(() {});
                     },
                     maxLines: _kComposerPromptMaxLines,
-                    minLines: _kComposerPromptMinLines,
+                    minLines: (_isImageStudio || _isVideoStudio)
+                        ? 8
+                        : _kComposerPromptMinLines,
                     style: TextStyle(
                       color: cs.onSurface,
                       fontSize: 15,
@@ -8052,13 +8059,12 @@ class _GenericToolPageState extends State<GenericToolPage>
               ),
               const SizedBox(height: 8),
 
-              // Meta / action row: studio chips on the left, attach and tools on the right.
+              // Attach, style, and settings stay on this row. Tool switches sit above.
               Row(
                 children: [
-                  if (_showStudioChips) ...[
-                    Expanded(child: _buildImageStudioChips(cs)),
-                    const SizedBox(width: 6),
-                  ] else ...[
+                  if (_showStudioChips)
+                    const Spacer()
+                  else ...[
                     if (canAttach) ...[
                       _ComposerIconButton(
                         icon: LucideIcons.plus,
@@ -8294,6 +8300,10 @@ class _GenericToolPageState extends State<GenericToolPage>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (_showStudioChips) ...[
+                _buildImageStudioChips(cs),
+                const SizedBox(height: 10),
+              ],
               if (_requiresEndFrame) ...[
                 Text(
                   attachments.any((a) => a.ref == 'init_image') &&
@@ -8329,10 +8339,9 @@ class _GenericToolPageState extends State<GenericToolPage>
               const SizedBox(height: 8),
               Row(
                 children: [
-                  if (_showStudioChips) ...[
-                    Expanded(child: _buildImageStudioChips(cs)),
-                    const SizedBox(width: 6),
-                  ] else ...[
+                  if (_showStudioChips)
+                    const Spacer()
+                  else ...[
                     if (canAttach) ...[
                       _ComposerIconButton(
                         icon: LucideIcons.plus,
@@ -9396,7 +9405,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                   ),
                 ),
                 // Large primary row (Camera/Photos/Files) like Claude/Gemini.
-                if (hasImage || hasVideo || hasFile)
+                if (hasImage || hasVideo || hasFile || hasAudio)
                   Row(
                     children: [
                       if (hasImage)
@@ -9406,6 +9415,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                             label: 'Camera',
                             subtitle: 'Take a new photo',
                             accentColor: cs.secondary,
+                            compact: hasAudio,
                             onTap: () {
                               Navigator.pop(ctx);
                               _pickImageFromCamera(
@@ -9414,7 +9424,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                             },
                           ),
                         ),
-                      if (hasImage) const SizedBox(width: 12),
+                      if (hasImage) SizedBox(width: hasAudio ? 8 : 12),
                       if (hasImage)
                         Expanded(
                           child: _AttachBigTile(
@@ -9428,6 +9438,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                                 ? 'Select multiple images'
                                 : 'Choose from gallery',
                             accentColor: cs.primary,
+                            compact: hasAudio,
                             onTap: () {
                               Navigator.pop(ctx);
                               if (_advancedSettings.bulkEditEnabled &&
@@ -9450,7 +9461,28 @@ class _GenericToolPageState extends State<GenericToolPage>
                             },
                           ),
                         ),
-                      if (hasFile && (hasImage)) const SizedBox(width: 12),
+                      if (hasAudio) ...[
+                        if (hasImage) const SizedBox(width: 8),
+                        Expanded(
+                          child: _AttachBigTile(
+                            icon: LucideIcons.music,
+                            label: 'Audio',
+                            subtitle: (audioInputs.first['label'] as String?) ??
+                                'Pick audio file',
+                            accentColor: cs.secondary,
+                            compact: hasImage,
+                            onTap: () {
+                              Navigator.pop(ctx);
+                              _pickAudioForInput(
+                                audioInputs.first['id'] as String,
+                                audioInputs.first,
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                      if (hasFile && (hasImage || hasAudio))
+                        const SizedBox(width: 12),
                       if (hasFile)
                         Expanded(
                           child: _AttachBigTile(
@@ -9494,7 +9526,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                       ],
                     ],
                   ),
-                if ((hasImage || hasVideo || hasFile) && (hasVideo || hasAudio))
+                if (hasImage && hasVideo)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 10),
                     child: Divider(
@@ -9588,18 +9620,6 @@ class _GenericToolPageState extends State<GenericToolPage>
                     },
                   ),
                 ],
-                if (hasAudio)
-                  _AttachListRow(
-                    icon: LucideIcons.music,
-                    label: 'Audio',
-                    subtitle: (audioInputs.first['label'] as String?) ??
-                        'Pick audio file',
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      _pickAudioForInput(
-                          audioInputs.first['id'] as String, audioInputs.first);
-                    },
-                  ),
                 // If there are multiple image inputs (e.g. ref_image), expose them explicitly.
                 if (imageInputs.length > 1) ...[
                   for (int i = 1; i < imageInputs.length; i++)
@@ -22707,6 +22727,7 @@ class _AttachBigTile extends StatelessWidget {
   final String subtitle;
   final Color accentColor;
   final VoidCallback onTap;
+  final bool compact;
 
   const _AttachBigTile({
     required this.icon,
@@ -22714,6 +22735,7 @@ class _AttachBigTile extends StatelessWidget {
     required this.subtitle,
     required this.accentColor,
     required this.onTap,
+    this.compact = false,
   });
 
   @override
@@ -22724,6 +22746,7 @@ class _AttachBigTile extends StatelessWidget {
       sublabel: subtitle,
       accentColor: accentColor,
       onTap: onTap,
+      compact: compact,
     );
   }
 }

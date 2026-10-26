@@ -11,6 +11,7 @@ class MediaSourcePickerTile extends StatelessWidget {
     required this.sublabel,
     required this.accentColor,
     required this.onTap,
+    this.compact = false,
   });
 
   final IconData icon;
@@ -18,6 +19,7 @@ class MediaSourcePickerTile extends StatelessWidget {
   final String sublabel;
   final Color accentColor;
   final VoidCallback onTap;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -28,7 +30,7 @@ class MediaSourcePickerTile extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
         child: Container(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.all(compact ? 8 : 16),
           decoration: BoxDecoration(
             color: cs.surfaceContainerHighest.withValues(alpha: 0.72),
             borderRadius: BorderRadius.circular(16),
@@ -40,25 +42,27 @@ class MediaSourcePickerTile extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                padding: const EdgeInsets.all(14),
+                padding: EdgeInsets.all(compact ? 8 : 14),
                 decoration: BoxDecoration(
                   color: accentColor.withValues(alpha: 0.14),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(icon, size: 28, color: accentColor),
+                child: Icon(icon, size: compact ? 20 : 28, color: accentColor),
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: compact ? 8 : 12),
               Text(
                 label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: cs.onSurface,
-                  fontSize: 15,
+                  fontSize: compact ? 12 : 15,
                   fontWeight: FontWeight.w600,
                 ),
               ),
               const SizedBox(height: 4),
               SizedBox(
-                height: 38,
+                height: compact ? 28 : 38,
                 width: double.infinity,
                 child: Align(
                   alignment: Alignment.topCenter,
@@ -68,7 +72,7 @@ class MediaSourcePickerTile extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: cs.onSurfaceVariant.withValues(alpha: 0.72),
-                      fontSize: 12,
+                      fontSize: compact ? 10 : 12,
                     ),
                     textAlign: TextAlign.center,
                   ),

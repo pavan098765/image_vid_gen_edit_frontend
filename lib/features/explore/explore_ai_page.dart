@@ -2070,6 +2070,13 @@ class _ExploreAIPageState extends State<ExploreAIPage>
         return LucideIcons.clapperboard;
       case 'zap':
         return LucideIcons.zap;
+      case 'mic':
+        return LucideIcons.mic;
+      case 'music':
+        return LucideIcons.music;
+      case 'file-text':
+      case 'filetext':
+        return LucideIcons.fileText;
       default:
         return LucideIcons.cpu;
     }
