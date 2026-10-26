@@ -22,6 +22,7 @@ import 'package:kala_ai_create_images_videos_with_ai/core/services/ad_service.da
 import 'package:kala_ai_create_images_videos_with_ai/core/services/file_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_button.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/safe_video_view.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/media_source_picker_sheet.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/themed_native_ad.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -1318,11 +1319,18 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
       padding: const EdgeInsets.all(12),
       child: Column(
         children: [
-          AspectRatio(
-            aspectRatio: controller.value.aspectRatio,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: VideoPlayer(controller),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: SafeVideoView(
+              controller: controller,
+              layout: SafeVideoLayout.aspect,
+              fit: BoxFit.contain,
+              fallback: const SizedBox(
+                height: 200,
+                child: Center(
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
             ),
           ),
           const SizedBox(height: 12),
@@ -1355,7 +1363,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
   Widget _buildResultScreen() {
     final controller = _resultController;
     final cs = Theme.of(context).colorScheme;
-    final hasVideo = controller != null && controller.value.isInitialized;
+    final hasVideo = videoFrameIsReady(controller);
 
     final screenHeight = MediaQuery.of(context).size.height;
     final videoHeight = min(screenHeight * 0.55, 360.0);
@@ -1399,21 +1407,32 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
                 child: Stack(
                   alignment: Alignment.center,
                   children: [
-                    AspectRatio(
-                      aspectRatio: controller.value.aspectRatio,
-                      child: VideoPlayer(controller),
+                    SafeVideoView(
+                      controller: controller,
+                      layout: SafeVideoLayout.aspect,
+                      fit: BoxFit.contain,
+                      fallback: const SizedBox(
+                        height: 200,
+                        child: Center(
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
                     ),
                     Positioned.fill(
                       child: GestureDetector(
                         onTap: () {
+                          final player = controller;
+                          if (player == null) return;
                           setState(() {
-                            controller.value.isPlaying
-                                ? controller.pause()
-                                : controller.play();
+                            player.value.isPlaying
+                                ? player.pause()
+                                : player.play();
                           });
                         },
                         child: AnimatedOpacity(
-                          opacity: controller.value.isPlaying ? 0.0 : 1.0,
+                          opacity: controller?.value.isPlaying == true
+                              ? 0.0
+                              : 1.0,
                           duration: const Duration(milliseconds: 250),
                           child: Container(
                             color: cs.surface.withValues(alpha: 0.25),
@@ -1431,7 +1450,7 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
                       left: 12,
                       right: 12,
                       child: VideoProgressIndicator(
-                        controller,
+                        controller!,
                         allowScrubbing: true,
                         colors: VideoProgressColors(
                           playedColor: cs.primary,
@@ -1666,12 +1685,64 @@ class _VideoEditorPageState extends ConsumerState<VideoEditorPage>
     _resultController = null;
   }
 
+  var _resumeMain = false;
+  var _resumeResult = false;
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive) {
+      final main = _videoController;
+      final result = _resultController;
+      if (main != null && videoFrameIsReady(main) && main.value.isPlaying) {
+        _resumeMain = true;
+      }
+      if (result != null &&
+          videoFrameIsReady(result) &&
+          result.value.isPlaying) {
+        _resumeResult = true;
+      }
+      unawaited(pauseVideoController(main));
+      unawaited(pauseVideoController(result));
       _autosave();
+      return;
     }
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_recoverEditorVideos());
+    }
+  }
+
+  Future<void> _recoverEditorVideos() async {
+    final resumeMain = _resumeMain;
+    final resumeResult = _resumeResult;
+    _resumeMain = false;
+    _resumeResult = false;
+    final main = _videoController;
+    final result = _resultController;
+    final nextMain = await replaceDeadVideo(main, play: resumeMain);
+    final nextResult = await replaceDeadVideo(result, play: resumeResult);
+    if (!mounted) {
+      if (nextMain != null && !identical(nextMain, main)) {
+        await nextMain.dispose();
+      }
+      if (nextResult != null && !identical(nextResult, result)) {
+        await nextResult.dispose();
+      }
+      return;
+    }
+    if (nextMain != null && !identical(nextMain, main)) {
+      _videoController = nextMain;
+      try {
+        await main?.dispose();
+      } catch (_) {}
+    }
+    if (nextResult != null && !identical(nextResult, result)) {
+      _resultController = nextResult;
+      try {
+        await result?.dispose();
+      } catch (_) {}
+    }
+    if (mounted) setState(() {});
   }
 
   Future<void> _autosave({bool notify = false}) async {

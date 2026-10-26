@@ -2654,7 +2654,7 @@
           "maxDuration": 240,
           "costUpscale": 0,
           "offer": 0,
-          "enabled": true,
+          "enabled": false,
           "params": {
             "duration": "{{duration}}",
             "lyrics": "{{lyrics}}",

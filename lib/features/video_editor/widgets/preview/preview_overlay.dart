@@ -1,8 +1,10 @@
 // lib/features/video_editor/widgets/preview/preview_overlay.dart
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/safe_video_view.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
 
@@ -21,17 +23,69 @@ class PreviewOverlay extends ConsumerStatefulWidget {
   ConsumerState<PreviewOverlay> createState() => _PreviewOverlayState();
 }
 
-class _PreviewOverlayState extends ConsumerState<PreviewOverlay> {
+class _PreviewOverlayState extends ConsumerState<PreviewOverlay>
+    with WidgetsBindingObserver {
+  var _playOnResume = false;
   /// PiP video player controllers, keyed by clip ID.
   final Map<String, VideoPlayerController> _pipControllers = {};
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     for (final c in _pipControllers.values) {
       c.dispose();
     }
     _pipControllers.clear();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      for (final controller in _pipControllers.values) {
+        if (videoFrameIsReady(controller) && controller.value.isPlaying) {
+          _playOnResume = true;
+        }
+        unawaited(pauseVideoController(controller));
+      }
+      return;
+    }
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_recoverPip());
+    }
+  }
+
+  Future<void> _recoverPip() async {
+    final play = _playOnResume;
+    _playOnResume = false;
+    final entries = Map<String, VideoPlayerController>.from(_pipControllers);
+    var changed = false;
+    for (final entry in entries.entries) {
+      final current = entry.value;
+      final next = await replaceDeadVideo(current, play: play);
+      if (!mounted) {
+        if (next != null && !identical(next, current)) await next.dispose();
+        return;
+      }
+      if (next == null || identical(next, current)) continue;
+      if (!identical(_pipControllers[entry.key], current)) {
+        await next.dispose();
+        continue;
+      }
+      _pipControllers[entry.key] = next;
+      try {
+        await current.dispose();
+      } catch (_) {}
+      changed = true;
+    }
+    if (mounted && changed) setState(() {});
   }
 
   @override
@@ -488,7 +542,7 @@ class _PreviewOverlayState extends ConsumerState<PreviewOverlay> {
     final posY = (clip.position.dy + kfPosY).clamp(0.0, 1.0);
 
     final controller = _pipControllers[clip.id];
-    final hasVideo = controller != null && controller.value.isInitialized;
+    final hasVideo = videoFrameIsReady(controller);
 
     return Positioned(
       left: 0,
@@ -520,7 +574,11 @@ class _PreviewOverlayState extends ConsumerState<PreviewOverlay> {
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(clip.borderRadius),
                   child: hasVideo
-                      ? VideoPlayer(controller)
+                      ? SafeVideoView(
+                          controller: controller,
+                          fit: BoxFit.contain,
+                          fallback: const ColoredBox(color: Colors.black87),
+                        )
                       : Container(
                           color: Colors.black87,
                           child: const Center(
@@ -563,7 +621,7 @@ class _PreviewOverlayState extends ConsumerState<PreviewOverlay> {
       });
     } else {
       final controller = _pipControllers[clip.id]!;
-      if (controller.value.isInitialized) {
+      if (videoFrameIsReady(controller)) {
         // Sync volume from model every frame in case user changed it
         final targetVol = clip.volume.clamp(0.0, 1.0);
         if ((controller.value.volume - targetVol).abs() > 0.01) {

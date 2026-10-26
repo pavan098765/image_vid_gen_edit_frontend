@@ -575,18 +575,28 @@ class _AiToolsPageState extends State<AiToolsPage>
           const SizedBox(height: 16),
 
           // Capability grid
-          GridView.builder(
-            itemCount: config.capabilities.length,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: 14,
-              mainAxisSpacing: 14,
-              childAspectRatio: 0.85,
-            ),
-            itemBuilder: (_, i) =>
-                _CapabilityCard(capability: config.capabilities[i]),
+          Builder(
+            builder: (context) {
+              const hiddenIds = {'inpaint', 'upscale_video'};
+              final tools = config.capabilities
+                  .where(
+                    (tool) =>
+                        tool.models.isNotEmpty && !hiddenIds.contains(tool.id),
+                  )
+                  .toList();
+              return GridView.builder(
+                itemCount: tools.length,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 14,
+                  mainAxisSpacing: 14,
+                  childAspectRatio: 0.85,
+                ),
+                itemBuilder: (_, i) => _CapabilityCard(capability: tools[i]),
+              );
+            },
           ),
         ],
       ),

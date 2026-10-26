@@ -13,6 +13,7 @@ import 'package:uuid/uuid.dart';
 import 'package:gal/gal.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/audio_result_player.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/safe_video_view.dart';
 import 'package:video_player/video_player.dart';
 
 class FileService {
@@ -2490,7 +2491,9 @@ class _VideoPreviewItem extends StatefulWidget {
   State<_VideoPreviewItem> createState() => _VideoPreviewItemState();
 }
 
-class _VideoPreviewItemState extends State<_VideoPreviewItem> {
+class _VideoPreviewItemState extends State<_VideoPreviewItem>
+    with WidgetsBindingObserver {
+  var _playOnResume = false;
   VideoPlayerController? _controller;
   bool _isInitialized = false;
   bool _isPlaying = false;
@@ -2504,8 +2507,51 @@ class _VideoPreviewItemState extends State<_VideoPreviewItem> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadVideoInfo();
     _initializeVideo();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final current = _controller;
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      if (current != null &&
+          videoFrameIsReady(current) &&
+          current.value.isPlaying) {
+        _playOnResume = true;
+      }
+      unawaited(pauseVideoController(current));
+      return;
+    }
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_recoverVideo());
+    }
+  }
+
+  Future<void> _recoverVideo() async {
+    final current = _controller;
+    final play = _playOnResume;
+    _playOnResume = false;
+    if (mounted) {
+      setState(() => _isInitialized = videoFrameIsReady(current));
+    }
+    final next = await replaceDeadVideo(current, play: play);
+    if (!mounted) {
+      if (next != null && !identical(next, current)) await next.dispose();
+      return;
+    }
+    if (next != null && !identical(next, current)) {
+      current?.removeListener(_updatePosition);
+      _controller = next;
+      next.addListener(_updatePosition);
+      try {
+        await current?.dispose();
+      } catch (_) {}
+    }
+    if (!mounted) return;
+    setState(() => _isInitialized = videoFrameIsReady(_controller));
   }
 
   Future<void> _loadVideoInfo() async {
@@ -2622,6 +2668,7 @@ class _VideoPreviewItemState extends State<_VideoPreviewItem> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _controller?.removeListener(_updatePosition);
     _controller?.dispose();
     super.dispose();
@@ -2629,7 +2676,7 @@ class _VideoPreviewItemState extends State<_VideoPreviewItem> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_isInitialized) {
+    if (!videoFrameIsReady(_controller)) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -2662,9 +2709,11 @@ class _VideoPreviewItemState extends State<_VideoPreviewItem> {
         children: [
           // Video player
           Center(
-            child: AspectRatio(
-              aspectRatio: _controller!.value.aspectRatio,
-              child: VideoPlayer(_controller!),
+            child: SafeVideoView(
+              controller: _controller,
+              layout: SafeVideoLayout.aspect,
+              fit: BoxFit.contain,
+              fallback: const SizedBox.shrink(),
             ),
           ),
 

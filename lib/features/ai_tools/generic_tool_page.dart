@@ -17,6 +17,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/api/submit_payload_helpers.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/explore_favorites.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/cached_tool_config.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/tool_launch.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/auth_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/file_service.dart';
@@ -29,6 +30,7 @@ import 'package:kala_ai_create_images_videos_with_ai/core/services/user_service.
         UserData;
 import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/backlit_glass.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/safe_video_view.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/media_source_picker_sheet.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_button.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/sign_in_prompt.dart';
@@ -598,6 +600,7 @@ class StylePreviewManager {
   // In-memory cache for quick access
   final Map<String, Uint8List> _imageCache = {};
   final Map<String, VideoPlayerController> _videoControllers = {};
+  final Map<String, Future<VideoPlayerController?>> _recovering = {};
   final Map<String, Future<Uint8List?>> _pendingDownloads = {};
 
   static const int maxVideoControllers = 2;
@@ -698,7 +701,7 @@ class StylePreviewManager {
     if (_videoControllers.containsKey(styleId)) {
       _videoPlayOrder.remove(styleId);
       _videoPlayOrder.add(styleId);
-      return _videoControllers[styleId];
+      return recover(styleId);
     }
 
     // Evict oldest if at max
@@ -753,7 +756,41 @@ class StylePreviewManager {
   }
 
   void pauseVideo(String styleId) {
-    _videoControllers[styleId]?.pause();
+    pauseVideoController(_videoControllers[styleId]);
+  }
+
+  Future<void> pauseAll() async {
+    for (final controller in _videoControllers.values) {
+      await pauseVideoController(controller);
+    }
+  }
+
+  /// Reopens a style preview whose frame was dropped while the app was stopped.
+  Future<VideoPlayerController?> recover(String styleId, {bool play = false}) {
+    final pending = _recovering[styleId];
+    if (pending != null) return pending;
+    final future = _recover(styleId, play: play);
+    _recovering[styleId] = future;
+    return future.whenComplete(() => _recovering.remove(styleId));
+  }
+
+  Future<VideoPlayerController?> _recover(
+    String styleId, {
+    required bool play,
+  }) async {
+    final current = _videoControllers[styleId];
+    if (current == null) return null;
+    final next = await replaceDeadVideo(current, play: play);
+    if (next == null || identical(next, current)) return current;
+    if (!identical(_videoControllers[styleId], current)) {
+      await next.dispose();
+      return _videoControllers[styleId];
+    }
+    _videoControllers[styleId] = next;
+    try {
+      await current.dispose();
+    } catch (_) {}
+    return next;
   }
 
   void playVideo(String styleId) {
@@ -1052,6 +1089,26 @@ class _GenericToolPageState extends State<GenericToolPage>
   String? _selectedModelId;
   Map<String, dynamic>? _selectedModelData;
 
+  /// Active tool after an in-page image-studio switch. Null keeps the route's tool.
+  GenericToolConfig? _imageStudioConfig;
+  String? _imageStudioFamilyName;
+  String? _videoStudioFamilyName;
+  bool _imageStudioSwitching = false;
+
+  GenericToolConfig get _tool => _imageStudioConfig ?? widget.config;
+
+  static const _imageStudioIds = <String>{
+    'create_image',
+    'edit_image',
+    'upscale',
+    'remove_background',
+    'expand_scene',
+  };
+  static const _videoStudioIds = <String>{
+    'create_video',
+    'animate_image',
+  };
+
   // -------- Generate Button Animation --------
   late AnimationController _glowAnimationController;
 
@@ -1135,10 +1192,10 @@ class _GenericToolPageState extends State<GenericToolPage>
 
   /// Check if tool requires mask for each image (inpaint/erase tools)
   bool get _requiresMask {
-    final model = widget.config.model.toLowerCase();
+    final model = _tool.model.toLowerCase();
     final mode = _selectedModeKey?.toLowerCase() ?? "";
     final paramMode =
-        (widget.config.params?["mode"]?.toString().toLowerCase() ?? "");
+        (_tool.params?["mode"]?.toString().toLowerCase() ?? "");
     return model.contains("inpaint") ||
         model.contains("lama") ||
         mode.contains("inpaint") ||
@@ -1147,13 +1204,13 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   /// Check if tool is outpaint (expand scene)
-  bool get _isOutpaint => widget.config.model == "diffusers_outpaint";
+  bool get _isOutpaint => _tool.model == "diffusers_outpaint";
 
   /// Check if this is an upscaler tool (e.g., "Upscale Image")
   /// Upscalers have upscale always enabled by default
   bool get _isUpscalerTool {
-    final title = widget.config.title.toLowerCase();
-    final model = widget.config.model.toLowerCase();
+    final title = _tool.title.toLowerCase();
+    final model = _tool.model.toLowerCase();
     // Check by title or model name
     // Upscale models: realesrgan, realesrgan_anime, realesrgan_denoise, face_enhancer
     return title.contains('upscale') ||
@@ -1168,7 +1225,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   static const String _kFaceEnhancerBgModel2x = 'RealESRGAN_x2plus';
 
   bool get _isFaceEnhancerModel =>
-      (_selectedModelId ?? widget.config.model) == 'face_enhancer';
+      (_selectedModelId ?? _tool.model) == 'face_enhancer';
 
   /// Server always receives GFPGAN v1.4 + restore faces for [face_enhancer]; background upscaler follows 2×/4×.
   void _syncFaceEnhancerFixedParams() {
@@ -1187,8 +1244,8 @@ class _GenericToolPageState extends State<GenericToolPage>
   /// Edit image tools: have init_image input and outputType is 'image'
   bool get _isEditImageTool {
     final hasInitImage =
-        widget.config.inputs.any((i) => i['id'] == 'init_image');
-    return hasInitImage && widget.config.outputType == 'image';
+        _tool.inputs.any((i) => i['id'] == 'init_image');
+    return hasInitImage && _tool.outputType == 'image';
   }
 
   /// Unified CineReal model on Animate Image (worker id chosen by motion mode).
@@ -1362,10 +1419,10 @@ class _GenericToolPageState extends State<GenericToolPage>
   /// CineReal and Cinemotion Pro render the frame themselves, so this
   /// control stays hidden for those models and for tools that only offer them.
   bool get _showsVideoEnhancement {
-    if (widget.config.outputType != 'video') return false;
+    if (_tool.outputType != 'video') return false;
     if (_isVideoUpscalerTool) return true;
     if (_isComfyVideoWorker) return false;
-    final models = widget.config.models;
+    final models = _tool.models;
     if (models == null || models.isEmpty) return false;
     for (final model in models) {
       if (model['enabled'] == false) continue;
@@ -1382,7 +1439,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   String get _submitModelIdForRequest {
     final raw = _selectedModelData?['submitModelId'];
     if (raw is String && raw.trim().isNotEmpty) return raw.trim();
-    return _selectedModelId ?? widget.config.model;
+    return _selectedModelId ?? _tool.model;
   }
 
   /// Worker-facing `model` for POST /submit (CineReal maps to i2v or flf2v worker).
@@ -1399,7 +1456,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   bool get _isCineRealAnimateModel {
-    final id = _selectedModelId ?? widget.config.model;
+    final id = _selectedModelId ?? _tool.model;
     return id == _kCineRealAnimateModelId ||
         id == _kLegacyCineRealAnimateModelId;
   }
@@ -1536,7 +1593,7 @@ class _GenericToolPageState extends State<GenericToolPage>
       }
       return;
     }
-    final vi = widget.config.inputs.firstWhere(
+    final vi = _tool.inputs.firstWhere(
       (i) => i['id'] == 'ref_video',
       orElse: () => <String, dynamic>{},
     );
@@ -1752,33 +1809,33 @@ class _GenericToolPageState extends State<GenericToolPage>
   /// Animate image tools: have init_image input and outputType is 'video'
   bool get _isAnimateImageTool {
     final hasInitImage =
-        widget.config.inputs.any((i) => i['id'] == 'init_image');
-    return hasInitImage && widget.config.outputType == 'video';
+        _tool.inputs.any((i) => i['id'] == 'init_image');
+    return hasInitImage && _tool.outputType == 'video';
   }
 
   /// Check if this is a video upscaler tool
   bool get _isVideoUpscalerTool {
-    final model = widget.config.model.toLowerCase();
-    final title = widget.config.title.toLowerCase();
+    final model = _tool.model.toLowerCase();
+    final title = _tool.title.toLowerCase();
     // Check if model is video_upscaler or title contains both "upscale" and "video"
     return model == 'video_upscaler' ||
         (title.contains('upscale') && title.contains('video'));
   }
 
   /// Check if this is a video category tool (text to video, image to video, video to video)
-  bool get _isVideoTool => widget.config.outputType == 'video';
-  bool get _isTextTool => widget.config.outputType == 'text';
-  bool get _isAudioTool => widget.config.outputType == 'audio';
-  bool get _isSpeechTool => widget.config.capabilityId == 'create_speech';
-  bool get _isMusicTool => widget.config.capabilityId == 'create_music';
+  bool get _isVideoTool => _tool.outputType == 'video';
+  bool get _isTextTool => _tool.outputType == 'text';
+  bool get _isAudioTool => _tool.outputType == 'audio';
+  bool get _isSpeechTool => _tool.capabilityId == 'create_speech';
+  bool get _isMusicTool => _tool.capabilityId == 'create_music';
 
   bool get _isMuseModel {
-    final id = _selectedModelId ?? widget.config.model;
+    final id = _selectedModelId ?? _tool.model;
     return id == 'muse_image' || id == 'muse_image_edit';
   }
 
   bool get _isFlashOrCanvasModel {
-    final id = _selectedModelId ?? widget.config.model;
+    final id = _selectedModelId ?? _tool.model;
     return id == 'flux2_klein_9b' ||
         id == 'flux2_klein_9b_edit' ||
         id == 'muse_image' ||
@@ -1786,19 +1843,71 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   bool get _allowsOutputUpscale =>
-      widget.config.capabilityId == 'create_image' ||
-      widget.config.capabilityId == 'edit_image';
+      _tool.capabilityId == 'create_image' ||
+      _tool.capabilityId == 'edit_image';
   bool get _musicEasy => _isMusicTool && _inputs['music_mode'] != 'advanced';
   bool get _isKalaSong =>
       _isMusicTool &&
-      (_selectedModelId ?? widget.config.model) == 'ace_step_music';
+      (_selectedModelId ?? _tool.model) == 'ace_step_music';
   bool get _isKalaSongPro =>
       _isMusicTool &&
-      (_selectedModelId ?? widget.config.model) == 'minimax_music_26';
+      (_selectedModelId ?? _tool.model) == 'minimax_music_26';
   bool get _isSunoV6 =>
       _isMusicTool &&
-      (_selectedModelId ?? widget.config.model) == kSunoV6ModelId;
+      (_selectedModelId ?? _tool.model) == kSunoV6ModelId;
   bool get _sunoSounds => _isSunoV6 && _inputs['suno_kind'] == 'sound';
+
+  bool _relatesMusicFields(String fieldRef) {
+    if (!_isMusicTool || _musicEasy || _sunoSounds) return false;
+    switch (fieldRef) {
+      case 'prompt':
+      case 'style':
+      case 'lyrics':
+      case 'negative':
+      case 'negative_prompt':
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  List<String> _advancedMusicBoxRefs() {
+    return [
+      'lyrics',
+      _isSunoV6 ? 'style' : 'prompt',
+      'negative_prompt',
+    ];
+  }
+
+  String _musicBoxText(String ref) {
+    if (ref == 'style') return _sunoStyleController.text;
+    if (ref == 'prompt') return _promptController.text;
+    final value = _inputs[ref];
+    return value is String ? value : '';
+  }
+
+  void _writeMusicBoxIfEmpty(String ref, String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty || _musicBoxText(ref).trim().isNotEmpty) return;
+    if (ref == 'style') {
+      _sunoStyleController.value = TextEditingValue(
+        text: trimmed,
+        selection: TextSelection.collapsed(offset: trimmed.length),
+      );
+      _inputs['style'] = trimmed;
+      return;
+    }
+    if (ref == 'prompt') {
+      _promptController.value = TextEditingValue(
+        text: trimmed,
+        selection: TextSelection.collapsed(offset: trimmed.length),
+      );
+      _inputs['prompt'] = trimmed;
+      return;
+    }
+    _inputs[ref] = trimmed;
+    _promptFillTicks[ref] = (_promptFillTicks[ref] ?? 0) + 1;
+  }
 
   bool _filledMedia(String id) {
     final value = _inputs[id];
@@ -1855,17 +1964,17 @@ class _GenericToolPageState extends State<GenericToolPage>
 
   /// Expand Scene keeps the prompt, and hides Style & Tags.
   bool get _hidesStyleAndTags =>
-      widget.config.capabilityId == 'expand_scene' ||
-      widget.config.title.toLowerCase() == 'expand scene';
+      _tool.capabilityId == 'expand_scene' ||
+      _tool.title.toLowerCase() == 'expand scene';
 
   /// Check if this is an inpaint & erase category tool
   /// Includes inpaint, lama, and erase tools
   bool get _isInpaintEraseTool {
-    final model = widget.config.model.toLowerCase();
-    final title = widget.config.title.toLowerCase();
+    final model = _tool.model.toLowerCase();
+    final title = _tool.title.toLowerCase();
     final mode = _selectedModeKey?.toLowerCase() ?? "";
     final paramMode =
-        (widget.config.params?["mode"]?.toString().toLowerCase() ?? "");
+        (_tool.params?["mode"]?.toString().toLowerCase() ?? "");
     return model.contains("inpaint") ||
         model.contains("lama") ||
         model.contains("erase") ||
@@ -1881,8 +1990,8 @@ class _GenericToolPageState extends State<GenericToolPage>
   bool get _isOnDeviceInpaintTool {
     if (!_isInpaintEraseTool) return false;
     final selectedModel =
-        (_selectedModelId ?? widget.config.model).toLowerCase();
-    final toolId = (widget.config.title).toLowerCase();
+        (_selectedModelId ?? _tool.model).toLowerCase();
+    final toolId = (_tool.title).toLowerCase();
     final explicit = _selectedModelData?['onDeviceOnly'] == true;
     return explicit ||
         (selectedModel == 'basic_utils' && toolId.contains('erase'));
@@ -1893,8 +2002,8 @@ class _GenericToolPageState extends State<GenericToolPage>
 
   /// Check if this is a remove background category tool
   bool get _isRemoveBackgroundTool {
-    final model = widget.config.model.toLowerCase();
-    final title = widget.config.title.toLowerCase();
+    final model = _tool.model.toLowerCase();
+    final title = _tool.title.toLowerCase();
     return model.contains("remove") && model.contains("background") ||
         title.contains("remove") && title.contains("background") ||
         model.contains("rembg") ||
@@ -1904,7 +2013,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   /// Primary image input id for Single/Bulk tabs (prefer common ids, else first `type: image`).
   String? get _bulkPrimaryImageInputRef {
     const preferredOrder = ['init_image', 'image', 'input_image'];
-    final imageInputs = widget.config.inputs
+    final imageInputs = _tool.inputs
         .whereType<Map<String, dynamic>>()
         .where((i) => i['type'] == 'image')
         .toList();
@@ -1921,7 +2030,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   /// Video upscaler: bulk queue of input files.
   String? get _bulkPrimaryVideoInputRef {
     if (!_isVideoUpscalerTool) return null;
-    final v = widget.config.inputs
+    final v = _tool.inputs
         .whereType<Map<String, dynamic>>()
         .where((i) => i['type'] == 'video')
         .toList();
@@ -1978,7 +2087,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   String get _selectedVideoGenModelId =>
-      (_selectedModelId ?? widget.config.model);
+      (_selectedModelId ?? _tool.model);
 
   /// LTX 2.3 family uses spatial upsampling only (no RIFE) in submit path.
   bool get _isLtx23SpatialOnlyVideoEnhancement {
@@ -2062,7 +2171,7 @@ class _GenericToolPageState extends State<GenericToolPage>
       return v;
     }
     final isVideoGenTool =
-        widget.config.outputType == 'video' && !_isVideoUpscalerTool;
+        _tool.outputType == 'video' && !_isVideoUpscalerTool;
     if (isVideoGenTool) {
       return (_advancedSettings.enableInterpolate ||
               _advancedSettings.enableUpscale)
@@ -2085,7 +2194,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     if (isUpscaleFree()) return 0;
     if (!_hasScaleFactor) return 0;
     // Video tools use duration + enhancement billing; do not stack main slider upscale here.
-    if (widget.config.outputType != 'image') return 0;
+    if (_tool.outputType != 'image') return 0;
     final raw = _inputs['scale_factor'];
     final d = raw is num ? raw.toDouble() : 1.0;
     if (d <= 1) return 0;
@@ -2093,7 +2202,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   bool get _videoGenEnhancementEnabled =>
-      widget.config.outputType == 'video' &&
+      _tool.outputType == 'video' &&
       !_isVideoUpscalerTool &&
       !_isComfyVideoWorker &&
       (_advancedSettings.enableInterpolate || _advancedSettings.enableUpscale);
@@ -2110,7 +2219,7 @@ class _GenericToolPageState extends State<GenericToolPage>
 
   /// Price shown on a model card. Video models use the 5-second config price.
   int _listedGemCostForModel(Map<String, dynamic> model) {
-    if (widget.config.outputType == 'video' && !_isVideoUpscalerTool) {
+    if (_tool.outputType == 'video' && !_isVideoUpscalerTool) {
       return _videoBaseCost5Sec(model);
     }
     return _baseGemCostForModelMap(model);
@@ -2172,7 +2281,7 @@ class _GenericToolPageState extends State<GenericToolPage>
 
     // Animate image / create video: duration × the model's baseCost5Sec.
     final bool isVideoGenTool =
-        widget.config.outputType == 'video' && !_isVideoUpscalerTool;
+        _tool.outputType == 'video' && !_isVideoUpscalerTool;
     final baseCost =
         isVideoGenTool ? _getDurationBasedCost() : _listedGenerationCost();
     final offer = _currentModelOffer;
@@ -2210,20 +2319,20 @@ class _GenericToolPageState extends State<GenericToolPage>
   // Dynamic element cache
   List<Map<String, dynamic>> get _currentElements {
     List<Map<String, dynamic>> allElements;
-    if (widget.config.modes != null &&
+    if (_tool.modes != null &&
         _selectedModeKey != null &&
-        widget.config.modes!.containsKey(_selectedModeKey)) {
+        _tool.modes!.containsKey(_selectedModeKey)) {
       allElements = List<Map<String, dynamic>>.from(
-          widget.config.modes![_selectedModeKey]!["elements"] ?? []);
+          _tool.modes![_selectedModeKey]!["elements"] ?? []);
     } else {
       allElements =
-          List<Map<String, dynamic>>.from(widget.config.elements ?? []);
+          List<Map<String, dynamic>>.from(_tool.elements ?? []);
     }
 
     // Filter elements based on selected model for animate_image
     // ref_image / ref_video are DreamID reference media; audio is model-gated via input showForModels.
     if (_isAnimateImageTool) {
-      final currentModelId = _selectedModelId ?? widget.config.model;
+      final currentModelId = _selectedModelId ?? _tool.model;
       return allElements.where((e) {
         final inputRef = e['input_ref'] as String?;
         // Always show prompt and non-reference elements.
@@ -2306,9 +2415,9 @@ class _GenericToolPageState extends State<GenericToolPage>
     return allElements;
   }
 
-  bool get _hasPrompt => widget.config.inputs.any((i) => i['id'] == 'prompt');
+  bool get _hasPrompt => _tool.inputs.any((i) => i['id'] == 'prompt');
   bool get _hasScaleFactor =>
-      widget.config.inputs.any((i) => i['id'] == 'scale_factor');
+      _tool.inputs.any((i) => i['id'] == 'scale_factor');
 
   /// Returns the effective input config for a given base input id.
   ///
@@ -2318,7 +2427,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   /// `input_ref: "init_image"` keep working).
   Map<String, dynamic> _effectiveInputConfig(String baseId) {
     final base = Map<String, dynamic>.from(
-      widget.config.inputs
+      _tool.inputs
           .firstWhere((i) => i["id"] == baseId, orElse: () => {}),
     );
 
@@ -2453,14 +2562,14 @@ class _GenericToolPageState extends State<GenericToolPage>
     )..repeat(reverse: true);
 
     // Default mode
-    if (widget.config.modes != null && widget.config.modes!.isNotEmpty) {
-      _selectedModeKey = widget.config.modes!.keys.first;
+    if (_tool.modes != null && _tool.modes!.isNotEmpty) {
+      _selectedModeKey = _tool.modes!.keys.first;
     }
 
     // Initialize selected model
     _initializeSelectedModel();
     _seedInputDefaults();
-    if (widget.config.capabilityId == 'create_music') {
+    if (_tool.capabilityId == 'create_music') {
       _inputs['music_mode'] = 'easy';
       _inputs['track_mode'] = 'create';
       _inputs['suno_kind'] = 'song';
@@ -2524,11 +2633,11 @@ class _GenericToolPageState extends State<GenericToolPage>
       }
     });
 
-    debugPrint("🔧 Config for ${widget.config.model}");
-    debugPrint("  title=${widget.config.title}");
-    debugPrint("  elements=${widget.config.elements?.length}");
-    debugPrint("  modes=${widget.config.modes?.keys}");
-    debugPrint("  models=${widget.config.models?.length ?? 0}");
+    debugPrint("🔧 Config for ${_tool.model}");
+    debugPrint("  title=${_tool.title}");
+    debugPrint("  elements=${_tool.elements?.length}");
+    debugPrint("  modes=${_tool.modes?.keys}");
+    debugPrint("  models=${_tool.models?.length ?? 0}");
 
     // NOTE: do not warm up on-device inpaint model on page open; it can stall UI.
     // Session initializes lazily when user taps Generate.
@@ -2636,9 +2745,9 @@ class _GenericToolPageState extends State<GenericToolPage>
 
   /// Capability used to choose image presets vs video presets.
   String get _styleCapabilityId {
-    final id = widget.config.capabilityId;
+    final id = _tool.capabilityId;
     if (id != null && id.isNotEmpty) return id;
-    if (widget.config.outputType == 'video') {
+    if (_tool.outputType == 'video') {
       return _isAnimateImageTool ? 'animate_image' : 'create_video';
     }
     return _isEditImageTool ? 'edit_image' : 'create_image';
@@ -2780,8 +2889,8 @@ class _GenericToolPageState extends State<GenericToolPage>
       name: nameController.text.trim(),
       prompt: _promptController.text,
       modelId: _selectedModelId,
-      capabilityId: widget.config.capabilityId,
-      toolTitle: widget.config.title,
+      capabilityId: _tool.capabilityId,
+      toolTitle: _tool.title,
       settings: _advancedSettings,
       createdAt: DateTime.now(),
     );
@@ -2835,13 +2944,13 @@ class _GenericToolPageState extends State<GenericToolPage>
     }
 
     // Variations: Apply for both image and video tools
-    if (widget.config.outputType == 'image' ||
-        widget.config.outputType == 'video') {
+    if (_tool.outputType == 'image' ||
+        _tool.outputType == 'video') {
       filtered = filtered.copyWith(variations: templateSettings.variations);
     }
 
     // Video Duration: Only apply for video tools (5s steps when model allows)
-    if (widget.config.outputType == 'video') {
+    if (_tool.outputType == 'video') {
       final td = _clampVideoGenDurationSeconds(templateSettings.videoDuration);
       filtered = filtered.copyWith(videoDuration: td);
       // Video enhancement settings (I2V/T2V vs dedicated video upscaler tool).
@@ -2859,7 +2968,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     }
 
     // LoRA adapter: Only apply for qwen_image_edit_2511_rapid_aio
-    final currentModel = _selectedModelId ?? widget.config.model;
+    final currentModel = _selectedModelId ?? _tool.model;
     if (currentModel == 'qwen_image_edit_2511_rapid_aio') {
       filtered = filtered.copyWith(loraAdapter: templateSettings.loraAdapter);
     }
@@ -2885,7 +2994,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   void _applyTemplate(UserTemplate template) {
     setState(() {
       _promptController.text = template.prompt;
-      if (template.modelId != null && widget.config.hasMultipleModels) {
+      if (template.modelId != null && _tool.hasMultipleModels) {
         var mid = template.modelId!;
         if (mid == 'ltx2_3_flf2v' ||
             mid == 'ltx2_3_i2v_distilled' ||
@@ -2902,9 +3011,9 @@ class _GenericToolPageState extends State<GenericToolPage>
           mid = 'ltx25_int8_t2v';
         }
         _selectedModelId = mid;
-        _selectedModelData = widget.config.models?.firstWhere(
+        _selectedModelData = _tool.models?.firstWhere(
           (m) => m['id'] == mid,
-          orElse: () => widget.config.models!.first,
+          orElse: () => _tool.models!.first,
         );
       }
 
@@ -2999,9 +3108,9 @@ class _GenericToolPageState extends State<GenericToolPage>
 
   /// Initialize the selected model from config
   void _initializeSelectedModel() {
-    if (widget.config.models != null && widget.config.models!.isNotEmpty) {
+    if (_tool.models != null && _tool.models!.isNotEmpty) {
       // Filter to only enabled models
-      final enabledModels = widget.config.models!.where((m) {
+      final enabledModels = _tool.models!.where((m) {
         final enabled = m['enabled'];
         return enabled == null ||
             enabled == true; // Default to enabled if not specified
@@ -3010,7 +3119,7 @@ class _GenericToolPageState extends State<GenericToolPage>
       if (enabledModels.isEmpty) return;
 
       // Use default model if specified, otherwise first enabled model
-      final defaultId = widget.config.defaultModel ?? widget.config.model;
+      final defaultId = _tool.defaultModel ?? _tool.model;
       _selectedModelData = enabledModels.firstWhere(
         (m) =>
             m['id'] == defaultId &&
@@ -3022,7 +3131,7 @@ class _GenericToolPageState extends State<GenericToolPage>
           (resolvedId != null && resolvedId.isNotEmpty) ? resolvedId : defaultId;
 
       // Clamp video duration (min 5s when model allows) for video generation tools
-      if (widget.config.outputType == 'video' &&
+      if (_tool.outputType == 'video' &&
           _selectedModelData != null &&
           !_isVideoUpscalerTool) {
         final clamped =
@@ -3038,7 +3147,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   /// Defaults for choices that live in Additional Settings, so a job can
   /// submit before that sheet has been opened.
   void _seedInputDefaults() {
-    for (final def in widget.config.inputs) {
+    for (final def in _tool.inputs) {
       if (def is! Map) continue;
       final id = def['id'] as String?;
       if (id == null || _inputs.containsKey(id)) continue;
@@ -3082,7 +3191,7 @@ class _GenericToolPageState extends State<GenericToolPage>
       _selectedModelId = nextId;
       _selectedModelData = model;
 
-      if (widget.config.outputType == 'image' && !_isFlashOrCanvasModel) {
+      if (_tool.outputType == 'image' && !_isFlashOrCanvasModel) {
         final ratio = _inputs['aspect_ratio']?.toString() ?? '';
         if (AdvancedSettings.kFlashCanvasAspectRatioOptions.contains(ratio) &&
             !AdvancedSettings.kAdvancedAspectRatioOptions.contains(ratio)) {
@@ -3114,7 +3223,7 @@ class _GenericToolPageState extends State<GenericToolPage>
         }
       }
 
-      for (final def in widget.config.inputs) {
+      for (final def in _tool.inputs) {
         if (def is! Map) continue;
         final t = def['type']?.toString();
         final sid = def['id'] as String?;
@@ -3142,7 +3251,7 @@ class _GenericToolPageState extends State<GenericToolPage>
       }
 
       // Clamp video duration when switching models (5s steps when model allows)
-      if (widget.config.outputType == 'video' && !_isVideoUpscalerTool) {
+      if (_tool.outputType == 'video' && !_isVideoUpscalerTool) {
         final clamped =
             _clampVideoGenDurationSeconds(_advancedSettings.videoDuration);
         if (clamped != _advancedSettings.videoDuration) {
@@ -3155,13 +3264,14 @@ class _GenericToolPageState extends State<GenericToolPage>
       }
       _syncFaceEnhancerFixedParams();
     });
+    if (!_imageStudioSwitching) _rememberImageStudioFamily();
     // Force rebuild of advanced settings sheet if open
     // The StatefulBuilder will pick up the new _selectedModelData
   }
 
   /// 2K Kala Imagine costs twice the 1K price. Other models are unchanged.
   int _withQwenResolutionPrice(int base) {
-    final model = _selectedModelId ?? widget.config.model;
+    final model = _selectedModelId ?? _tool.model;
     if (model == 'qwen2_1_i2i' && _inputs['resolution'] == '2K') {
       return base * 2;
     }
@@ -3178,12 +3288,12 @@ class _GenericToolPageState extends State<GenericToolPage>
     }
     return _selectedModelData?['baseCost'] as int? ??
         _selectedModelData?['cost'] as int? ??
-        widget.config.cost;
+        _tool.cost;
   }
 
   /// Get the current model's upscale cost
   int get _currentModelUpscaleCost =>
-      _selectedModelData?['costUpscale'] as int? ?? widget.config.costUpscale;
+      _selectedModelData?['costUpscale'] as int? ?? _tool.costUpscale;
 
   /// Extra upscale pass the user can add from Additional Settings.
   /// Ids stay internal. Names are the ones shown in the app.
@@ -3260,7 +3370,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     if (sale.isActive && sale.discountPercent > 0) {
       return sale.discountPercent;
     }
-    return _selectedModelData?['offer'] as int? ?? widget.config.offer;
+    return _selectedModelData?['offer'] as int? ?? _tool.offer;
   }
 
   /// Optional per-model route flag for backend external API path.
@@ -3379,7 +3489,7 @@ class _GenericToolPageState extends State<GenericToolPage>
         : (mediaPaths?[primary] ?? const <String>[]);
     return sanitizeSettingsSnapshot({
       'prompt': _promptController.text,
-      'modelId': _selectedModelId ?? widget.config.model,
+      'modelId': _selectedModelId ?? _tool.model,
       'aspectRatio': _advancedSettings.aspectRatio,
       'scaleFactor': _inputs['scale_factor'] ?? _advancedSettings.upscaleFactor,
       'variations': _advancedSettings.variations.clamp(1, getMaxVariations()),
@@ -3450,7 +3560,7 @@ class _GenericToolPageState extends State<GenericToolPage>
 
   Future<Map<String, List<String>>> _mediaPathsFromInputs() async {
     final media = <String, List<String>>{};
-    for (final raw in widget.config.inputs) {
+    for (final raw in _tool.inputs) {
       if (raw is! Map) continue;
       final id = raw['id'] as String?;
       final type = raw['type'] as String?;
@@ -3589,7 +3699,7 @@ class _GenericToolPageState extends State<GenericToolPage>
       value is num ? value.toDouble() : fallback;
 
   String? _inputTypeOf(String id) {
-    for (final raw in widget.config.inputs) {
+    for (final raw in _tool.inputs) {
       if (raw is Map && raw['id'] == id) return raw['type'] as String?;
     }
     return null;
@@ -3633,7 +3743,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   Future<bool> _restoreSavedMedia(dynamic raw) async {
     if (raw is! Map) return false;
     final known = <String>{
-      for (final input in widget.config.inputs)
+      for (final input in _tool.inputs)
         if (input is Map && input['id'] is String) input['id'] as String,
     };
     final leftoverImages = <String>[];
@@ -3781,8 +3891,8 @@ class _GenericToolPageState extends State<GenericToolPage>
             enableUpscale: _isVideoTool || snapshot['enableUpscale'] == true,
           );
         }
-        if (modelId != null && widget.config.models != null) {
-          final match = widget.config.models!.where((m) => m['id'] == modelId);
+        if (modelId != null && _tool.models != null) {
+          final match = _tool.models!.where((m) => m['id'] == modelId);
           if (match.isNotEmpty &&
               (match.first['enabled'] == null ||
                   match.first['enabled'] == true)) {
@@ -3790,7 +3900,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             _selectedModelData = match.first;
           }
         }
-        final activeModel = _selectedModelId ?? widget.config.model;
+        final activeModel = _selectedModelId ?? _tool.model;
         if (snapshot['transparentBackground'] == true &&
             activeModel == 'qwen2_1_i2i') {
           _inputs['background'] = 'transparent';
@@ -3853,7 +3963,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     }
 
     final wantsImage = _bulkPrimaryImageInputRef != null;
-    final wantsVideo = widget.config.inputs
+    final wantsVideo = _tool.inputs
         .whereType<Map<String, dynamic>>()
         .any((i) => i['type'] == 'video');
     final matching = existingMatchingPaths(
@@ -3878,7 +3988,7 @@ class _GenericToolPageState extends State<GenericToolPage>
         );
       }
     } else if (wantsVideo) {
-      final videoInputs = widget.config.inputs
+      final videoInputs = _tool.inputs
           .whereType<Map<String, dynamic>>()
           .where((i) => i['type'] == 'video')
           .toList();
@@ -4013,7 +4123,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                           ),
                         ] else ...[
                           // Speech switches Voice / Speech / Clone on the tool itself.
-                          if (widget.config.hasMultipleModels && !_isSpeechTool) ...[
+                          if (_tool.hasMultipleModels && !_isSpeechTool) ...[
                             _buildModelSelector(cs, setSheetState),
                             const SizedBox(height: 20),
                           ],
@@ -4113,8 +4223,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                               ),
 
                             const SizedBox(height: 12),
-                            if (widget.config.capabilityId == 'edit_image' &&
-                                (_selectedModelId ?? widget.config.model) ==
+                            if (_tool.capabilityId == 'edit_image' &&
+                                (_selectedModelId ?? _tool.model) ==
                                     'qwen2_1_i2i') ...[
                               _buildSettingToggle(
                                 cs: cs,
@@ -4169,8 +4279,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                           ],
 
                           // Variations chips (image + video tools; max from VIP tier)
-                          if (widget.config.outputType == 'image' ||
-                              widget.config.outputType == 'video') ...[
+                          if (_tool.outputType == 'image' ||
+                              _tool.outputType == 'video') ...[
                             _buildCard(
                               margin: EdgeInsets.zero,
                               padding:
@@ -4182,7 +4292,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                           ],
 
                           // Duration chips (create / animate video; min 5s when model allows)
-                          if (widget.config.outputType == 'video' &&
+                          if (_tool.outputType == 'video' &&
                               !_isVideoUpscalerTool) ...[
                             _buildCard(
                               margin: EdgeInsets.zero,
@@ -4201,7 +4311,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                           ],
 
                           // LoRA Adapter Selector (only for qwen_image_edit_2511_rapid_aio)
-                          if ((_selectedModelId ?? widget.config.model) ==
+                          if ((_selectedModelId ?? _tool.model) ==
                               'qwen_image_edit_2511_rapid_aio') ...[
                             _buildLoraAdapterSelector(cs, setSheetState),
                             const SizedBox(height: 16),
@@ -4610,7 +4720,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     final values = _allowedVideoGenDurationSeconds();
     final current =
         _clampVideoGenDurationSeconds(_advancedSettings.videoDuration);
-    final modelId = _selectedModelId ?? widget.config.model;
+    final modelId = _selectedModelId ?? _tool.model;
 
     return Column(
       key: ValueKey('duration_chips_${modelId}_$maxDuration'),
@@ -4705,12 +4815,12 @@ class _GenericToolPageState extends State<GenericToolPage>
   /// Build LoRA Adapter selector (only for qwen_image_edit_2511_rapid_aio)
   Widget _buildLoraAdapterSelector(ColorScheme cs, StateSetter setSheetState) {
     // Get LoRA adapter options from model config
-    final modelId = _selectedModelId ?? widget.config.model;
+    final modelId = _selectedModelId ?? _tool.model;
     Map<String, dynamic> modelData = _selectedModelData ?? <String, dynamic>{};
 
     // If _selectedModelData is null, try to find model from config
     if (modelData.isEmpty) {
-      modelData = widget.config.models?.firstWhere(
+      modelData = _tool.models?.firstWhere(
             (m) => m['id'] == modelId,
             orElse: () => <String, dynamic>{},
           ) ??
@@ -5068,7 +5178,7 @@ class _GenericToolPageState extends State<GenericToolPage>
 
   /// Build model selector for advanced settings
   Widget _buildModelSelector(ColorScheme cs, StateSetter setSheetState) {
-    final allModels = widget.config.models ?? [];
+    final allModels = _tool.models ?? [];
     // Filter to only enabled models
     final models = allModels.where((m) {
       final enabled = m['enabled'];
@@ -5114,7 +5224,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             itemBuilder: (context, index) {
               final model = models[index];
               final isSelected = model['id'] == _selectedModelId;
-              final isDefault = model['id'] == widget.config.defaultModel;
+              final isDefault = model['id'] == _tool.defaultModel;
 
               return Padding(
                 padding: EdgeInsets.only(
@@ -5314,13 +5424,56 @@ class _GenericToolPageState extends State<GenericToolPage>
     super.dispose();
   }
 
+  var _resumeUserVideos = false;
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      _resumeUserVideos = _userVideoControllers.values.any(
+        (controller) =>
+            videoFrameIsReady(controller) && controller.value.isPlaying,
+      );
+      for (final controller in _userVideoControllers.values) {
+        unawaited(pauseVideoController(controller));
+      }
+      unawaited(StylePreviewManager.instance.pauseAll());
+      return;
+    }
     if (state == AppLifecycleState.resumed) {
       if (_activeJobId != null && _loading && !_fetchingResult) {
         debugPrint("🔁 Resuming job polling after resume");
       }
+      unawaited(_recoverUserVideos());
     }
+  }
+
+  Future<void> _recoverUserVideos() async {
+    final play = _resumeUserVideos;
+    _resumeUserVideos = false;
+    final entries = Map<String, VideoPlayerController>.from(
+      _userVideoControllers,
+    );
+    var changed = false;
+    for (final entry in entries.entries) {
+      final current = entry.value;
+      final next = await replaceDeadVideo(current, play: play);
+      if (!mounted) {
+        if (next != null && !identical(next, current)) await next.dispose();
+        return;
+      }
+      if (next == null || identical(next, current)) continue;
+      if (!identical(_userVideoControllers[entry.key], current)) {
+        await next.dispose();
+        continue;
+      }
+      _userVideoControllers[entry.key] = next;
+      try {
+        await current.dispose();
+      } catch (_) {}
+      changed = true;
+    }
+    if (mounted && changed) setState(() {});
   }
 
   // -------- Validation: Check if all required inputs are filled --------
@@ -5417,7 +5570,7 @@ class _GenericToolPageState extends State<GenericToolPage>
 
       // Skip elements without input_ref (like upscale_toggle, generate_button)
       if (inputRef == null) continue;
-      final gated = widget.config.inputs
+      final gated = _tool.inputs
           .firstWhere((i) => i["id"] == inputRef, orElse: () => {});
       if (gated is Map &&
           !_elementShouldRender(Map<String, dynamic>.from(gated))) {
@@ -5437,7 +5590,7 @@ class _GenericToolPageState extends State<GenericToolPage>
         continue;
       }
 
-      final inputDef = widget.config.inputs
+      final inputDef = _tool.inputs
           .firstWhere((i) => i["id"] == inputRef, orElse: () => {});
       final isRequired = inputDef["required"] == true;
 
@@ -5461,7 +5614,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             break;
           }
           // Check if prompt is optional
-          final promptInput = widget.config.inputs
+          final promptInput = _tool.inputs
               .firstWhere((i) => i["id"] == inputRef, orElse: () => {});
           final isOptional = promptInput["optional"] == true;
           if (!isOptional) {
@@ -5683,7 +5836,7 @@ class _GenericToolPageState extends State<GenericToolPage>
 
       // Skip elements without input_ref
       if (inputRef == null) continue;
-      final gated = widget.config.inputs
+      final gated = _tool.inputs
           .firstWhere((i) => i["id"] == inputRef, orElse: () => {});
       if (gated is Map &&
           !_elementShouldRender(Map<String, dynamic>.from(gated))) {
@@ -5702,7 +5855,7 @@ class _GenericToolPageState extends State<GenericToolPage>
         continue;
       }
 
-      final inputDef = widget.config.inputs
+      final inputDef = _tool.inputs
           .firstWhere((i) => i["id"] == inputRef, orElse: () => {});
       final isRequired = inputDef["required"] == true;
       final elementLabel = (inputDef["label"] as String?)?.trim();
@@ -5732,7 +5885,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             break;
           }
           // Check if prompt is optional
-          final promptInput = widget.config.inputs
+          final promptInput = _tool.inputs
               .firstWhere((i) => i["id"] == inputRef, orElse: () => {});
           final isOptional = promptInput["optional"] == true;
           if (!isOptional) {
@@ -5841,7 +5994,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     int baseTotal;
     if (_isVideoUpscalerTool) {
       baseTotal = _videoUpscalerUndiscountedCreditsTotal();
-    } else if (widget.config.outputType == 'video' && !_isVideoUpscalerTool) {
+    } else if (_tool.outputType == 'video' && !_isVideoUpscalerTool) {
       final variations =
           _advancedSettings.variations.clamp(1, getMaxVariations());
       final imageCount = _advancedSettings.bulkEditEnabled && _hasBulkInput
@@ -6069,7 +6222,7 @@ class _GenericToolPageState extends State<GenericToolPage>
           // Upscale info badge (when image upscale is enabled)
           if (_upscaleEnabled &&
               _currentModelUpscaleCost > 0 &&
-              widget.config.outputType != 'video')
+              _tool.outputType != 'video')
             Padding(
               padding: const EdgeInsets.only(top: 10),
               child: Row(
@@ -6127,7 +6280,7 @@ class _GenericToolPageState extends State<GenericToolPage>
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                widget.config.title,
+                _tool.title,
                 style: TextStyle(
                   fontWeight: FontWeight.w700,
                   color: cs.onSurface,
@@ -6251,6 +6404,9 @@ class _GenericToolPageState extends State<GenericToolPage>
           }
           _inputs[id] = bytesList;
           _inputs["${id}_path"] = limited.first.path;
+          if (_isImageStudio && (id == 'init_image' || id == 'image')) {
+            _clearStudioOutpaint();
+          }
           // Clear old mask when new image is selected
           _inputs["mask_image"] = null;
           _isProcessingImage = false;
@@ -6287,11 +6443,14 @@ class _GenericToolPageState extends State<GenericToolPage>
           _inputs["${id}_path"] = file.path;
           // Clear old mask when new image is selected
           _inputs["mask_image"] = null;
+          if (_isImageStudio && (id == 'init_image' || id == 'image')) {
+            _clearStudioOutpaint();
+          }
           _isProcessingImage = false;
         });
 
-        if (widget.config.model == "diffusers_outpaint" ||
-            widget.config.capabilityId == 'expand_scene') {
+        if (_tool.model == "diffusers_outpaint" ||
+            _tool.capabilityId == 'expand_scene') {
           final result = await Navigator.push<Map<String, String>>(
             context,
             MaterialPageRoute(
@@ -6324,10 +6483,10 @@ class _GenericToolPageState extends State<GenericToolPage>
         }
 
         // Automatically open mask editor for inpainting / LaMa models
-        final model = widget.config.model.toLowerCase();
+        final model = _tool.model.toLowerCase();
         final mode = _selectedModeKey?.toLowerCase() ?? "";
         final paramMode =
-            (widget.config.params?["mode"]?.toString().toLowerCase() ?? "");
+            (_tool.params?["mode"]?.toString().toLowerCase() ?? "");
 
         if (model.contains("inpaint") ||
             model.contains("lama") ||
@@ -6352,6 +6511,7 @@ class _GenericToolPageState extends State<GenericToolPage>
           }
         }
       }
+      await _maybePromoteCreateToEdit();
     } catch (e) {
       debugPrint("Gallery picker failed: $e");
       if (mounted) {
@@ -6411,13 +6571,16 @@ class _GenericToolPageState extends State<GenericToolPage>
         }
         _inputs[id] = [bytes];
         _inputs["${id}_path"] = file.path;
+        if (_isImageStudio && (id == 'init_image' || id == 'image')) {
+          _clearStudioOutpaint();
+        }
         // Clear old mask when new image is captured
         _inputs["mask_image"] = null;
         _isProcessingImage = false;
       });
 
-      if (widget.config.model == "diffusers_outpaint" ||
-          widget.config.capabilityId == 'expand_scene') {
+      if (_tool.model == "diffusers_outpaint" ||
+          _tool.capabilityId == 'expand_scene') {
         final result = await Navigator.push<Map<String, String>>(
           context,
           MaterialPageRoute(
@@ -6450,10 +6613,10 @@ class _GenericToolPageState extends State<GenericToolPage>
       }
 
       // Automatically open mask editor for inpainting / LaMa models
-      final model = widget.config.model.toLowerCase();
+      final model = _tool.model.toLowerCase();
       final mode = _selectedModeKey?.toLowerCase() ?? "";
       final paramMode =
-          (widget.config.params?["mode"]?.toString().toLowerCase() ?? "");
+          (_tool.params?["mode"]?.toString().toLowerCase() ?? "");
 
       if (model.contains("inpaint") ||
           model.contains("lama") ||
@@ -6477,6 +6640,7 @@ class _GenericToolPageState extends State<GenericToolPage>
           }
         }
       }
+      await _maybePromoteCreateToEdit();
     } catch (e) {
       debugPrint("Camera image failed: $e");
       if (mounted) {
@@ -7350,12 +7514,327 @@ class _GenericToolPageState extends State<GenericToolPage>
     final Map<String, dynamic> m =
         input is Map ? Map<String, dynamic>.from(input) : <String, dynamic>{};
     final key =
-        '${widget.config.capabilityId}|$ref|${m['label']}|${m['hintExamples']}';
+        '${_tool.capabilityId}|$ref|${m['label']}|${m['hintExamples']}';
     if (key != _composerHintExamplesKey) {
       _composerHintExamplesKey = key;
       _composerHintExamplesCache = _parseComposerHintExamples(m);
     }
     return _composerHintExamplesCache;
+  }
+
+  bool get _isImageStudio => _imageStudioIds.contains(_tool.capabilityId);
+
+  bool get _isVideoStudio => _videoStudioIds.contains(_tool.capabilityId);
+
+  bool get _showStudioChips =>
+      (_isImageStudio || _isVideoStudio) &&
+      !(_advancedSettings.bulkEditEnabled && _supportsBulkEdit);
+
+  bool get _imageStudioHidesPrompt {
+    final id = _tool.capabilityId;
+    return id == 'upscale' || id == 'remove_background';
+  }
+
+  void _rememberImageStudioFamily() {
+    final id = _tool.capabilityId;
+    final name = (_selectedModelData?['name'] as String?)?.trim();
+    if (name == null || name.isEmpty) return;
+    if (id == 'create_image' || id == 'edit_image') {
+      _imageStudioFamilyName = name;
+    } else if (id == 'create_video' || id == 'animate_image') {
+      _videoStudioFamilyName = name;
+    }
+  }
+
+  Uint8List? _firstImageBytes(Object? value) {
+    if (value is Uint8List && value.isNotEmpty) return value;
+    if (value is List) {
+      for (final item in value) {
+        if (item is Uint8List && item.isNotEmpty) return item;
+      }
+    }
+    return null;
+  }
+
+  String? _imageInputIdOf(GenericToolConfig config) {
+    for (final input in config.inputs) {
+      if (input is! Map) continue;
+      final type = input['type']?.toString();
+      if (type != 'image' && type != 'image_upload') continue;
+      final id = input['id']?.toString();
+      if (id != null && id.isNotEmpty) return id;
+    }
+    return null;
+  }
+
+  int _imageInputMax(GenericToolConfig config, String id) {
+    for (final input in config.inputs) {
+      if (input is! Map || input['id']?.toString() != id) continue;
+      final maxCount = input['max'];
+      if (maxCount is int && maxCount > 0) return maxCount;
+      if (maxCount is num && maxCount > 0) return maxCount.toInt();
+    }
+    return 1;
+  }
+
+  void _placeStudioPhotoOn(GenericToolConfig next) {
+    String? sourceRef;
+    Object? raw;
+    for (final ref in const ['init_image', 'image']) {
+      if (_firstImageBytes(_inputs[ref]) == null) continue;
+      sourceRef = ref;
+      raw = _inputs[ref];
+      break;
+    }
+    if (sourceRef == null || raw == null) return;
+    final dest = _imageInputIdOf(next);
+    if (dest == null || dest == sourceRef) return;
+    final path = _inputs['${sourceRef}_path'];
+    _inputs.remove(sourceRef);
+    _inputs.remove('${sourceRef}_path');
+    final maxCount = _imageInputMax(next, dest);
+    if (raw is List && maxCount <= 1) {
+      final first = _firstImageBytes(raw);
+      if (first != null) _inputs[dest] = [first];
+    } else if (raw is Uint8List) {
+      _inputs[dest] = [raw];
+    } else {
+      _inputs[dest] = raw;
+    }
+    if (path is String && path.isNotEmpty) {
+      _inputs['${dest}_path'] = path;
+    }
+  }
+
+  String? _modelIdNamed(Map<String, dynamic> capability, String name) {
+    final models = capability['models'];
+    if (models is! List) return null;
+    for (final raw in models) {
+      if (raw is! Map) continue;
+      if (raw['enabled'] == false) continue;
+      if ((raw['name'] as String?)?.trim() != name) continue;
+      final id = raw['id']?.toString();
+      if (id != null && id.isNotEmpty) return id;
+    }
+    return null;
+  }
+
+  List<Map<String, dynamic>> _createImageAttachInputs() {
+    return [
+      {
+        'id': 'init_image',
+        'type': 'image',
+        'label': 'Photo',
+        'min': 1,
+        'max': 1,
+      },
+    ];
+  }
+
+  List<Map<String, dynamic>> _composerAttachInputs(
+    List<Map<String, dynamic>> declared,
+  ) {
+    if (_tool.capabilityId == 'create_image') return _createImageAttachInputs();
+    if (_tool.capabilityId == 'create_video' &&
+        !(_advancedSettings.bulkEditEnabled && _supportsBulkEdit)) {
+      return [..._createImageAttachInputs(), ...declared];
+    }
+    return declared;
+  }
+
+  Future<void> _maybePromoteCreateToEdit() async {
+    if (!mounted) return;
+    if (_advancedSettings.bulkEditEnabled && _supportsBulkEdit) return;
+    if (_firstImageBytes(_inputs['init_image']) == null) return;
+    final id = _tool.capabilityId;
+    if (id == 'create_image') {
+      await _switchImageStudio('edit_image');
+    } else if (id == 'create_video') {
+      await _switchImageStudio('animate_image');
+    }
+  }
+
+  Future<void> _switchImageStudio(String capabilityId) async {
+    if (_imageStudioSwitching || _tool.capabilityId == capabilityId) return;
+    if (!_imageStudioIds.contains(capabilityId) &&
+        !_videoStudioIds.contains(capabilityId)) {
+      return;
+    }
+    _imageStudioSwitching = true;
+    try {
+      _rememberImageStudioFamily();
+      final book = await loadCachedToolConfig();
+      if (!mounted) return;
+      final cap = book == null ? null : capabilityById(book, capabilityId);
+      if (cap == null || !capabilityHasEnabledModel(cap)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('That tool is not available right now.')),
+        );
+        return;
+      }
+      final imageDestination =
+          capabilityId == 'create_image' || capabilityId == 'edit_image';
+      final videoDestination =
+          capabilityId == 'create_video' || capabilityId == 'animate_image';
+      final family = imageDestination
+          ? _imageStudioFamilyName
+          : videoDestination
+              ? _videoStudioFamilyName
+              : null;
+      final preferred =
+          family == null ? null : _modelIdNamed(cap, family);
+      final next = genericConfigFromCapability(
+        cap,
+        preferredModelId: preferred,
+      );
+      Map<String, dynamic>? model;
+      for (final entry in next.models ?? const <Map<String, dynamic>>[]) {
+        if (entry['id'] == next.model) {
+          model = entry;
+          break;
+        }
+      }
+      _imageStudioConfig = next;
+      _placeStudioPhotoOn(next);
+      _inputs['prompt'] = _promptController.text;
+      if (capabilityId != 'edit_image') {
+        _inputs.remove('mask_image');
+      }
+      if (model != null) {
+        _selectModel(model);
+      } else {
+        setState(() {});
+      }
+      if (capabilityId == 'expand_scene') {
+        await _openExpandCanvasIfNeeded();
+      }
+    } finally {
+      _imageStudioSwitching = false;
+    }
+  }
+
+  void _clearStudioOutpaint() {
+    const keys = [
+      'alignment',
+      'is_custom',
+      'custom_scale',
+      'norm_offset_x',
+      'norm_offset_y',
+      'offset_x',
+      'offset_y',
+      'canvas_width',
+      'canvas_height',
+      'fitted_width',
+      'fitted_height',
+      'image_width',
+      'image_height',
+      'image_left',
+      'image_top',
+      'outpaint_preview',
+    ];
+    for (final key in keys) {
+      _inputs.remove(key);
+    }
+  }
+
+  void _storeOutpaintResult(Map<String, String> result, Uint8List bytes) {
+    _inputs['alignment'] = result['alignment'];
+    _inputs['aspect_ratio'] = result['aspect_ratio'];
+    _inputs['is_custom'] = result['is_custom'];
+    _inputs['custom_scale'] = result['custom_scale'];
+    _inputs['norm_offset_x'] = result['norm_offset_x'];
+    _inputs['norm_offset_y'] = result['norm_offset_y'];
+    _inputs['offset_x'] = result['offset_x'];
+    _inputs['offset_y'] = result['offset_y'];
+    _inputs['canvas_width'] = result['canvas_width'];
+    _inputs['canvas_height'] = result['canvas_height'];
+    _inputs['fitted_width'] = result['fitted_width'];
+    _inputs['fitted_height'] = result['fitted_height'];
+    _inputs['image_width'] = result['image_width'];
+    _inputs['image_height'] = result['image_height'];
+    _inputs['image_left'] = result['image_left'];
+    _inputs['image_top'] = result['image_top'];
+    _inputs['outpaint_preview'] = bytes;
+  }
+
+  Future<void> _openExpandCanvasIfNeeded() async {
+    if (!mounted || _tool.capabilityId != 'expand_scene') return;
+    final alignment = _inputs['alignment']?.toString().trim() ?? '';
+    if (alignment.isNotEmpty) return;
+    final bytes = _firstImageBytes(_inputs['init_image']) ??
+        _firstImageBytes(_inputs['image']);
+    if (bytes == null) return;
+    final result = await Navigator.push<Map<String, String>>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => OutpaintCanvasPage(imageBytes: bytes),
+        fullscreenDialog: true,
+      ),
+    );
+    if (result != null && mounted) {
+      setState(() => _storeOutpaintResult(result, bytes));
+    }
+  }
+
+  List<(String, String, String)> get _studioChipOptions {
+    if (_isVideoStudio) {
+      return const [
+        ('create_video', 'Create', 'Create video'),
+        ('animate_image', 'Animate', 'Animate image'),
+      ];
+    }
+    return const [
+      ('create_image', 'Create', 'Create image'),
+      ('edit_image', 'Edit', 'Edit image'),
+      ('upscale', 'Upscale', 'Upscale image'),
+      ('remove_background', 'Remove', 'Remove background'),
+      ('expand_scene', 'Expand', 'Expand scene'),
+    ];
+  }
+
+  Widget _buildImageStudioChips(ColorScheme cs) {
+    final options = _studioChipOptions;
+    return SizedBox(
+      height: 32,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        itemCount: options.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 6),
+        itemBuilder: (_, index) {
+          final option = options[index];
+          final selected = _tool.capabilityId == option.$1;
+          return Semantics(
+            button: true,
+            selected: selected,
+            label: option.$3,
+            child: Material(
+              color: selected
+                  ? cs.primary
+                  : cs.surfaceContainerHigh.withValues(alpha: 0.7),
+              borderRadius: BorderRadius.circular(AppStyles.radiusFull),
+              child: InkWell(
+                onTap: () => unawaited(_switchImageStudio(option.$1)),
+                borderRadius: BorderRadius.circular(AppStyles.radiusFull),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  child: Center(
+                    child: Text(
+                      option.$2,
+                      style: TextStyle(
+                        color: selected ? cs.onPrimary : cs.onSurface,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   // ---------- Composer Card ----------
@@ -7379,11 +7858,11 @@ class _GenericToolPageState extends State<GenericToolPage>
         !_promptFilling;
 
     final modelName = _selectedModelData?['name'] as String? ??
-        widget.config.models?.firstWhere(
-          (m) => m['id'] == (_selectedModelId ?? widget.config.model),
-          orElse: () => {'name': widget.config.model},
+        _tool.models?.firstWhere(
+          (m) => m['id'] == (_selectedModelId ?? _tool.model),
+          orElse: () => {'name': _tool.model},
         )['name'] as String? ??
-        widget.config.model;
+        _tool.model;
 
     final attachments = _collectComposerAttachments();
     final attachInputs = _attachableInputs();
@@ -7441,7 +7920,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                 _buildMediaComposerEmptyHint(cs, attachInputs),
                 const SizedBox(height: 10),
               ],
-              if (widget.config.capabilityId == 'edit_image') ...[
+              if (_tool.capabilityId == 'edit_image') ...[
                 _buildEditBrushRow(cs, attachments),
                 const SizedBox(height: 8),
               ],
@@ -7551,7 +8030,7 @@ class _GenericToolPageState extends State<GenericToolPage>
               ),
 
               if (_isSpeechTool &&
-                  (_selectedModelId ?? widget.config.model) ==
+                  (_selectedModelId ?? _tool.model) ==
                       'qwen_voice_clone' &&
                   _inputs['reference_audio'] is! Uint8List)
                 Padding(
@@ -7573,19 +8052,39 @@ class _GenericToolPageState extends State<GenericToolPage>
               ),
               const SizedBox(height: 8),
 
-              // Meta / action row: [+ Attach] · Single|Bulk · Model badge · char counter
+              // Meta / action row: studio chips on the left, attach and tools on the right.
               Row(
                 children: [
-                  if (canAttach) ...[
-                    _ComposerIconButton(
-                      icon: LucideIcons.plus,
-                      tooltip: 'Attach',
-                      onTap: () => _showAttachSheet(attachInputs),
-                      active: attachments.isNotEmpty,
-                    ),
-                    const SizedBox(width: 8),
+                  if (_showStudioChips) ...[
+                    Expanded(child: _buildImageStudioChips(cs)),
+                    const SizedBox(width: 6),
+                  ] else ...[
+                    if (canAttach) ...[
+                      _ComposerIconButton(
+                        icon: LucideIcons.plus,
+                        tooltip: 'Attach',
+                        onTap: () => _showAttachSheet(attachInputs),
+                        active: attachments.isNotEmpty,
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    if (_supportsBulkEdit) ...[
+                      _buildImageModeSwitch(
+                        cs,
+                        isVipUser(),
+                        isBulkMode,
+                        iconOnly: true,
+                        beforeLeaveBulk: _leaveBulkModeCleanup,
+                        onEnterBulk: _enterBulkModeSetup,
+                      ),
+                      const SizedBox(width: 6),
+                      _buildComposerBulkModeBadge(cs),
+                      const Spacer(),
+                    ] else ...[
+                      const Spacer(),
+                    ],
                   ],
-                  if (_supportsBulkEdit) ...[
+                  if (_showStudioChips && _supportsBulkEdit) ...[
                     _buildImageModeSwitch(
                       cs,
                       isVipUser(),
@@ -7595,12 +8094,23 @@ class _GenericToolPageState extends State<GenericToolPage>
                       onEnterBulk: _enterBulkModeSetup,
                     ),
                     const SizedBox(width: 6),
-                    _buildComposerBulkModeBadge(cs),
-                    const Spacer(),
-                  ] else ...[
-                    const Spacer(),
                   ],
-                  if (!_isAudioTool && !_hidesStyleAndTags)
+                  if (_showStudioChips &&
+                      (canAttach ||
+                          _tool.capabilityId == 'create_image' ||
+                          _tool.capabilityId == 'create_video')) ...[
+                    _ComposerIconButton(
+                      icon: LucideIcons.plus,
+                      tooltip: 'Attach',
+                      onTap: () =>
+                          _showAttachSheet(_composerAttachInputs(attachInputs)),
+                      active: attachments.isNotEmpty,
+                    ),
+                    const SizedBox(width: 6),
+                  ],
+                  if (!_imageStudioHidesPrompt &&
+                      !_isAudioTool &&
+                      !_hidesStyleAndTags)
                     _ComposerIconButton(
                       icon: LucideIcons.palette,
                       tooltip: _promptStylesVisible
@@ -7610,8 +8120,9 @@ class _GenericToolPageState extends State<GenericToolPage>
                           () => _promptStylesVisible = !_promptStylesVisible),
                       active: _promptStylesVisible,
                     ),
-                  const SizedBox(width: 6),
-                  _autoPromptButton(
+                  if (!_imageStudioHidesPrompt) ...[
+                    const SizedBox(width: 6),
+                    _autoPromptButton(
                     fieldRef: ref,
                     suggestField: 'prompt',
                     currentText: _promptController.text,
@@ -7623,6 +8134,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                       _inputs[ref] = value;
                     },
                   ),
+                  ],
                   if (!_isInpaintEraseTool) ...[
                     const SizedBox(width: 6),
                     _ComposerIconButton(
@@ -7724,11 +8236,11 @@ class _GenericToolPageState extends State<GenericToolPage>
     if (attachInputs.isEmpty) return const SizedBox.shrink();
 
     final modelName = _selectedModelData?['name'] as String? ??
-        widget.config.models?.firstWhere(
-          (m) => m['id'] == (_selectedModelId ?? widget.config.model),
-          orElse: () => {'name': widget.config.model},
+        _tool.models?.firstWhere(
+          (m) => m['id'] == (_selectedModelId ?? _tool.model),
+          orElse: () => {'name': _tool.model},
         )['name'] as String? ??
-        widget.config.model;
+        _tool.model;
 
     final attachments = _collectComposerAttachments();
     final canAttach = attachInputs.isNotEmpty;
@@ -7817,29 +8329,47 @@ class _GenericToolPageState extends State<GenericToolPage>
               const SizedBox(height: 8),
               Row(
                 children: [
-                  if (canAttach) ...[
+                  if (_showStudioChips) ...[
+                    Expanded(child: _buildImageStudioChips(cs)),
+                    const SizedBox(width: 6),
+                  ] else ...[
+                    if (canAttach) ...[
+                      _ComposerIconButton(
+                        icon: LucideIcons.plus,
+                        tooltip: 'Add media',
+                        onTap: () => _showAttachSheet(attachInputs),
+                        active: attachments.isNotEmpty,
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    if (_supportsBulkEdit) ...[
+                      _buildImageModeSwitch(
+                        cs,
+                        isVipUser(),
+                        isBulkMode,
+                        iconOnly: true,
+                        beforeLeaveBulk: _leaveBulkModeCleanup,
+                        onEnterBulk: _enterBulkModeSetup,
+                      ),
+                      const SizedBox(width: 6),
+                      _buildComposerBulkModeBadge(cs),
+                      const Spacer(),
+                    ] else ...[
+                      const Spacer(),
+                    ],
+                  ],
+                  if (_showStudioChips &&
+                      (canAttach ||
+                          _tool.capabilityId == 'create_image' ||
+                          _tool.capabilityId == 'create_video')) ...[
                     _ComposerIconButton(
                       icon: LucideIcons.plus,
                       tooltip: 'Add media',
-                      onTap: () => _showAttachSheet(attachInputs),
+                      onTap: () =>
+                          _showAttachSheet(_composerAttachInputs(attachInputs)),
                       active: attachments.isNotEmpty,
                     ),
-                    const SizedBox(width: 8),
-                  ],
-                  if (_supportsBulkEdit) ...[
-                    _buildImageModeSwitch(
-                      cs,
-                      isVipUser(),
-                      isBulkMode,
-                      iconOnly: true,
-                      beforeLeaveBulk: _leaveBulkModeCleanup,
-                      onEnterBulk: _enterBulkModeSetup,
-                    ),
                     const SizedBox(width: 6),
-                    _buildComposerBulkModeBadge(cs),
-                    const Spacer(),
-                  ] else ...[
-                    const Spacer(),
                   ],
                   if (!_isInpaintEraseTool)
                     _ComposerIconButton(
@@ -7922,7 +8452,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     }
 
     // Single-mode attachments across all declared inputs.
-    for (final i in widget.config.inputs) {
+    for (final i in _tool.inputs) {
       final id = i['id'] as String?;
       final t = i['type'] as String?;
       if (id == null || t == null) continue;
@@ -8054,7 +8584,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   bool get _captionFromAttachment {
-    final id = widget.config.capabilityId;
+    final id = _tool.capabilityId;
     return id == 'edit_image' || id == 'expand_scene' || _isOutpaint;
   }
 
@@ -8160,13 +8690,37 @@ class _GenericToolPageState extends State<GenericToolPage>
           if (!mounted || caption == null) return;
         }
       }
-      final (prompt, err) = await MediaUploadService.suggestPrompt(
+      final relate = _relatesMusicFields(fieldRef);
+      final filledBoxes = <String, String>{};
+      final also = <String>[];
+      if (relate) {
+        for (final ref in _advancedMusicBoxRefs()) {
+          if (ref == fieldRef) continue;
+          final value = _musicBoxText(ref).trim();
+          if (value.isEmpty) {
+            also.add(ref);
+          } else {
+            filledBoxes[ref] = value;
+          }
+        }
+        if (fieldRef != 'prompt') {
+          final idea = _promptController.text.trim();
+          if (idea.isNotEmpty) filledBoxes.putIfAbsent('prompt', () => idea);
+        }
+        if (_isSunoV6 && fieldRef != 'style') {
+          final style = _sunoStyleController.text.trim();
+          if (style.isNotEmpty) filledBoxes.putIfAbsent('style', () => style);
+        }
+      }
+      final (prompt, err, related) = await MediaUploadService.suggestPrompt(
         baseUrl: controllerUrl,
         authToken: token,
-        modelId: _selectedModelId ?? widget.config.model,
-        field: suggestField,
+        modelId: _selectedModelId ?? _tool.model,
+        field: relate ? fieldRef : suggestField,
         text: typed,
         caption: caption,
+        context: filledBoxes,
+        also: also,
       );
       if (!mounted) return;
       if (prompt == null || prompt.trim().isEmpty) {
@@ -8176,6 +8730,12 @@ class _GenericToolPageState extends State<GenericToolPage>
         return;
       }
       apply(prompt.trim());
+      if (relate) {
+        for (final entry in related.entries) {
+          if (entry.key == fieldRef) continue;
+          _writeMusicBoxIfEmpty(entry.key, entry.value);
+        }
+      }
       setState(() {});
       sheetSetter?.call(() {});
     } finally {
@@ -8224,7 +8784,7 @@ class _GenericToolPageState extends State<GenericToolPage>
 
   /// Inputs on this tool that can be attached through the composer's + sheet.
   List<Map<String, dynamic>> _attachableInputs() {
-    return widget.config.inputs
+    return _tool.inputs
         .where((i) {
           final t = i['type'];
           final ok = t == 'image' ||
@@ -8283,7 +8843,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     return InkWell(
       onTap: () {
         if (_supportsBulkVideoEdit) {
-          final vi = widget.config.inputs.firstWhere(
+          final vi = _tool.inputs.firstWhere(
             (i) => i['type'] == 'video' || i['type'] == 'video_upload',
             orElse: () => <String, dynamic>{},
           );
@@ -8728,6 +9288,19 @@ class _GenericToolPageState extends State<GenericToolPage>
           break;
       }
     });
+    final removedStudioPhoto = a.kind == _ComposerAttachmentKind.image &&
+        (a.ref == 'init_image' || a.ref == 'image');
+    if (removedStudioPhoto &&
+        _firstImageBytes(_inputs['init_image']) == null &&
+        _firstImageBytes(_inputs['image']) == null) {
+      final bulk = _advancedSettings.bulkEditEnabled && _supportsBulkEdit;
+      if (_tool.capabilityId == 'edit_image') {
+        _clearStudioOutpaint();
+        if (!bulk) unawaited(_switchImageStudio('create_image'));
+      } else if (_tool.capabilityId == 'animate_image' && !bulk) {
+        unawaited(_switchImageStudio('create_video'));
+      }
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -8743,7 +9316,7 @@ class _GenericToolPageState extends State<GenericToolPage>
       return t == 'image' || t == 'image_upload';
     }).toList();
     if (_isAnimateImageTool) {
-      final mid = _selectedModelId ?? widget.config.model;
+      final mid = _selectedModelId ?? _tool.model;
       imageInputs = imageInputs.where((i) {
         final id = i['id'] as String?;
         if (id == 'last_frame_image') return false;
@@ -8931,7 +9504,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                 if (hasVideo &&
                     hasImage &&
                     (!_isAnimateImageTool ||
-                        (_selectedModelId ?? widget.config.model) ==
+                        (_selectedModelId ?? _tool.model) ==
                             'dreamid' ||
                         (_isCineRealAnimateModel &&
                             !_advancedSettings.bulkEditEnabled &&
@@ -8959,7 +9532,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                     !_advancedSettings.bulkEditEnabled) ...[
                   Builder(
                     builder: (_) {
-                      final mid = _selectedModelId ?? widget.config.model;
+                      final mid = _selectedModelId ?? _tool.model;
                       final showEndRow = mid == _kCineRealAnimateModelId ||
                           mid == _kLegacyCineRealAnimateModelId ||
                           mid == _kCinemotionProModelId ||
@@ -9102,7 +9675,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   /// Drops single-mode image/video bytes from [_inputs] when entering bulk so
   /// the composer and submit path stay bulk-only (CineReal: see [_enterBulkModeSetup]).
   void _clearSingleModeComposerMediaFromInputs() {
-    for (final raw in widget.config.inputs) {
+    for (final raw in _tool.inputs) {
       final m = Map<String, dynamic>.from(raw as Map);
       final id = m['id'] as String?;
       final t = m['type'] as String?;
@@ -9305,7 +9878,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                   },
                 ),
               if (isImage &&
-                  (_isOutpaint || widget.config.capabilityId == 'expand_scene'))
+                  (_isOutpaint || _tool.capabilityId == 'expand_scene'))
                 _AttachListRow(
                   icon: LucideIcons.expand,
                   label: 'Adjust placement',
@@ -9443,7 +10016,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                   !_advancedSettings.bulkEditEnabled) ...[
                 Builder(
                   builder: (_) {
-                    final inputDef = widget.config.inputs.firstWhere(
+                    final inputDef = _tool.inputs.firstWhere(
                         (i) => i['id'] == a.ref,
                         orElse: () => <String, dynamic>{});
                     if (inputDef.isEmpty) return const SizedBox.shrink();
@@ -9676,7 +10249,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   void _replaceAttachment(_ComposerAttachment a) {
-    final inputDef = widget.config.inputs
+    final inputDef = _tool.inputs
         .firstWhere((i) => i['id'] == a.ref, orElse: () => {});
     if (inputDef.isEmpty) return;
     switch (a.kind) {
@@ -9766,7 +10339,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     final shortcuts = <_ShortcutEntry>[];
 
     // Mode section
-    if (widget.config.modes != null && widget.config.modes!.isNotEmpty) {
+    if (_tool.modes != null && _tool.modes!.isNotEmpty) {
       shortcuts.add(_ShortcutEntry(
         id: 'mode',
         icon: LucideIcons.layers,
@@ -9938,14 +10511,14 @@ class _GenericToolPageState extends State<GenericToolPage>
   // ======================================================================
   // Phase 2 — Preemptive input-type scaffolds
   // Each builder mirrors the conventions of the existing ones: reads from
-  // `widget.config.inputs`, writes to `_inputs[ref]` (and secondary keys
+  // `_tool.inputs`, writes to `_inputs[ref]` (and secondary keys
   // like `${ref}_path` where applicable), honors `showWhen` / `showForModels`
   // and config-provided `required` / `default` values.
   // ======================================================================
 
   /// Returns the input spec for [ref] from tool_config, or an empty map.
   Map<String, dynamic> _inputSpec(String ref) => Map<String, dynamic>.from(
-      widget.config.inputs.firstWhere((i) => i['id'] == ref, orElse: () => {}));
+      _tool.inputs.firstWhere((i) => i['id'] == ref, orElse: () => {}));
 
   /// Shared gate that every dynamic element honors: hides the widget if the
   /// input config declares `showWhen` or `showForModels` and the condition
@@ -10011,7 +10584,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     }
     final showForModels = input['showForModels'] as List<dynamic>?;
     if (showForModels != null && showForModels.isNotEmpty) {
-      final currentModel = _selectedModelId ?? widget.config.model;
+      final currentModel = _selectedModelId ?? _tool.model;
       if (!showForModels.contains(currentModel)) return false;
     }
     final showWhen = input['showWhen'] as Map<String, dynamic>?;
@@ -12571,8 +13144,11 @@ class _GenericToolPageState extends State<GenericToolPage>
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    // Video player
-                    VideoPlayer(controller),
+                    SafeVideoView(
+                      controller: controller,
+                      fit: BoxFit.contain,
+                      fallback: const ColoredBox(color: Colors.black),
+                    ),
                     // Play/Pause button overlay
                     ValueListenableBuilder<VideoPlayerValue>(
                       valueListenable: controller,
@@ -12604,7 +13180,12 @@ class _GenericToolPageState extends State<GenericToolPage>
                 fit: StackFit.expand,
                 children: [
                   // Video player
-                  if (controller != null) VideoPlayer(controller),
+                  if (controller != null)
+                    SafeVideoView(
+                      controller: controller,
+                      fit: BoxFit.contain,
+                      fallback: const ColoredBox(color: Colors.black),
+                    ),
                   // For non-upscaler tools, show static play icon (existing behavior)
                   if (controller != null && !_isVideoUpscalerTool)
                     Container(
@@ -12658,8 +13239,8 @@ class _GenericToolPageState extends State<GenericToolPage>
       // For video upscaler: check maxDuration cap from tool_config.json (default 2 minutes = 120 seconds)
       if (_isVideoUpscalerTool) {
         // Get maxDuration from tool_config.json
-        final modelId = _selectedModelId ?? widget.config.model;
-        final modelData = widget.config.models?.firstWhere(
+        final modelId = _selectedModelId ?? _tool.model;
+        final modelData = _tool.models?.firstWhere(
               (m) => m['id'] == modelId,
               orElse: () => <String, dynamic>{},
             ) ??
@@ -12753,8 +13334,8 @@ class _GenericToolPageState extends State<GenericToolPage>
           // Also store as video_duration for template resolution
           if (_isVideoUpscalerTool) {
             // Get maxDuration from tool_config.json (default 2 minutes = 120 seconds)
-            final modelId = _selectedModelId ?? widget.config.model;
-            final modelData = widget.config.models?.firstWhere(
+            final modelId = _selectedModelId ?? _tool.model;
+            final modelData = _tool.models?.firstWhere(
                   (m) => m['id'] == modelId,
                   orElse: () => <String, dynamic>{},
                 ) ??
@@ -12787,8 +13368,8 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   int _modelMaxVideoDurationSeconds() {
-    final modelId = _selectedModelId ?? widget.config.model;
-    final modelData = widget.config.models?.firstWhere(
+    final modelId = _selectedModelId ?? _tool.model;
+    final modelData = _tool.models?.firstWhere(
           (m) => m['id'] == modelId,
           orElse: () => <String, dynamic>{},
         ) ??
@@ -13730,7 +14311,7 @@ class _GenericToolPageState extends State<GenericToolPage>
         (data is List) ? List<Uint8List>.from(data) : [data as Uint8List];
     final mask = _inputs["mask_image"];
 
-    final bool isOutpaint = widget.config.model == "diffusers_outpaint";
+    final bool isOutpaint = _tool.model == "diffusers_outpaint";
 
     // Read outpaint config (from OutpaintCanvasPage)
     final String alignment =
@@ -14220,7 +14801,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   // -------- Slider --------
   Widget _buildSlider(String ref, {StateSetter? sheetSetter}) {
     final cs = Theme.of(context).colorScheme;
-    final input = widget.config.inputs
+    final input = _tool.inputs
         .firstWhere((i) => i["id"] == ref, orElse: () => {});
     if (!_elementShouldRender(Map<String, dynamic>.from(input))) {
       return const SizedBox.shrink();
@@ -14354,7 +14935,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   // -------- Toggle (Switch) --------
   Widget _buildToggle(String ref, {StateSetter? sheetSetter}) {
     final cs = Theme.of(context).colorScheme;
-    final input = widget.config.inputs
+    final input = _tool.inputs
         .firstWhere((i) => i["id"] == ref, orElse: () => {});
     final label = input["label"] ?? ref;
     final description = input["description"] as String?;
@@ -14362,7 +14943,7 @@ class _GenericToolPageState extends State<GenericToolPage>
 
     // Check if toggle should be shown for current model
     if (showForModels != null && showForModels.isNotEmpty) {
-      final currentModel = _selectedModelId ?? widget.config.model;
+      final currentModel = _selectedModelId ?? _tool.model;
       if (!showForModels.contains(currentModel)) {
         return const SizedBox.shrink();
       }
@@ -14441,7 +15022,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   // -------- Dropdown (ChoiceChips) --------
   Widget _buildDropdown(String ref, {StateSetter? sheetSetter}) {
     final cs = Theme.of(context).colorScheme;
-    final input = widget.config.inputs
+    final input = _tool.inputs
         .firstWhere((i) => i["id"] == ref, orElse: () => {});
     if (!_elementShouldRender(input)) return const SizedBox.shrink();
     final label = input["label"] ?? ref;
@@ -14724,8 +15305,8 @@ class _GenericToolPageState extends State<GenericToolPage>
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   // 1. Mode selector (self-contained pill)
-                  if (widget.config.modes != null &&
-                      widget.config.modes!.isNotEmpty)
+                  if (_tool.modes != null &&
+                      _tool.modes!.isNotEmpty)
                     KeyedSubtree(
                       key: _modeSectionKey,
                       child: _buildModeSelector(),
@@ -15041,11 +15622,11 @@ class _GenericToolPageState extends State<GenericToolPage>
   Widget _buildSettingsSummary(ColorScheme cs) {
     // Get model name
     final modelName = _selectedModelData?['name'] as String? ??
-        widget.config.models?.firstWhere(
-          (m) => m['id'] == widget.config.model,
-          orElse: () => {'name': widget.config.model},
+        _tool.models?.firstWhere(
+          (m) => m['id'] == _tool.model,
+          orElse: () => {'name': _tool.model},
         )['name'] as String? ??
-        widget.config.model;
+        _tool.model;
 
     // Check upscale status
     final isUpscaled = _isVideoUpscalerTool
@@ -15211,7 +15792,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     int totalBeforeDiscount;
     if (_isVideoUpscalerTool) {
       totalBeforeDiscount = _videoUpscalerUndiscountedCreditsTotal();
-    } else if (widget.config.outputType == 'video' && !_isVideoUpscalerTool) {
+    } else if (_tool.outputType == 'video' && !_isVideoUpscalerTool) {
       final baseCostPerVariation =
           _getDurationBasedCost() + _enhancementUpscaleCreditsPerVariation();
       totalBeforeDiscount = baseCostPerVariation * variations * imageCount;
@@ -15438,11 +16019,11 @@ class _GenericToolPageState extends State<GenericToolPage>
 
     // Get model name
     final modelName = _selectedModelData?['name'] as String? ??
-        widget.config.models?.firstWhere(
-          (m) => m['id'] == widget.config.model,
-          orElse: () => {'name': widget.config.title},
+        _tool.models?.firstWhere(
+          (m) => m['id'] == _tool.model,
+          orElse: () => {'name': _tool.title},
         )['name'] as String? ??
-        widget.config.title;
+        _tool.title;
 
     final result = await showModalBottomSheet<bool>(
       context: context,
@@ -15536,7 +16117,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                       cs,
                       icon: LucideIcons.sparkles,
                       label: 'Tool',
-                      value: widget.config.title,
+                      value: _tool.title,
                       iconColor: KalaColors.purple,
                     ),
                     const SizedBox(height: 12),
@@ -16531,7 +17112,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   Map<String, dynamic>? _speechModel(String id) {
-    for (final model in widget.config.models ?? const <Map<String, dynamic>>[]) {
+    for (final model in _tool.models ?? const <Map<String, dynamic>>[]) {
       if (model['id'] == id && model['enabled'] != false) return model;
     }
     return null;
@@ -16655,7 +17236,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   String _speechSettingsSummary() {
-    final current = _selectedModelId ?? widget.config.model;
+    final current = _selectedModelId ?? _tool.model;
     if (current == 'qwen_voice_clone') {
       return 'Clone · ${_speechChoiceLabel('clone_language')}';
     }
@@ -16668,7 +17249,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   /// Same pill control as Pre Made Voice / Clone a Voice.
   /// Shown in Additional Settings while a premade voice is selected.
   Widget _buildSpeechStylePicker(StateSetter setSheetState) {
-    final current = _selectedModelId ?? widget.config.model;
+    final current = _selectedModelId ?? _tool.model;
     if (current == 'qwen_voice_clone') return const SizedBox.shrink();
     final describe = current == 'qwen_voice_design';
     return Padding(
@@ -16693,8 +17274,8 @@ class _GenericToolPageState extends State<GenericToolPage>
   /// Pre Made Voice and Clone a Voice. Voice style is chosen in settings.
   Widget _buildSpeechModeBar() {
     final cs = Theme.of(context).colorScheme;
-    if ((widget.config.models ?? []).length < 2) return const SizedBox.shrink();
-    final current = _selectedModelId ?? widget.config.model;
+    if ((_tool.models ?? []).length < 2) return const SizedBox.shrink();
+    final current = _selectedModelId ?? _tool.model;
     final clone = current == 'qwen_voice_clone';
     final description = _selectedModelData?['description'] as String?;
 
@@ -17088,7 +17669,7 @@ class _GenericToolPageState extends State<GenericToolPage>
         if (element['input_ref'] is String) element['input_ref'] as String,
     };
     final fields = <Map<String, dynamic>>[];
-    for (final input in widget.config.inputs) {
+    for (final input in _tool.inputs) {
       if (input is! Map) continue;
       final type = input['type'];
       if (type != 'dropdown' &&
@@ -17133,7 +17714,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     const ids = ['upscale_factor', 'enhance_details', 'realism'];
     final children = <Widget>[];
     for (final id in ids) {
-      final input = widget.config.inputs.cast<dynamic>().firstWhere(
+      final input = _tool.inputs.cast<dynamic>().firstWhere(
             (i) => i is Map && i['id'] == id,
             orElse: () => null,
           );
@@ -17159,7 +17740,7 @@ class _GenericToolPageState extends State<GenericToolPage>
 
   Widget _buildModeSelector() {
     final cs = Theme.of(context).colorScheme;
-    final modes = widget.config.modes!;
+    final modes = _tool.modes!;
     final modeKeys = modes.keys.toList();
 
     // The segmented pill is already self-explanatory; skip the bulky header.
@@ -17808,7 +18389,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     if (template is! Map) return;
     final listed = _isAudioTool ||
         _isFlashOrCanvasModel ||
-        widget.config.capabilityId == 'upscale';
+        _tool.capabilityId == 'upscale';
     if (!listed) return;
     final allowed = <String>{
       for (final key in template.keys) key.toString(),
@@ -17956,7 +18537,7 @@ class _GenericToolPageState extends State<GenericToolPage>
           ? expanded
           : _promptController.text.trim();
     }
-    final activeModel = _selectedModelId ?? widget.config.model;
+    final activeModel = _selectedModelId ?? _tool.model;
     if (activeModel == 'flux2_klein_9b_edit') {
       _inputs['aspect_ratio'] = _aspectFromAttachedPhoto();
     } else if (_isFlashOrCanvasModel && !_isEditImageTool) {
@@ -18061,7 +18642,7 @@ class _GenericToolPageState extends State<GenericToolPage>
                 (encoded["prompt"] as String).isEmpty))) {
       encoded["prompt"] = _promptController.text.trim();
     }
-    if (widget.config.params?.containsKey("mode") == true &&
+    if (_tool.params?.containsKey("mode") == true &&
         _selectedModeKey != null &&
         !_inputs.containsKey("mode")) {
       encoded["mode"] = _selectedModeKey;
@@ -18162,7 +18743,7 @@ vocalLanguage is ${vocals ? 'en, es, fr, de, hi, ja, ko, zh, pt, it, ru, or ar, 
       return false;
     }
     final vocals = _inputs['vocals'] != false;
-    final model = _selectedModelId ?? widget.config.model;
+    final model = _selectedModelId ?? _tool.model;
     final isPro = model == 'minimax_music_26';
     final writeLyrics =
         vocals && !(isPro && _inputs['lyrics_optimizer'] != false);
@@ -18591,7 +19172,7 @@ Return only the JSON fields.
         }
 
         // 🩵 Auto-inject mode for multi-mode tools (WAN / SDXL)
-        if (widget.config.params?.containsKey("mode") == true &&
+        if (_tool.params?.containsKey("mode") == true &&
             _selectedModeKey != null &&
             !_inputs.containsKey("mode")) {
           encoded["mode"] = _selectedModeKey;
@@ -18599,9 +19180,9 @@ Return only the JSON fields.
         }
 
         // 🩵 Fallback: make sure root_params prompt is filled
-        if (widget.config.rootParams != null &&
-            !widget.config.rootParams!.containsKey("prompt")) {
-          widget.config.rootParams!["prompt"] = "{{prompt}}";
+        if (_tool.rootParams != null &&
+            !_tool.rootParams!.containsKey("prompt")) {
+          _tool.rootParams!["prompt"] = "{{prompt}}";
         }
 
         if (!usedEncodedPrefetch) {
@@ -18610,7 +19191,7 @@ Return only the JSON fields.
 
         // 🩵 Safe default for sliders (avoid missing scale_factor)
         if (!encoded.containsKey("scale_factor")) {
-          final def = widget.config.inputs.firstWhere(
+          final def = _tool.inputs.firstWhere(
               (i) => i["id"] == "scale_factor",
               orElse: () => {"default": 1});
           encoded["scale_factor"] = def["default"] ?? 1;
@@ -18618,7 +19199,7 @@ Return only the JSON fields.
 
         // --- Auto width/height inference (with null safety) ---
         try {
-          final imgInput = widget.config.inputs
+          final imgInput = _tool.inputs
               .firstWhere((i) => i["type"] == "image", orElse: () => {});
           final id = imgInput["id"];
           if (encoded.containsKey(id)) {
@@ -18694,7 +19275,7 @@ Return only the JSON fields.
             if (encoded.containsKey(alias)) return encoded[alias];
           }
           try {
-            final def = widget.config.inputs.firstWhere(
+            final def = _tool.inputs.firstWhere(
               (i) =>
                   i is Map &&
                   (i['id'] == refId || i['id'] == refId.replaceAll('-', '_')),
@@ -18710,7 +19291,7 @@ Return only the JSON fields.
         // Get params from selected model or fallback to config
         Map<String, dynamic>? modelParams =
             _selectedModelData?['params'] as Map<String, dynamic>? ??
-                widget.config.params;
+                _tool.params;
         if (_isCineRealAnimateModel && _isCineRealFlf2vMode) {
           final p = _selectedModelData?['paramsFlf2v'] as Map<String, dynamic>?;
           if (p != null && p.isNotEmpty) {
@@ -18719,7 +19300,7 @@ Return only the JSON fields.
         }
         final Map<String, dynamic>? modelRootParams =
             _selectedModelData?['rootParams'] as Map<String, dynamic>? ??
-                widget.config.rootParams;
+                _tool.rootParams;
 
         // Resolve {{template}} placeholders
         modelParams?.forEach((key, value) {
@@ -18734,7 +19315,7 @@ Return only the JSON fields.
                 consumedInputs.add(ref);
               } else {
                 debugPrint(
-                    '⚠️ Unresolved param placeholder {{$ref}} for key="$key" (model=${_selectedModelId ?? widget.config.model})');
+                    '⚠️ Unresolved param placeholder {{$ref}} for key="$key" (model=${_selectedModelId ?? _tool.model})');
               }
             }
           }
@@ -18753,7 +19334,7 @@ Return only the JSON fields.
               consumedInputs.add(refId);
             } else {
               debugPrint(
-                  '⚠️ Unresolved root placeholder {{$refId}} for key="$key" (model=${_selectedModelId ?? widget.config.model})');
+                  '⚠️ Unresolved root placeholder {{$refId}} for key="$key" (model=${_selectedModelId ?? _tool.model})');
             }
           }
           rootParams[key] = val;
@@ -18788,7 +19369,7 @@ Return only the JSON fields.
         }
 
         // Get model ID for model-specific handling
-        final currentModelId = _selectedModelId ?? widget.config.model;
+        final currentModelId = _selectedModelId ?? _tool.model;
 
         // LoRA adapter for qwen_image_edit_2511_rapid_aio
         if (currentModelId == 'qwen_image_edit_2511_rapid_aio') {
@@ -18932,7 +19513,7 @@ Return only the JSON fields.
 
         // --- Build payload ---
         // Send ONE request with variations: N, server creates N jobs internally
-        final modelId = _selectedModelId ?? widget.config.model;
+        final modelId = _selectedModelId ?? _tool.model;
 
         // LoRA adapter for qwen_image_edit_2511_rapid_aio
         if (modelId == 'qwen_image_edit_2511_rapid_aio') {
@@ -18940,7 +19521,7 @@ Return only the JSON fields.
         }
 
         // Duration handling for video models (animate_image, create_video — not video upscaler)
-        if (widget.config.outputType == 'video' && !_isVideoUpscalerTool) {
+        if (_tool.outputType == 'video' && !_isVideoUpscalerTool) {
           final duration =
               _clampVideoGenDurationSeconds(_advancedSettings.videoDuration);
 
@@ -19043,7 +19624,7 @@ Return only the JSON fields.
             resolvedParams.remove(k);
           }
           // LTX 2.3: spatial 2× upsampler (not Real-ESRGAN/RIFE).
-          if (widget.config.outputType == 'video' && !_isVideoUpscalerTool) {
+          if (_tool.outputType == 'video' && !_isVideoUpscalerTool) {
             if (_advancedSettings.enableUpscale) {
               resolvedParams['use_spatial_upsampler'] = true;
               resolvedParams['offload'] = 'model';
@@ -19083,8 +19664,8 @@ Return only the JSON fields.
           // Add video duration for backend cost calculation
           if (_inputVideoDuration != null) {
             // Get maxDuration from tool_config.json (default to 2 minutes = 120 seconds)
-            final modelId = _selectedModelId ?? widget.config.model;
-            final modelData = widget.config.models?.firstWhere(
+            final modelId = _selectedModelId ?? _tool.model;
+            final modelData = _tool.models?.firstWhere(
                   (m) => m['id'] == modelId,
                   orElse: () => <String, dynamic>{},
                 ) ??
@@ -19124,9 +19705,9 @@ Return only the JSON fields.
         if (useExternalApi != null) {
           resolvedParams['use_external_api'] = useExternalApi;
         }
-        if (widget.config.capabilityId == 'edit_image' &&
-            (_selectedModelId ?? widget.config.model) != 'qwen2_1_i2i' &&
-            (_selectedModelId ?? widget.config.model) !=
+        if (_tool.capabilityId == 'edit_image' &&
+            (_selectedModelId ?? _tool.model) != 'qwen2_1_i2i' &&
+            (_selectedModelId ?? _tool.model) !=
                 'flux2_klein_9b_edit') {
           resolvedParams['aspect_ratio'] = 'auto';
         }
@@ -19280,7 +19861,7 @@ Return only the JSON fields.
 
         if (!isBulkEdit) {
           Uint8List? qwenMaskForUpload;
-          final imageInputDef = widget.config.inputs.firstWhere(
+          final imageInputDef = _tool.inputs.firstWhere(
               (i) => i["type"] == "image",
               orElse: () => <String, dynamic>{});
           final String? imageInputId =
@@ -19304,8 +19885,8 @@ Return only the JSON fields.
             }
 
             if (rawImageList != null && rawImageList.isNotEmpty) {
-              if (widget.config.capabilityId == 'edit_image' &&
-                  (_selectedModelId ?? widget.config.model) == 'qwen2_1_i2i') {
+              if (_tool.capabilityId == 'edit_image' &&
+                  (_selectedModelId ?? _tool.model) == 'qwen2_1_i2i') {
                 final qwenResolution = _qwenResolution;
                 paramsForSubmit['resolution'] = qwenResolution;
                 final fit = fitImageToQwenRatio(
@@ -19342,8 +19923,8 @@ Return only the JSON fields.
                         : 'opaque';
                 paramsForSubmit['output_format'] = 'png';
               }
-              if (widget.config.capabilityId == 'expand_scene') {
-                final modelId = _selectedModelId ?? widget.config.model;
+              if (_tool.capabilityId == 'expand_scene') {
+                final modelId = _selectedModelId ?? _tool.model;
                 final runwareExpand = modelId == 'juggernaut_lightning_expand' ||
                     modelId == 'z_image_turbo_expand';
                 if (runwareExpand) {
@@ -19364,7 +19945,7 @@ Return only the JSON fields.
                     ..['height'] = plan.height
                     ..remove('aspect_ratio');
                 } else {
-                final modelId = _selectedModelId ?? widget.config.model;
+                final modelId = _selectedModelId ?? _tool.model;
                 if (modelId == 'grok_imagine_edit') {
                   const allowed = {
                     '1:1',
@@ -19447,7 +20028,7 @@ Return only the JSON fields.
           if (_isAnimateImageTool &&
               (_isCineRealFlf2vMode ||
                   _isMinimaxH3Model ||
-                  (_selectedModelId ?? widget.config.model) ==
+                  (_selectedModelId ?? _tool.model) ==
                       _kLegacyWanI2vModelId)) {
             final lastRaw = _inputs['last_frame_image'];
             List<Uint8List>? lastList;
@@ -19477,7 +20058,7 @@ Return only the JSON fields.
           final rawMask = qwenMaskForUpload ?? _inputs["mask_image"];
           final photos = _inputs['init_image'];
           final photoCount = photos is List ? photos.length : (photos is Uint8List ? 1 : 0);
-          final qwenBrush = widget.config.capabilityId == 'edit_image' && (_selectedModelId ?? widget.config.model) == 'qwen2_1_i2i';
+          final qwenBrush = _tool.capabilityId == 'edit_image' && (_selectedModelId ?? _tool.model) == 'qwen2_1_i2i';
           final sendMask = rawMask is Uint8List && (!qwenBrush || photoCount == 1);
           if (sendMask) {
             final maskKeys = await MediaUploadService.uploadMediaBatch(
@@ -19549,7 +20130,7 @@ Return only the JSON fields.
           }
         }
 
-        final videoInputDef = widget.config.inputs.firstWhere(
+        final videoInputDef = _tool.inputs.firstWhere(
             (i) => i["type"] == "video",
             orElse: () => <String, dynamic>{});
         if (videoInputDef.isNotEmpty &&
@@ -19595,7 +20176,7 @@ Return only the JSON fields.
         // correct MIME type recorded at pick-time. The resulting R2 key is
         // written under "${id}_r2_key" in basePayload and also mirrored in
         // paramsForSubmit so the backend can pick it up via its template.
-        for (final inputDef in widget.config.inputs) {
+        for (final inputDef in _tool.inputs) {
           final t = inputDef["type"];
           if (t != "audio_upload" && t != "file_upload") continue;
           final id = inputDef["id"] as String?;
@@ -19723,8 +20304,8 @@ Return only the JSON fields.
             final job = JobModel(
               jobId: jobIds[i],
               title: await generateFriendlyJobName(),
-              model: _selectedModelId ?? widget.config.model,
-              outputType: widget.config.outputType,
+              model: _selectedModelId ?? _tool.model,
+              outputType: _tool.outputType,
               status: 'processing',
               inputImagePath: inputPath,
               variations: 1,
@@ -19734,7 +20315,7 @@ Return only the JSON fields.
               originalPrompt: originalPrompt,
               templateId: widget.launchTemplateId,
               templateTitle: widget.launchTemplateTitle,
-              capabilityId: widget.config.capabilityId,
+              capabilityId: _tool.capabilityId,
               settingsSnapshot: _snapshotForSaved(saved, imageIndex),
               creditsCharged: perJobCredits,
               parentJobId: widget.sourceJobId,
@@ -19880,12 +20461,12 @@ Return only the JSON fields.
 
           final String title = await generateFriendlyJobName();
           // Use selected model ID if available, otherwise fall back to config default
-          final actualModelId = _selectedModelId ?? widget.config.model;
+          final actualModelId = _selectedModelId ?? _tool.model;
           final newJob = JobModel(
             jobId: jobId,
             title: title,
             model: actualModelId,
-            outputType: widget.config.outputType,
+            outputType: _tool.outputType,
             downloadUrl: downloadUrl,
             status: 'processing',
             inputImagePath: jobInputImagePath,
@@ -19896,7 +20477,7 @@ Return only the JSON fields.
             originalPrompt: originalPrompt,
             templateId: widget.launchTemplateId,
             templateTitle: widget.launchTemplateTitle,
-            capabilityId: widget.config.capabilityId,
+            capabilityId: _tool.capabilityId,
             settingsSnapshot: _snapshotForSaved(saved, imageIndex),
             creditsCharged: perJobCredits,
             parentJobId: widget.sourceJobId,
@@ -19910,11 +20491,11 @@ Return only the JSON fields.
           await addOrUpdateJob(newJob);
 
           final jobContext = {
-            "title": widget.config.title,
-            "model": widget.config.model,
-            "inputs": widget.config.inputs,
-            "params": widget.config.params,
-            "outputType": widget.config.outputType,
+            "title": _tool.title,
+            "model": _tool.model,
+            "inputs": _tool.inputs,
+            "params": _tool.params,
+            "outputType": _tool.outputType,
           };
           await prefs.setString("notify_job_$jobId", jsonEncode(jobContext));
         }
@@ -20008,7 +20589,7 @@ Return only the JSON fields.
   }
 
   Future<Uint8List?> _extractSingleInputImageBytes() async {
-    final imageInput = widget.config.inputs.firstWhere(
+    final imageInput = _tool.inputs.firstWhere(
       (i) => i["type"] == "image",
       orElse: () => <String, dynamic>{},
     );
@@ -20100,14 +20681,14 @@ Return only the JSON fields.
   }
 
   bool _qwenEditBrush(List<_ComposerAttachment> attachments) {
-    final model = _selectedModelId ?? widget.config.model;
+    final model = _selectedModelId ?? _tool.model;
     if (model != 'qwen2_1_i2i') return false;
     final photos = attachments.where((a) => a.ref == 'init_image' && a.kind == _ComposerAttachmentKind.image);
     return photos.length == 1;
   }
 
   Widget _buildEditBrushRow(ColorScheme cs, List<_ComposerAttachment> attachments) {
-    final model = _selectedModelId ?? widget.config.model;
+    final model = _selectedModelId ?? _tool.model;
     if (model != 'qwen2_1_i2i') return const SizedBox.shrink();
     final photos = attachments.where((a) => a.ref == 'init_image' && a.kind == _ComposerAttachmentKind.image).toList();
     final painted = _inputs['mask_image'] is Uint8List;
@@ -20156,8 +20737,8 @@ Return only the JSON fields.
   // -------- Painter (Mask Editor) --------
   Future<void> _showMaskLayout(Uint8List photo, Uint8List mask) async {
     if (!mounted) return;
-    final qwen = widget.config.capabilityId == 'edit_image' &&
-        (_selectedModelId ?? widget.config.model) == 'qwen2_1_i2i';
+    final qwen = _tool.capabilityId == 'edit_image' &&
+        (_selectedModelId ?? _tool.model) == 'qwen2_1_i2i';
     await Navigator.push<void>(
       context,
       MaterialPageRoute(
@@ -20251,22 +20832,57 @@ class _StylePreviewImage extends StatefulWidget {
   State<_StylePreviewImage> createState() => _StylePreviewImageState();
 }
 
-class _StylePreviewImageState extends State<_StylePreviewImage> {
+class _StylePreviewImageState extends State<_StylePreviewImage>
+    with WidgetsBindingObserver {
   Uint8List? _imageBytes;
   VideoPlayerController? _videoController;
   bool _loading = true;
   bool _isVideo = false;
+  var _playOnResume = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadPreview();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _videoController?.pause();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!_isVideo) return;
+    final current = _videoController;
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      if (current != null &&
+          videoFrameIsReady(current) &&
+          current.value.isPlaying) {
+        _playOnResume = true;
+      }
+      return;
+    }
+    if (state == AppLifecycleState.resumed) {
+      _recoverStyleVideo();
+    }
+  }
+
+  Future<void> _recoverStyleVideo() async {
+    final play = _playOnResume;
+    _playOnResume = false;
+    final next = await StylePreviewManager.instance.recover(
+      widget.style.id,
+      play: play,
+    );
+    if (!mounted) return;
+    setState(() {
+      if (next != null) _videoController = next;
+    });
   }
 
   Future<void> _loadPreview() async {
@@ -20334,16 +20950,10 @@ class _StylePreviewImageState extends State<_StylePreviewImage> {
       );
     }
 
-    if (_isVideo &&
-        _videoController != null &&
-        _videoController!.value.isInitialized) {
-      return FittedBox(
-        fit: BoxFit.cover,
-        child: SizedBox(
-          width: _videoController!.value.size.width,
-          height: _videoController!.value.size.height,
-          child: VideoPlayer(_videoController!),
-        ),
+    if (_isVideo && _videoController != null) {
+      return SafeVideoView(
+        controller: _videoController,
+        fallback: _buildFallback(),
       );
     }
 
@@ -21864,23 +22474,64 @@ class _VideoAttachmentFullScreenDialog extends StatefulWidget {
 }
 
 class _VideoAttachmentFullScreenDialogState
-    extends State<_VideoAttachmentFullScreenDialog> {
-  late final VideoPlayerController _controller;
+    extends State<_VideoAttachmentFullScreenDialog>
+    with WidgetsBindingObserver {
+  VideoPlayerController? _controller;
+  var _playOnResume = false;
 
   @override
   void initState() {
     super.initState();
-    _controller = VideoPlayerController.file(File(widget.videoPath));
-    _controller.initialize().then((_) {
+    WidgetsBinding.instance.addObserver(this);
+    final controller = VideoPlayerController.file(File(widget.videoPath));
+    _controller = controller;
+    controller.initialize().then((_) {
       if (mounted) setState(() {});
     });
-    _controller.setLooping(true);
+    controller.setLooping(true);
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    _controller?.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final current = _controller;
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      if (current != null &&
+          videoFrameIsReady(current) &&
+          current.value.isPlaying) {
+        _playOnResume = true;
+      }
+      unawaited(pauseVideoController(current));
+      return;
+    }
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_recoverAttachment());
+    }
+  }
+
+  Future<void> _recoverAttachment() async {
+    final current = _controller;
+    final play = _playOnResume;
+    _playOnResume = false;
+    final next = await replaceDeadVideo(current, play: play);
+    if (!mounted) {
+      if (next != null && !identical(next, current)) await next.dispose();
+      return;
+    }
+    if (next != null && !identical(next, current)) {
+      _controller = next;
+      try {
+        await current?.dispose();
+      } catch (_) {}
+    }
+    if (mounted) setState(() {});
   }
 
   @override
@@ -21900,18 +22551,25 @@ class _VideoAttachmentFullScreenDialogState
               ),
             ],
           ),
-          if (_controller.value.isInitialized)
+          if (videoFrameIsReady(_controller))
             GestureDetector(
               onTap: () {
-                if (_controller.value.isPlaying) {
-                  _controller.pause();
+                final current = _controller;
+                if (current == null) return;
+                if (current.value.isPlaying) {
+                  current.pause();
                 } else {
-                  _controller.play();
+                  current.play();
                 }
               },
-              child: AspectRatio(
-                aspectRatio: _controller.value.aspectRatio,
-                child: VideoPlayer(_controller),
+              child: SafeVideoView(
+                controller: _controller,
+                layout: SafeVideoLayout.aspect,
+                fit: BoxFit.contain,
+                fallback: const Padding(
+                  padding: EdgeInsets.all(40),
+                  child: CircularProgressIndicator(color: Colors.white54),
+                ),
               ),
             )
           else

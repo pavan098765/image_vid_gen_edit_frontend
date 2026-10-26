@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/safe_video_view.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/studio/studio_api.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/studio/studio_models.dart';
@@ -150,12 +153,15 @@ class _StudioPlayer extends StatefulWidget {
   State<_StudioPlayer> createState() => _StudioPlayerState();
 }
 
-class _StudioPlayerState extends State<_StudioPlayer> {
+class _StudioPlayerState extends State<_StudioPlayer>
+    with WidgetsBindingObserver {
   VideoPlayerController? _c;
+  var _playOnResume = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _c = VideoPlayerController.networkUrl(Uri.parse(widget.url))
       ..initialize().then((_) {
         if (mounted) setState(() {});
@@ -164,22 +170,66 @@ class _StudioPlayerState extends State<_StudioPlayer> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _c?.dispose();
     super.dispose();
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final current = _c;
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      if (current != null &&
+          videoFrameIsReady(current) &&
+          current.value.isPlaying) {
+        _playOnResume = true;
+      }
+      unawaited(pauseVideoController(current));
+      return;
+    }
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_recover());
+    }
+  }
+
+  Future<void> _recover() async {
+    final current = _c;
+    final play = _playOnResume;
+    _playOnResume = false;
+    final next = await replaceDeadVideo(current, play: play);
+    if (!mounted) {
+      if (next != null && !identical(next, current)) await next.dispose();
+      return;
+    }
+    if (next != null && !identical(next, current)) {
+      _c = next;
+      try {
+        await current?.dispose();
+      } catch (_) {}
+    }
+    if (mounted) setState(() {});
+  }
+
+  @override
   Widget build(BuildContext context) {
     final c = _c;
-    if (c == null || !c.value.isInitialized) {
+    if (!videoFrameIsReady(c)) {
       return const ColoredBox(
         color: Colors.black,
         child: Center(child: CircularProgressIndicator()),
       );
     }
     return GestureDetector(
-      onTap: () => c.value.isPlaying ? c.pause() : c.play(),
-      child: VideoPlayer(c),
+      onTap: () => c!.value.isPlaying ? c.pause() : c.play(),
+      child: SafeVideoView(
+        controller: c,
+        fit: BoxFit.contain,
+        fallback: const ColoredBox(
+          color: Colors.black,
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      ),
     );
   }
 }

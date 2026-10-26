@@ -37,6 +37,7 @@ import 'package:kala_ai_create_images_videos_with_ai/core/services/user_service.
 import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_button.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/sign_in_prompt.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/safe_video_view.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/sale_banner.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/media_source_picker_sheet.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/sale_service.dart';
@@ -261,6 +262,7 @@ class _VideoPreviewManager {
   static const int maxConcurrentVideos =
       3; // Increased for better UX with all-video previews
   final Map<String, VideoPlayerController> _activeControllers = {};
+  final Map<String, Future<VideoPlayerController?>> _recovering = {};
   final List<String> _playOrder = []; // Track order for LRU eviction
   Directory? _cacheDir;
 
@@ -400,7 +402,7 @@ class _VideoPreviewManager {
     if (_activeControllers.containsKey(templateId)) {
       _playOrder.remove(templateId);
       _playOrder.add(templateId);
-      return _activeControllers[templateId];
+      return recoverController(templateId);
     }
 
     // If at max capacity, pause and remove oldest
@@ -440,7 +442,44 @@ class _VideoPreviewManager {
   }
 
   void pauseController(String templateId) {
-    _activeControllers[templateId]?.pause();
+    pauseVideoController(_activeControllers[templateId]);
+  }
+
+  Future<void> pauseAll() async {
+    for (final controller in _activeControllers.values) {
+      await pauseVideoController(controller);
+    }
+  }
+
+  /// Reopens a player whose frame was dropped while the app was stopped.
+  Future<VideoPlayerController?> recoverController(
+    String templateId, {
+    bool play = false,
+  }) {
+    final pending = _recovering[templateId];
+    if (pending != null) return pending;
+    final future = _recoverController(templateId, play: play);
+    _recovering[templateId] = future;
+    return future.whenComplete(() => _recovering.remove(templateId));
+  }
+
+  Future<VideoPlayerController?> _recoverController(
+    String templateId, {
+    required bool play,
+  }) async {
+    final current = _activeControllers[templateId];
+    if (current == null) return null;
+    final next = await replaceDeadVideo(current, play: play);
+    if (next == null || identical(next, current)) return current;
+    if (!identical(_activeControllers[templateId], current)) {
+      await next.dispose();
+      return _activeControllers[templateId];
+    }
+    _activeControllers[templateId] = next;
+    try {
+      await current.dispose();
+    } catch (_) {}
+    return next;
   }
 
   void playController(String templateId) {
@@ -1698,7 +1737,6 @@ class _ExploreAIPageState extends State<ExploreAIPage>
       'animate_image',
       'upscale',
       'remove_background',
-      'inpaint',
       'expand_scene',
     ];
 
@@ -1720,7 +1758,13 @@ class _ExploreAIPageState extends State<ExploreAIPage>
     }
 
     // Hidden tools (no enabled model) must not keep an empty grid cell.
-    allTools.removeWhere((tool) => !_capabilityHasEnabledModel(tool));
+    // Inpaint and video upscale stay off this list even if a cached config
+    // still marks a model enabled.
+    const hiddenToolIds = {'inpaint', 'upscale_video'};
+    allTools.removeWhere(
+      (tool) =>
+          hiddenToolIds.contains(tool['id']) || !_capabilityHasEnabledModel(tool),
+    );
 
     // Show 6 tools when collapsed (2 rows x 3 cols), all when expanded
     const collapsedCount = 6;
@@ -3134,7 +3178,9 @@ class _TemplateConfigSheet extends StatefulWidget {
   State<_TemplateConfigSheet> createState() => _TemplateConfigSheetState();
 }
 
-class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
+class _TemplateConfigSheetState extends State<_TemplateConfigSheet>
+    with WidgetsBindingObserver {
+  var _playOnResume = false;
   // ── Friendly display names for LoRA adapters ──
   static const Map<String, String> _loraFriendlyNames = {
     'None': 'None',
@@ -3203,6 +3249,7 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _selectedModelId = widget.template['model'] as String?;
     final jobConfig =
         widget.template['job_config'] as Map<String, dynamic>? ?? {};
@@ -3242,9 +3289,50 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _promptController.dispose();
     _previewVideoController?.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final current = _previewVideoController;
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      if (current != null &&
+          videoFrameIsReady(current) &&
+          current.value.isPlaying) {
+        _playOnResume = true;
+      }
+      pauseVideoController(current);
+      return;
+    }
+    if (state == AppLifecycleState.resumed) {
+      _recoverPreviewVideo();
+    }
+  }
+
+  Future<void> _recoverPreviewVideo() async {
+    final current = _previewVideoController;
+    final play = _playOnResume;
+    _playOnResume = false;
+    if (mounted) {
+      setState(() => _isVideoInitialized = videoFrameIsReady(current));
+    }
+    final next = await replaceDeadVideo(current, play: play);
+    if (!mounted) {
+      if (next != null && !identical(next, current)) await next.dispose();
+      return;
+    }
+    if (next != null && !identical(next, current)) {
+      _previewVideoController = next;
+      try {
+        await current?.dispose();
+      } catch (_) {}
+    }
+    if (!mounted) return;
+    setState(() => _isVideoInitialized = videoFrameIsReady(_previewVideoController));
   }
 
   Map<String, dynamic>? get _capability {
@@ -3558,16 +3646,10 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
           fit: StackFit.expand,
           children: [
             // Background video, image, or gradient
-            if (isVideoPreview &&
-                _isVideoInitialized &&
-                _previewVideoController != null)
-              FittedBox(
-                fit: BoxFit.cover,
-                child: SizedBox(
-                  width: _previewVideoController!.value.size.width,
-                  height: _previewVideoController!.value.size.height,
-                  child: VideoPlayer(_previewVideoController!),
-                ),
+            if (isVideoPreview && _previewVideoController != null)
+              SafeVideoView(
+                controller: _previewVideoController,
+                fallback: _buildGradientFallback(baseHue),
               )
             else if (previewUrl != null &&
                 previewUrl.isNotEmpty &&
@@ -4651,7 +4733,11 @@ class _TemplateCard extends StatefulWidget {
 }
 
 class _TemplateCardState extends State<_TemplateCard>
-    with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
+    with
+        SingleTickerProviderStateMixin,
+        AutomaticKeepAliveClientMixin,
+        WidgetsBindingObserver {
+  var _playOnResume = false;
   late AnimationController _pressController;
   late Animation<double> _scaleAnimation;
   bool _isPressed = false;
@@ -4677,6 +4763,7 @@ class _TemplateCardState extends State<_TemplateCard>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _pressController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 150),
@@ -4693,11 +4780,49 @@ class _TemplateCardState extends State<_TemplateCard>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _pressController.dispose();
     if (_isVideoPreview) {
       _VideoPreviewManager.instance.disposeController(_templateId);
     }
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!_isVideoPreview) return;
+    final current = _videoController;
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      if (current != null &&
+          videoFrameIsReady(current) &&
+          current.value.isPlaying) {
+        _playOnResume = true;
+      }
+      _VideoPreviewManager.instance.pauseController(_templateId);
+      return;
+    }
+    if (state == AppLifecycleState.resumed) {
+      _recoverCardVideo();
+    }
+  }
+
+  Future<void> _recoverCardVideo() async {
+    final current = _videoController;
+    final play = _playOnResume && _isVisible;
+    _playOnResume = false;
+    if (mounted) {
+      setState(() => _isVideoInitialized = videoFrameIsReady(current));
+    }
+    final next = await _VideoPreviewManager.instance.recoverController(
+      _templateId,
+      play: play,
+    );
+    if (!mounted) return;
+    setState(() {
+      if (next != null) _videoController = next;
+      _isVideoInitialized = videoFrameIsReady(_videoController);
+    });
   }
 
   void _checkVisibility() {
@@ -4999,13 +5124,9 @@ class _TemplateCardState extends State<_TemplateCard>
   Widget _buildPreviewBackground(double baseHue) {
     // Video preview - show video when loaded
     if (_isVideoPreview && _isVideoInitialized && _videoController != null) {
-      return FittedBox(
-        fit: BoxFit.cover,
-        child: SizedBox(
-          width: _videoController!.value.size.width,
-          height: _videoController!.value.size.height,
-          child: VideoPlayer(_videoController!),
-        ),
+      return SafeVideoView(
+        controller: _videoController,
+        fallback: _buildGradientFallback(baseHue),
       );
     }
 

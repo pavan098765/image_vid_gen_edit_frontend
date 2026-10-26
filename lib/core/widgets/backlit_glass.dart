@@ -595,20 +595,26 @@ class _GlassChromePainter extends CustomPainter {
   void _paintNoise(Canvas canvas, Size size, double strength) {
     final image = _GlassNoise.tile();
     if (image == null || strength <= 0) return;
-    final shader = ui.ImageShader(
-      image,
-      TileMode.repeated,
-      TileMode.repeated,
-      Matrix4.identity().storage,
-    );
-    canvas.drawRect(
-      Offset.zero & size,
-      Paint()
-        ..shader = shader
-        ..blendMode = BlendMode.softLight
-        ..color = Colors.white.withValues(alpha: strength),
-    );
-    shader.dispose();
+    try {
+      final shader = ui.ImageShader(
+        image,
+        TileMode.repeated,
+        TileMode.repeated,
+        Matrix4.identity().storage,
+      );
+      canvas.drawRect(
+        Offset.zero & size,
+        Paint()
+          ..shader = shader
+          ..blendMode = BlendMode.softLight
+          ..color = Colors.white.withValues(alpha: strength),
+      );
+      shader.dispose();
+      _GlassNoise.notePaintSucceeded();
+    } catch (_) {
+      // The cached tile can be dropped when the GPU context is lost on resume.
+      _GlassNoise.dropAfterPaintFailure();
+    }
   }
 
   @override
@@ -620,6 +626,25 @@ class _GlassChromePainter extends CustomPainter {
 class _GlassNoise {
   static ui.Image? _tile;
   static bool _failed = false;
+  static int _paintFailures = 0;
+
+  static void notePaintSucceeded() {
+    _paintFailures = 0;
+  }
+
+  /// Drops the tile so the next frame can build a new one.
+  /// Two failures in a row stop trying for the rest of the process.
+  static void dropAfterPaintFailure() {
+    _paintFailures += 1;
+    final cached = _tile;
+    _tile = null;
+    if (cached != null) {
+      try {
+        cached.dispose();
+      } catch (_) {}
+    }
+    if (_paintFailures >= 2) _failed = true;
+  }
 
   static ui.Image? tile() {
     if (_failed) return null;
