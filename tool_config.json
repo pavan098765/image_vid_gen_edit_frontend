@@ -1137,7 +1137,7 @@
           "aliases": ["runware:400@2"],
           "useExternalApi": true,
           "cost": 10,
-          "costUpscale": 0,
+          "costUpscale": 4,
           "offer": 0,
           "enabled": true,
           "params": {
@@ -1155,7 +1155,7 @@
           "aliases": ["meta:muse@image"],
           "useExternalApi": true,
           "cost": 10,
-          "costUpscale": 0,
+          "costUpscale": 4,
           "offer": 0,
           "enabled": true,
           "params": {
@@ -2123,7 +2123,7 @@
           "description": "Clean cutout",
           "useExternalApi": true,
           "cost": 5,
-          "costUpscale": 0,
+          "costUpscale": 4,
           "offer": 0,
           "enabled": true,
           "params": {

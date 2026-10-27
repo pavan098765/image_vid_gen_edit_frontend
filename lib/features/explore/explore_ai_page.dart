@@ -2849,7 +2849,9 @@ class _ExploreAIPageState extends State<ExploreAIPage>
       final outputType = template['output_type'] as String? ??
           capability['outputType'] as String? ??
           'image';
-      final imageHdUpscaleCharges = upscaleEnabled && outputType != 'video';
+      final imageHdUpscaleCharges = upscaleEnabled &&
+          outputType != 'video' &&
+          template['capability'] != 'upscale';
 
       // Calculate cost (VIP gets free upscale; HD upscale surcharge applies to image jobs only)
       final baseCost = modelConfig['cost'] as int? ?? 10;
@@ -2860,8 +2862,12 @@ class _ExploreAIPageState extends State<ExploreAIPage>
           : modelOffer;
       final effectiveBaseCost =
           offer > 0 ? (baseCost * (1 - offer / 100)).round() : baseCost;
-      final upscaleCost =
-          isUpscaleFree() ? 0 : (modelConfig['costUpscale'] as int? ?? 5);
+      final listedUpscale = modelConfig['costUpscale'] as int? ?? 5;
+      final upscaleCost = isUpscaleFree()
+          ? 0
+          : imageHdUpscaleCharges
+              ? kExploreTemplateHdUpscaleCredits
+              : listedUpscale;
       final videoEnhancementCharges = outputType == 'video' &&
               (enableInterpolate || enableVideoEnhanceUpscale)
           ? upscaleCost
@@ -3128,6 +3134,10 @@ class _ExploreAIPageState extends State<ExploreAIPage>
   }
 }
 
+/// Optional HD pass on an Explore image template. Dedicated upscale models
+/// already include their own price, so they do not add this.
+const int kExploreTemplateHdUpscaleCredits = 4;
+
 // =============================================================================
 // TEMPLATE CONFIG RESULT
 // =============================================================================
@@ -3261,7 +3271,8 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet>
     final jobConfig =
         widget.template['job_config'] as Map<String, dynamic>? ?? {};
     final outputType = widget.template['output_type'] as String? ?? 'image';
-    if (outputType == 'video') {
+    if (outputType == 'video' ||
+        widget.template['capability'] == 'upscale') {
       _scaleFactor = jobConfig['scale_factor'] as int? ?? 1;
       _upscaleEnabled = false;
     } else {
@@ -3361,6 +3372,9 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet>
 
   bool get _freeUpscale => isUpscaleFree();
 
+  bool get _templateUsesUpscaleModel =>
+      widget.template['capability'] == 'upscale';
+
   int get _baseCost {
     final cost = _selectedModel?['cost'] as int? ?? 10;
     final modelOffer = _selectedModel?['offer'] as int? ?? 0;
@@ -3376,6 +3390,7 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet>
 
   int get _upscaleCost {
     if (_freeUpscale) return 0;
+    if (!_isVideoOutput) return kExploreTemplateHdUpscaleCredits;
     return _selectedModel?['costUpscale'] as int? ?? 5;
   }
 
@@ -3590,13 +3605,16 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet>
                     const SizedBox(height: 16),
                   ],
 
-                  // HD Upscale (image templates only — not video output)
-                  if (!_isVideoOutput) ...[
+                  // HD Upscale is an optional pass. Upscale models already do that work.
+                  if (!_isVideoOutput && !_templateUsesUpscaleModel) ...[
                     _buildSettingsRow(cs, isDark),
                   ],
 
-                  // Video enhancement (frame interpolation / video upscale — no extra credit line)
-                  _buildVideoUpscaleSettings(cs),
+                  // Kept for later. Hidden on video templates so the pass stays off.
+                  Offstage(
+                    offstage: true,
+                    child: _buildVideoUpscaleSettings(cs),
+                  ),
 
                   // LoRA Adapter Selector (only for qwen_image_edit_2511_rapid_aio)
                   if (_selectedModelId == 'qwen_image_edit_2511_rapid_aio') ...[
@@ -5660,7 +5678,9 @@ class _CategoryTemplatesPageState extends State<_CategoryTemplatesPage> {
       final outputType = template['output_type'] as String? ??
           capability['outputType'] as String? ??
           'image';
-      final imageHdUpscaleCharges = upscaleEnabled && outputType != 'video';
+      final imageHdUpscaleCharges = upscaleEnabled &&
+          outputType != 'video' &&
+          template['capability'] != 'upscale';
 
       final baseCost = modelConfig['cost'] as int? ?? 10;
       final modelOffer = modelConfig['offer'] as int? ?? 0;
@@ -5670,8 +5690,12 @@ class _CategoryTemplatesPageState extends State<_CategoryTemplatesPage> {
           : modelOffer;
       final effectiveBaseCost =
           offer > 0 ? (baseCost * (1 - offer / 100)).round() : baseCost;
-      final upscaleCost =
-          isUpscaleFree() ? 0 : (modelConfig['costUpscale'] as int? ?? 5);
+      final listedUpscale = modelConfig['costUpscale'] as int? ?? 5;
+      final upscaleCost = isUpscaleFree()
+          ? 0
+          : imageHdUpscaleCharges
+              ? kExploreTemplateHdUpscaleCredits
+              : listedUpscale;
       final videoEnhancementCharges = outputType == 'video' &&
               (result.enableInterpolate || result.enableUpscale)
           ? upscaleCost
