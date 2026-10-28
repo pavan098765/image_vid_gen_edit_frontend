@@ -1077,6 +1077,24 @@ ModalRoute<void>? _openOrReplaceResultManager({String? initialJobId}) {
   return route;
 }
 
+/// Hosts the mini player that floats above a pushed page.
+/// The player is outside the app navigator, so it needs this overlay
+/// for the play and stop tooltips.
+class _MiniPlayerLayer extends StatelessWidget {
+  const _MiniPlayerLayer();
+
+  @override
+  Widget build(BuildContext context) {
+    return Overlay(
+      initialEntries: [
+        OverlayEntry(
+          builder: (context) => const NowPlayingBar(includeSafeArea: true),
+        ),
+      ],
+    );
+  }
+}
+
 // ----------------------------------------------------
 // Root App - Kala AI
 // ----------------------------------------------------
@@ -1151,11 +1169,15 @@ class _KalaAIAppState extends State<KalaAIApp> {
                       child: child ?? const SizedBox.shrink(),
                     ),
                     if (showOverlay)
-                      const Positioned(
+                      Positioned(
                         left: 0,
                         right: 0,
                         bottom: 0,
-                        child: NowPlayingBar(includeSafeArea: true),
+                        height: kNowPlayingBarHeight + media.padding.bottom,
+                        // This bar sits above the navigator. Its buttons need
+                        // their own overlay, or the tooltips throw and the row
+                        // paints the red error screen over every tab.
+                        child: const _MiniPlayerLayer(),
                       ),
                   ],
                 );

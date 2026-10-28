@@ -2454,10 +2454,20 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   /// Resolves model [inputOverrides] (e.g. max images) for attach / composer picks.
+  ///
+  /// Create Image and Create Video inject a photo input that the tool itself
+  /// does not declare. Looking that id up returns an empty map, and saving
+  /// under a null key throws. Keep the injected id in that case.
   Map<String, dynamic> _attachableImageInputResolved(Map<String, dynamic> raw) {
-    final id = raw['id'] as String?;
+    final id = raw['id']?.toString();
     if (id == null || id.isEmpty) return Map<String, dynamic>.from(raw);
-    return Map<String, dynamic>.from(_effectiveInputConfig(id));
+    final resolved = _effectiveInputConfig(id);
+    if (resolved['id'] != null) return resolved;
+    return {
+      ...Map<String, dynamic>.from(raw),
+      ...resolved,
+      'id': id,
+    };
   }
 
   /// Prefer [init_image] (or [_bulkPrimaryImageInputRef]) row from attach sheet list.
@@ -6351,8 +6361,14 @@ class _GenericToolPageState extends State<GenericToolPage>
   // -----------------------------------------------
 
   Future<void> _pickImageFromGallery(Map<String, dynamic> input) async {
-    final id = input['id'];
-    final maxCount = (input['max'] ?? 1) as int;
+    final id = input['id']?.toString();
+    if (id == null || id.isEmpty) return;
+    final maxRaw = input['max'];
+    final maxCount = maxRaw is int
+        ? maxRaw
+        : maxRaw is num
+            ? maxRaw.toInt()
+            : 1;
     final allowMulti = maxCount > 1;
 
     // Increment version and start processing
@@ -6536,7 +6552,8 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   Future<void> _pickImageFromCamera(Map<String, dynamic> input) async {
-    final id = input['id'];
+    final id = input['id']?.toString();
+    if (id == null || id.isEmpty) return;
 
     // Increment version and start processing
     final currentVersion = ++_imageProcessingVersion;
