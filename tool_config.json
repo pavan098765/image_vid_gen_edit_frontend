@@ -1994,10 +1994,10 @@
           "name": "Kala Imagine",
           "description": "image edit",
           "useExternalApi": true,
-          "cost": 18,
+          "cost": 15,
           "costUpscale": 4,
           "offer": 0,
-          "enabled": false,
+          "enabled": true,
           "params": {
             "init_image": "{{init_image}}",
             "aspect_ratio": "{{aspect_ratio}}"
