@@ -6,7 +6,9 @@ import 'package:http/http.dart' as http;
 import 'package:kala_ai_create_images_videos_with_ai/core/api/submit_payload_helpers.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/auth_service.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/services/media_upload_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/polling_service.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/suno_v6_client.dart';
 import 'package:path_provider/path_provider.dart';
 
 const String kMusicVideoCoverModelId = 'flux2_klein_9b';
@@ -17,9 +19,8 @@ class MusicVideoCoverException implements Exception {
   const MusicVideoCoverException(this.message);
 }
 
-/// Flux Klein 9B wants a subject-first photograph, about 40 to 70 words.
-/// Style and lyrics become the scene. The title and artist stay off the
-/// picture, because naming them makes the model paint lettering.
+/// Fallback when the cover writer is unavailable. Style and lyric imagery
+/// become the artwork. A singer, a microphone, and the song title stay out.
 String musicVideoCoverPrompt({
   required String title,
   required String artist,
@@ -28,13 +29,27 @@ String musicVideoCoverPrompt({
 }) {
   final story = _visualStory(lyricSheet);
   final setting = _visualSetting(style);
-  final subject = story.isNotEmpty
-      ? story
-      : (setting.isNotEmpty ? setting : 'one person standing in dramatic light');
-  final place = story.isNotEmpty && setting.isNotEmpty ? ' The place is $setting.' : '';
-  return 'A square fine-art photograph of $subject.$place '
-      'The clothes, the light, and the colors belong to that moment. '
-      'One subject fills most of the frame, sharp and cinematic, with rich color and a quiet background.';
+  final pieces = <String>[
+    if (setting.isNotEmpty) setting,
+    if (story.isNotEmpty) story,
+  ];
+  final subject = pieces.isEmpty ? 'a bold graphic symbol in dramatic light' : pieces.join(', ');
+  return 'A square album cover for a streaming single. The artwork shows $subject. '
+      'One strong graphic image, rich color, sharp focus, and a clear focal point.';
+}
+
+/// What the cover writer reads. The title stays out so it is not painted.
+String musicVideoCoverBrief({
+  required String lyricSheet,
+  String style = '',
+}) {
+  final styleText = style.trim();
+  final lyrics = lyricSheet.trim();
+  final parts = <String>[
+    if (styleText.isNotEmpty) 'Style: $styleText',
+    if (lyrics.isNotEmpty) 'Lyrics:\n$lyrics',
+  ];
+  return parts.join('\n\n');
 }
 
 final RegExp _audioJargon = RegExp(
@@ -84,11 +99,12 @@ Future<Uint8List> generateMusicVideoCover({
   if (token == null || token.isEmpty) {
     throw const MusicVideoCoverException('Sign in to make a cover.');
   }
-  final prompt = musicVideoCoverPrompt(
+  final prompt = await _coverPrompt(
     title: title,
     artist: artist,
     lyricSheet: lyricSheet,
     style: style,
+    token: token,
   );
   final payload = buildSubmitPayload(
     modelId: kMusicVideoCoverModelId,
@@ -117,26 +133,13 @@ Future<Uint8List> generateMusicVideoCover({
   if (jobId == null || jobId.isEmpty) {
     throw const MusicVideoCoverException('The cover could not be started.');
   }
-  final job = JobModel(
-    jobId: jobId,
-    title: title.trim().isEmpty ? 'Album cover' : title.trim(),
-    model: kMusicVideoCoverModelId,
-    outputType: 'image',
-    status: 'processing',
-    capabilityId: 'create_image',
-    originalPrompt: prompt,
-    creditsCharged: kMusicVideoCoverGems,
-    parentJobId: parentJobId,
-    settingsSnapshot: const {'modelId': kMusicVideoCoverModelId, 'aspect_ratio': '1:1'},
-  );
-  await addOrUpdateJob(job);
+  await rememberHiddenLibraryJob(jobId);
 
   for (var attempt = 0; attempt < 40; attempt++) {
     await Future<void>.delayed(Duration(seconds: attempt == 0 ? 2 : 3));
     final status = await _jobStatus(jobId, token);
     final state = (status?['status'] ?? '').toString().toLowerCase();
     if (state == 'failed') {
-      await addOrUpdateJob(job.copyWith(status: 'failed'));
       throw const MusicVideoCoverException('The cover did not finish.');
     }
     if (state != 'completed') continue;
@@ -144,20 +147,63 @@ Future<Uint8List> generateMusicVideoCover({
     if (bytes == null) {
       throw const MusicVideoCoverException('The cover could not be downloaded.');
     }
-    final saved = await _storeCover(jobId, bytes);
-    await addOrUpdateJob(job.copyWith(
-      status: 'completed',
-      readyAt: DateTime.now(),
-      localFilePath: saved,
-    ));
+    final saved = await _storeCover(parentJobId, bytes);
+    await _rememberCoverPath(parentJobId, saved);
     return bytes;
   }
   throw const MusicVideoCoverException('The cover is still generating. It will show in your library.');
 }
 
+Future<String> _coverPrompt({
+  required String title,
+  required String artist,
+  required String lyricSheet,
+  required String style,
+  required String token,
+}) async {
+  final brief = musicVideoCoverBrief(lyricSheet: lyricSheet, style: style);
+  if (brief.isNotEmpty) {
+    final (written, _, _) = await MediaUploadService.suggestPrompt(
+      baseUrl: kSunoV6ControllerUrl,
+      authToken: token,
+      modelId: kMusicVideoCoverModelId,
+      field: 'album_cover',
+      text: brief,
+    );
+    final prompt = written?.trim() ?? '';
+    if (prompt.length >= 24) return prompt;
+  }
+  return musicVideoCoverPrompt(
+    title: title,
+    artist: artist,
+    lyricSheet: lyricSheet,
+    style: style,
+  );
+}
+
+Future<void> _rememberCoverPath(String parentJobId, String? path) async {
+  if (parentJobId.isEmpty || path == null || path.isEmpty) return;
+  JobModel? parent;
+  for (final job in jobListNotifier.value) {
+    if (job.jobId == parentJobId) parent = job;
+  }
+  if (parent == null) return;
+  final snap = Map<String, dynamic>.from(parent.settingsSnapshot ?? {});
+  snap['musicVideoCoverPath'] = path;
+  await addOrUpdateJob(parent.copyWith(settingsSnapshot: snap));
+}
+
 /// The newest finished cover made for this song, if the phone already has it.
 Future<Uint8List?> savedMusicVideoCover(String parentJobId) async {
   if (parentJobId.isEmpty) return null;
+  for (final job in jobListNotifier.value) {
+    if (job.jobId != parentJobId) continue;
+    final path = job.settingsSnapshot?['musicVideoCoverPath'];
+    if (path is String && path.isNotEmpty && File(path).existsSync()) {
+      final bytes = await File(path).readAsBytes();
+      if (_isImage(bytes)) return bytes;
+    }
+  }
   JobModel? newest;
   for (final job in jobListNotifier.value) {
     if (job.parentJobId != parentJobId || job.model != kMusicVideoCoverModelId) continue;

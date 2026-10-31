@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:http/http.dart' as http;
 import 'package:kala_ai_create_images_videos_with_ai/core/api/submit_payload_helpers.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/music_job.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/auth_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/media_upload_service.dart';
@@ -86,6 +87,7 @@ Future<SunoSubmitResult> submitSunoV6({
   required Map<String, dynamic> params,
   List<String>? imageR2Keys,
   String? videoR2Key,
+  bool notify = true,
 }) async {
   final token = await _authToken();
   final cleaned = Map<String, dynamic>.from(params)
@@ -110,7 +112,7 @@ Future<SunoSubmitResult> submitSunoV6({
   final payload = buildSubmitPayload(
     modelId: kSunoV6ModelId,
     modelParams: cleaned,
-    fcmToken: await _fcmToken(),
+    fcmToken: notify ? await _fcmToken() : null,
     rootParams: root,
     enhancePrompt: false,
     variations: 1,
@@ -294,7 +296,9 @@ Future<TimestampedLyrics> fetchTimestampedLyrics({
       'source_task_id': taskId,
       'audio_id': audioId,
     },
+    notify: false,
   );
+  await rememberHiddenLibraryJob(submitted.jobId);
   final immediate = timestampedLyricsFromJson(submitted.raw);
   if (immediate != null && immediate.words.isNotEmpty) return immediate;
 

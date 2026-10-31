@@ -216,12 +216,18 @@ void main() {
       lyricSheet: 'city lights',
       style: 'night drive, tight controlled low end, crisp vocals',
     );
-    expect(cover, contains('fine-art photograph'));
+    expect(cover, contains('album cover'));
     expect(cover, contains('city lights'));
     expect(cover, contains('night drive'));
     expect(cover, isNot(contains('Mumbai Hustle')));
     expect(cover, isNot(contains('low end')));
-    expect(cover, isNot(contains('No text')));
+    expect(cover, isNot(contains('person')));
+    expect(cover, isNot(contains('singer')));
+    expect(cover, isNot(contains('microphone')));
+    expect(
+      musicVideoCoverBrief(lyricSheet: 'city lights', style: 'night drive'),
+      contains('Style: night drive'),
+    );
     expect(
       lyricLookupMessage('Choose a music action: song, lyrics, video.'),
       'Timed lyrics are not available for this song yet.',

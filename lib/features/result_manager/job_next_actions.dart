@@ -435,6 +435,16 @@ class _JobNextActionsState extends State<JobNextActions> {
     }
   }
 
+  List<AlignedWord> _timedWords(String audioId, MusicTrack? sung) {
+    if (sung != null && sung.alignedWords.isNotEmpty) return sung.alignedWords;
+    final stored = widget.job.settingsSnapshot?['timedLyrics'];
+    if (stored is! Map) return const [];
+    final entry = stored[audioId];
+    if (entry is! Map) return const [];
+    final parsed = timestampedLyricsFromJson(Map<String, dynamic>.from(entry));
+    return parsed?.words ?? const [];
+  }
+
   Future<void> _openMusicVideo(
     ({String taskId, String audioId, String title, int index}) target,
   ) async {
@@ -470,7 +480,7 @@ class _JobNextActionsState extends State<JobNextActions> {
           taskId: target.taskId,
           audioId: target.audioId,
           instrumental: music?.instrumental == true,
-          words: sung?.alignedWords ?? const [],
+          words: _timedWords(target.audioId, sung),
           lyricSheet: _fullSongLyrics(sung, music),
           style: _snapText('style') ?? sung?.tags ?? '',
           lyricConfidence: sung?.lyricConfidence,
@@ -478,13 +488,26 @@ class _JobNextActionsState extends State<JobNextActions> {
           onCloudVideo: () => _createMusicVideo(target),
           onLyrics: (lyrics) async {
             final current = widget.job.music;
-            if (current == null) return;
-            final next = MusicResult.fromJson(current).withAlignedLyrics(
-              audioId: target.audioId,
-              words: lyrics.words,
-              confidence: lyrics.confidence,
-            );
-            await addOrUpdateJob(widget.job.copyWith(music: next.toJson()));
+            final next = current == null
+                ? null
+                : MusicResult.fromJson(current).withAlignedLyrics(
+                    audioId: target.audioId,
+                    words: lyrics.words,
+                    confidence: lyrics.confidence,
+                  );
+            final snap = Map<String, dynamic>.from(widget.job.settingsSnapshot ?? {});
+            final stored = snap['timedLyrics'] is Map
+                ? Map<String, dynamic>.from(snap['timedLyrics'] as Map)
+                : <String, dynamic>{};
+            stored[target.audioId] = {
+              'words': [for (final word in lyrics.words) word.toJson()],
+              if (lyrics.confidence != null) 'hoot_cer': lyrics.confidence,
+            };
+            snap['timedLyrics'] = stored;
+            await addOrUpdateJob(widget.job.copyWith(
+              music: next?.toJson() ?? current,
+              settingsSnapshot: snap,
+            ));
           },
         ),
       ),

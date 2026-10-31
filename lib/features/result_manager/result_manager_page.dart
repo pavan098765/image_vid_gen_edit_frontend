@@ -469,7 +469,7 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
   }
 
   List<JobModel> _getFilteredAndSortedJobs() {
-    var jobs = List<JobModel>.from(jobListNotifier.value);
+    var jobs = jobListNotifier.value.where((job) => !jobHidesFromLibrary(job)).toList();
 
     // Filter by search query
     if (_searchQuery.isNotEmpty) {

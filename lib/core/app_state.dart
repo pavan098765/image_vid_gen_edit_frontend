@@ -259,8 +259,53 @@ Future<List<JobModel>> withoutDeletedJobs(List<JobModel> jobs) async {
   return kept;
 }
 
+final Set<String> hiddenLibraryJobIds = {};
+
+const String _kHiddenLibraryJobs = 'hidden_library_job_ids';
+
+/// Cover generation and timed-lyric lookup are helpers. They must not become
+/// cards in Creations.
+bool jobHidesFromLibrary(JobModel job) {
+  if (hiddenLibraryJobIds.contains(job.jobId)) return true;
+  final snap = job.settingsSnapshot;
+  if (snap?['hideFromLibrary'] == true) return true;
+  if (job.model == 'flux2_klein_9b' && (job.parentJobId ?? '').isNotEmpty) {
+    return true;
+  }
+  final action = (snap?['action'] ?? snap?['musicAction'] ?? '').toString();
+  if (action == 'timestamped_lyrics') return true;
+  final musicAction = job.music?['action']?.toString();
+  return musicAction == 'timestamped_lyrics';
+}
+
+Future<void> loadHiddenLibraryJobIds() async {
+  final prefs = await SharedPreferences.getInstance();
+  hiddenLibraryJobIds.addAll(prefs.getStringList(_kHiddenLibraryJobs) ?? const []);
+}
+
+Future<void> rememberHiddenLibraryJob(String jobId) async {
+  if (jobId.isEmpty) return;
+  hiddenLibraryJobIds.add(jobId);
+  final prefs = await SharedPreferences.getInstance();
+  final ids = prefs.getStringList(_kHiddenLibraryJobs) ?? <String>[];
+  if (!ids.contains(jobId)) {
+    ids.add(jobId);
+    if (ids.length > 400) ids.removeRange(0, ids.length - 400);
+    await prefs.setStringList(_kHiddenLibraryJobs, ids);
+  }
+  final kept = jobListNotifier.value.where((job) => job.jobId != jobId).toList();
+  if (kept.length != jobListNotifier.value.length) {
+    jobListNotifier.value = kept;
+    await saveJobsToPrefs();
+  }
+}
+
 /// Add a new job or update existing by jobId. Persists immediately.
 Future<void> addOrUpdateJob(JobModel job) async {
+  if (jobHidesFromLibrary(job)) {
+    await rememberHiddenLibraryJob(job.jobId);
+    return;
+  }
   if (await wasJobDeleted(job.jobId)) {
     final kept = jobListNotifier.value
         .where((existing) => existing.jobId != job.jobId)
@@ -306,6 +351,7 @@ Future<void> updateJobFields({
   String? originalPrompt,
   Map<String, dynamic>? music,
 }) async {
+  if (hiddenLibraryJobIds.contains(jobId)) return;
   if (await wasJobDeleted(jobId)) {
     final kept =
         jobListNotifier.value.where((job) => job.jobId != jobId).toList();
@@ -685,6 +731,7 @@ Future<bool> applyPendingFcmUpdatesFromFile() async {
 /// 🚀 First applies file-based FCM updates, then loads from SharedPreferences
 Future<void> loadJobsFromPrefs() async {
   try {
+    await loadHiddenLibraryJobIds();
     // 📁 FIRST: Apply any pending FCM updates from file
     // This is the most reliable cross-isolate sync mechanism
     final appliedFromFile = await applyPendingFcmUpdatesFromFile();

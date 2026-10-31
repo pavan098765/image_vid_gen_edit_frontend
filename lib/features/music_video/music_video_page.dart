@@ -80,6 +80,7 @@ class _MusicVideoPageState extends State<MusicVideoPage> with SingleTickerProvid
   Uint8List? _generatedCover;
   bool _makingCover = false;
   AudioFeatureTable? _features;
+  Future<void>? _featureLoad;
   List<AlignedWord> _words = const [];
   double? _confidence;
   double _position = 0;
@@ -119,6 +120,7 @@ class _MusicVideoPageState extends State<MusicVideoPage> with SingleTickerProvid
       setState(() => _motionTime = seconds);
     })..start();
     _prepare();
+    unawaited(_ensureFeatures());
   }
 
   @override
@@ -149,9 +151,17 @@ class _MusicVideoPageState extends State<MusicVideoPage> with SingleTickerProvid
     }
   }
 
-  Future<void> _ensureFeatures() async {
-    if (!_template.needsAudioAnalysis || _features != null || _analyzing) return;
-    setState(() => _analyzing = true);
+  Future<void> _ensureFeatures() {
+    final running = _featureLoad;
+    if (running != null) return running;
+    if (_features != null) return Future<void>.value();
+    final run = _loadFeatures();
+    _featureLoad = run;
+    return run;
+  }
+
+  Future<void> _loadFeatures() async {
+    if (mounted) setState(() => _analyzing = true);
     try {
       final path = await _ensureAudio();
       final temp = await getTemporaryDirectory();
@@ -163,6 +173,7 @@ class _MusicVideoPageState extends State<MusicVideoPage> with SingleTickerProvid
     } on MusicVideoException catch (error) {
       _toast(error.message);
     } finally {
+      _featureLoad = null;
       if (mounted) setState(() => _analyzing = false);
     }
   }
@@ -428,7 +439,7 @@ class _MusicVideoPageState extends State<MusicVideoPage> with SingleTickerProvid
                   child: Text(
                     _busy
                         ? _label
-                        : _analyzing
+                        : _template.needsAudioAnalysis && _features == null && _analyzing
                             ? 'Reading the song'
                             : widget.title,
                     maxLines: 1,
@@ -544,7 +555,7 @@ class _MusicVideoPageState extends State<MusicVideoPage> with SingleTickerProvid
                 children: [
                   FilledButton(
                     onPressed: _busy ? null : _startOnPhone,
-                    child: const Text('HD video · $kOnDeviceMusicVideoGems gems'),
+                    child: const Text('HD video · 1080p · $kOnDeviceMusicVideoGems gems'),
                   ),
                   if (widget.onCloudVideo != null) ...[
                     const SizedBox(height: 8),
@@ -559,7 +570,7 @@ class _MusicVideoPageState extends State<MusicVideoPage> with SingleTickerProvid
                               _leaveForCreations(context);
                             },
                       child: Text(
-                        'SD video · ${widget.cloudGems ?? 20} gems · 480p',
+                        'SD video · 480p · ${widget.cloudGems ?? 20} gems',
                       ),
                     ),
                   ],
