@@ -1,16 +1,19 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/services/song_equalizer.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/thumbnail_service.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:crypto/crypto.dart';
 import 'package:uuid/uuid.dart';
 import 'package:gal/gal.dart';
+import 'package:device_info_plus/device_info_plus.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/audio_result_player.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/safe_video_view.dart';
@@ -47,6 +50,7 @@ class FileService {
     BuildContext context,
     String url, {
     String? suggestedFileName,
+    String? jobId,
     String subfolder = 'Kala_AI',
     void Function(double progress)? onProgress,
     int maxRetries = 3,
@@ -68,6 +72,7 @@ class FileService {
       context: context,
       url: url,
       suggestedFileName: suggestedFileName,
+      jobId: jobId,
       subfolder: subfolder,
       onProgress: onProgress,
       maxRetries: maxRetries,
@@ -124,6 +129,7 @@ class FileService {
             task.context,
             task.url,
             suggestedFileName: task.suggestedFileName,
+            jobId: task.jobId,
             subfolder: task.subfolder,
             onProgress: task.onProgress,
             maxRetries: task.maxRetries,
@@ -190,6 +196,7 @@ class FileService {
     bool showPreview = true,
     Uint8List? previewBytes,
     bool documentsFallback = false,
+    String? jobId,
   }) async {
     final currentHash = sha1.convert(bytes).toString();
 
@@ -260,23 +267,34 @@ class FileService {
         return resolvedPath;
       }
 
-      // Speech and music stay in app documents. The photo gallery cannot hold them.
+      // Speech and music go to Music/Kala_AI, next to Pictures and Movies.
       if (_isAudioExtension(extension)) {
         try {
-          final appDir = await getApplicationDocumentsDirectory();
-          final cacheDir = Directory('${appDir.path}/saved_results');
-          if (!await cacheDir.exists()) {
-            await cacheDir.create(recursive: true);
+          try {
+            bytes = await equalizeHitMakerDownload(
+              bytes: bytes,
+              extension: extension,
+              jobId: jobId,
+            );
+          } catch (error) {
+            debugPrint('EQ bake skipped: $error');
           }
-          final localPath = '${cacheDir.path}/$fileName';
-          await File(localPath).writeAsBytes(bytes, flush: true);
+          final publicPath = await _savePublicAudio(bytes, fileName);
+          final localPath = (publicPath != null && File(publicPath).existsSync())
+              ? publicPath
+              : await _writeAppDocumentsFile(bytes, fileName);
+          if (localPath == null) return null;
           _lastSavedPath = localPath;
-          debugPrint('📦 Audio saved to app-documents: $localPath');
+          debugPrint('📦 Audio saved: $localPath');
           if (context.mounted && showPreview) {
             _showMediaPreviewDialog(
               context,
               localPath,
-              audioTracks: _tracksForSavedAudio(localPath, fileName),
+              audioTracks: _tracksForSavedAudio(
+                localPath,
+                fileName,
+                jobId: jobId,
+              ),
             );
           }
           return localPath;
@@ -490,12 +508,18 @@ class FileService {
     return file;
   }
 
-  // ✅ Save an already-downloaded file to gallery (no re-download)
-  static Future<bool> saveExistingToGallery(
+  // ✅ Save an already-downloaded file to gallery (no re-download).
+  // Returns the saved path, or null when the copy failed.
+  static Future<String?> saveExistingToGallery(
     BuildContext context,
-    String path,
-  ) async {
+    String path, {
+    String? customFileName,
+    String? jobId,
+  }) async {
     try {
+      if (_isAudioPath(path) && path.contains('/Music/Kala_AI/')) {
+        return path;
+      }
       final bytes = await File(path).readAsBytes();
       final isVideo =
           path.toLowerCase().endsWith('.mp4') ||
@@ -521,16 +545,83 @@ class FileService {
       }
 
       final extension = path.split('.').last.toLowerCase();
-      final saved = await saveFile(
+      return saveFile(
         context,
         bytes,
         extension: extension,
         previewBytes: previewBytes,
+        customFileName: customFileName,
+        jobId: jobId,
       );
-      return saved != null;
     } catch (_) {
-      return false;
+      return null;
     }
+  }
+
+  /// Closes the preview route once. A second call in the same back gesture does not pop the shell.
+  static void _popPreview(BuildContext context) {
+    _isPreviewOpen = false;
+    popRootOnce(context);
+  }
+
+  static const MethodChannel _audioLibrary = MethodChannel('kala_ai/audio_library');
+
+  static String _audioMime(String fileName) {
+    final ext = fileName.split('.').last.toLowerCase();
+    switch (ext) {
+      case 'wav':
+        return 'audio/wav';
+      case 'm4a':
+        return 'audio/mp4';
+      case 'aac':
+        return 'audio/aac';
+      case 'ogg':
+        return 'audio/ogg';
+      case 'flac':
+        return 'audio/flac';
+      default:
+        return 'audio/mpeg';
+    }
+  }
+
+  /// Writes speech or music into Music/Kala_AI. Returns a path the app can read.
+  static Future<String?> _savePublicAudio(Uint8List bytes, String fileName) async {
+    if (!Platform.isAndroid) return null;
+    try {
+      final sdk = (await DeviceInfoPlugin().androidInfo).version.sdkInt;
+      if (sdk < 29) {
+        final status = await Permission.storage.request();
+        if (!status.isGranted) return null;
+      }
+      final path = await _audioLibrary.invokeMethod<String>('saveAudio', {
+        'name': fileName,
+        'mime': _audioMime(fileName),
+        'bytes': bytes,
+      });
+      if (path != null && path.isNotEmpty && File(path).existsSync()) {
+        return path;
+      }
+      final probe = '/storage/emulated/0/Music/Kala_AI/$fileName';
+      if (File(probe).existsSync()) return probe;
+      return null;
+    } catch (e) {
+      debugPrint('Public audio save failed: $e');
+      return null;
+    }
+  }
+
+  static Future<String?> _writeAppDocumentsFile(
+    Uint8List bytes,
+    String fileName,
+  ) async {
+    final appDir = await getApplicationDocumentsDirectory();
+    final cacheDir = Directory('${appDir.path}/saved_results');
+    if (!await cacheDir.exists()) {
+      await cacheDir.create(recursive: true);
+    }
+    final localPath = '${cacheDir.path}/$fileName';
+    await File(localPath).writeAsBytes(bytes, flush: true);
+    return localPath;
   }
 
   /// 🖼️ Displays the preview image in a fullscreen dialog with zoom and close button
@@ -569,10 +660,7 @@ class FileService {
           },
           child: _ProgressiveImagePreview(
             filePath: filePath,
-            onClose: () {
-              _isPreviewOpen = false;
-              Navigator.of(context, rootNavigator: true).pop();
-            },
+            onClose: () => _popPreview(context),
           ),
         );
       },
@@ -582,14 +670,19 @@ class FileService {
     });
   }
 
-  /// The saved audio belongs to the job whose id was used as the file name.
+  /// The saved audio belongs to [jobId], or to a job whose old file name was the id.
   static List<AudioTrackDetails>? _tracksForSavedAudio(
     String path,
-    String fileName,
-  ) {
+    String fileName, {
+    String? jobId,
+  }) {
     final bare = fileName.replaceFirst(RegExp(r'\.[^.]+$'), '');
     for (final job in jobListNotifier.value) {
-      if (job.jobId != bare && job.localFilePath != path) continue;
+      if (jobId != null && jobId.isNotEmpty) {
+        if (job.jobId != jobId) continue;
+      } else if (job.jobId != bare && job.localFilePath != path) {
+        continue;
+      }
       final tracks = audioTracksFromJob(job);
       if (tracks.isNotEmpty) return tracks;
       if (job.isAudioOutput ||
@@ -661,6 +754,8 @@ class FileService {
       pageBuilder: (_, __, ___) {
         return WillPopScope(
           onWillPop: () async {
+            // The player pops itself. A second pop here would close the app.
+            if (isAudioFile) return false;
             _isPreviewOpen = false;
             return true;
           },
@@ -669,34 +764,22 @@ class FileService {
                   tracks: _audioTracksFor(filePath, audioTracks),
                   initialIndex: _audioIndexFor(filePath, audioTracks),
                   onRemix: remixAudio,
-                  onClose: () {
-                    _isPreviewOpen = false;
-                    Navigator.of(context, rootNavigator: true).pop();
-                  },
+                  onClose: () => _popPreview(context),
                 )
               : isTextFile
               ? _TextFilePreview(
                   filePath: filePath,
-                  onClose: () {
-                    _isPreviewOpen = false;
-                    Navigator.of(context, rootNavigator: true).pop();
-                  },
+                  onClose: () => _popPreview(context),
                 )
               : hasMultiple
               ? _SwipeableMediaPreview(
                   filePaths: validPaths,
                   initialIndex: adjustedIndex,
-                  onClose: () {
-                    _isPreviewOpen = false;
-                    Navigator.of(context, rootNavigator: true).pop();
-                  },
+                  onClose: () => _popPreview(context),
                 )
               : _ProgressiveImagePreview(
                   filePath: filePath,
-                  onClose: () {
-                    _isPreviewOpen = false;
-                    Navigator.of(context, rootNavigator: true).pop();
-                  },
+                  onClose: () => _popPreview(context),
                 ),
         );
       },
@@ -852,10 +935,7 @@ class FileService {
             tracks: resume ? audioNowPlaying.tracks : tracks,
             initialIndex: initialIndex.clamp(0, tracks.length - 1),
             onRemix: remixAudio,
-            onClose: () {
-              _isPreviewOpen = false;
-              Navigator.of(context, rootNavigator: true).pop();
-            },
+            onClose: () => _popPreview(context),
           );
         },
       );
@@ -1070,6 +1150,7 @@ class FileService {
     BuildContext context,
     String url, {
     String? suggestedFileName,
+    String? jobId,
     String subfolder = 'Kala_AI',
     void Function(double progress)? onProgress, // progress: 0.0 → 1.0
     int maxRetries = 3,
@@ -1172,18 +1253,23 @@ class FileService {
           showPreview: showPreview,
           customFileName: cleanName,
           documentsFallback: documentsFallback,
+          jobId: jobId,
         );
 
         if (savedPath != null) {
           final jobs = List<JobModel>.from(jobListNotifier.value);
-          // Try matching by downloadUrl first, then fall back to jobId (suggestedFileName).
-          // Signed URLs change frequently (refreshes, FCM updates), so URL matching
-          // can silently fail — causing the saved file to never link to its job.
-          var idx = jobs.indexWhere((j) => j.downloadUrl == url);
+          // Signed URLs change, so match the job id first, then the URL.
+          // Older saves used the job id as the file name.
+          var idx = -1;
+          if (jobId != null && jobId.isNotEmpty) {
+            idx = jobs.indexWhere((j) => j.jobId == jobId);
+          }
+          if (idx == -1) {
+            idx = jobs.indexWhere((j) => j.downloadUrl == url);
+          }
           if (idx == -1 &&
               suggestedFileName != null &&
               suggestedFileName.isNotEmpty) {
-            // suggestedFileName is typically the jobId
             idx = jobs.indexWhere((j) => j.jobId == suggestedFileName);
             if (idx != -1) {
               debugPrint(
@@ -3213,6 +3299,7 @@ class _DownloadTask {
   final BuildContext context;
   final String url;
   final String? suggestedFileName;
+  final String? jobId;
   final String subfolder;
   final void Function(double progress)? onProgress;
   final int maxRetries;
@@ -3224,6 +3311,7 @@ class _DownloadTask {
     required this.context,
     required this.url,
     this.suggestedFileName,
+    this.jobId,
     required this.subfolder,
     this.onProgress,
     required this.maxRetries,

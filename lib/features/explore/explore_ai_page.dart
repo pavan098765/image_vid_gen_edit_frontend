@@ -15,6 +15,7 @@ import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/api/submit_payload_helpers.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/cached_tool_config.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/model_display_name.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/motion.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/app_menu_button.dart';
@@ -619,8 +620,13 @@ class _ExploreAIPageState extends State<ExploreAIPage>
     seenJobIdsNotifier.addListener(_onStateChanged);
     jobListNotifier.addListener(_onStateChanged);
     SaleService().state.addListener(_onStateChanged);
+    toolConfigRevision.addListener(_onToolConfigRefreshed);
     _loadConfig();
     _loadExploreFavoritesAndShortcuts();
+  }
+
+  void _onToolConfigRefreshed() {
+    _loadConfig();
   }
 
   Future<void> _loadExploreFavoritesAndShortcuts() async {
@@ -731,6 +737,7 @@ class _ExploreAIPageState extends State<ExploreAIPage>
     seenJobIdsNotifier.removeListener(_onStateChanged);
     jobListNotifier.removeListener(_onStateChanged);
     SaleService().state.removeListener(_onStateChanged);
+    toolConfigRevision.removeListener(_onToolConfigRefreshed);
     // Dispose all video preview controllers
     _VideoPreviewManager.instance.disposeAll();
     super.dispose();
@@ -1137,7 +1144,8 @@ class _ExploreAIPageState extends State<ExploreAIPage>
   }
 
   Future<bool> _handleSystemBack() async {
-    if (selectedIndexNotifier.value != AppTabs.explore) return true;
+    if (popShellOverlay(context)) return false;
+    if (selectedIndexNotifier.value != AppTabs.explore) return false;
     final ok = await _confirmExitApp();
     if (ok) {
       // User confirmed exit - actually exit the app

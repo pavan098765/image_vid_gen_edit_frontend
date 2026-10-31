@@ -540,8 +540,14 @@ class _EditorPageState extends State<EditorPage>
   }
 
   Future<bool> _handleSystemBack() async {
-    if (selectedIndexNotifier.value != AppTabs.editor) return true;
-    if (!widget.handlesSystemBack || _allowRoutePop) return true;
+    if (popShellOverlay(context)) return false;
+    if (!widget.handlesSystemBack) return false;
+    if (_allowRoutePop) return true;
+    if (selectedIndexNotifier.value != AppTabs.editor) {
+      final current = ModalRoute.of(context)?.isCurrent ?? false;
+      if (current && Navigator.of(context).canPop()) return true;
+      return false;
+    }
     if (_selectedImage != null && _closeOpenTool()) return false;
     if (selectedIndexNotifier.value == AppTabs.editor &&
         _returnToResultManager &&

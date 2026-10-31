@@ -25,7 +25,6 @@ import 'package:kala_ai_create_images_videos_with_ai/core/widgets/backlit_glass.
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/exit_app_dialog.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_button.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/studio/studio_job_page.dart';
-import 'package:kala_ai_create_images_videos_with_ai/features/studio/studio_page.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/studio/studio_storyboard_page.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/result_manager/before_after_preview.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/result_manager/job_next_actions.dart';
@@ -649,6 +648,7 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
   }
 
   Future<bool> _handleSystemBack() async {
+    if (popShellOverlay(context)) return false;
     final leave = await showDialog<bool>(
           context: context,
           builder: (_) => const ConfirmExitAppDialog(),
@@ -810,7 +810,12 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
                 ),
               ],
       ),
-      body: Column(
+      body: Padding(
+        // Pushed Creations has no bottom safe area of its own. This keeps
+        // the last job above the system nav and the floating mini player.
+        // On the tab the shell already consumed this padding, so it is zero.
+        padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom),
+        child: Column(
         children: [
           if (widget.asTab && !_isSelectionMode)
             Padding(
@@ -995,6 +1000,7 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
             ),
           ),
         ],
+        ),
       ),
     ),
     );
@@ -1197,11 +1203,21 @@ class _JobCardState extends State<JobCard> {
     if (!fromCloud &&
         widget.job.localFilePath != null &&
         File(widget.job.localFilePath!).existsSync()) {
-      final success = await FileService.saveExistingToGallery(
+      final saved = await FileService.saveExistingToGallery(
         context,
         widget.job.localFilePath!,
+        customFileName: widget.job.isAudioOutput
+            ? savedAudioFileBaseName(widget.job)
+            : null,
+        jobId: widget.job.jobId,
       );
-      if (success) return;
+      if (saved != null && saved.isNotEmpty) {
+        if (saved != widget.job.localFilePath) {
+          widget.job.localFilePath = saved;
+          await addOrUpdateJob(widget.job);
+        }
+        return;
+      }
     }
 
     // Check queue status before starting
@@ -1316,7 +1332,10 @@ class _JobCardState extends State<JobCard> {
       savedPath = await FileService.queueDownload(
         context,
         downloadUrl,
-        suggestedFileName: widget.job.jobId,
+        suggestedFileName: widget.job.isAudioOutput
+            ? savedAudioFileBaseName(widget.job)
+            : widget.job.jobId,
+        jobId: widget.job.jobId,
         maxRetries: 2,
         outputType: widget.job.outputType,
         showPreview: !_isMusicDownload,
@@ -1521,25 +1540,6 @@ class _JobCardState extends State<JobCard> {
                     : Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          if (job.status == 'completed' &&
-                              (job.outputType == 'video' ||
-                                  job.outputType == 'studio_video'))
-                            IconButton(
-                              icon: Icon(Icons.movie_creation_outlined,
-                                  color: cs.primary),
-                              tooltip: 'Use this clip as scene 1 in Studio',
-                              onPressed: () {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (_) => StudioPage(
-                                      initialExploreJobId: job.jobId,
-                                      initialSceneIndex: 1,
-                                      initialLocalPath: job.localFilePath,
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
                           if (job.status == 'completed')
                             IconButton(
                               icon: _isDownloading
@@ -1826,9 +1826,12 @@ class _JobCardState extends State<JobCard> {
   }
 
   String get _musicAction {
+    final snap = widget.job.settingsSnapshot?['musicAction'];
+    if (snap == 'video' || snap == 'sounds' || snap == 'stems') {
+      return snap as String;
+    }
     final fromMusic = _musicResult?.action;
     if (fromMusic != null && fromMusic.isNotEmpty) return fromMusic;
-    final snap = widget.job.settingsSnapshot?['musicAction'];
     if (snap is String && snap.isNotEmpty) return snap;
     return 'song';
   }
@@ -1836,7 +1839,18 @@ class _JobCardState extends State<JobCard> {
   bool get _isHitMaker => _musicModelId == kSunoV6ModelId;
 
   bool get _hitMakerSong =>
-      _isHitMaker && (_musicAction == 'song' || _musicAction.isEmpty);
+      _isHitMaker &&
+      !widget.job.isVideoOutput &&
+      (_musicAction == 'song' || _musicAction.isEmpty);
+
+  /// Song, extend, and mashup each come back as two audio versions.
+  bool get _hitMakerPair =>
+      _hitMakerSong ||
+      (_isHitMaker &&
+          !widget.job.isVideoOutput &&
+          (_musicAction == 'extend' ||
+              _musicAction == 'upload_extend' ||
+              _musicAction == 'mashup'));
 
   bool get _isMusicDownload =>
       widget.job.isAudioOutput || _isHitMaker || widget.job.music != null;
@@ -1882,8 +1896,9 @@ class _JobCardState extends State<JobCard> {
   /// HitMaker songs return two versions. Keep the second slot while the job
   /// is still running, including the stretch where only the first has streamed.
   int get _versionCount {
+    if (widget.job.isVideoOutput) return 0;
     final tracks = _musicResult?.tracks.length ?? 0;
-    if (_hitMakerSong) {
+    if (_hitMakerPair) {
       final stillMaking =
           widget.job.status != 'completed' && widget.job.status != 'failed';
       // A running song keeps two slots. After it finishes, only real versions stay.
@@ -1908,7 +1923,10 @@ class _JobCardState extends State<JobCard> {
     if (!_isHitMaker) return false;
     if (_musicAction == 'sounds' ||
         _musicAction == 'video' ||
-        _musicAction == 'stems') {
+        _musicAction == 'stems' ||
+        _musicAction == 'extend' ||
+        _musicAction == 'upload_extend' ||
+        _musicAction == 'mashup') {
       return false;
     }
     if (widget.job.settingsSnapshot?['coverEnabled'] == true) return true;

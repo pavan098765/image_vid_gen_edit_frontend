@@ -7,6 +7,7 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:ui' as ui;
 
+import 'package:ffmpeg_kit_flutter_new/ffprobe_kit.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -1857,6 +1858,10 @@ class _GenericToolPageState extends State<GenericToolPage>
       _isMusicTool &&
       (_selectedModelId ?? _tool.model) == kSunoV6ModelId;
   bool get _sunoSounds => _isSunoV6 && _inputs['suno_kind'] == 'sound';
+  bool get _sunoExtend => _isSunoV6 && _inputs['suno_kind'] == 'extend';
+  bool get _sunoMashup => _isSunoV6 && _inputs['suno_kind'] == 'mashup';
+  bool get _sunoSongKind =>
+      _isSunoV6 && !_sunoSounds && !_sunoExtend && !_sunoMashup;
 
   bool _relatesMusicFields(String fieldRef) {
     if (!_isMusicTool || _musicEasy || _sunoSounds) return false;
@@ -3295,7 +3300,14 @@ class _GenericToolPageState extends State<GenericToolPage>
   /// Get the current model's cost
   int get _currentModelCost {
     if (_isSunoV6) {
-      return sunoV6CreditCost(action: _sunoSounds ? 'sounds' : 'song');
+      final action = _sunoSounds
+          ? 'sounds'
+          : _sunoExtend
+              ? 'upload_extend'
+              : _sunoMashup
+                  ? 'mashup'
+                  : 'song';
+      return sunoV6CreditCost(action: action);
     }
     return _selectedModelData?['baseCost'] as int? ??
         _selectedModelData?['cost'] as int? ??
@@ -3528,6 +3540,13 @@ class _GenericToolPageState extends State<GenericToolPage>
         'negativePrompt': _textSnapshot('negative_prompt'),
       if (_inputs['vocals'] is bool) 'vocals': _inputs['vocals'],
       if (_inputs['music_mode'] != null) 'musicMode': _inputs['music_mode'],
+      if (_isSunoV6) 'musicAction': _inputs['action'] ?? (_sunoSounds
+          ? 'sounds'
+          : _sunoExtend
+              ? 'upload_extend'
+              : _sunoMashup
+                  ? 'mashup'
+                  : 'song'),
       if (_inputs['track_mode'] != null) 'trackMode': _inputs['track_mode'],
       if (_inputs['duration'] is num) 'musicDuration': _inputs['duration'],
       if (_inputs['bpm'] != null) 'bpm': _inputs['bpm'],
@@ -5505,6 +5524,7 @@ class _GenericToolPageState extends State<GenericToolPage>
     // Check rate limit - don't allow if it would exceed concurrent job limit
     final rateLimitError = checkRateLimitForSubmission(totalJobsToSubmit);
     if (rateLimitError != null) return false;
+    if (_sunoExtend || _sunoMashup) return _extendMashupReady();
 
     // Check total job limit for bulk edit
     if (isBulkMode && _hasBulkInput) {
@@ -5713,6 +5733,42 @@ class _GenericToolPageState extends State<GenericToolPage>
   }
 
   // Get list of missing required inputs for user feedback
+  bool _extendMashupReady() {
+    if (_inputs['confirm_audio_rights'] != true) return false;
+    if (_sunoExtend) {
+      if (!_filledMedia('extend_audio')) return false;
+      final duration = _inputs['extend_audio_duration'];
+      if (duration is num && duration > 8 * 60) return false;
+      return true;
+    }
+    if (!_filledMedia('mashup_a') || !_filledMedia('mashup_b')) return false;
+    final style = _sunoStyleController.text.trim();
+    final title = (_inputs['title'] as String?)?.trim() ?? '';
+    return style.isNotEmpty && title.isNotEmpty;
+  }
+
+  List<String> _extendMashupMissing() {
+    final missing = <String>[];
+    if (_sunoExtend) {
+      if (!_filledMedia('extend_audio')) missing.add('Audio to extend');
+      final duration = _inputs['extend_audio_duration'];
+      if (duration is num && duration > 8 * 60) {
+        missing.add('Audio must be 8 minutes or less');
+      }
+    } else {
+      if (!_filledMedia('mashup_a')) missing.add('First track');
+      if (!_filledMedia('mashup_b')) missing.add('Second track');
+      if (_sunoStyleController.text.trim().isEmpty) missing.add('Style');
+      if (((_inputs['title'] as String?) ?? '').trim().isEmpty) {
+        missing.add('Title');
+      }
+    }
+    if (_inputs['confirm_audio_rights'] != true) {
+      missing.add('Confirm you own the audio');
+    }
+    return missing;
+  }
+
   List<String> _getMissingInputs() {
     final missing = <String>[];
 
@@ -5750,6 +5806,8 @@ class _GenericToolPageState extends State<GenericToolPage>
       }
       return ["⏳ Processing $current jobs..."];
     }
+
+    if (_sunoExtend || _sunoMashup) return _extendMashupMissing();
 
     // Check total job limit for bulk edit
     if (isBulkMode && _hasBulkInput) {
@@ -10590,6 +10648,16 @@ class _GenericToolPageState extends State<GenericToolPage>
     if (_isSunoV6) {
       final sounds = _sunoSounds;
       final id = input['id'];
+      if ((_sunoExtend || _sunoMashup) &&
+          id != 'extend_audio' &&
+          id != 'mashup_a' &&
+          id != 'mashup_b' &&
+          (id == 'vocals' ||
+              id == 'lyrics' ||
+              id == 'negative_prompt' ||
+              id == 'prompt')) {
+        return false;
+      }
       const soundOnly = {'sound_loop', 'sound_tempo', 'sound_key'};
       const songOnly = {
         'suno_length',
@@ -10774,7 +10842,11 @@ class _GenericToolPageState extends State<GenericToolPage>
         _inputs['${ref}_path'] = f.path;
         _inputs['${ref}_name'] = f.name;
         _inputs['${ref}_mime'] = _guessAudioMime(f.extension ?? '');
+        _inputs.remove('${ref}_duration');
       });
+      if (ref == 'extend_audio' && f.path != null && f.path!.isNotEmpty) {
+        unawaited(_rememberExtendDuration(f.path!));
+      }
     } catch (e) {
       debugPrint('Audio pick failed: $e');
       if (mounted) {
@@ -10782,6 +10854,38 @@ class _GenericToolPageState extends State<GenericToolPage>
           SnackBar(content: Text('Failed to pick audio: $e')),
         );
       }
+    }
+  }
+
+  Future<void> _rememberExtendDuration(String path) async {
+    try {
+      final session = await FFprobeKit.getMediaInformation(path);
+      final raw = session.getMediaInformation()?.getDuration();
+      final seconds = raw == null ? null : double.tryParse(raw);
+      if (!mounted || seconds == null || seconds <= 0) return;
+      if (seconds > 8 * 60) {
+        setState(() {
+          _inputs.remove('extend_audio');
+          _inputs.remove('extend_audio_path');
+          _inputs.remove('extend_audio_name');
+          _inputs.remove('extend_audio_mime');
+          _inputs.remove('extend_audio_duration');
+          _inputs.remove('continue_at');
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Audio to extend must be 8 minutes or less.'),
+          ),
+        );
+        return;
+      }
+      setState(() {
+        _inputs['extend_audio_duration'] = seconds;
+        final start = seconds - 1;
+        _inputs['continue_at'] = start < 1 ? 1.0 : start;
+      });
+    } catch (e) {
+      debugPrint('Extend duration probe failed: $e');
     }
   }
 
@@ -15350,9 +15454,15 @@ class _GenericToolPageState extends State<GenericToolPage>
                     ),
                   if (_isSpeechTool) _buildSpeechModeBar(),
                   if (_isSpeechTool) _buildSpeechLeadFields(),
-                  if (_isMusicTool && !_sunoSounds) _buildMusicModeBar(),
+                  if (_isMusicTool && _sunoSongKind) _buildMusicModeBar(),
+                  if (_isMusicTool && !_isSunoV6 && !_sunoSounds) _buildMusicModeBar(),
                   if (_isSunoV6) _buildHitMakerKindBar(),
-                  if (_isMusicTool && !_musicEasy && !_sunoSounds) ...[
+                  if (_sunoExtend || _sunoMashup) _buildHitMakerExtendMashup(),
+                  if (_isMusicTool &&
+                      !_musicEasy &&
+                      !_sunoSounds &&
+                      !_sunoExtend &&
+                      !_sunoMashup) ...[
                     _buildMusicBoundField('lyrics'),
                     _buildMusicComposerField(
                       label: _isSunoV6 ? 'Style of Music' : 'Prompt',
@@ -15376,9 +15486,11 @@ class _GenericToolPageState extends State<GenericToolPage>
                       _buildMusicBoundField('negative_prompt'),
                   ],
 
-                  if (_isSunoV6 && _musicEasy && !_sunoSounds)
+                  if (_sunoSongKind && _musicEasy)
                     _buildHitMakerEasyComposer()
                   else if (hasPromptElement &&
+                      !_sunoExtend &&
+                      !_sunoMashup &&
                       !(_isMusicTool && !_musicEasy && !_sunoSounds))
                     _buildElement(promptElement),
                   if (_isMusicTool && _musicUsesAudio)
@@ -16999,14 +17111,19 @@ class _GenericToolPageState extends State<GenericToolPage>
     );
   }
 
-  /// HitMaker can write a song or a sound. Other music models stay on songs.
+  /// HitMaker can write a song, a sound, an extension, or a mashup.
   Widget _buildHitMakerKindBar() {
     final cs = Theme.of(context).colorScheme;
     const kinds = [
       ('song', 'Song'),
       ('sound', 'Sounds'),
+      ('extend', 'Extend'),
+      ('mashup', 'Mashup'),
     ];
-    final selected = _sunoSounds ? 'sound' : 'song';
+    final raw = _inputs['suno_kind'];
+    final selected = raw is String && kinds.any((kind) => kind.$1 == raw)
+        ? raw
+        : 'song';
     return Padding(
       padding: const EdgeInsets.only(top: 6, bottom: 2),
       child: Container(
@@ -17016,35 +17133,35 @@ class _GenericToolPageState extends State<GenericToolPage>
           border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.2)),
         ),
         padding: const EdgeInsets.all(4),
-        child: Row(
+        child: Wrap(
+          spacing: 4,
+          runSpacing: 4,
           children: kinds.map((kind) {
             final on = selected == kind.$1;
-            return Expanded(
-              child: GestureDetector(
-                onTap: () => setState(() => _inputs['suno_kind'] = kind.$1),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 220),
-                  curve: Curves.easeOutCubic,
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  decoration: BoxDecoration(
-                    gradient: on
-                        ? const LinearGradient(
-                            colors: KalaColors.brandGradient,
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          )
-                        : null,
-                    borderRadius:
-                        BorderRadius.circular(AppStyles.radiusMd - 2),
-                  ),
-                  child: Text(
-                    kind.$2,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: on ? cs.onPrimary : cs.onSurfaceVariant,
-                      fontWeight: on ? FontWeight.w600 : FontWeight.w500,
-                      fontSize: 13,
-                    ),
+            return GestureDetector(
+              onTap: () => setState(() => _inputs['suno_kind'] = kind.$1),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  gradient: on
+                      ? const LinearGradient(
+                          colors: KalaColors.brandGradient,
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        )
+                      : null,
+                  borderRadius: BorderRadius.circular(AppStyles.radiusMd - 2),
+                ),
+                child: Text(
+                  kind.$2,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: on ? cs.onPrimary : cs.onSurfaceVariant,
+                    fontWeight: on ? FontWeight.w600 : FontWeight.w500,
+                    fontSize: 13,
                   ),
                 ),
               ),
@@ -17052,6 +17169,84 @@ class _GenericToolPageState extends State<GenericToolPage>
           }).toList(),
         ),
       ),
+    );
+  }
+
+  Widget _buildHitMakerExtendMashup() {
+    final cs = Theme.of(context).colorScheme;
+    final owned = _inputs['confirm_audio_rights'] == true;
+    final duration = _inputs['extend_audio_duration'];
+    final seconds = duration is num ? duration.toDouble() : null;
+    final canSlide = _sunoExtend && seconds != null && seconds > 2 && seconds <= 8 * 60;
+    final continueAt = (_inputs['continue_at'] as num?)?.toDouble();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_sunoExtend) _buildAudioUpload('extend_audio'),
+        if (_sunoMashup) ...[
+          _buildAudioUpload('mashup_a'),
+          _buildAudioUpload('mashup_b'),
+        ],
+        CheckboxListTile(
+          contentPadding: EdgeInsets.zero,
+          value: owned,
+          onChanged: (value) =>
+              setState(() => _inputs['confirm_audio_rights'] = value == true),
+          controlAffinity: ListTileControlAffinity.leading,
+          title: Text(
+            'This audio is mine and is not copyrighted',
+            style: TextStyle(color: cs.onSurface, fontSize: 14),
+          ),
+        ),
+        _buildMusicComposerField(
+          label: _sunoMashup ? 'Style' : 'Style (optional)',
+          hint: 'Genre, mood, and instruments',
+          controller: _sunoStyleController,
+          minLines: 2,
+        ),
+        _buildMusicComposerField(
+          label: _sunoMashup ? 'Title' : 'Title (optional)',
+          hint: 'Name for the new track',
+          inputId: 'title',
+          minLines: 1,
+        ),
+        _buildMusicComposerField(
+          label: _sunoMashup ? 'Idea (optional)' : 'How it should continue (optional)',
+          hint: _sunoMashup
+              ? 'What the blend should feel like'
+              : 'What should happen after the original',
+          controller: _promptController,
+          minLines: 3,
+        ),
+        if (canSlide)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Continue from ${((continueAt ?? (seconds - 1)).clamp(1, seconds - 0.5)).toStringAsFixed(0)}s',
+                  style: TextStyle(
+                    color: cs.onSurface,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Slider(
+                  min: 1,
+                  max: seconds - 0.5,
+                  value: (continueAt ?? (seconds - 1))
+                      .clamp(1, seconds - 0.5)
+                      .toDouble(),
+                  onChanged: (value) => setState(
+                    () => _inputs['continue_at'] =
+                        double.parse(value.toStringAsFixed(1)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 
@@ -18477,10 +18672,64 @@ class _GenericToolPageState extends State<GenericToolPage>
     });
   }
 
+  void _prepareSunoExtendOrMashup(Map<String, dynamic> resolved) {
+    resolved['action'] = _sunoExtend ? 'upload_extend' : 'mashup';
+    resolved['confirm_audio_rights'] = _inputs['confirm_audio_rights'] == true;
+    resolved
+      ..remove('mode')
+      ..remove('duration')
+      ..remove('vocal_gender')
+      ..remove('variety')
+      ..remove('sound_loop')
+      ..remove('sound_tempo')
+      ..remove('sound_key')
+      ..remove('grab_lyrics')
+      ..remove('instrumental')
+      ..remove('negative_tags')
+      ..remove('audio_id')
+      ..remove('source_task_id')
+      ..remove('lyrics');
+    final style = _sunoStyleController.text.trim();
+    if (style.isEmpty) {
+      resolved.remove('style');
+    } else {
+      resolved['style'] = style.length > 1000 ? style.substring(0, 1000) : style;
+    }
+    final title = (_inputs['title'] as String?)?.trim() ?? '';
+    if (title.isEmpty) {
+      resolved.remove('title');
+    } else {
+      resolved['title'] = title.length > 100 ? title.substring(0, 100) : title;
+    }
+    final idea = _promptController.text.trim();
+    if (idea.isEmpty) {
+      resolved.remove('prompt');
+    } else {
+      resolved['prompt'] = idea.length > 5000 ? idea.substring(0, 5000) : idea;
+    }
+    if (!_sunoExtend) return;
+    final duration = _inputs['extend_audio_duration'];
+    if (duration is num && duration > 0 && duration <= 8 * 60) {
+      resolved['source_duration'] = duration;
+    } else {
+      resolved.remove('source_duration');
+    }
+    final continueAt = _inputs['continue_at'];
+    if (continueAt is num) {
+      resolved['continue_at'] = continueAt;
+    } else {
+      resolved.remove('continue_at');
+    }
+  }
+
   /// HitMaker fields that the shared music form does not share with other models.
   void _prepareSunoParams(Map<String, dynamic> resolved) {
     if (!_isSunoV6) return;
     resolved['variant'] = 'V6';
+    if (_sunoExtend || _sunoMashup) {
+      _prepareSunoExtendOrMashup(resolved);
+      return;
+    }
     resolved['action'] = _sunoSounds ? 'sounds' : 'song';
     if (_sunoSounds) {
       resolved
@@ -18593,14 +18842,20 @@ class _GenericToolPageState extends State<GenericToolPage>
     if (_isMusicTool) {
       if (_isSunoV6) {
         _inputs['suno_kind'] ??= 'song';
-        final cap = _sunoSounds ? 500 : 3000;
+        final cap = _sunoSounds ? 500 : 5000;
         var prompt = _inputs['prompt']?.toString().trim() ?? '';
         if (prompt.length > cap) prompt = prompt.substring(0, cap);
         _inputs['prompt'] = prompt;
-        _inputs['action'] = _sunoSounds ? 'sounds' : 'song';
+        _inputs['action'] = _sunoSounds
+            ? 'sounds'
+            : _sunoExtend
+                ? 'upload_extend'
+                : _sunoMashup
+                    ? 'mashup'
+                    : 'song';
         _inputs['mode'] = _musicEasy ? 'easy' : 'custom';
         _inputs['variant'] = 'V6';
-        if (!_sunoSounds && !_musicEasy) {
+        if (!_sunoSounds && !_sunoExtend && !_sunoMashup && !_musicEasy) {
           _inputs['prompt'] = '';
           _inputs['style'] = _sunoStyleController.text.trim();
         }
@@ -20255,6 +20510,19 @@ Return only the JSON fields.
           // Never ship raw bytes in params.
           paramsForSubmit.remove(id);
           debugPrint("☁️ R2: uploaded $id ($t, ${rawBytes.length} bytes)");
+        }
+        if (_sunoExtend) {
+          final key = paramsForSubmit['extend_audio_r2_key'];
+          if (key is String && key.isNotEmpty) {
+            paramsForSubmit['reference_audio_r2_key'] = key;
+          }
+        }
+        if (_sunoMashup) {
+          final first = paramsForSubmit['mashup_a_r2_key'];
+          final second = paramsForSubmit['mashup_b_r2_key'];
+          if (first is String && second is String) {
+            paramsForSubmit['audio_r2_keys'] = [first, second];
+          }
         }
 
         stripForbiddenMediaFromParams(paramsForSubmit);

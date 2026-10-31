@@ -150,6 +150,9 @@ int sunoV6CreditCost({required String action, String? stemType}) {
       return 80;
     case 'sounds':
       return 15;
+    case 'extend':
+    case 'upload_extend':
+    case 'mashup':
     case 'replace':
     case 'song':
     default:

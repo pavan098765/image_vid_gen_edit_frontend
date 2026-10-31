@@ -9,6 +9,7 @@ import 'package:kala_ai_create_images_videos_with_ai/core/music_job.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/suno_v6_client.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/tool_launch.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/user_template_store.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/audio_result_player.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/media_editor/editor_tab_launch.dart';
 
 class JobNextActions extends StatefulWidget {
@@ -231,7 +232,8 @@ class _JobNextActionsState extends State<JobNextActions> {
     return 20;
   }
 
-  List<({String taskId, String audioId, String title})> _hitMakerVideoTargets() {
+  List<({String taskId, String audioId, String title, int index})>
+      _hitMakerVideoTargets() {
     final job = widget.job;
     final snapModel = job.settingsSnapshot?['modelId'];
     final model = snapModel is String && snapModel.isNotEmpty ? snapModel : job.model;
@@ -240,19 +242,109 @@ class _JobNextActionsState extends State<JobNextActions> {
     if (music.action != 'song') return const [];
     final taskId = music.taskId;
     if (taskId == null || taskId.isEmpty) return const [];
-    return [
-      for (final track in music.tracks)
-        if (track.id.isNotEmpty)
-          (
-            taskId: taskId,
-            audioId: track.id,
-            title: track.title.trim().isEmpty ? 'Version' : track.title.trim(),
-          ),
-    ];
+    final targets = <({String taskId, String audioId, String title, int index})>[];
+    for (var i = 0; i < music.tracks.length; i++) {
+      final track = music.tracks[i];
+      if (track.id.isEmpty) continue;
+      targets.add((
+        taskId: taskId,
+        audioId: track.id,
+        title: track.title.trim().isEmpty ? 'Version' : track.title.trim(),
+        index: i,
+      ));
+    }
+    return targets;
+  }
+
+  List<({String audioId, String title, int index, double? duration})>
+      _hitMakerExtendTargets() {
+    final job = widget.job;
+    final snapModel = job.settingsSnapshot?['modelId'];
+    final model = snapModel is String && snapModel.isNotEmpty ? snapModel : job.model;
+    if (model != kSunoV6ModelId || job.music == null || job.status != 'completed') {
+      return const [];
+    }
+    final music = MusicResult.fromJson(job.music!);
+    if (music.action != 'song') return const [];
+    final targets =
+        <({String audioId, String title, int index, double? duration})>[];
+    for (var i = 0; i < music.tracks.length; i++) {
+      final track = music.tracks[i];
+      if (track.id.isEmpty) continue;
+      targets.add((
+        audioId: track.id,
+        title: track.title.trim().isEmpty ? 'Version' : track.title.trim(),
+        index: i,
+        duration: track.duration,
+      ));
+    }
+    return targets;
+  }
+
+  Future<void> _extendTrack(
+    ({String audioId, String title, int index, double? duration}) target,
+  ) async {
+    final note = await showDialog<String>(
+      context: context,
+      builder: (context) => _ExtendNoteDialog(
+        version: audioVersionLabel(target.index),
+      ),
+    );
+    if (note == null || !mounted) return;
+    final song = widget.job;
+    final params = <String, dynamic>{
+      'action': 'extend',
+      'audio_id': target.audioId,
+      'title': target.title,
+    };
+    final style = _snapText('style');
+    if (style != null) params['style'] = style;
+    final trimmed = note.trim();
+    if (trimmed.isNotEmpty) params['prompt'] = trimmed;
+    final duration = target.duration;
+    if (duration != null && duration > 1) {
+      params['source_duration'] = duration;
+      params['continue_at'] = duration - 1;
+    }
+    try {
+      final result = await submitSunoV6(
+        prompt: trimmed.isEmpty ? target.title : trimmed,
+        params: params,
+      );
+      final created = JobModel(
+        jobId: result.jobId,
+        title: await generateFriendlyJobName(),
+        model: kSunoV6ModelId,
+        outputType: 'audio',
+        status: 'processing',
+        capabilityId: 'create_music',
+        parentJobId: song.jobId,
+        originalPrompt: trimmed.isEmpty ? _prompt : trimmed,
+        creditsCharged: 65,
+        settingsSnapshot: {
+          'modelId': kSunoV6ModelId,
+          'action': 'extend',
+          'musicAction': 'extend',
+          'audio_id': target.audioId,
+          if (trimmed.isNotEmpty) 'prompt': trimmed,
+          if (style != null) 'style': style,
+        },
+      );
+      await addOrUpdateJob(created);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Extension added to Creations.')),
+      );
+    } on SunoFormException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    }
   }
 
   Future<void> _createMusicVideo(
-    ({String taskId, String audioId, String title}) target,
+    ({String taskId, String audioId, String title, int index}) target,
   ) async {
     final song = widget.job;
     try {
@@ -277,6 +369,7 @@ class _JobNextActionsState extends State<JobNextActions> {
         settingsSnapshot: {
           'modelId': kSunoV6ModelId,
           'action': 'video',
+          'musicAction': 'video',
           'source_task_id': target.taskId,
           'audio_id': target.audioId,
           if (_prompt != null) 'prompt': _prompt,
@@ -417,7 +510,7 @@ class _JobNextActionsState extends State<JobNextActions> {
       final gems = _musicVideoGems();
       for (final target in videos) {
         final label = videos.length > 1
-            ? 'Create music video · ${target.title}'
+            ? 'Create music video · ${audioVersionLabel(target.index)}'
             : 'Create music video';
         rows.add(_aiRow(
           cs,
@@ -425,6 +518,19 @@ class _JobNextActionsState extends State<JobNextActions> {
           label: label,
           detail: '$gems gems',
           onTap: () => _guard(() => _createMusicVideo(target)),
+        ));
+      }
+      final extensions = _hitMakerExtendTargets();
+      for (final target in extensions) {
+        final label = extensions.length > 1
+            ? 'Extend · ${audioVersionLabel(target.index)}'
+            : 'Extend';
+        rows.add(_aiRow(
+          cs,
+          icon: Icons.queue_music_rounded,
+          label: label,
+          detail: '65 gems',
+          onTap: () => _guard(() => _extendTrack(target)),
         ));
       }
     }
@@ -733,6 +839,56 @@ class _JobNextActionsState extends State<JobNextActions> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Setup saved')),
+    );
+  }
+}
+
+class _ExtendNoteDialog extends StatefulWidget {
+  const _ExtendNoteDialog({required this.version});
+
+  final String version;
+
+  @override
+  State<_ExtendNoteDialog> createState() => _ExtendNoteDialogState();
+}
+
+class _ExtendNoteDialogState extends State<_ExtendNoteDialog> {
+  final TextEditingController _note = TextEditingController();
+
+  @override
+  void dispose() {
+    _note.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return AlertDialog(
+      backgroundColor: colors.surface,
+      title: Text(
+        'Extend ${widget.version}',
+        style: TextStyle(color: colors.onSurface),
+      ),
+      content: TextField(
+        controller: _note,
+        minLines: 2,
+        maxLines: 4,
+        decoration: const InputDecoration(
+          labelText: 'How it should continue',
+          hintText: 'Optional',
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, _note.text),
+          child: const Text('Extend · 65'),
+        ),
+      ],
     );
   }
 }

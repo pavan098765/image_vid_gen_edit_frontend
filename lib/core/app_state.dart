@@ -181,6 +181,31 @@ class AppTabs {
   static const int credits = 4;
 }
 
+bool _rootPopGuard = false;
+
+/// Pops the top root route at most once per frame.
+/// A second call in the same back gesture reports that the pop was already taken.
+bool popRootOnce(BuildContext context) {
+  final nav = Navigator.of(context, rootNavigator: true);
+  if (!nav.canPop()) return false;
+  if (_rootPopGuard) return true;
+  _rootPopGuard = true;
+  nav.pop();
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    _rootPopGuard = false;
+  });
+  return true;
+}
+
+/// Closes a dialog or player sitting above this page.
+/// Returns false when this page itself is the top route, so the caller keeps its own back behavior.
+bool popShellOverlay(BuildContext context) {
+  if (_rootPopGuard) return true;
+  final route = ModalRoute.of(context);
+  if (route == null || route.isCurrent) return false;
+  return popRootOnce(context);
+}
+
 /// Shell scaffold. The menu button opens its drawer.
 final GlobalKey<ScaffoldState> appShellKey = GlobalKey<ScaffoldState>();
 

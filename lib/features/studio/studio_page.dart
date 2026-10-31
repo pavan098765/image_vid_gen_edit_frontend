@@ -66,7 +66,9 @@ class _StudioPageState extends State<StudioPage> {
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) async {
-        if (didPop || selectedIndexNotifier.value != AppTabs.studio) return;
+        if (didPop) return;
+        if (popShellOverlay(context)) return;
+        if (selectedIndexNotifier.value != AppTabs.studio) return;
         final nav = _navKey.currentState;
         if (nav != null && nav.canPop()) {
           nav.pop();

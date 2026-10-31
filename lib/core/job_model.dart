@@ -88,6 +88,8 @@ Map<String, dynamic> sanitizeSettingsSnapshot(Map<String, dynamic>? raw) {
     'vocalGender',
     'instrumental',
     'musicAction',
+    'eqPreset',
+    'eqAppliedHashes',
     'variant',
     'sunoTitle',
     'coverEnabled',

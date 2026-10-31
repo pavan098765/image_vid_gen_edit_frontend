@@ -2608,7 +2608,10 @@
           "actionCosts": {
             "song": 65,
             "sounds": 15,
-            "video": 20
+            "video": 20,
+            "extend": 65,
+            "upload_extend": 65,
+            "mashup": 65
           },
           "costUpscale": 0,
           "offer": 0,
@@ -2789,6 +2792,30 @@
           "min": 1,
           "max": 1,
           "showForModels": ["suno_v6"]
+        },
+        {
+          "id": "extend_audio",
+          "type": "audio_upload",
+          "label": "Audio to extend",
+          "description": "One track you own, up to 8 minutes.",
+          "showForModels": ["suno_v6"],
+          "showWhen": { "suno_kind": "extend" }
+        },
+        {
+          "id": "mashup_a",
+          "type": "audio_upload",
+          "label": "First track",
+          "description": "A track you own.",
+          "showForModels": ["suno_v6"],
+          "showWhen": { "suno_kind": "mashup" }
+        },
+        {
+          "id": "mashup_b",
+          "type": "audio_upload",
+          "label": "Second track",
+          "description": "A second track you own.",
+          "showForModels": ["suno_v6"],
+          "showWhen": { "suno_kind": "mashup" }
         },
         {
           "id": "sound_loop",

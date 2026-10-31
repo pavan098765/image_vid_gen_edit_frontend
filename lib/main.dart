@@ -1079,7 +1079,8 @@ ModalRoute<void>? _openOrReplaceResultManager({String? initialJobId}) {
 
 /// Hosts the mini player that floats above a pushed page.
 /// The player is outside the app navigator, so it needs this overlay
-/// for the play and stop tooltips.
+/// for the play and stop tooltips. Safe area is applied by the parent
+/// position, so the bar itself is not padded again.
 class _MiniPlayerLayer extends StatelessWidget {
   const _MiniPlayerLayer();
 
@@ -1088,7 +1089,7 @@ class _MiniPlayerLayer extends StatelessWidget {
     return Overlay(
       initialEntries: [
         OverlayEntry(
-          builder: (context) => const NowPlayingBar(includeSafeArea: true),
+          builder: (context) => const NowPlayingBar(),
         ),
       ],
     );
@@ -1150,11 +1151,16 @@ class _KalaAIAppState extends State<KalaAIApp> {
             return ListenableBuilder(
               listenable: Listenable.merge([audioNowPlaying, appRouteStack]),
               builder: (context, _) {
+                final media = MediaQuery.of(context);
+                // The bar sits behind the keyboard, so reserving its height
+                // while typing leaves a blank band above the keyboard. That
+                // band only appears on pushed pages while audio is playing.
+                final keyboardOpen = media.viewInsets.bottom > 0;
                 final showOverlay = appRouteStack.pageCoversShell &&
                     audioNowPlaying.hasAudio &&
                     !audioNowPlaying.sheetOpen &&
-                    audioNowPlaying.tracks.isNotEmpty;
-                final media = MediaQuery.of(context);
+                    audioNowPlaying.tracks.isNotEmpty &&
+                    !keyboardOpen;
                 final padded = showOverlay
                     ? media.copyWith(
                         padding: media.padding.copyWith(
@@ -1172,8 +1178,8 @@ class _KalaAIAppState extends State<KalaAIApp> {
                       Positioned(
                         left: 0,
                         right: 0,
-                        bottom: 0,
-                        height: kNowPlayingBarHeight + media.padding.bottom,
+                        bottom: media.padding.bottom,
+                        height: kNowPlayingBarHeight,
                         // This bar sits above the navigator. Its buttons need
                         // their own overlay, or the tooltips throw and the row
                         // paints the red error screen over every tab.
@@ -1217,6 +1223,7 @@ class _MainAppScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    bindMiniPlayerNavigator(context);
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
@@ -1244,7 +1251,19 @@ class _MainAppScaffold extends StatelessWidget {
       bottomNavigationBar: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const NowPlayingBar(),
+          ListenableBuilder(
+            listenable: Listenable.merge([audioNowPlaying, appRouteStack]),
+            builder: (context, _) {
+              // A pushed page draws its own bar. Keeping this one too
+              // paints a second player through the page into the nav zone.
+              final covered = appRouteStack.pageCoversShell &&
+                  audioNowPlaying.hasAudio &&
+                  !audioNowPlaying.sheetOpen &&
+                  audioNowPlaying.tracks.isNotEmpty;
+              if (covered) return const SizedBox.shrink();
+              return const NowPlayingBar();
+            },
+          ),
           ValueListenableBuilder<int>(
             valueListenable: selectedIndexNotifier,
             builder: (_, currentIndex, __) {

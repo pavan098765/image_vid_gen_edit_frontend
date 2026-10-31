@@ -342,6 +342,32 @@ String _displayTitle(String title, String? prompt) {
   return '${line.substring(0, 48).trim()}…';
 }
 
+const _versionLetters = ['A', 'B', 'C', 'D'];
+
+/// Version A, Version B, matching the chips on a HitMaker song card.
+String audioVersionLabel(int index) {
+  if (index >= 0 && index < _versionLetters.length) {
+    return 'Version ${_versionLetters[index]}';
+  }
+  return 'Version ${index + 1}';
+}
+
+/// File name without an extension. Uses the title the player shows.
+String savedAudioFileBaseName(JobModel job) {
+  final tracks = audioTracksFromJob(job);
+  if (tracks.isEmpty) {
+    final snap = job.settingsSnapshot ?? const <String, dynamic>{};
+    final prompt = _clean(job.originalPrompt) ?? _clean(snap['prompt']);
+    final title = _displayTitle(job.title, prompt);
+    return title.trim().isEmpty ? 'Audio' : title.trim();
+  }
+  final title = tracks.first.title.trim().isEmpty
+      ? 'Audio'
+      : tracks.first.title.trim();
+  if (tracks.length == 1) return title;
+  return '$title - ${audioVersionLabel(0)}';
+}
+
 class CoverPalette {
   final List<Color> inks;
   final Color glow;
@@ -1492,8 +1518,78 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
     return _clean(snap['lyrics']) ?? track.lyrics;
   }
 
+  String _exportBaseName(AudioTrackDetails track) {
+    final title = _visibleTitle(track);
+    final jobId = track.sourceJobId;
+    if (jobId == null || jobId.isEmpty) return title;
+    final siblings = [
+      for (final item in _playlist)
+        if (item.sourceJobId == jobId) item,
+    ];
+    if (siblings.length <= 1) return title;
+    var index = -1;
+    final trackId = track.sourceTrackId;
+    if (trackId != null && trackId.isNotEmpty) {
+      index = siblings.indexWhere((item) => item.sourceTrackId == trackId);
+    }
+    if (index < 0) index = siblings.indexOf(track);
+    if (index < 0) index = 0;
+    return '$title - ${audioVersionLabel(index)}';
+  }
+
+  String _shareFileName(String base, String path) {
+    final ext = path.split('.').last.toLowerCase();
+    const known = {'mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac'};
+    final suffix = known.contains(ext) ? ext : 'mp3';
+    final clean = base.replaceAll(RegExp(r'[\\/:*?"<>|]'), '').trim();
+    return '${clean.isEmpty ? 'Audio' : clean}.$suffix';
+  }
+
+  String _shareMime(String path) {
+    switch (path.split('.').last.toLowerCase()) {
+      case 'wav':
+        return 'audio/wav';
+      case 'm4a':
+        return 'audio/mp4';
+      case 'aac':
+        return 'audio/aac';
+      case 'ogg':
+        return 'audio/ogg';
+      case 'flac':
+        return 'audio/flac';
+      default:
+        return 'audio/mpeg';
+    }
+  }
+
+  Future<void> _rememberSharedFile(String path) async {
+    final jobId = _track.sourceJobId;
+    if (jobId == null || jobId.isEmpty) return;
+    final siblings = [
+      for (final item in _playlist)
+        if (item.sourceJobId == jobId) item,
+    ];
+    var index = -1;
+    final trackId = _track.sourceTrackId;
+    if (trackId != null && trackId.isNotEmpty) {
+      index = siblings.indexWhere((item) => item.sourceTrackId == trackId);
+    }
+    if (siblings.length > 1 && index != 0) return;
+    final jobs = List<JobModel>.from(jobListNotifier.value);
+    final idx = jobs.indexWhere((job) => job.jobId == jobId);
+    if (idx == -1) return;
+    final job = jobs[idx];
+    if (job.localFilePath == path) return;
+    job.localFilePath = path;
+    job.autoDownloaded = true;
+    jobs[idx] = job;
+    jobListNotifier.value = jobs;
+    await saveJobsToPrefs();
+  }
+
   Future<void> _shareTrack() async {
     final title = _visibleTitle(_track);
+    final base = _exportBaseName(_track);
     var path = _track.filePath;
     if (path.isEmpty || !File(path).existsSync()) {
       final url = _track.networkUrl;
@@ -1509,11 +1605,23 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
           _toast('Could not share this song');
           return;
         }
-        final dir = await getTemporaryDirectory();
-        final safe = title.replaceAll(RegExp(r'[\\/:*?"<>|]'), '').trim();
-        final file = File('${dir.path}/${safe.isEmpty ? 'song' : safe}.mp3');
-        await file.writeAsBytes(response.bodyBytes, flush: true);
-        path = file.path;
+        final saved = await FileService.saveFile(
+          context,
+          response.bodyBytes,
+          extension: 'mp3',
+          customFileName: base,
+          showPreview: false,
+          jobId: _track.sourceJobId,
+        );
+        if (saved != null && File(saved).existsSync()) {
+          path = saved;
+          await _rememberSharedFile(saved);
+        } else {
+          final dir = await getTemporaryDirectory();
+          final file = File('${dir.path}/${_shareFileName(base, 'song.mp3')}');
+          await file.writeAsBytes(response.bodyBytes, flush: true);
+          path = file.path;
+        }
       } catch (_) {
         if (mounted) _toast('Could not share this song');
         return;
@@ -1525,7 +1633,13 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
         ? box.localToGlobal(Offset.zero) & box.size
         : null;
     await Share.shareXFiles(
-      [XFile(path)],
+      [
+        XFile(
+          path,
+          name: _shareFileName(base, path),
+          mimeType: _shareMime(path),
+        ),
+      ],
       text: title,
       sharePositionOrigin: origin,
     );
@@ -2274,6 +2388,21 @@ class _AudioResultPlayerState extends State<AudioResultPlayer> {
 /// Height of the mini player row, without the system gesture inset.
 const double kNowPlayingBarHeight = 64;
 
+/// Navigator context from the tab shell. The floating mini player is built
+/// beside the navigator, so a tap there has no navigator of its own.
+BuildContext? _miniPlayerNavigatorContext;
+
+void bindMiniPlayerNavigator(BuildContext context) {
+  _miniPlayerNavigatorContext = context;
+}
+
+BuildContext? _audioSheetContext(BuildContext context) {
+  if (Navigator.maybeOf(context) != null) return context;
+  final host = _miniPlayerNavigatorContext;
+  if (host != null && host.mounted) return host;
+  return null;
+}
+
 /// Compact controls shown after the full player is closed.
 class NowPlayingBar extends StatelessWidget {
   final bool includeSafeArea;
@@ -2297,11 +2426,15 @@ class NowPlayingBar extends StatelessWidget {
         return Material(
           color: const Color(0xFF1A1224),
           child: InkWell(
-            onTap: () => FileService.openAudioTracks(
-              context,
-              tracks: tracks,
-              initialIndex: index,
-            ),
+            onTap: () {
+              final host = _audioSheetContext(context);
+              if (host == null) return;
+              FileService.openAudioTracks(
+                host,
+                tracks: tracks,
+                initialIndex: index,
+              );
+            },
             child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
               child: Row(
