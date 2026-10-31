@@ -6324,6 +6324,7 @@ class _GenericToolPageState extends State<GenericToolPage>
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
 
     return Stack(
       children: [
@@ -6407,6 +6408,7 @@ class _GenericToolPageState extends State<GenericToolPage>
         ],
       ),
       body: SafeArea(
+        bottom: !keyboardOpen,
         child: _buildDynamicInputScreen(),
       ),
         ),
@@ -15292,7 +15294,9 @@ class _GenericToolPageState extends State<GenericToolPage>
   Widget _buildDynamicInputScreen() {
     final cs = Theme.of(context).colorScheme;
     // Get safe area padding for devices with home bar/navigation buttons
-    final bottomSafeArea = MediaQuery.of(context).padding.bottom;
+    final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
+    final bottomSafeArea =
+        keyboardOpen ? 0.0 : MediaQuery.paddingOf(context).bottom;
 
     // Filter elements: generate_button is rendered in the sticky footer;
     // the `prompt` element is rendered at the top as a composer card.

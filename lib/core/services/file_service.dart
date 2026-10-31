@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/music_job.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/song_equalizer.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/thumbnail_service.dart';
 import 'package:open_filex/open_filex.dart';
@@ -85,6 +86,77 @@ class FileService {
     _processQueue();
 
     return completer.future;
+  }
+
+  /// Saves each HitMaker version as "Title - Version A" and "Title - Version B".
+  /// Returns true when this job has more than one finished audio file.
+  static Future<bool> saveHitMakerVersions(
+    BuildContext context,
+    JobModel job,
+  ) async {
+    final raw = job.music;
+    if (raw == null) return false;
+    final music = MusicResult.fromJson(raw);
+    if (music.action == 'sounds' ||
+        music.action == 'stems' ||
+        music.action == 'video') {
+      return false;
+    }
+    final playable = [
+      for (final track in music.tracks)
+        if (track.fileUrl != null && track.fileUrl!.isNotEmpty) track,
+    ];
+    if (playable.length < 2) return false;
+
+    final paths = <String, String>{};
+    final stored = job.settingsSnapshot?['audioVersionPaths'];
+    if (stored is Map) {
+      for (final entry in stored.entries) {
+        final key = entry.key?.toString() ?? '';
+        final value = entry.value?.toString() ?? '';
+        if (key.isNotEmpty && value.isNotEmpty && File(value).existsSync()) {
+          paths[key] = value;
+        }
+      }
+    }
+
+    for (var i = 0; i < playable.length; i++) {
+      final track = playable[i];
+      final key = track.id.isEmpty ? '$i' : track.id;
+      final have = paths[key];
+      if (have != null && File(have).existsSync()) continue;
+      final saved = await queueDownload(
+        context,
+        track.fileUrl!,
+        suggestedFileName: savedAudioFileBaseName(job, versionIndex: i),
+        jobId: job.jobId,
+        maxRetries: 2,
+        outputType: 'audio',
+        showPreview: false,
+      );
+      if (saved != null && saved.isNotEmpty) paths[key] = saved;
+    }
+    if (paths.isEmpty) return false;
+
+    final jobs = List<JobModel>.from(jobListNotifier.value);
+    final idx = jobs.indexWhere((item) => item.jobId == job.jobId);
+    if (idx != -1) {
+      final current = jobs[idx];
+      final snap = Map<String, dynamic>.from(current.settingsSnapshot ?? {});
+      snap['audioVersionPaths'] = paths;
+      current.settingsSnapshot = snap;
+      final firstKey = playable.first.id.isEmpty ? '0' : playable.first.id;
+      final first = paths[firstKey] ?? paths.values.first;
+      current.localFilePath = first;
+      current.autoDownloaded = true;
+      jobs[idx] = current;
+      jobListNotifier.value = jobs;
+      await saveJobsToPrefs();
+      job.localFilePath = first;
+      job.settingsSnapshot = snap;
+      job.autoDownloaded = true;
+    }
+    return true;
   }
 
   /// Show snackbar with debouncing to prevent spam
@@ -271,13 +343,17 @@ class FileService {
       if (_isAudioExtension(extension)) {
         try {
           try {
+            debugPrint(
+              'EQ: saved download "$fileName" job=$jobId bytes=${bytes.length}',
+            );
             bytes = await equalizeHitMakerDownload(
               bytes: bytes,
               extension: extension,
               jobId: jobId,
             );
+            debugPrint('EQ: file ready "$fileName" bytes=${bytes.length}');
           } catch (error) {
-            debugPrint('EQ bake skipped: $error');
+            debugPrint('EQ: bake skipped, saving original: $error');
           }
           final publicPath = await _savePublicAudio(bytes, fileName);
           final localPath = (publicPath != null && File(publicPath).existsSync())

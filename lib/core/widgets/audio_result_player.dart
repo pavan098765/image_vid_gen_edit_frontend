@@ -275,26 +275,57 @@ List<AudioTrackDetails> _audioFallbackFromJob(
   ];
 }
 
+Map<String, String> _versionPaths(JobModel job) {
+  final raw = job.settingsSnapshot?['audioVersionPaths'];
+  if (raw is! Map) return const <String, String>{};
+  final paths = <String, String>{};
+  for (final entry in raw.entries) {
+    final key = entry.key?.toString() ?? '';
+    final value = entry.value?.toString() ?? '';
+    if (key.isEmpty || value.isEmpty) continue;
+    paths[key] = value;
+  }
+  return paths;
+}
+
+AudioTrackDetails _fileForVersion(
+  AudioTrackDetails track,
+  int index,
+  Map<String, String> paths,
+  String? firstVersionPath,
+) {
+  final id = track.sourceTrackId;
+  final candidates = <String?>[
+    if (id != null && id.isNotEmpty) paths[id],
+    paths['$index'],
+    if (index == 0) firstVersionPath,
+  ];
+  for (final path in candidates) {
+    if (path == null || path.isEmpty || !File(path).existsSync()) continue;
+    return track.copyWith(filePath: path, streaming: false);
+  }
+  return track;
+}
+
 List<AudioTrackDetails> _attachSavedFile(
   JobModel job,
   List<AudioTrackDetails> tracks,
 ) {
   if (tracks.isEmpty) return tracks;
-  final path = job.localFilePath;
-  if (path == null || path.isEmpty || !File(path).existsSync()) return tracks;
-  final lower = path.toLowerCase();
+  final paths = _versionPaths(job);
+  final fallback = job.localFilePath;
+  final lower = (fallback ?? '').toLowerCase();
   final audio = job.isAudioOutput ||
       lower.endsWith('.mp3') ||
       lower.endsWith('.wav') ||
       lower.endsWith('.m4a') ||
       lower.endsWith('.aac') ||
-      lower.endsWith('.ogg');
+      lower.endsWith('.ogg') ||
+      paths.isNotEmpty;
   if (!audio) return tracks;
-  if (tracks.any((track) => track.filePath == path)) return tracks;
-  // The saved job file is the first version. Every other version keeps its own URL.
   return [
-    tracks.first.copyWith(filePath: path, streaming: false),
-    ...tracks.skip(1),
+    for (var i = 0; i < tracks.length; i++)
+      _fileForVersion(tracks[i], i, paths, fallback),
   ];
 }
 
@@ -352,20 +383,43 @@ String audioVersionLabel(int index) {
   return 'Version ${index + 1}';
 }
 
-/// File name without an extension. Uses the title the player shows.
-String savedAudioFileBaseName(JobModel job) {
-  final tracks = audioTracksFromJob(job);
-  if (tracks.isEmpty) {
-    final snap = job.settingsSnapshot ?? const <String, dynamic>{};
-    final prompt = _clean(job.originalPrompt) ?? _clean(snap['prompt']);
-    final title = _displayTitle(job.title, prompt);
-    return title.trim().isEmpty ? 'Audio' : title.trim();
+String _safeFileTitle(String title) {
+  final clean = title.replaceAll(RegExp(r'[\\/:*?"<>|]'), ' ').trim();
+  return clean.isEmpty ? 'Audio' : clean;
+}
+
+/// File name without an extension. A HitMaker song with two versions is
+/// "Title - Version A" and "Title - Version B", so they do not overwrite.
+String savedAudioFileBaseName(JobModel job, {int versionIndex = 0}) {
+  final snap = job.settingsSnapshot ?? const <String, dynamic>{};
+  final prompt = _clean(job.originalPrompt) ?? _clean(snap['prompt']);
+  var title = _displayTitle(job.title, prompt);
+  var count = 1;
+  final raw = job.music;
+  if (raw != null) {
+    final action = raw['action']?.toString() ?? '';
+    final listed = raw['tracks'];
+    if (listed is List &&
+        listed.length > 1 &&
+        action != 'sounds' &&
+        action != 'stems' &&
+        action != 'video') {
+      count = listed.length;
+      if (versionIndex >= 0 && versionIndex < listed.length) {
+        final item = listed[versionIndex];
+        if (item is Map) {
+          final trackTitle = item['title']?.toString().trim() ?? '';
+          if (trackTitle.isNotEmpty && !_isBareId(trackTitle)) {
+            title = trackTitle;
+          }
+        }
+      }
+    }
   }
-  final title = tracks.first.title.trim().isEmpty
-      ? 'Audio'
-      : tracks.first.title.trim();
-  if (tracks.length == 1) return title;
-  return '$title - ${audioVersionLabel(0)}';
+  final safe = _safeFileTitle(title);
+  if (count <= 1) return safe;
+  final index = versionIndex < 0 ? 0 : versionIndex;
+  return '$safe - ${audioVersionLabel(index)}';
 }
 
 class CoverPalette {
@@ -691,7 +745,15 @@ class AudioNowPlaying extends ChangeNotifier {
     try {
       final start = startAt != null && startAt > Duration.zero ? startAt : null;
       if (key.startsWith('file:')) {
-        await player.setFilePath(track.filePath, initialPosition: start);
+        try {
+          await player.setFilePath(track.filePath, initialPosition: start);
+        } catch (fileError, fileStack) {
+          final url = track.networkUrl;
+          debugPrint('Audio file failed, trying the cloud copy: $fileError');
+          debugPrint('$fileStack');
+          if (url == null || url.isEmpty) rethrow;
+          await player.setUrl(url, initialPosition: start);
+        }
       } else {
         final url = track.networkUrl;
         if (url == null || url.isEmpty) {

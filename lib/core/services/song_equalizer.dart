@@ -82,37 +82,64 @@ Future<Uint8List> equalizeHitMakerDownload({
   required String extension,
   String? jobId,
 }) async {
-  if (bytes.isEmpty || extension.toLowerCase() != 'mp3') return bytes;
-  if (jobId == null || jobId.isEmpty) return bytes;
+  if (bytes.isEmpty || extension.toLowerCase() != 'mp3') {
+    debugPrint('EQ: skip, not an mp3 ($extension, ${bytes.length} bytes)');
+    return bytes;
+  }
+  if (jobId == null || jobId.isEmpty) {
+    debugPrint('EQ: skip, download has no job id');
+    return bytes;
+  }
   final job = _job(jobId);
-  if (job == null || !_shouldEqualize(job)) return bytes;
+  if (job == null || !_shouldEqualize(job)) {
+    debugPrint('EQ: skip, job $jobId is not a HitMaker song');
+    return bytes;
+  }
 
   final sourceHash = sha1.convert(bytes).toString();
   final applied = _storedHashes(job.settingsSnapshot?['eqAppliedHashes']);
-  if (applied.contains(sourceHash)) return bytes;
+  if (applied.contains(sourceHash)) {
+    debugPrint('EQ: skip, this file was already equalized ($sourceHash)');
+    return bytes;
+  }
 
   final stored = job.settingsSnapshot?['eqPreset'];
   final String preset;
   if (stored is String && stored.trim().isNotEmpty) {
     preset = stored.trim().toLowerCase();
+    debugPrint('EQ: reusing preset $preset for job $jobId');
   } else {
     final song = _songText(job);
+    debugPrint(
+      'EQ: asking for a preset title="${song.title}" style="${song.style}"',
+    );
     final chosen = await _requestPreset(
       title: song.title,
       style: song.style,
       tags: song.tags,
       lyrics: song.lyrics,
     );
-    if (chosen == null) return bytes;
+    if (chosen == null) {
+      debugPrint('EQ: preset lookup failed, saving the original');
+      return bytes;
+    }
     preset = chosen;
+    debugPrint('EQ: preset is $preset');
   }
 
   final filter = _filterFor(preset);
   var output = bytes;
-  if (filter != null) {
+  if (filter == null) {
+    debugPrint('EQ: preset $preset is flat, file unchanged');
+  } else {
+    debugPrint('EQ: ffmpeg $filter');
     final baked = await _bake(bytes, filter);
-    if (baked == null) return bytes;
+    if (baked == null) {
+      debugPrint('EQ: ffmpeg failed, saving the original');
+      return bytes;
+    }
     output = baked;
+    debugPrint('EQ: equalized ${bytes.length} bytes to ${output.length}');
   }
 
   final hashes = <String>[...applied, sourceHash];

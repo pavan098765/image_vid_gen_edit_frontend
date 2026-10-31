@@ -65,6 +65,8 @@ class KieResultSaver {
     if (await wasJobDeleted(job.jobId) || !_stillListed(job.jobId)) return;
     final context = _navigatorKey?.currentContext;
     if (context == null || !context.mounted) return;
+    final savedVersions = await FileService.saveHitMakerVersions(context, job);
+    if (savedVersions || !context.mounted) return;
     await FileService.downloadFromUrl(
       context,
       url,

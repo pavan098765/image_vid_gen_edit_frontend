@@ -90,6 +90,7 @@ Map<String, dynamic> sanitizeSettingsSnapshot(Map<String, dynamic>? raw) {
     'musicAction',
     'eqPreset',
     'eqAppliedHashes',
+    'audioVersionPaths',
     'variant',
     'sunoTitle',
     'coverEnabled',

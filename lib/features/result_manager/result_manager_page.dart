@@ -1198,6 +1198,35 @@ class _JobCardState extends State<JobCard> {
   Future<void> _download(BuildContext context, {bool fromCloud = false}) async {
     if (_isDownloading) return;
 
+    final rawMusic = widget.job.music;
+    if (rawMusic != null) {
+      final music = MusicResult.fromJson(rawMusic);
+      final finished = music.tracks
+          .where((track) => track.fileUrl != null && track.fileUrl!.isNotEmpty)
+          .length;
+      if (finished > 1 &&
+          music.action != 'sounds' &&
+          music.action != 'stems' &&
+          music.action != 'video') {
+        setState(() {
+          _isDownloading = true;
+          _downloadProgress = 0.0;
+        });
+        var savedBoth = false;
+        try {
+          savedBoth = await FileService.saveHitMakerVersions(context, widget.job);
+        } finally {
+          if (mounted) {
+            setState(() {
+              _isDownloading = false;
+              _downloadProgress = 0.0;
+            });
+          }
+        }
+        if (savedBoth) return;
+      }
+    }
+
     // A file already on the phone can be copied into the gallery.
     // Download again skips that and fetches a fresh cloud link.
     if (!fromCloud &&
