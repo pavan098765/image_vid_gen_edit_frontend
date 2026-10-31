@@ -100,6 +100,19 @@ void main() {
     );
     expect(still.join(' '), contains('zoompan'));
     expect(still, contains('1:a:0'));
+    final spin = movingArtArgs(
+      platePath: r'C:\clips\plate.png',
+      artPath: r'C:\clips\art.png',
+      audioPath: r'C:\clips\song.mp3',
+      outputPath: r'C:\clips\out.mp4',
+      motion: CoverMotion.spin,
+    );
+    expect(spin.join(' '), contains('rotate'));
+    final coverStyles = kMusicVideoTemplates.takeWhile((template) => template.id != 'side_wave');
+    expect(coverStyles.every((template) => template.motion != CoverMotion.none), isTrue);
+    expect(coverStyles.map((template) => template.id), contains('light_leak'));
+    expect(coverStyles.map((template) => template.id), contains('film_dust'));
+    expect(coverStyles.map((template) => template.id), contains('poster'));
 
     final canvas = canvasVideoArgs(
       loopPath: '/loop.mp4',
@@ -149,6 +162,19 @@ void main() {
   });
 
   test('a still frame paints', () async {
+    for (final template in kMusicVideoTemplates.where((item) => item.motion != CoverMotion.none)) {
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      MusicVideoFramePainter(
+        template: template,
+        title: 'Song',
+        artist: 'Artist',
+        timeSeconds: 1.4,
+      ).paint(canvas, const Size(160, 90));
+      final image = await recorder.endRecording().toImage(160, 90);
+      expect(image.width, 160);
+      image.dispose();
+    }
     for (final template in kMusicVideoTemplates.where((item) => item.needsAudioAnalysis)) {
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
@@ -184,10 +210,18 @@ void main() {
       startSeconds: window.start,
     );
     expect(placed.first.startS, 30);
-    expect(musicVideoCoverPrompt(title: 'Mumbai Hustle', artist: 'Kala', lyricSheet: 'city lights', style: 'night drive'), contains('No text'));
-    expect(musicVideoCoverPrompt(title: 'Mumbai Hustle', artist: 'Kala', lyricSheet: 'city lights', style: 'night drive'), contains('night drive'));
-    expect(musicVideoCoverPrompt(title: 'Mumbai Hustle', artist: 'Kala', lyricSheet: 'city lights', style: 'night drive'), isNot(contains('Mumbai Hustle')));
-    expect(musicVideoCoverPrompt(title: 'Mumbai Hustle', artist: 'Kala', lyricSheet: 'city lights', style: 'night drive'), isNot(contains('city lights')));
+    final cover = musicVideoCoverPrompt(
+      title: 'Mumbai Hustle',
+      artist: 'Kala',
+      lyricSheet: 'city lights',
+      style: 'night drive, tight controlled low end, crisp vocals',
+    );
+    expect(cover, contains('fine-art photograph'));
+    expect(cover, contains('city lights'));
+    expect(cover, contains('night drive'));
+    expect(cover, isNot(contains('Mumbai Hustle')));
+    expect(cover, isNot(contains('low end')));
+    expect(cover, isNot(contains('No text')));
     expect(
       lyricLookupMessage('Choose a music action: song, lyrics, video.'),
       'Timed lyrics are not available for this song yet.',

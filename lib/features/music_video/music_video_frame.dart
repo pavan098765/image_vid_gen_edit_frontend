@@ -16,6 +16,7 @@ class MusicVideoFramePainter extends CustomPainter {
   final String artist;
   final bool foregroundOnly;
   final bool includeArt;
+  final double timeSeconds;
 
   const MusicVideoFramePainter({
     required this.template,
@@ -27,6 +28,7 @@ class MusicVideoFramePainter extends CustomPainter {
     this.artist = '',
     this.foregroundOnly = false,
     this.includeArt = true,
+    this.timeSeconds = 0,
   });
 
   @override
@@ -44,6 +46,10 @@ class MusicVideoFramePainter extends CustomPainter {
     } else if (!foregroundOnly) {
       _paintBackdrop(canvas, size);
       if (!visual && includeArt) _paintArt(canvas, size);
+      if (!visual && !includeArt && template.showTitle) {
+        _paintTitle(canvas, size, musicVideoArtRect(size, template));
+      }
+      if (!visual) _paintAtmosphere(canvas, size);
     } else {
       _paintArt(canvas, size);
     }
@@ -255,6 +261,7 @@ class MusicVideoFramePainter extends CustomPainter {
       return;
     }
     if (template.background == MusicVideoBackground.color) return;
+    final drifting = template.motion == CoverMotion.drift || template.motion == CoverMotion.leak;
     final blur = template.background == MusicVideoBackground.blurredCover;
     if (blur) {
       canvas.saveLayer(
@@ -262,7 +269,18 @@ class MusicVideoFramePainter extends CustomPainter {
         Paint()..imageFilter = ui.ImageFilter.blur(sigmaX: 22, sigmaY: 22),
       );
     }
-    _drawCover(canvas, rect, image, cover: true);
+    if (drifting) {
+      canvas.save();
+      canvas.clipRect(rect);
+      canvas.translate(
+        math.sin(timeSeconds * 0.32) * size.width * 0.035,
+        math.cos(timeSeconds * 0.24) * size.height * 0.025,
+      );
+      _drawCover(canvas, rect.inflate(size.shortestSide * 0.08), image, cover: true);
+      canvas.restore();
+    } else {
+      _drawCover(canvas, rect, image, cover: true);
+    }
     if (blur) canvas.restore();
     if (blur) {
       canvas.drawRect(
@@ -297,36 +315,122 @@ class MusicVideoFramePainter extends CustomPainter {
     final image = cover;
     final rect = musicVideoArtRect(size, template);
     if (template.artFrame == MusicVideoArtFrame.vinyl) {
-      _paintVinyl(canvas, rect, image);
+      _withArtMotion(canvas, rect, () => _paintVinyl(canvas, rect, image));
       if (template.showTitle) _paintTitle(canvas, size, rect);
       return;
     }
     final round = template.artFrame == MusicVideoArtFrame.circle;
-    canvas.save();
-    if (round) {
-      canvas.clipPath(Path()..addOval(rect));
-    } else {
-      canvas.clipRRect(RRect.fromRectAndRadius(rect, const Radius.circular(8)));
-    }
-    if (image == null) {
-      canvas.drawRect(rect, Paint()..color = const Color(0xFF2A2A3A));
-    } else {
-      _drawCover(canvas, rect, image, cover: false);
-    }
-    canvas.restore();
-    final framePaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = math.max(2, rect.shortestSide * 0.018)
-      ..color = const Color(0x99FFFFFF);
-    if (round) {
-      canvas.drawOval(rect, framePaint);
-    } else {
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(rect, const Radius.circular(8)),
-        framePaint,
-      );
-    }
+    _withArtMotion(canvas, rect, () {
+      canvas.save();
+      if (round) {
+        canvas.clipPath(Path()..addOval(rect));
+      } else {
+        canvas.clipRRect(RRect.fromRectAndRadius(rect, const Radius.circular(8)));
+      }
+      if (image == null) {
+        canvas.drawRect(rect, Paint()..color = const Color(0xFF2A2A3A));
+      } else {
+        _drawCover(canvas, rect, image, cover: false);
+      }
+      canvas.restore();
+      final framePaint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(2, rect.shortestSide * 0.018)
+        ..color = const Color(0x99FFFFFF);
+      if (round) {
+        canvas.drawOval(rect, framePaint);
+      } else {
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(rect, const Radius.circular(8)),
+          framePaint,
+        );
+      }
+    });
     if (template.showTitle) _paintTitle(canvas, size, rect);
+  }
+
+  void _withArtMotion(Canvas canvas, Rect rect, void Function() draw) {
+    canvas.save();
+    final center = rect.center;
+    switch (template.motion) {
+      case CoverMotion.spin:
+        canvas.translate(center.dx, center.dy);
+        canvas.rotate(timeSeconds * 0.65);
+        canvas.translate(-center.dx, -center.dy);
+      case CoverMotion.breathe:
+        final scale = 1 + 0.045 * math.sin(timeSeconds * 1.25);
+        canvas.translate(center.dx, center.dy);
+        canvas.scale(scale, scale);
+        canvas.translate(-center.dx, -center.dy);
+      case CoverMotion.float:
+        canvas.translate(0, math.sin(timeSeconds * 1.1) * rect.height * 0.08);
+      case CoverMotion.drift:
+        canvas.translate(
+          math.sin(timeSeconds * 0.35) * rect.width * 0.05,
+          math.cos(timeSeconds * 0.28) * rect.height * 0.04,
+        );
+      case CoverMotion.none:
+      case CoverMotion.grain:
+      case CoverMotion.leak:
+      case CoverMotion.dust:
+        break;
+    }
+    draw();
+    canvas.restore();
+  }
+
+  void _paintAtmosphere(Canvas canvas, Size size) {
+    switch (template.motion) {
+      case CoverMotion.grain:
+        _paintSpecks(canvas, size, rising: false, count: 26);
+      case CoverMotion.dust:
+        _paintSpecks(canvas, size, rising: true, count: 46);
+      case CoverMotion.leak:
+        _paintLeak(canvas, size);
+      case CoverMotion.none:
+      case CoverMotion.spin:
+      case CoverMotion.breathe:
+      case CoverMotion.drift:
+      case CoverMotion.float:
+        break;
+    }
+  }
+
+  void _paintLeak(Canvas canvas, Size size) {
+    final travel = 0.5 + 0.5 * math.sin(timeSeconds * 0.45);
+    final center = Offset(size.width * travel, size.height * (0.32 + 0.08 * math.cos(timeSeconds * 0.3)));
+    final spot = Rect.fromCenter(
+      center: center,
+      width: size.width * 0.72,
+      height: size.height * 0.42,
+    );
+    canvas.drawOval(
+      spot,
+      Paint()
+        ..shader = const RadialGradient(
+          colors: [
+            Color(0x88FFB14A),
+            Color(0x22FF7A3C),
+            Color(0x00FF7A3C),
+          ],
+        ).createShader(spot),
+    );
+  }
+
+  void _paintSpecks(Canvas canvas, Size size, {required bool rising, required int count}) {
+    final paint = Paint();
+    final step = (timeSeconds * (rising ? 7 : 11)).floor();
+    for (var i = 0; i < count; i++) {
+      final x = _speckUnit(step + i * 17) * size.width;
+      var y = _speckUnit(step + i * 29 + 3) * size.height;
+      if (rising) {
+        y = (y - timeSeconds * 28 - i * 11) % size.height;
+        if (y < 0) y += size.height;
+      }
+      final radius = size.shortestSide * (0.002 + _speckUnit(i + 8) * 0.006);
+      paint.color = Colors.white.withValues(alpha: 0.18 + _speckUnit(i + 4) * 0.45);
+      canvas.drawCircle(Offset(x, y), radius, paint);
+    }
   }
 
   void _paintVinyl(Canvas canvas, Rect rect, ui.Image? image) {
@@ -889,8 +993,14 @@ class MusicVideoFramePainter extends CustomPainter {
         oldDelegate.features != features ||
         oldDelegate.lyricLine != lyricLine ||
         oldDelegate.foregroundOnly != foregroundOnly ||
-        oldDelegate.includeArt != includeArt;
+        oldDelegate.includeArt != includeArt ||
+        oldDelegate.timeSeconds != timeSeconds;
   }
+}
+
+double _speckUnit(int n) {
+  final mixed = (n * 1103515245 + 12345) & 0x7fffffff;
+  return mixed / 0x7fffffff;
 }
 
 Rect musicVideoArtRect(Size size, MusicVideoTemplate template) {
@@ -943,6 +1053,7 @@ Future<ui.Image> rasterizeMusicVideoFrame({
   String artist = '',
   bool foregroundOnly = false,
   bool includeArt = true,
+  double timeSeconds = 0,
 }) async {
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder);
@@ -956,6 +1067,7 @@ Future<ui.Image> rasterizeMusicVideoFrame({
     artist: artist,
     foregroundOnly: foregroundOnly,
     includeArt: includeArt,
+    timeSeconds: timeSeconds,
   ).paint(canvas, size);
   final picture = recorder.endRecording();
   final image = await picture.toImage(size.width.round(), size.height.round());

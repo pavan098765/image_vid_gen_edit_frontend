@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:http/http.dart' as http;
 import 'package:just_audio/just_audio.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
@@ -63,7 +64,7 @@ class MusicVideoPage extends StatefulWidget {
   State<MusicVideoPage> createState() => _MusicVideoPageState();
 }
 
-class _MusicVideoPageState extends State<MusicVideoPage> {
+class _MusicVideoPageState extends State<MusicVideoPage> with SingleTickerProviderStateMixin {
   final AudioPlayer _player = AudioPlayer();
   MusicVideoTemplate _template = kMusicVideoTemplates.first;
   MusicVideoAspect _aspect = MusicVideoAspect.landscape;
@@ -84,6 +85,8 @@ class _MusicVideoPageState extends State<MusicVideoPage> {
   double _position = 0;
   bool _evenLyrics = false;
   Color? _meterTint;
+  late final Ticker _motion;
+  double _motionTime = 0;
 
   MusicVideoTemplate get _drawn {
     final tint = _meterTint;
@@ -109,11 +112,18 @@ class _MusicVideoPageState extends State<MusicVideoPage> {
     _player.playerStateStream.listen((_) {
       if (mounted) setState(() {});
     });
+    _motion = createTicker((elapsed) {
+      final seconds = elapsed.inMilliseconds / 1000;
+      if ((seconds - _motionTime).abs() < 0.07) return;
+      if (!mounted) return;
+      setState(() => _motionTime = seconds);
+    })..start();
     _prepare();
   }
 
   @override
   void dispose() {
+    _motion.dispose();
     _player.dispose();
     _cover?.dispose();
     super.dispose();
@@ -208,9 +218,7 @@ class _MusicVideoPageState extends State<MusicVideoPage> {
       );
       final sync = lyricSyncFor(words: lyrics.words, confidence: lyrics.confidence);
       if (sync == LyricSync.hidden) {
-        if (!await _useEvenLyrics()) {
-          _toast(lyricLookupMessage('Timed lyrics are not available for this song yet.'));
-        }
+        _toast('Timed lyrics are not available for this song yet.');
         return;
       }
       await widget.onLyrics?.call(lyrics);
@@ -222,49 +230,13 @@ class _MusicVideoPageState extends State<MusicVideoPage> {
         _evenLyrics = false;
       });
     } on SunoFormException catch (error) {
-      if (!await _useEvenLyrics()) _toast(lyricLookupMessage(error.message));
+      _toast(lyricLookupMessage(error.message));
     } catch (error) {
       debugPrint('Timed lyrics failed: $error');
-      if (!await _useEvenLyrics()) {
-        _toast('Timed lyrics are not available for this song yet.');
-      }
+      _toast('Timed lyrics are not available for this song yet.');
     } finally {
       if (mounted) setState(() => _syncingLyrics = false);
     }
-  }
-
-  Future<bool> _useEvenLyrics() async {
-    final duration = (_features != null && _features!.durationSeconds > 1)
-        ? _features!.durationSeconds
-        : _songSeconds();
-    final energy = [
-      for (final frame in _features?.frames ?? const <FrameFeatures>[]) frame.mid,
-    ];
-    final window = sungWindow(energy, duration);
-    final words = evenLyricWords(
-      widget.lyricSheet,
-      window.end - window.start,
-      startSeconds: window.start,
-    );
-    if (lyricSyncFor(words: words, confidence: 0) == LyricSync.hidden) return false;
-    if (!mounted) return false;
-    setState(() {
-      _words = words;
-      _confidence = 0;
-      _lyrics = true;
-      _evenLyrics = true;
-    });
-    return true;
-  }
-
-  double _songSeconds() {
-    final known = widget.durationSeconds;
-    if (known != null && known > 1) return known;
-    final playing = _player.duration;
-    if (playing != null && playing.inMilliseconds > 1000) {
-      return playing.inMilliseconds / 1000;
-    }
-    return 0;
   }
 
   Future<void> _showCover(Uint8List bytes, {required bool generated}) async {
@@ -433,6 +405,7 @@ class _MusicVideoPageState extends State<MusicVideoPage> {
                       lyricLine: lyricLine,
                       title: widget.title,
                       artist: widget.artist,
+                      timeSeconds: _motionTime,
                     ),
                     child: const SizedBox.expand(),
                   ),
@@ -507,6 +480,7 @@ class _MusicVideoPageState extends State<MusicVideoPage> {
                         template: template,
                         selected: template.id == _template.id,
                         cover: _cover,
+                        timeSeconds: _motionTime,
                         onTap: _busy
                             ? null
                             : () async {
@@ -546,16 +520,15 @@ class _MusicVideoPageState extends State<MusicVideoPage> {
                               setState(() => _lyrics = false);
                               return;
                             }
-                            if (_words.isEmpty || _evenLyrics) {
-                              final placed = await _useEvenLyrics();
-                              if (!placed && _words.isEmpty) {
-                                _toast('This song has no lyric sheet to place on the video.');
-                                return;
-                              }
+                            if (_words.isNotEmpty && !_evenLyrics) {
+                              setState(() => _lyrics = true);
+                              return;
                             }
-                            if (!mounted) return;
-                            setState(() => _lyrics = true);
-                            if (_evenLyrics && _canSyncLyrics) unawaited(_syncLyrics());
+                            if (!_canSyncLyrics) {
+                              _toast('This song has no timed lyrics from the music service.');
+                              return;
+                            }
+                            await _syncLyrics();
                           },
                   ),
                 ],
@@ -571,7 +544,7 @@ class _MusicVideoPageState extends State<MusicVideoPage> {
                 children: [
                   FilledButton(
                     onPressed: _busy ? null : _startOnPhone,
-                    child: const Text('On this phone · $kOnDeviceMusicVideoGems gems'),
+                    child: const Text('HD video · $kOnDeviceMusicVideoGems gems'),
                   ),
                   if (widget.onCloudVideo != null) ...[
                     const SizedBox(height: 8),
@@ -586,7 +559,7 @@ class _MusicVideoPageState extends State<MusicVideoPage> {
                               _leaveForCreations(context);
                             },
                       child: Text(
-                        'Cloud · ${widget.cloudGems ?? 20} gems · 480p',
+                        'SD video · ${widget.cloudGems ?? 20} gems · 480p',
                       ),
                     ),
                   ],
@@ -692,12 +665,14 @@ class _StyleCard extends StatelessWidget {
     required this.template,
     required this.selected,
     required this.cover,
+    required this.timeSeconds,
     required this.onTap,
   });
 
   final MusicVideoTemplate template;
   final bool selected;
   final ui.Image? cover;
+  final double timeSeconds;
   final VoidCallback? onTap;
 
   @override
@@ -736,6 +711,7 @@ class _StyleCard extends StatelessWidget {
                         features: features,
                         title: 'Title',
                         artist: 'Artist',
+                        timeSeconds: timeSeconds,
                       ),
                     ),
                   ),

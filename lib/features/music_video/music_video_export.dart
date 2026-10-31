@@ -75,6 +75,7 @@ List<String> stillVideoArgs({
   required int width,
   required int height,
   required int frames,
+  CoverMotion motion = CoverMotion.breathe,
 }) {
   return [
     '-y',
@@ -85,7 +86,7 @@ List<String> stillVideoArgs({
     '-i',
     audioPath,
     '-filter_complex',
-    "[0:v]zoompan=z='min(1+0.06*on/$frames,1.06)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=$frames:s=${width}x$height:fps=$kMusicVideoFps[v]",
+    _stillMotionFilter(motion, width: width, height: height, frames: frames),
     '-map',
     '[v]',
     '-map',
@@ -103,6 +104,71 @@ List<String> stillVideoArgs({
   ];
 }
 
+/// A spinning record or a floating cutout. The plate stays still and the art
+/// moves, which is how lyric videos keep the title readable.
+List<String> movingArtArgs({
+  required String platePath,
+  required String artPath,
+  required String audioPath,
+  required String outputPath,
+  required CoverMotion motion,
+}) {
+  final art = motion == CoverMotion.spin
+      ? "[1:v]format=rgba,rotate=a='t*0.65':c=none:ow=iw:oh=ih[art]"
+      : '[1:v]format=rgba[art]';
+  final y = motion == CoverMotion.float ? "'14*sin(2*PI*t/5)'" : '0';
+  return [
+    '-y',
+    '-loop',
+    '1',
+    '-i',
+    platePath,
+    '-loop',
+    '1',
+    '-i',
+    artPath,
+    '-i',
+    audioPath,
+    '-filter_complex',
+    '$art;[0:v][art]overlay=0:$y:shortest=1[v]',
+    '-map',
+    '[v]',
+    '-map',
+    '2:a:0',
+    '-c:v',
+    'libx264',
+    '-pix_fmt',
+    'yuv420p',
+    '-c:a',
+    'aac',
+    '-shortest',
+    '-movflags',
+    '+faststart',
+    outputPath,
+  ];
+}
+
+String _stillMotionFilter(
+  CoverMotion motion, {
+  required int width,
+  required int height,
+  required int frames,
+}) {
+  final size = '$width:$height';
+  final output = '${width}x$height';
+  final breathe =
+      "[0:v]zoompan=z='1.03+0.04*sin(2*PI*on/90)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=$frames:s=$output:fps=$kMusicVideoFps[v]";
+  return switch (motion) {
+    CoverMotion.drift || CoverMotion.leak =>
+      "[0:v]scale=${width * 2}:${height * 2},zoompan=z='1.14':x='(iw-iw/zoom)*(0.5+0.5*sin(2*PI*on/$frames))':y='(ih-ih/zoom)*(0.4+0.35*cos(2*PI*on/$frames))':d=$frames:s=$output:fps=$kMusicVideoFps[v]",
+    CoverMotion.grain =>
+      "[0:v]zoompan=z='1.02+0.03*sin(2*PI*on/120)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=$frames:s=$output:fps=$kMusicVideoFps,noise=alls=8:allf=t[v]",
+    CoverMotion.dust =>
+      "[0:v]scale=$size,zoompan=z='1.04':x='(iw-iw/zoom)*(0.5+0.15*sin(2*PI*on/$frames))':y='ih/2-(ih/zoom/2)':d=$frames:s=$output:fps=$kMusicVideoFps,noise=alls=14:allf=t[v]",
+    CoverMotion.breathe || CoverMotion.none || CoverMotion.spin || CoverMotion.float => breathe,
+  };
+}
+
 List<String> canvasVideoArgs({
   required String loopPath,
   required String artPath,
@@ -111,7 +177,14 @@ List<String> canvasVideoArgs({
   required int width,
   required int height,
   required double seconds,
+  CoverMotion motion = CoverMotion.none,
 }) {
+  final art = motion == CoverMotion.spin
+      ? "[1:v]scale=$width:$height,format=rgba,rotate=a='t*0.65':c=none:ow=iw:oh=ih[art]"
+      : '[1:v]scale=$width:$height,format=rgba[art]';
+  final y = motion == CoverMotion.float || motion == CoverMotion.breathe
+      ? "'16*sin(2*PI*t/5)'"
+      : '0';
   return [
     '-y',
     '-stream_loop',
@@ -126,8 +199,7 @@ List<String> canvasVideoArgs({
     audioPath,
     '-filter_complex',
     '[0:v]scale=$width:$height:force_original_aspect_ratio=increase,crop=$width:$height,setsar=1[bg];'
-        '[1:v]scale=$width:$height,format=rgba[art];'
-        '[bg][art]overlay=0:0:shortest=1[v]',
+        '$art;[bg][art]overlay=0:$y:shortest=1[v]',
     '-map',
     '[v]',
     '-map',
@@ -281,6 +353,7 @@ Future<String> exportMusicVideo(
       width: request.aspect.exportWidth,
       height: request.aspect.exportHeight,
       seconds: seconds,
+      motion: request.template.motion,
     ));
     if (!ok) throw const MusicVideoException('Could not build the video.');
   } else if (request.template.needsAudioAnalysis) {
@@ -320,6 +393,40 @@ Future<String> exportMusicVideo(
       fps: fps,
     ));
     if (!ok) throw const MusicVideoException('Could not encode the visualizer.');
+  } else if (request.template.motion == CoverMotion.spin ||
+      request.template.motion == CoverMotion.float) {
+    onProgress?.call(0.25, 'Drawing the cover');
+    final plate = await rasterizeMusicVideoFrame(
+      size: size,
+      template: request.template,
+      cover: cover,
+      title: request.title,
+      artist: request.artist,
+      includeArt: false,
+    );
+    final art = await rasterizeMusicVideoFrame(
+      size: size,
+      template: request.template,
+      cover: cover,
+      title: request.title,
+      artist: request.artist,
+      foregroundOnly: true,
+    );
+    final platePath = '${work.path}/plate.png';
+    final artPath = '${work.path}/art.png';
+    await File(platePath).writeAsBytes(await _pngBytes(plate));
+    await File(artPath).writeAsBytes(await _pngBytes(art));
+    plate.dispose();
+    art.dispose();
+    onProgress?.call(0.45, 'Building the video');
+    final ok = await _run(movingArtArgs(
+      platePath: platePath,
+      artPath: artPath,
+      audioPath: request.audioPath,
+      outputPath: silent.path,
+      motion: request.template.motion,
+    ));
+    if (!ok) throw const MusicVideoException('Could not build the video.');
   } else {
     onProgress?.call(0.25, 'Drawing the cover');
     final still = await rasterizeMusicVideoFrame(
@@ -340,6 +447,7 @@ Future<String> exportMusicVideo(
       width: request.aspect.exportWidth,
       height: request.aspect.exportHeight,
       frames: frames,
+      motion: request.template.motion,
     ));
     if (!ok) throw const MusicVideoException('Could not build the video.');
   }

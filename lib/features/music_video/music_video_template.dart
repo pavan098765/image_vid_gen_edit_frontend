@@ -10,6 +10,11 @@ enum MusicVideoArtFrame { square, circle, vinyl, small, none }
 
 enum MusicVideoMeter { none, wave, line, bars, circular, arc, glowBars, ribbon, halo, pillars, neon, orbit, columns, pulse, horizon }
 
+/// Motion for the cover layouts. These follow Spotify Canvas and lyric-video
+/// practice: a spinning record, a breathing zoom, a Ken Burns drift, film
+/// grain, a floating cutout, a light leak, or dust over the picture.
+enum CoverMotion { none, spin, breathe, drift, grain, float, leak, dust }
+
 extension MusicVideoMeterLayout on MusicVideoMeter {
   bool get sitsAlongTheBottom => switch (this) {
         MusicVideoMeter.bars ||
@@ -60,6 +65,7 @@ class MusicVideoTemplate {
   final MusicVideoMeter meter;
   final Color meterColor;
   final bool showTitle;
+  final CoverMotion motion;
 
   const MusicVideoTemplate({
     required this.id,
@@ -73,6 +79,7 @@ class MusicVideoTemplate {
     this.meter = MusicVideoMeter.none,
     this.meterColor = Colors.white,
     this.showTitle = false,
+    this.motion = CoverMotion.none,
   });
 
   MusicVideoTemplate copyWith({Color? meterColor}) {
@@ -88,6 +95,7 @@ class MusicVideoTemplate {
       meter: meter,
       meterColor: meterColor ?? this.meterColor,
       showTitle: showTitle,
+      motion: motion,
     );
   }
 
@@ -106,6 +114,7 @@ const List<MusicVideoTemplate> kMusicVideoTemplates = [
     artFrame: MusicVideoArtFrame.vinyl,
     artScale: 0.46,
     showTitle: true,
+    motion: CoverMotion.spin,
   ),
   MusicVideoTemplate(
     id: 'album_medium',
@@ -115,6 +124,7 @@ const List<MusicVideoTemplate> kMusicVideoTemplates = [
     backgroundColor: Color(0xFF12121C),
     artFrame: MusicVideoArtFrame.square,
     artScale: 0.42,
+    motion: CoverMotion.breathe,
   ),
   MusicVideoTemplate(
     id: 'disk_black',
@@ -124,6 +134,7 @@ const List<MusicVideoTemplate> kMusicVideoTemplates = [
     backgroundColor: Color(0xFF050505),
     artFrame: MusicVideoArtFrame.circle,
     artScale: 0.5,
+    motion: CoverMotion.spin,
   ),
   MusicVideoTemplate(
     id: 'album_large',
@@ -133,6 +144,7 @@ const List<MusicVideoTemplate> kMusicVideoTemplates = [
     backgroundColor: Color(0xFF12121C),
     artFrame: MusicVideoArtFrame.square,
     artScale: 0.68,
+    motion: CoverMotion.drift,
   ),
   MusicVideoTemplate(
     id: 'split_blur',
@@ -143,6 +155,7 @@ const List<MusicVideoTemplate> kMusicVideoTemplates = [
     artFrame: MusicVideoArtFrame.square,
     artScale: 0.34,
     splitBlur: true,
+    motion: CoverMotion.grain,
   ),
   MusicVideoTemplate(
     id: 'album_small',
@@ -152,6 +165,7 @@ const List<MusicVideoTemplate> kMusicVideoTemplates = [
     backgroundColor: Color(0xFF8E1B4A),
     artFrame: MusicVideoArtFrame.small,
     artScale: 0.28,
+    motion: CoverMotion.float,
   ),
   MusicVideoTemplate(
     id: 'full_background',
@@ -161,6 +175,7 @@ const List<MusicVideoTemplate> kMusicVideoTemplates = [
     backgroundColor: Color(0xFF12121C),
     artFrame: MusicVideoArtFrame.none,
     artScale: 0,
+    motion: CoverMotion.drift,
   ),
   MusicVideoTemplate(
     id: 'canvas_cover',
@@ -171,6 +186,7 @@ const List<MusicVideoTemplate> kMusicVideoTemplates = [
     artFrame: MusicVideoArtFrame.square,
     artScale: 0.34,
     showTitle: true,
+    motion: CoverMotion.breathe,
   ),
   MusicVideoTemplate(
     id: 'canvas_vinyl',
@@ -180,6 +196,7 @@ const List<MusicVideoTemplate> kMusicVideoTemplates = [
     backgroundColor: Color(0xFF12121C),
     artFrame: MusicVideoArtFrame.vinyl,
     artScale: 0.4,
+    motion: CoverMotion.spin,
   ),
   MusicVideoTemplate(
     id: 'canvas_circle',
@@ -189,6 +206,38 @@ const List<MusicVideoTemplate> kMusicVideoTemplates = [
     backgroundColor: Color(0xFF12121C),
     artFrame: MusicVideoArtFrame.circle,
     artScale: 0.36,
+    motion: CoverMotion.float,
+  ),
+  MusicVideoTemplate(
+    id: 'light_leak',
+    title: 'Light leak',
+    family: MusicVideoFamily.still,
+    background: MusicVideoBackground.blurredCover,
+    backgroundColor: Color(0xFF1A1208),
+    artFrame: MusicVideoArtFrame.square,
+    artScale: 0.4,
+    motion: CoverMotion.leak,
+  ),
+  MusicVideoTemplate(
+    id: 'film_dust',
+    title: 'Film dust',
+    family: MusicVideoFamily.still,
+    background: MusicVideoBackground.coverFill,
+    backgroundColor: Color(0xFF12121C),
+    artFrame: MusicVideoArtFrame.none,
+    artScale: 0,
+    motion: CoverMotion.dust,
+  ),
+  MusicVideoTemplate(
+    id: 'poster',
+    title: 'Poster',
+    family: MusicVideoFamily.still,
+    background: MusicVideoBackground.color,
+    backgroundColor: Color(0xFF1A1024),
+    artFrame: MusicVideoArtFrame.square,
+    artScale: 0.56,
+    showTitle: true,
+    motion: CoverMotion.breathe,
   ),
   MusicVideoTemplate(
     id: 'side_wave',

@@ -17,38 +17,58 @@ class MusicVideoCoverException implements Exception {
   const MusicVideoCoverException(this.message);
 }
 
-/// Album-cover prompt. Style and lyrics only set the scene. The picture
-/// itself has no writing, because the video draws the title.
+/// Flux Klein 9B wants a subject-first photograph, about 40 to 70 words.
+/// Style and lyrics become the scene. The title and artist stay off the
+/// picture, because naming them makes the model paint lettering.
 String musicVideoCoverPrompt({
   required String title,
   required String artist,
   required String lyricSheet,
   String style = '',
 }) {
-  final mood = _coverMood(style: style, lyricSheet: lyricSheet);
-  final scene = mood.isEmpty
-      ? 'A single cinematic scene with bold color and dramatic light.'
-      : 'A single cinematic scene suggested by this mood, with none of these words painted: $mood.';
-  return 'Square album-cover painting. $scene '
-      'Detailed lighting, sharp focus, one clear subject. '
-      'No text, no letters, no words, no numbers, no logo, no watermark, no typography, no signature, no title.';
+  final story = _visualStory(lyricSheet);
+  final setting = _visualSetting(style);
+  final subject = story.isNotEmpty
+      ? story
+      : (setting.isNotEmpty ? setting : 'one person standing in dramatic light');
+  final place = story.isNotEmpty && setting.isNotEmpty ? ' The place is $setting.' : '';
+  return 'A square fine-art photograph of $subject.$place '
+      'The clothes, the light, and the colors belong to that moment. '
+      'One subject fills most of the frame, sharp and cinematic, with rich color and a quiet background.';
 }
 
-String _coverMood({required String style, required String lyricSheet}) {
-  final direction = style.replaceAll(RegExp(r'\[[^\]]*\]'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
-  if (direction.isNotEmpty) {
-    return direction.length > 180 ? direction.substring(0, 180) : direction;
+final RegExp _audioJargon = RegExp(
+  r'\b(bpm|mix|mixing|low end|high end|vocals?|radio-ready|radio|polished|production|diction|hook|groove|compression|mastered|octave|legato|staccato|ad-?libs?|upfront|tight|controlled|crisp|drums?|bass|kick|snare|hi-hat|reverb|delay|stereo|mono|eq|equalizer|hertz|khz)\b',
+  caseSensitive: false,
+);
+
+/// Drops mix notes ("tight low end") and keeps the picture ("night drive").
+String _visualSetting(String style) {
+  final cleaned = style.replaceAll(RegExp(r'\[[^\]]*\]'), ' ');
+  final kept = <String>[];
+  for (final part in cleaned.split(RegExp(r'[,;]'))) {
+    final words = part.replaceAll(_audioJargon, ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+    final usable = words.replaceAll(RegExp(r'^[\-\s]+|[\-\s]+$'), '');
+    if (usable.length >= 3) kept.add(usable);
   }
+  final joined = kept.join(', ');
+  return joined.length > 120 ? joined.substring(0, 120).trim() : joined;
+}
+
+String _visualStory(String lyricSheet) {
   final lines = <String>[];
   for (final raw in lyricSheet.split(RegExp(r'\r?\n'))) {
-    final text = raw.replaceAll(RegExp(r'\[[^\]]*\]'), '').replaceAll(RegExp(r'[()]'), '').trim();
+    final text = raw
+        .replaceAll(RegExp(r'\[[^\]]*\]'), '')
+        .replaceAll(RegExp(r'\([^)]*\)'), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
     if (text.isEmpty) continue;
     lines.add(text);
     if (lines.length == 2) break;
   }
-  final theme = lines.join(', ').replaceAll(RegExp(r'\s+'), ' ').trim();
-  if (theme.isEmpty) return '';
-  return theme.length > 80 ? theme.substring(0, 80) : theme;
+  final theme = lines.join(', ');
+  return theme.length > 100 ? theme.substring(0, 100).trim() : theme;
 }
 
 /// Submits Kala Flash and waits for the picture. The phone does not call the
