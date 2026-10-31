@@ -59,29 +59,189 @@ class MusicVideoFramePainter extends CustomPainter {
   }
 
   void _paintStage(Canvas canvas, Size size, FrameFeatures features) {
+    switch (template.meter) {
+      case MusicVideoMeter.wave:
+        _stageSideGlow(canvas, size, features);
+      case MusicVideoMeter.line:
+        _stageHorizon(canvas, size, 0.7, features.mid);
+      case MusicVideoMeter.bars:
+      case MusicVideoMeter.glowBars:
+      case MusicVideoMeter.columns:
+        _stageFloor(canvas, size, features.bass);
+      case MusicVideoMeter.circular:
+      case MusicVideoMeter.halo:
+      case MusicVideoMeter.pulse:
+        _stageVignette(canvas, size, features.rms);
+      case MusicVideoMeter.arc:
+        _stageHorizon(canvas, size, 0.82, features.bass);
+      case MusicVideoMeter.ribbon:
+        _stageStreaks(canvas, size, features.mid);
+      case MusicVideoMeter.pillars:
+        _stageBeams(canvas, size, features);
+      case MusicVideoMeter.neon:
+        _stageScan(canvas, size, features.high);
+      case MusicVideoMeter.orbit:
+        _stageStars(canvas, size, features.high);
+      case MusicVideoMeter.horizon:
+        _stageSky(canvas, size, features.bass);
+      case MusicVideoMeter.none:
+        break;
+    }
+  }
+
+  void _stageSideGlow(Canvas canvas, Size size, FrameFeatures features) {
+    final rect = Offset.zero & size;
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: [
+            _ink.withValues(alpha: 0.22 + features.bass * 0.2),
+            const Color(0x00000000),
+            _hot.withValues(alpha: 0.16 + features.high * 0.18),
+          ],
+        ).createShader(rect),
+    );
+  }
+
+  void _stageHorizon(Canvas canvas, Size size, double y, double energy) {
+    final band = Rect.fromLTWH(0, size.height * (y - 0.04), size.width, size.height * (0.08 + energy * 0.06));
+    canvas.drawRect(
+      band,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            const Color(0x00000000),
+            _ink.withValues(alpha: 0.35 + energy * 0.3),
+            const Color(0x00000000),
+          ],
+        ).createShader(band),
+    );
+  }
+
+  void _stageFloor(Canvas canvas, Size size, double bass) {
+    final floor = Rect.fromLTWH(0, size.height * 0.55, size.width, size.height * 0.45);
+    canvas.drawRect(
+      floor,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            const Color(0x00000000),
+            _ink.withValues(alpha: 0.12 + bass * 0.28),
+          ],
+        ).createShader(floor),
+    );
+  }
+
+  void _stageVignette(Canvas canvas, Size size, double energy) {
     final rect = Offset.zero & size;
     canvas.drawRect(
       rect,
       Paint()
         ..shader = RadialGradient(
-          center: const Alignment(0, -0.05),
-          radius: 1.05,
+          radius: 0.85,
           colors: [
-            _ink.withValues(alpha: 0.16 + features.bass * 0.28),
-            _ink.withValues(alpha: 0.05 + features.mid * 0.08),
-            const Color(0x00000000),
+            _ink.withValues(alpha: 0.05 + energy * 0.12),
+            const Color(0xCC000000),
           ],
         ).createShader(rect),
     );
-    canvas.drawCircle(
-      Offset(size.width * 0.08, size.height * 0.18),
-      size.shortestSide * (0.28 + features.bass * 0.12),
-      Paint()..color = _ink.withValues(alpha: 0.10 + features.bass * 0.16),
+  }
+
+  void _stageStreaks(Canvas canvas, Size size, double energy) {
+    final paint = Paint()
+      ..color = _ink.withValues(alpha: 0.08 + energy * 0.16)
+      ..strokeWidth = size.shortestSide * 0.012
+      ..strokeCap = StrokeCap.round;
+    for (var i = 0; i < 5; i++) {
+      final y = size.height * (0.18 + i * 0.14);
+      canvas.drawLine(
+        Offset(size.width * 0.08, y),
+        Offset(size.width * (0.55 + energy * 0.3), y + size.height * 0.04),
+        paint,
+      );
+    }
+  }
+
+  void _stageBeams(Canvas canvas, Size size, FrameFeatures features) {
+    final samples = _sample(features.bins, 6);
+    final paint = Paint();
+    for (var i = 0; i < samples.length; i++) {
+      final x = size.width * ((i + 0.5) / samples.length);
+      final beam = Rect.fromLTWH(x - size.width * 0.03, 0, size.width * 0.06, size.height);
+      paint.shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          _hot.withValues(alpha: 0.02 + samples[i] * 0.22),
+          const Color(0x00000000),
+        ],
+      ).createShader(beam);
+      canvas.drawRect(beam, paint);
+    }
+  }
+
+  void _stageScan(Canvas canvas, Size size, double energy) {
+    final y = size.height * (0.22 + energy * 0.5);
+    canvas.drawLine(
+      Offset(0, y),
+      Offset(size.width, y),
+      Paint()
+        ..color = _ink.withValues(alpha: 0.45)
+        ..strokeWidth = size.shortestSide * 0.004,
     );
-    canvas.drawCircle(
-      Offset(size.width * 0.92, size.height * 0.78),
-      size.shortestSide * (0.22 + features.high * 0.14),
-      Paint()..color = _hot.withValues(alpha: 0.08 + features.high * 0.14),
+    for (var i = 1; i <= 4; i++) {
+      canvas.drawLine(
+        Offset(0, y + i * size.height * 0.015),
+        Offset(size.width, y + i * size.height * 0.015),
+        Paint()..color = _ink.withValues(alpha: 0.08),
+      );
+    }
+  }
+
+  void _stageStars(Canvas canvas, Size size, double energy) {
+    final paint = Paint()..color = _hot.withValues(alpha: 0.35 + energy * 0.4);
+    const spots = <Offset>[
+      Offset(0.12, 0.16),
+      Offset(0.28, 0.32),
+      Offset(0.46, 0.12),
+      Offset(0.63, 0.28),
+      Offset(0.78, 0.14),
+      Offset(0.88, 0.36),
+      Offset(0.18, 0.48),
+      Offset(0.72, 0.52),
+    ];
+    for (var i = 0; i < spots.length; i++) {
+      final spot = spots[i];
+      canvas.drawCircle(
+        Offset(size.width * spot.dx, size.height * spot.dy),
+        size.shortestSide * (0.004 + (i.isEven ? energy : 0.2) * 0.008),
+        paint,
+      );
+    }
+  }
+
+  void _stageSky(Canvas canvas, Size size, double bass) {
+    final rect = Offset.zero & size;
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            _ink.withValues(alpha: 0.28 + bass * 0.2),
+            const Color(0x00000000),
+            _hot.withValues(alpha: 0.18),
+          ],
+          stops: const [0, 0.55, 1],
+        ).createShader(rect),
     );
   }
 

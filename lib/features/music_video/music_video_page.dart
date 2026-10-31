@@ -223,22 +223,17 @@ class _MusicVideoPageState extends State<MusicVideoPage> {
       });
     } on SunoFormException catch (error) {
       if (!await _useEvenLyrics()) _toast(lyricLookupMessage(error.message));
+    } catch (error) {
+      debugPrint('Timed lyrics failed: $error');
+      if (!await _useEvenLyrics()) {
+        _toast('Timed lyrics are not available for this song yet.');
+      }
     } finally {
       if (mounted) setState(() => _syncingLyrics = false);
     }
   }
 
   Future<bool> _useEvenLyrics() async {
-    if (_features == null) {
-      try {
-        final path = await _ensureAudio();
-        final temp = await getTemporaryDirectory();
-        final table = audioFeatureTableFromPcm(
-          await decodeMusicVideoPcm(path, '${temp.path}/music_video_lyrics'),
-        );
-        if (mounted) _features = table;
-      } catch (_) {}
-    }
     final duration = (_features != null && _features!.durationSeconds > 1)
         ? _features!.durationSeconds
         : _songSeconds();
@@ -398,7 +393,7 @@ class _MusicVideoPageState extends State<MusicVideoPage> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final lyricLine = _lyrics ? activeLyricLine(_words, _position) : null;
+    final lyricLine = _lyrics ? previewLyricLine(_words, _position) : null;
     final features = _template.needsAudioAnalysis
         ? (_features?.atTime(_position) ?? FrameFeatures.preview)
         : null;
@@ -551,11 +546,16 @@ class _MusicVideoPageState extends State<MusicVideoPage> {
                               setState(() => _lyrics = false);
                               return;
                             }
-                            if (_words.isNotEmpty && !_evenLyrics) {
-                              setState(() => _lyrics = true);
-                              return;
+                            if (_words.isEmpty || _evenLyrics) {
+                              final placed = await _useEvenLyrics();
+                              if (!placed && _words.isEmpty) {
+                                _toast('This song has no lyric sheet to place on the video.');
+                                return;
+                              }
                             }
-                            await _syncLyrics();
+                            if (!mounted) return;
+                            setState(() => _lyrics = true);
+                            if (_evenLyrics && _canSyncLyrics) unawaited(_syncLyrics());
                           },
                   ),
                 ],

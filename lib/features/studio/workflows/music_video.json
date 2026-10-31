@@ -1,7 +1,7 @@
 {
   "id": "music_video",
   "title": "Music video",
-  "blurb": "Your song, a cover, and a style. Made on this phone.",
+  "blurb": "Your song, a cover, and a style.",
   "research": "none",
   "skip": ["research", "outline", "angles", "generating"],
   "lengths": [0],

@@ -165,6 +165,19 @@ String? activeLyricLine(List<AlignedWord> words, double timeSeconds) {
   return null;
 }
 
+/// The line on screen now, or the next one, so a lyrics switch is visible
+/// before the first phrase starts.
+String? previewLyricLine(List<AlignedWord> words, double timeSeconds) {
+  final current = activeLyricLine(words, timeSeconds);
+  if (current != null) return current;
+  final lines = lyricLinesFromWords(words);
+  for (final line in lines) {
+    if (line.startS > timeSeconds) return line.text;
+  }
+  if (lines.isEmpty) return null;
+  return lines.last.text;
+}
+
 /// ASS karaoke. Word highlight uses `\k`. A weak alignment is one line at a time.
 String? buildAssSubtitles({
   required List<AlignedWord> words,

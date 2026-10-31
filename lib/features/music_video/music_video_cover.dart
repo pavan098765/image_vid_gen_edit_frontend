@@ -270,7 +270,8 @@ Future<Uint8List?> _readHttp(String url, String token, {int depth = 0}) async {
       headers['Authorization'] = 'Bearer $token';
     }
     final response = await http.get(uri, headers: headers).timeout(const Duration(seconds: 40));
-    if (response.statusCode != 200 || response.bodyBytes.length <= 32) {
+    final received = response.statusCode == 200 || response.statusCode == 206;
+    if (!received || response.bodyBytes.length <= 32) {
       debugPrint('Cover download HTTP ${response.statusCode} (${response.bodyBytes.length} bytes)');
       return null;
     }

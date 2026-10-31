@@ -81,7 +81,7 @@ class _StudioMusicVideoPageState extends State<StudioMusicVideoPage> {
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
         children: [
           Text(
-            'Use a song you already have. Pick a style on the next screen. The video is made on this phone.',
+            'Use a song you already have. Pick a style on the next screen.',
             style: TextStyle(color: cs.onSurfaceVariant, height: 1.35),
           ),
           const SizedBox(height: 20),

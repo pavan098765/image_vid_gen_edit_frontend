@@ -2649,7 +2649,7 @@
         {
           "id": "kala_music_video",
           "name": "Kala HitMaker",
-          "description": "A music video made on this phone.",
+          "description": "A music HD video.",
           "onDeviceOnly": true,
           "useExternalApi": false,
           "cost": 25,

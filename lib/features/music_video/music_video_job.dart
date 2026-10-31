@@ -54,7 +54,7 @@ Future<({String jobId, String token})> reserveOnDeviceMusicVideo({
       )
       .timeout(const Duration(seconds: 30));
   if (response.statusCode == 402) {
-    throw const MusicVideoJobException('You need 25 gems for a music video on this phone.');
+    throw const MusicVideoJobException('You need 25 gems for a music HD video.');
   }
   if (response.statusCode >= 400) {
     debugPrint('Music video reserve HTTP ${response.statusCode}');
