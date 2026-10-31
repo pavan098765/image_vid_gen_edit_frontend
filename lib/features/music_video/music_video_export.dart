@@ -6,7 +6,6 @@ import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/ffprobe_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 import 'package:flutter/services.dart';
-import 'package:image/image.dart' as im;
 import 'package:kala_ai_create_images_videos_with_ai/core/music_job.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/music_video/audio_features.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/music_video/lyric_captions.dart';
@@ -152,11 +151,12 @@ List<String> frameSequenceArgs({
   required String pattern,
   required String audioPath,
   required String outputPath,
+  int fps = kMusicVideoFps,
 }) {
   return [
     '-y',
     '-framerate',
-    '$kMusicVideoFps',
+    '$fps',
     '-start_number',
     '0',
     '-i',
@@ -291,31 +291,33 @@ Future<String> exportMusicVideo(
       cover: cover,
       title: request.title,
       artist: request.artist,
+      includeArt: false,
     );
     final table = features!;
-    final count = frames.clamp(1, table.frames.length);
+    const fps = 12;
+    final rawCount = (seconds * fps).round();
+    final count = rawCount < 1 ? 1 : rawCount;
     for (var i = 0; i < count; i++) {
       final frame = await rasterizeMusicVideoFrame(
         size: size,
         template: request.template,
         base: base,
-        features: table.frames[i],
+        features: table.atTime(i / fps),
       );
-      final jpg = await _jpegBytes(frame);
+      final png = await _pngBytes(frame);
       frame.dispose();
       final name = i.toString().padLeft(5, '0');
-      await File('${work.path}/frame_$name.jpg').writeAsBytes(jpg);
-      if (i % 6 == 0) {
-        onProgress?.call(0.2 + 0.55 * (i / count), 'Drawing the visualizer');
-        await Future<void>.delayed(Duration.zero);
-      }
+      await File('${work.path}/frame_$name.png').writeAsBytes(png);
+      onProgress?.call(0.2 + 0.55 * (i / count), 'Drawing the visualizer');
+      await Future<void>.delayed(Duration.zero);
     }
     base.dispose();
     onProgress?.call(0.8, 'Encoding the video');
     final ok = await _run(frameSequenceArgs(
-      pattern: '${work.path}/frame_%05d.jpg',
+      pattern: '${work.path}/frame_%05d.png',
       audioPath: request.audioPath,
       outputPath: silent.path,
+      fps: fps,
     ));
     if (!ok) throw const MusicVideoException('Could not encode the visualizer.');
   } else {
@@ -370,21 +372,6 @@ Future<Uint8List> _pngBytes(ui.Image image) async {
   final data = await image.toByteData(format: ui.ImageByteFormat.png);
   if (data == null) throw const MusicVideoException('Could not draw the cover.');
   return data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
-}
-
-Future<Uint8List> _jpegBytes(ui.Image image) async {
-  final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-  if (data == null) throw const MusicVideoException('Could not draw a frame.');
-  final raw = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
-  final copy = Uint8List.fromList(raw);
-  final decoded = im.Image.fromBytes(
-    width: image.width,
-    height: image.height,
-    bytes: copy.buffer,
-    numChannels: 4,
-    order: im.ChannelOrder.rgba,
-  );
-  return Uint8List.fromList(im.encodeJpg(decoded, quality: 82));
 }
 
 Future<Float64List> decodeMusicVideoPcm(String audioPath, String workDir) async {

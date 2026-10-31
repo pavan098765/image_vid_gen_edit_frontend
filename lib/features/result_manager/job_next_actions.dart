@@ -233,6 +233,44 @@ class _JobNextActionsState extends State<JobNextActions> {
     return text.isEmpty ? null : text;
   }
 
+  String _fullSongLyrics(MusicTrack? sung, MusicResult? music) {
+    final found = <String>[];
+    void take(String? raw) {
+      final text = raw?.trim() ?? '';
+      if (text.length < 12) return;
+      found.add(text);
+    }
+
+    take(sung?.lyrics);
+    for (final sheet in music?.lyrics ?? const <MusicLyricSheet>[]) {
+      take(sheet.text);
+    }
+    take(_snapText('lyrics'));
+    var parentId = widget.job.parentJobId;
+    for (var depth = 0; depth < 4 && parentId != null && parentId.isNotEmpty; depth++) {
+      JobModel? parent;
+      for (final job in jobListNotifier.value) {
+        if (job.jobId == parentId) parent = job;
+      }
+      if (parent == null) break;
+      final snap = parent.settingsSnapshot?['lyrics'];
+      if (snap is String) take(snap);
+      if (parent.music != null) {
+        final parsed = MusicResult.fromJson(parent.music!);
+        for (final sheet in parsed.lyrics) {
+          take(sheet.text);
+        }
+        for (final track in parsed.tracks) {
+          take(track.lyrics);
+        }
+      }
+      parentId = parent.parentJobId;
+    }
+    if (found.isEmpty) return '';
+    found.sort((a, b) => b.length.compareTo(a.length));
+    return found.first;
+  }
+
   int _musicVideoGems() {
     final cap = _config == null ? null : capabilityById(_config!, 'create_music');
     final models = cap?['models'];
@@ -318,11 +356,7 @@ class _JobNextActionsState extends State<JobNextActions> {
       }
     }
     final copiedStyle = _snapText('style') ?? sung?.tags?.trim() ?? '';
-    final sourceLyrics = sung == null
-        ? (_snapText('lyrics') ?? '')
-        : (fullerLyrics(sung, music?.lyrics ?? const <MusicLyricSheet>[]) ??
-            _snapText('lyrics') ??
-            '');
+    final sourceLyrics = _fullSongLyrics(sung, music);
     final instrumental = music?.instrumental == true ||
         widget.job.settingsSnapshot?['instrumental'] == true;
     final choice = await showModalBottomSheet<_ExtendChoice>(
@@ -352,6 +386,10 @@ class _JobNextActionsState extends State<JobNextActions> {
     if (style.isNotEmpty) params['style'] = style;
     final trimmed = choice.lyrics.trim();
     if (trimmed.isNotEmpty && !instrumental) params['lyrics'] = trimmed;
+    final finalLength = choice.finalSeconds;
+    if (finalLength != null && finalLength >= 10) {
+      params['duration'] = finalLength.round();
+    }
     final duration = choice.durationSeconds ?? target.duration;
     if (duration != null && duration > 1 && choice.continueAt > 0) {
       params['source_duration'] = duration;
@@ -433,6 +471,8 @@ class _JobNextActionsState extends State<JobNextActions> {
           audioId: target.audioId,
           instrumental: music?.instrumental == true,
           words: sung?.alignedWords ?? const [],
+          lyricSheet: _fullSongLyrics(sung, music),
+          style: _snapText('style') ?? sung?.tags ?? '',
           lyricConfidence: sung?.lyricConfidence,
           cloudGems: _musicVideoGems(),
           onCloudVideo: () => _createMusicVideo(target),
@@ -451,7 +491,7 @@ class _JobNextActionsState extends State<JobNextActions> {
     );
   }
 
-  Future<void> _createMusicVideo(
+  Future<bool> _createMusicVideo(
     ({String taskId, String audioId, String title, int index}) target,
   ) async {
     final song = widget.job;
@@ -484,15 +524,13 @@ class _JobNextActionsState extends State<JobNextActions> {
         },
       );
       await addOrUpdateJob(created);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Music video added to Creations.')),
-      );
+      return true;
     } on SunoFormException catch (error) {
-      if (!mounted) return;
+      if (!mounted) return false;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(error.message)),
       );
+      return false;
     }
   }
 
@@ -1045,12 +1083,14 @@ class _JobNextActionsState extends State<JobNextActions> {
 class _ExtendChoice {
   final double continueAt;
   final double? durationSeconds;
+  final double? finalSeconds;
   final String style;
   final String lyrics;
 
   const _ExtendChoice({
     required this.continueAt,
     required this.durationSeconds,
+    required this.finalSeconds,
     required this.style,
     required this.lyrics,
   });
@@ -1092,6 +1132,8 @@ class _ExtendTrackSheetState extends State<_ExtendTrackSheet> {
   double _continueAt = 1;
   bool _ready = false;
   bool _scrubbing = false;
+  bool _setLength = false;
+  double _finalSeconds = 180;
   String? _error;
 
   @override
@@ -1103,6 +1145,8 @@ class _ExtendTrackSheetState extends State<_ExtendTrackSheet> {
     if (known != null && known > 1) {
       _duration = known;
       _continueAt = known - 1;
+      final floor = known + 15;
+      _finalSeconds = floor < 120 ? 120 : (floor > 360 ? 360 : floor);
     }
     _stateSub = _player.playerStateStream.listen((_) {
       if (mounted) setState(() {});
@@ -1141,6 +1185,8 @@ class _ExtendTrackSheetState extends State<_ExtendTrackSheet> {
         _duration = length;
         if (length != null && length > 1) {
           _continueAt = length - 1;
+          final floor = length + 15;
+          _finalSeconds = floor < 120 ? 120 : (floor > 360 ? 360 : floor);
         }
         _ready = length != null && length > 1;
         _error = _ready ? null : 'Could not read the song length.';
@@ -1205,6 +1251,13 @@ class _ExtendTrackSheetState extends State<_ExtendTrackSheet> {
       if (lines.isEmpty || !lines.contains('[') || !lines.contains(']')) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(error ?? 'Could not write the next lines.')),
+        );
+        return;
+      }
+      final words = lines.split(RegExp(r'\s+')).where((part) => part.isNotEmpty).length;
+      if (words < 24) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('The next section was too short. Try again.')),
         );
         return;
       }
@@ -1334,6 +1387,33 @@ class _ExtendTrackSheetState extends State<_ExtendTrackSheet> {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
+                const SizedBox(height: 8),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(
+                    _setLength
+                        ? 'Final length ${_clock(_finalSeconds)}'
+                        : 'Final length · the model chooses',
+                    style: TextStyle(color: colors.onSurface, fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: Text(
+                    length == null
+                        ? 'How long the extended song should be'
+                        : 'This song is ${_clock(length)}. The result can be up to 6:00.',
+                    style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
+                  ),
+                  value: _setLength,
+                  onChanged: (value) => setState(() => _setLength = value),
+                ),
+                if (_setLength && length != null && length + 10 < 360)
+                  Slider(
+                    min: length + 10,
+                    max: 360,
+                    divisions: 20,
+                    label: _clock(_finalSeconds),
+                    value: _finalSeconds.clamp(length + 10, 360).toDouble(),
+                    onChanged: (value) => setState(() => _finalSeconds = value),
+                  ),
                 if (_error != null) ...[
                   const SizedBox(height: 6),
                   Text(_error!, style: TextStyle(color: colors.error, fontSize: 12)),
@@ -1349,6 +1429,28 @@ class _ExtendTrackSheetState extends State<_ExtendTrackSheet> {
                   ),
                 ),
                 if (!widget.instrumental) ...[
+                  if (widget.sourceLyrics.trim().isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'This song',
+                      style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
+                    ),
+                    const SizedBox(height: 4),
+                    Container(
+                      constraints: const BoxConstraints(maxHeight: 120),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: colors.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: SingleChildScrollView(
+                        child: Text(
+                          widget.sourceLyrics.trim(),
+                          style: TextStyle(color: colors.onSurface, height: 1.35),
+                        ),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 8),
                   Align(
                     alignment: Alignment.centerLeft,
@@ -1392,6 +1494,7 @@ class _ExtendTrackSheetState extends State<_ExtendTrackSheet> {
                         _ExtendChoice(
                           continueAt: _continueAt,
                           durationSeconds: _duration,
+                          finalSeconds: _setLength ? _finalSeconds : null,
                           style: _style.text,
                           lyrics: widget.instrumental ? '' : _lyrics.text,
                         ),

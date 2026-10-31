@@ -8,7 +8,22 @@ enum MusicVideoBackground { color, blurredCover, coverFill }
 
 enum MusicVideoArtFrame { square, circle, vinyl, small, none }
 
-enum MusicVideoMeter { none, wave, line, bars, circular, arc }
+enum MusicVideoMeter { none, wave, line, bars, circular, arc, glowBars, ribbon, halo, pillars, neon, orbit, columns, pulse, horizon }
+
+extension MusicVideoMeterLayout on MusicVideoMeter {
+  bool get sitsAlongTheBottom => switch (this) {
+        MusicVideoMeter.bars ||
+        MusicVideoMeter.line ||
+        MusicVideoMeter.glowBars ||
+        MusicVideoMeter.ribbon ||
+        MusicVideoMeter.pillars ||
+        MusicVideoMeter.neon ||
+        MusicVideoMeter.columns ||
+        MusicVideoMeter.horizon =>
+          true,
+        _ => false,
+      };
+}
 
 enum MusicVideoAspect {
   landscape(16, 9, 1280, 720, '16:9'),
@@ -59,6 +74,22 @@ class MusicVideoTemplate {
     this.meterColor = Colors.white,
     this.showTitle = false,
   });
+
+  MusicVideoTemplate copyWith({Color? meterColor}) {
+    return MusicVideoTemplate(
+      id: id,
+      title: title,
+      family: family,
+      background: background,
+      backgroundColor: backgroundColor,
+      artFrame: artFrame,
+      artScale: artScale,
+      splitBlur: splitBlur,
+      meter: meter,
+      meterColor: meterColor ?? this.meterColor,
+      showTitle: showTitle,
+    );
+  }
 
   bool get needsLoopVideo => family == MusicVideoFamily.canvas;
 
@@ -211,6 +242,107 @@ const List<MusicVideoTemplate> kMusicVideoTemplates = [
     artScale: 0.42,
     meter: MusicVideoMeter.arc,
     meterColor: Color(0xFFFF66B2),
+  ),
+  MusicVideoTemplate(
+    id: 'glow_bars',
+    title: 'Glow bars',
+    family: MusicVideoFamily.visualizer,
+    background: MusicVideoBackground.blurredCover,
+    backgroundColor: Color(0xFF0B1020),
+    artFrame: MusicVideoArtFrame.square,
+    artScale: 0.38,
+    meter: MusicVideoMeter.glowBars,
+    meterColor: Color(0xFF8B6CFF),
+  ),
+  MusicVideoTemplate(
+    id: 'bottom_ribbon',
+    title: 'Ribbon',
+    family: MusicVideoFamily.visualizer,
+    background: MusicVideoBackground.blurredCover,
+    backgroundColor: Color(0xFF101018),
+    artFrame: MusicVideoArtFrame.square,
+    artScale: 0.42,
+    meter: MusicVideoMeter.ribbon,
+    meterColor: Color(0xFF3AD1FF),
+  ),
+  MusicVideoTemplate(
+    id: 'bass_halo',
+    title: 'Bass halo',
+    family: MusicVideoFamily.visualizer,
+    background: MusicVideoBackground.blurredCover,
+    backgroundColor: Color(0xFF120818),
+    artFrame: MusicVideoArtFrame.circle,
+    artScale: 0.36,
+    meter: MusicVideoMeter.halo,
+    meterColor: Color(0xFFFF4F9A),
+  ),
+  MusicVideoTemplate(
+    id: 'reflected_pillars',
+    title: 'Pillars',
+    family: MusicVideoFamily.visualizer,
+    background: MusicVideoBackground.color,
+    backgroundColor: Color(0xFF0A0A12),
+    artFrame: MusicVideoArtFrame.square,
+    artScale: 0.34,
+    meter: MusicVideoMeter.pillars,
+    meterColor: Color(0xFFFFB020),
+    showTitle: true,
+  ),
+  MusicVideoTemplate(
+    id: 'neon_line',
+    title: 'Neon line',
+    family: MusicVideoFamily.visualizer,
+    background: MusicVideoBackground.blurredCover,
+    backgroundColor: Color(0xFF070712),
+    artFrame: MusicVideoArtFrame.circle,
+    artScale: 0.32,
+    meter: MusicVideoMeter.neon,
+    meterColor: Color(0xFF3DDC97),
+  ),
+  MusicVideoTemplate(
+    id: 'orbit_dots',
+    title: 'Orbit',
+    family: MusicVideoFamily.visualizer,
+    background: MusicVideoBackground.blurredCover,
+    backgroundColor: Color(0xFF0E0E16),
+    artFrame: MusicVideoArtFrame.circle,
+    artScale: 0.34,
+    meter: MusicVideoMeter.orbit,
+    meterColor: Color(0xFFFF5C33),
+  ),
+  MusicVideoTemplate(
+    id: 'wide_columns',
+    title: 'Columns',
+    family: MusicVideoFamily.visualizer,
+    background: MusicVideoBackground.color,
+    backgroundColor: Color(0xFF07070E),
+    artFrame: MusicVideoArtFrame.small,
+    artScale: 0.22,
+    meter: MusicVideoMeter.columns,
+    meterColor: Color(0xFF8B6CFF),
+    showTitle: true,
+  ),
+  MusicVideoTemplate(
+    id: 'pulse_rings',
+    title: 'Pulse',
+    family: MusicVideoFamily.visualizer,
+    background: MusicVideoBackground.color,
+    backgroundColor: Color(0xFF0A0614),
+    artFrame: MusicVideoArtFrame.circle,
+    artScale: 0.28,
+    meter: MusicVideoMeter.pulse,
+    meterColor: Color(0xFF3AD1FF),
+  ),
+  MusicVideoTemplate(
+    id: 'horizon_band',
+    title: 'Horizon',
+    family: MusicVideoFamily.visualizer,
+    background: MusicVideoBackground.blurredCover,
+    backgroundColor: Color(0xFF101018),
+    artFrame: MusicVideoArtFrame.square,
+    artScale: 0.3,
+    meter: MusicVideoMeter.horizon,
+    meterColor: Color(0xFFFF4F9A),
   ),
 ];
 

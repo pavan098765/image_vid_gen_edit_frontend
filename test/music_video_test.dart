@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/music_job.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/music_video/audio_features.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/music_video/lyric_captions.dart';
+import 'package:kala_ai_create_images_videos_with_ai/features/music_video/music_video_cover.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/music_video/music_video_export.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/music_video/music_video_frame.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/music_video/music_video_template.dart';
@@ -122,12 +123,21 @@ void main() {
     expect(ffmpegFilterPath(r'C:\clips\lyrics.ass'), contains(r'\:'));
   });
 
-  test('the four meters are in the style list', () {
+  test('the visualizer styles include the refined meters', () {
     final meters = kMusicVideoTemplates.map((template) => template.meter).toSet();
     expect(meters, contains(MusicVideoMeter.wave));
     expect(meters, contains(MusicVideoMeter.line));
     expect(meters, contains(MusicVideoMeter.bars));
     expect(meters, contains(MusicVideoMeter.circular));
+    expect(meters, contains(MusicVideoMeter.glowBars));
+    expect(meters, contains(MusicVideoMeter.ribbon));
+    expect(meters, contains(MusicVideoMeter.halo));
+    expect(meters, contains(MusicVideoMeter.pillars));
+    expect(meters, contains(MusicVideoMeter.neon));
+    expect(meters, contains(MusicVideoMeter.orbit));
+    expect(meters, contains(MusicVideoMeter.columns));
+    expect(meters, contains(MusicVideoMeter.pulse));
+    expect(meters, contains(MusicVideoMeter.horizon));
     expect(
       kMusicVideoTemplates.any((template) => template.needsLoopVideo),
       isTrue,
@@ -139,17 +149,48 @@ void main() {
   });
 
   test('a still frame paints', () async {
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder);
-    MusicVideoFramePainter(
-      template: musicVideoTemplateById('circular_bars'),
-      features: FrameFeatures.silent,
-      title: 'Song',
-      artist: 'Artist',
-      lyricLine: 'Hello there',
-    ).paint(canvas, const Size(128, 72));
-    final image = await recorder.endRecording().toImage(128, 72);
-    expect(image.width, 128);
-    expect(image.height, 72);
+    for (final template in kMusicVideoTemplates.where((item) => item.needsAudioAnalysis)) {
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      MusicVideoFramePainter(
+        template: template.copyWith(meterColor: const Color(0xFF3AD1FF)),
+        features: FrameFeatures.preview,
+        title: 'Song',
+        artist: 'Artist',
+        lyricLine: 'Hello there',
+      ).paint(canvas, const Size(160, 90));
+      final image = await recorder.endRecording().toImage(160, 90);
+      expect(image.width, 160);
+      expect(image.height, 90);
+      image.dispose();
+    }
+  });
+
+  test('a lyric sheet becomes evenly timed lines', () {
+    final words = evenLyricWords('[Verse]\nHello there\nSecond line', 10);
+    expect(words, hasLength(2));
+    expect(words.first.word, 'Hello there');
+    expect(words.first.startS, 0);
+    expect(words.last.startS, 5);
+    final window = sungWindow(
+      [0, 0, 0, 0.9, 0.9, 0.9, 0.9, 0.9, 0, 0],
+      100,
+    );
+    expect(window.start, 30);
+    expect(window.end, 80);
+    final placed = evenLyricWords(
+      'Hello there\nSecond line',
+      window.end - window.start,
+      startSeconds: window.start,
+    );
+    expect(placed.first.startS, 30);
+    expect(musicVideoCoverPrompt(title: 'Mumbai Hustle', artist: 'Kala', lyricSheet: 'city lights', style: 'night drive'), contains('No text'));
+    expect(musicVideoCoverPrompt(title: 'Mumbai Hustle', artist: 'Kala', lyricSheet: 'city lights', style: 'night drive'), contains('night drive'));
+    expect(musicVideoCoverPrompt(title: 'Mumbai Hustle', artist: 'Kala', lyricSheet: 'city lights', style: 'night drive'), isNot(contains('Mumbai Hustle')));
+    expect(musicVideoCoverPrompt(title: 'Mumbai Hustle', artist: 'Kala', lyricSheet: 'city lights', style: 'night drive'), isNot(contains('city lights')));
+    expect(
+      lyricLookupMessage('Choose a music action: song, lyrics, video.'),
+      'Timed lyrics are not available for this song yet.',
+    );
   });
 }

@@ -15,6 +15,7 @@ class MusicVideoFramePainter extends CustomPainter {
   final String title;
   final String artist;
   final bool foregroundOnly;
+  final bool includeArt;
 
   const MusicVideoFramePainter({
     required this.template,
@@ -25,10 +26,14 @@ class MusicVideoFramePainter extends CustomPainter {
     this.title = '',
     this.artist = '',
     this.foregroundOnly = false,
+    this.includeArt = true,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
+    final visual = !foregroundOnly &&
+        features != null &&
+        template.meter != MusicVideoMeter.none;
     if (base != null && !foregroundOnly) {
       canvas.drawImageRect(
         base!,
@@ -38,17 +43,46 @@ class MusicVideoFramePainter extends CustomPainter {
       );
     } else if (!foregroundOnly) {
       _paintBackdrop(canvas, size);
-      _paintArt(canvas, size);
+      if (!visual && includeArt) _paintArt(canvas, size);
     } else {
       _paintArt(canvas, size);
     }
     final meter = features;
-    if (meter != null && template.meter != MusicVideoMeter.none) {
+    if (visual && meter != null) {
+      _paintStage(canvas, size, meter);
       _paintMeter(canvas, size, meter);
+      _paintArt(canvas, size);
     }
     if (!foregroundOnly && lyricLine != null && lyricLine!.trim().isNotEmpty) {
       _paintLyric(canvas, size, lyricLine!.trim());
     }
+  }
+
+  void _paintStage(Canvas canvas, Size size, FrameFeatures features) {
+    final rect = Offset.zero & size;
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..shader = RadialGradient(
+          center: const Alignment(0, -0.05),
+          radius: 1.05,
+          colors: [
+            _ink.withValues(alpha: 0.16 + features.bass * 0.28),
+            _ink.withValues(alpha: 0.05 + features.mid * 0.08),
+            const Color(0x00000000),
+          ],
+        ).createShader(rect),
+    );
+    canvas.drawCircle(
+      Offset(size.width * 0.08, size.height * 0.18),
+      size.shortestSide * (0.28 + features.bass * 0.12),
+      Paint()..color = _ink.withValues(alpha: 0.10 + features.bass * 0.16),
+    );
+    canvas.drawCircle(
+      Offset(size.width * 0.92, size.height * 0.78),
+      size.shortestSide * (0.22 + features.high * 0.14),
+      Paint()..color = _hot.withValues(alpha: 0.08 + features.high * 0.14),
+    );
   }
 
   void _paintBackdrop(Canvas canvas, Size size) {
@@ -120,6 +154,18 @@ class MusicVideoFramePainter extends CustomPainter {
       _drawCover(canvas, rect, image, cover: false);
     }
     canvas.restore();
+    final framePaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = math.max(2, rect.shortestSide * 0.018)
+      ..color = const Color(0x99FFFFFF);
+    if (round) {
+      canvas.drawOval(rect, framePaint);
+    } else {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect, const Radius.circular(8)),
+        framePaint,
+      );
+    }
     if (template.showTitle) _paintTitle(canvas, size, rect);
   }
 
@@ -190,47 +236,57 @@ class MusicVideoFramePainter extends CustomPainter {
       case MusicVideoMeter.bars:
         _paintBars(canvas, size, art, features);
       case MusicVideoMeter.circular:
-        _paintRing(canvas, art, features, arc: false);
+        _paintRing(canvas, size, art, features, arc: false);
       case MusicVideoMeter.arc:
-        _paintRing(canvas, art, features, arc: true);
+        _paintRing(canvas, size, art, features, arc: true);
+      case MusicVideoMeter.glowBars:
+        _paintGlowBars(canvas, size, features);
+      case MusicVideoMeter.ribbon:
+        _paintRibbon(canvas, size, features);
+      case MusicVideoMeter.halo:
+        _paintHalo(canvas, size, art, features);
+      case MusicVideoMeter.pillars:
+        _paintPillars(canvas, size, features);
+      case MusicVideoMeter.neon:
+        _paintNeon(canvas, size, features);
+      case MusicVideoMeter.orbit:
+        _paintOrbit(canvas, size, art, features);
+      case MusicVideoMeter.columns:
+        _paintColumns(canvas, size, features);
+      case MusicVideoMeter.pulse:
+        _paintPulse(canvas, size, art, features);
+      case MusicVideoMeter.horizon:
+        _paintHorizon(canvas, size, features);
       case MusicVideoMeter.none:
         break;
     }
   }
 
+  Color get _ink => template.meterColor;
+
+  Color get _hot => Color.lerp(_ink, Colors.white, 0.42) ?? _ink;
+
   void _paintWave(Canvas canvas, Size size, Rect art, FrameFeatures features) {
-    final paint = Paint()
-      ..color = template.meterColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = math.max(1.5, size.shortestSide * 0.004)
-      ..strokeCap = StrokeCap.round;
-    final fade = Paint()
-      ..color = template.meterColor.withValues(alpha: 0.35)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = paint.strokeWidth
-      ..strokeCap = StrokeCap.round;
     _strokeWave(
       canvas,
-      Rect.fromLTRB(size.width * 0.04, art.top, art.left - 12, art.bottom),
+      Rect.fromLTRB(size.width * 0.03, size.height * 0.08, math.max(size.width * 0.28, art.left - 10), size.height * 0.9),
       features.waveform,
-      paint,
-      fade,
+      math.max(2.2, size.shortestSide * 0.006),
     );
     _strokeWave(
       canvas,
-      Rect.fromLTRB(art.right + 12, art.top, size.width * 0.96, art.bottom),
+      Rect.fromLTRB(math.min(size.width * 0.72, art.right + 10), size.height * 0.08, size.width * 0.97, size.height * 0.9),
       features.waveform,
-      paint,
-      fade,
+      math.max(2.2, size.shortestSide * 0.006),
     );
   }
 
-  void _strokeWave(Canvas canvas, Rect area, Float64List wave, Paint paint, Paint fade) {
-    if (area.width < 8 || area.height < 8) return;
+  void _strokeWave(Canvas canvas, Rect area, Float64List wave, double core) {
+    if (area.width < 8 || area.height < 8 || wave.length < 2) return;
     final path = Path();
     final mirror = Path();
     final mid = area.center.dy;
-    final amp = area.height * 0.28;
+    final amp = area.height * 0.42;
     for (var i = 0; i < wave.length; i++) {
       final x = area.left + area.width * (i / (wave.length - 1));
       final y = mid + wave[i] * amp;
@@ -242,73 +298,398 @@ class MusicVideoFramePainter extends CustomPainter {
         mirror.lineTo(x, mid - (y - mid));
       }
     }
-    canvas.drawPath(path, paint);
-    canvas.drawPath(mirror, fade);
+    final fill = Path.from(path)
+      ..lineTo(area.right, mid)
+      ..lineTo(area.left, mid)
+      ..close();
+    canvas.drawPath(
+      fill,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [_ink.withValues(alpha: 0.42), _ink.withValues(alpha: 0.02)],
+        ).createShader(area),
+    );
+    _glowStroke(canvas, path, core);
+    _glowStroke(canvas, mirror, core * 0.7, alpha: 0.45);
+  }
+
+  void _glowStroke(Canvas canvas, Path path, double width, {double alpha = 1}) {
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = _ink.withValues(alpha: 0.28 * alpha)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = width * 3.4
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round,
+    );
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = _hot.withValues(alpha: alpha)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = width
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round,
+    );
   }
 
   void _paintLine(Canvas canvas, Size size, FrameFeatures features) {
-    final paint = Paint()
-      ..color = template.meterColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = math.max(2, size.shortestSide * 0.005)
-      ..strokeCap = StrokeCap.round;
-    final bins = features.bins;
-    final left = size.width * 0.08;
-    final right = size.width * 0.92;
-    final base = size.height * 0.86;
-    final height = size.height * 0.12;
-    final path = Path();
-    for (var i = 0; i < bins.length; i++) {
-      final x = left + (right - left) * (i / (bins.length - 1));
-      final y = base - bins[i] * height;
-      if (i == 0) {
-        path.moveTo(x, y);
-      } else {
-        path.lineTo(x, y);
-      }
-    }
-    canvas.drawPath(path, paint);
+    final curve = _spectrumPath(size, features.bins, base: 0.7, reach: 0.4);
+    final fill = Path.from(curve.path)
+      ..lineTo(curve.right, size.height * 0.7)
+      ..lineTo(curve.left, size.height * 0.7)
+      ..close();
+    canvas.drawPath(
+      fill,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [_ink.withValues(alpha: 0.55), _ink.withValues(alpha: 0.02)],
+        ).createShader(Rect.fromLTWH(curve.left, size.height * 0.62, curve.right - curve.left, size.height * 0.24)),
+    );
+    _glowStroke(canvas, curve.path, math.max(2, size.shortestSide * 0.005));
   }
 
   void _paintBars(Canvas canvas, Size size, Rect art, FrameFeatures features) {
-    final bins = features.bins;
-    final left = size.width * 0.08;
-    final width = size.width * 0.84;
-    final gap = width * 0.008;
-    final barWidth = (width - gap * (bins.length - 1)) / bins.length;
-    final centerY = math.min(art.bottom + size.height * 0.1, size.height * 0.78);
-    final maxHeight = size.height * 0.08;
-    final paint = Paint()..color = template.meterColor;
-    for (var i = 0; i < bins.length; i++) {
+    final samples = _sample(features.bins, 36);
+    _mirroredBars(
+      canvas,
+      size,
+      samples,
+      centerY: size.height * 0.72,
+      maxHeight: size.height * 0.24,
+      inset: 0.08,
+    );
+  }
+
+  void _paintGlowBars(Canvas canvas, Size size, FrameFeatures features) {
+    final samples = _sample(features.bins, 28);
+    _mirroredBars(
+      canvas,
+      size,
+      samples,
+      centerY: size.height * 0.8,
+      maxHeight: size.height * 0.46,
+      inset: 0.07,
+      glow: true,
+    );
+  }
+
+  void _mirroredBars(
+    Canvas canvas,
+    Size size,
+    List<double> samples, {
+    required double centerY,
+    required double maxHeight,
+    required double inset,
+    bool glow = false,
+  }) {
+    if (samples.isEmpty) return;
+    final left = size.width * inset;
+    final width = size.width * (1 - inset * 2);
+    final gap = math.max(2.0, width * 0.012);
+    final barWidth = (width - gap * (samples.length - 1)) / samples.length;
+    for (var i = 0; i < samples.length; i++) {
       final x = left + i * (barWidth + gap);
-      final bar = bins[i] * maxHeight;
-      final rect = RRect.fromRectAndRadius(
-        Rect.fromLTWH(x, centerY - bar, barWidth, bar * 2),
-        Radius.circular(barWidth / 2),
+      final bar = math.max(2.0, samples[i] * maxHeight);
+      final rect = Rect.fromLTWH(x, centerY - bar, barWidth, bar * 2);
+      final color = Color.lerp(_ink, _hot, i / samples.length) ?? _ink;
+      if (glow) {
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(rect.inflate(barWidth * 0.35), Radius.circular(barWidth)),
+          Paint()..color = color.withValues(alpha: 0.22),
+        );
+      }
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect, Radius.circular(barWidth / 2)),
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.bottomCenter,
+            end: Alignment.topCenter,
+            colors: [color.withValues(alpha: 0.35), color, _hot],
+          ).createShader(rect),
       );
-      canvas.drawRRect(rect, paint);
     }
   }
 
-  void _paintRing(Canvas canvas, Rect art, FrameFeatures features, {required bool arc}) {
-    final bins = features.bins;
-    final paint = Paint()
-      ..color = template.meterColor
-      ..strokeWidth = math.max(2.5, art.shortestSide * 0.012)
-      ..strokeCap = StrokeCap.round;
-    final inner = art.shortestSide / 2 + art.shortestSide * 0.08;
-    final start = arc ? 0.2 : -math.pi / 2;
-    final sweep = arc ? math.pi * 0.9 : math.pi * 2;
-    for (var i = 0; i < bins.length; i++) {
-      final angle = start + sweep * (i / bins.length);
-      final length = art.shortestSide * (0.03 + bins[i] * 0.16);
-      final dir = Offset(math.cos(angle), math.sin(angle));
-      canvas.drawLine(
-        art.center + dir * inner,
-        art.center + dir * (inner + length),
-        paint,
+  void _paintRibbon(Canvas canvas, Size size, FrameFeatures features) {
+    final curve = _spectrumPath(size, _sample(features.bins, 48), base: 0.58, reach: 0.46);
+    final fill = Path.from(curve.path)
+      ..lineTo(curve.right, size.height)
+      ..lineTo(curve.left, size.height)
+      ..close();
+    canvas.drawPath(
+      fill,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [_hot.withValues(alpha: 0.9), _ink.withValues(alpha: 0.35), _ink.withValues(alpha: 0.02)],
+        ).createShader(Rect.fromLTWH(0, size.height * 0.66, size.width, size.height * 0.34)),
+    );
+    _glowStroke(canvas, curve.path, math.max(2.2, size.shortestSide * 0.006));
+  }
+
+  void _paintHalo(Canvas canvas, Size size, Rect art, FrameFeatures features) {
+    final field = size.shortestSide;
+    final radius = field * (0.34 + features.bass * 0.06);
+    final ring = Path()..addOval(Rect.fromCircle(center: art.center, radius: radius));
+    canvas.drawPath(
+      ring,
+      Paint()
+        ..color = _ink.withValues(alpha: 0.16 + features.rms * 0.2)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = field * (0.012 + features.bass * 0.02),
+    );
+    _glowStroke(canvas, ring, math.max(2.4, field * 0.008));
+    _paintTicks(canvas, art.center, radius + field * 0.02, features.bins, field, arc: false);
+  }
+
+  void _paintPillars(Canvas canvas, Size size, FrameFeatures features) {
+    final samples = _sample(features.bins, 18);
+    final left = size.width * 0.06;
+    final width = size.width * 0.88;
+    final gap = width * 0.018;
+    final barWidth = (width - gap * (samples.length - 1)) / samples.length;
+    final floor = size.height * 0.86;
+    final maxHeight = size.height * 0.5;
+    for (var i = 0; i < samples.length; i++) {
+      final x = left + i * (barWidth + gap);
+      final bar = math.max(4.0, samples[i] * maxHeight);
+      final rect = Rect.fromLTWH(x, floor - bar, barWidth, bar);
+      final color = Color.lerp(_ink, _hot, samples[i]) ?? _ink;
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect, Radius.circular(barWidth * 0.35)),
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.bottomCenter,
+            end: Alignment.topCenter,
+            colors: [color.withValues(alpha: 0.45), color],
+          ).createShader(rect),
+      );
+      final reflection = Rect.fromLTWH(x, floor + 3, barWidth, bar * 0.38);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(reflection, Radius.circular(barWidth * 0.35)),
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [color.withValues(alpha: 0.28), color.withValues(alpha: 0)],
+          ).createShader(reflection),
       );
     }
+  }
+
+  void _paintNeon(Canvas canvas, Size size, FrameFeatures features) {
+    final curve = _spectrumPath(size, features.bins, base: 0.62, reach: 0.36);
+    canvas.drawPath(
+      curve.path,
+      Paint()
+        ..color = _ink.withValues(alpha: 0.22)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(10, size.shortestSide * 0.028)
+        ..strokeCap = StrokeCap.round,
+    );
+    _glowStroke(canvas, curve.path, math.max(2.4, size.shortestSide * 0.006));
+  }
+
+  void _paintOrbit(Canvas canvas, Size size, Rect art, FrameFeatures features) {
+    final samples = _sample(features.bins, 42);
+    final field = size.shortestSide;
+    final inner = art.shortestSide / 2 + field * 0.06;
+    canvas.drawCircle(
+      art.center,
+      inner,
+      Paint()
+        ..color = _ink.withValues(alpha: 0.35)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.2,
+    );
+    for (var i = 0; i < samples.length; i++) {
+      final angle = -math.pi / 2 + math.pi * 2 * (i / samples.length);
+      final reach = field * (0.04 + samples[i] * 0.22);
+      final center = art.center + Offset(math.cos(angle), math.sin(angle)) * (inner + reach);
+      final radius = math.max(1.6, field * (0.006 + samples[i] * 0.012));
+      final color = Color.lerp(_ink, _hot, samples[i]) ?? _ink;
+      canvas.drawCircle(center, radius * 2.2, Paint()..color = color.withValues(alpha: 0.2));
+      canvas.drawCircle(center, radius, Paint()..color = color);
+    }
+  }
+
+  void _paintRing(Canvas canvas, Size size, Rect art, FrameFeatures features, {required bool arc}) {
+    final field = size.shortestSide;
+    final inner = art.shortestSide / 2 + field * 0.045;
+    final start = arc ? 0.15 : -math.pi / 2;
+    final sweep = arc ? math.pi * 1.15 : math.pi * 2;
+    canvas.drawArc(
+      Rect.fromCircle(center: art.center, radius: inner),
+      start,
+      sweep,
+      false,
+      Paint()
+        ..color = _ink.withValues(alpha: 0.35)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(1.4, field * 0.006),
+    );
+    _paintTicks(
+      canvas,
+      art.center,
+      inner,
+      features.bins,
+      field,
+      arc: arc,
+      start: start,
+      sweep: sweep,
+    );
+  }
+
+  void _paintTicks(
+    Canvas canvas,
+    Offset center,
+    double inner,
+    Float64List bins,
+    double artSide, {
+    required bool arc,
+    double start = 0.35,
+    double sweep = math.pi * 0.85,
+  }) {
+    final origin = arc ? start : -math.pi / 2;
+    final turn = arc ? sweep : math.pi * 2;
+    final width = math.max(2.2, artSide * 0.011);
+    for (var i = 0; i < bins.length; i++) {
+      final angle = origin + turn * (i / bins.length);
+      final length = artSide * (0.04 + bins[i] * 0.34);
+      final dir = Offset(math.cos(angle), math.sin(angle));
+      final color = Color.lerp(_ink, _hot, bins[i]) ?? _ink;
+      canvas.drawLine(
+        center + dir * inner,
+        center + dir * (inner + length),
+        Paint()
+          ..color = color.withValues(alpha: 0.28)
+          ..strokeWidth = width * 2.4
+          ..strokeCap = StrokeCap.round,
+      );
+      canvas.drawLine(
+        center + dir * inner,
+        center + dir * (inner + length),
+        Paint()
+          ..color = color
+          ..strokeWidth = width
+          ..strokeCap = StrokeCap.round,
+      );
+    }
+  }
+
+  List<double> _sample(Float64List bins, int count) {
+    if (bins.isEmpty || count < 1) return const [];
+    final out = List<double>.filled(count, 0);
+    for (var i = 0; i < count; i++) {
+      final start = i * bins.length ~/ count;
+      final end = math.max(start + 1, (i + 1) * bins.length ~/ count);
+      var sum = 0.0;
+      for (var j = start; j < end && j < bins.length; j++) {
+        sum += bins[j];
+      }
+      out[i] = sum / (end - start);
+    }
+    return out;
+  }
+
+  ({Path path, double left, double right}) _spectrumPath(
+    Size size,
+    List<double> samples, {
+    required double base,
+    required double reach,
+  }) {
+    final left = size.width * 0.06;
+    final right = size.width * 0.94;
+    final floor = size.height * base;
+    final height = size.height * reach;
+    final path = Path();
+    if (samples.length < 2) return (path: path, left: left, right: right);
+    final xs = List<double>.generate(
+      samples.length,
+      (i) => left + (right - left) * (i / (samples.length - 1)),
+    );
+    final ys = List<double>.generate(
+      samples.length,
+      (i) => floor - samples[i] * height,
+    );
+    path.moveTo(xs.first, ys.first);
+    for (var i = 1; i < xs.length - 1; i++) {
+      final midX = (xs[i] + xs[i + 1]) / 2;
+      final midY = (ys[i] + ys[i + 1]) / 2;
+      path.quadraticBezierTo(xs[i], ys[i], midX, midY);
+    }
+    path.lineTo(xs.last, ys.last);
+    return (path: path, left: left, right: right);
+  }
+
+  void _paintColumns(Canvas canvas, Size size, FrameFeatures features) {
+    final samples = _sample(features.bins, 14);
+    final left = size.width * 0.05;
+    final width = size.width * 0.9;
+    final gap = width * 0.03;
+    final barWidth = (width - gap * (samples.length - 1)) / samples.length;
+    final floor = size.height * 0.94;
+    for (var i = 0; i < samples.length; i++) {
+      final bar = size.height * (0.12 + samples[i] * 0.62);
+      final rect = Rect.fromLTWH(left + i * (barWidth + gap), floor - bar, barWidth, bar);
+      final color = Color.lerp(_ink, _hot, i / samples.length) ?? _ink;
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect, Radius.circular(barWidth * 0.28)),
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.bottomCenter,
+            end: Alignment.topCenter,
+            colors: [color.withValues(alpha: 0.25), color, _hot],
+          ).createShader(rect),
+      );
+    }
+  }
+
+  void _paintPulse(Canvas canvas, Size size, Rect art, FrameFeatures features) {
+    final center = art.center;
+    final field = size.shortestSide;
+    final energies = [features.bass, features.mid, features.high, features.rms];
+    for (var i = 0; i < energies.length; i++) {
+      final radius = field * (0.22 + i * 0.1 + energies[i] * 0.06);
+      canvas.drawCircle(
+        center,
+        radius,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = field * (0.012 + energies[i] * 0.02)
+          ..color = (Color.lerp(_ink, _hot, i / energies.length) ?? _ink).withValues(alpha: 0.35 + energies[i] * 0.45),
+      );
+    }
+  }
+
+  void _paintHorizon(Canvas canvas, Size size, FrameFeatures features) {
+    final samples = _sample(features.bins, 48);
+    final mid = size.height * 0.62;
+    final reach = size.height * 0.28;
+    final left = size.width * 0.04;
+    final right = size.width * 0.96;
+    final upper = Path()..moveTo(left, mid);
+    final lower = Path()..moveTo(left, mid);
+    for (var i = 0; i < samples.length; i++) {
+      final x = left + (right - left) * (i / (samples.length - 1));
+      final lift = samples[i] * reach;
+      upper.lineTo(x, mid - lift);
+      lower.lineTo(x, mid + lift * 0.55);
+    }
+    upper.lineTo(right, mid);
+    lower.lineTo(right, mid);
+    upper.close();
+    lower.close();
+    canvas.drawPath(upper, Paint()..color = _ink.withValues(alpha: 0.85));
+    canvas.drawPath(lower, Paint()..color = _ink.withValues(alpha: 0.35));
+    _glowStroke(canvas, upper, math.max(2, size.shortestSide * 0.005));
   }
 
   void _paintLyric(Canvas canvas, Size size, String line) {
@@ -347,16 +728,15 @@ class MusicVideoFramePainter extends CustomPainter {
         oldDelegate.base != base ||
         oldDelegate.features != features ||
         oldDelegate.lyricLine != lyricLine ||
-        oldDelegate.foregroundOnly != foregroundOnly;
+        oldDelegate.foregroundOnly != foregroundOnly ||
+        oldDelegate.includeArt != includeArt;
   }
 }
 
 Rect musicVideoArtRect(Size size, MusicVideoTemplate template) {
   final side = size.shortestSide * template.artScale;
   if (side <= 0) return Rect.fromCenter(center: size.center(Offset.zero), width: 0, height: 0);
-  final lift = template.meter == MusicVideoMeter.bars || template.meter == MusicVideoMeter.line
-      ? size.height * 0.06
-      : 0.0;
+  final lift = template.meter.sitsAlongTheBottom ? size.height * 0.06 : 0.0;
   return Rect.fromCenter(
     center: Offset(size.width / 2, size.height / 2 - lift),
     width: side,
@@ -402,6 +782,7 @@ Future<ui.Image> rasterizeMusicVideoFrame({
   String title = '',
   String artist = '',
   bool foregroundOnly = false,
+  bool includeArt = true,
 }) async {
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder);
@@ -414,6 +795,7 @@ Future<ui.Image> rasterizeMusicVideoFrame({
     title: title,
     artist: artist,
     foregroundOnly: foregroundOnly,
+    includeArt: includeArt,
   ).paint(canvas, size);
   final picture = recorder.endRecording();
   final image = await picture.toImage(size.width.round(), size.height.round());

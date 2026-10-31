@@ -2647,6 +2647,24 @@
           }
         },
         {
+          "id": "kala_music_video",
+          "name": "Kala HitMaker",
+          "description": "A music video made on this phone.",
+          "onDeviceOnly": true,
+          "useExternalApi": false,
+          "cost": 25,
+          "costUpscale": 0,
+          "offer": 0,
+          "enabled": false,
+          "params": {
+            "aspect_ratio": "{{aspect_ratio}}",
+            "template": "{{template}}"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        },
+        {
           "id": "ace_step_music",
           "name": "Kala SongFlow",
           "description": "Expressive songs from your lyrics and ideas.",

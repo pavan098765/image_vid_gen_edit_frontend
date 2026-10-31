@@ -83,6 +83,78 @@ List<LyricLine> lyricLinesFromWords(List<AlignedWord> words) {
   return lines;
 }
 
+/// Lines from a lyric sheet, spaced across [durationSeconds] starting at
+/// [startSeconds]. Longer lines stay on screen longer.
+List<AlignedWord> evenLyricWords(
+  String sheet,
+  double durationSeconds, {
+  double startSeconds = 0,
+}) {
+  final lines = <String>[];
+  for (final raw in sheet.split(RegExp(r'\r?\n'))) {
+    final text = stripSectionTags(raw);
+    if (text.isEmpty) continue;
+    final parts = text.split(' ').where((part) => part.isNotEmpty).toList();
+    if (parts.length <= 8) {
+      lines.add(parts.join(' '));
+      continue;
+    }
+    for (var start = 0; start < parts.length; start += 8) {
+      final end = start + 8 < parts.length ? start + 8 : parts.length;
+      lines.add(parts.sublist(start, end).join(' '));
+    }
+  }
+  if (lines.length < 2) return const [];
+  final span = durationSeconds < 1 ? lines.length * 3.0 : durationSeconds;
+  final weights = [for (final line in lines) line.length < 4 ? 4 : line.length];
+  final total = weights.fold<int>(0, (sum, weight) => sum + weight);
+  var cursor = startSeconds < 0 ? 0.0 : startSeconds;
+  return [
+    for (var i = 0; i < lines.length; i++)
+      AlignedWord(
+        word: lines[i],
+        success: true,
+        startS: cursor,
+        endS: cursor += span * weights[i] / total,
+      ),
+  ];
+}
+
+/// The stretch of the song where the mid band is actually present.
+/// Even lyric lines belong here, not across the silent intro.
+({double start, double end}) sungWindow(List<double> energy, double durationSeconds) {
+  if (durationSeconds < 1 || energy.length < 8) {
+    return (start: durationSeconds * 0.08, end: durationSeconds * 0.92);
+  }
+  final hop = durationSeconds / energy.length;
+  int? first;
+  int? last;
+  for (var i = 0; i < energy.length; i++) {
+    if (energy[i] > 0.22) {
+      first ??= i;
+      last = i;
+    }
+  }
+  if (first == null || last == null || last <= first + 3) {
+    return (start: durationSeconds * 0.08, end: durationSeconds * 0.92);
+  }
+  final start = (first * hop).clamp(0, durationSeconds * 0.4).toDouble();
+  final end = ((last + 1) * hop).clamp(durationSeconds * 0.5, durationSeconds).toDouble();
+  if (end - start < 4) {
+    return (start: durationSeconds * 0.08, end: durationSeconds * 0.92);
+  }
+  return (start: start, end: end);
+}
+
+/// Hides the server's action list when timed lyrics are not a music action yet.
+String lyricLookupMessage(String serverMessage) {
+  final lower = serverMessage.toLowerCase();
+  if (lower.contains('music action') || lower.contains('timestamped')) {
+    return 'Timed lyrics are not available for this song yet.';
+  }
+  return serverMessage;
+}
+
 String? activeLyricLine(List<AlignedWord> words, double timeSeconds) {
   final lines = lyricLinesFromWords(words);
   for (final line in lines) {

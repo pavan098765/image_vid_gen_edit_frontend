@@ -98,34 +98,28 @@ Future<Uint8List> equalizeHitMakerDownload({
 
   final sourceHash = sha1.convert(bytes).toString();
   final applied = _storedHashes(job.settingsSnapshot?['eqAppliedHashes']);
-  if (applied.contains(sourceHash)) {
-    debugPrint('EQ: skip, this file was already equalized ($sourceHash)');
+  final song = _songText(job);
+  debugPrint(
+    'EQ: asking for a preset title="${song.title}" style="${song.style}"',
+  );
+  final chosen = await _requestPreset(
+    title: song.title,
+    style: song.style,
+    tags: song.tags,
+    lyrics: song.lyrics,
+  );
+  if (chosen == null || chosen == 'flat') {
+    debugPrint('EQ: no preset from the server, saving the original');
     return bytes;
   }
-
   final stored = job.settingsSnapshot?['eqPreset'];
-  final String preset;
-  if (stored is String && stored.trim().isNotEmpty) {
-    preset = stored.trim().toLowerCase();
-    debugPrint('EQ: reusing preset $preset for job $jobId');
-  } else {
-    final song = _songText(job);
-    debugPrint(
-      'EQ: asking for a preset title="${song.title}" style="${song.style}"',
-    );
-    final chosen = await _requestPreset(
-      title: song.title,
-      style: song.style,
-      tags: song.tags,
-      lyrics: song.lyrics,
-    );
-    if (chosen == null) {
-      debugPrint('EQ: preset lookup failed, saving the original');
-      return bytes;
-    }
-    preset = chosen;
-    debugPrint('EQ: preset is $preset');
+  final storedName = stored is String ? stored.trim().toLowerCase() : '';
+  if (applied.contains(sourceHash) && storedName == chosen) {
+    debugPrint('EQ: skip, this file already has $chosen');
+    return bytes;
   }
+  final preset = chosen;
+  debugPrint('EQ: preset is $preset');
 
   final filter = _filterFor(preset);
   var output = bytes;
@@ -153,16 +147,17 @@ String? _filterFor(String presetId) {
   final canonical = _aliases[presetId] ?? presetId;
   final gains = _curves[canonical];
   if (gains == null || gains.length != _bandsHz.length) return null;
-  var peak = 0.0;
-  for (final gain in gains) {
-    if (gain > peak) peak = gain;
-  }
-  final parts = <String>[];
-  if (peak > 0) parts.add('volume=-${_db(peak)}dB');
+  final parts = <String>['aformat=sample_fmts=fltp'];
   for (var i = 0; i < _bandsHz.length; i++) {
-    parts.add('equalizer=f=${_bandsHz[i]}:t=q:w=1:g=${_db(gains[i])}');
+    final hz = _bandsHz[i];
+    final gain = _db(gains[i]);
+    if (hz >= 12000) {
+      parts.add('equalizer=f=$hz:t=h:w=900:g=$gain');
+    } else {
+      parts.add('equalizer=f=$hz:t=o:w=0.75:g=$gain');
+    }
   }
-  parts.add('alimiter=limit=0.95');
+  parts.add('alimiter=limit=0.95:level=disabled');
   return parts.join(',');
 }
 
@@ -211,6 +206,8 @@ String _action(JobModel job) {
   }
   final snapTitle = snap['sunoTitle']?.toString().trim() ?? '';
   final snapLyrics = snap['lyrics']?.toString().trim() ?? '';
+  final snapStyle = _clip(snap['style']?.toString(), 1000);
+  final tagStyle = _clip(tags.join(', '), 1000);
   return (
     title: _clip(
       snapTitle.isNotEmpty
@@ -218,7 +215,7 @@ String _action(JobModel job) {
           : (titles.isEmpty ? job.title : titles.first),
       200,
     ),
-    style: _clip(snap['style']?.toString(), 1000),
+    style: snapStyle.isNotEmpty ? snapStyle : tagStyle,
     tags: _clip(tags.join(', '), 500),
     lyrics: _clip(
       snapLyrics.isNotEmpty ? snapLyrics : (lyrics.isEmpty ? '' : lyrics.first),
@@ -249,7 +246,10 @@ Future<String?> _requestPreset({
 }) async {
   try {
     final token = await AuthService().getIdToken();
-    if (token == null || token.isEmpty) return null;
+    if (token == null || token.isEmpty) {
+      debugPrint('EQ: preset lookup skipped, no sign-in token');
+      return null;
+    }
     final response = await http
         .post(
           Uri.parse('$_controllerUrl/eq_preset'),
@@ -265,16 +265,33 @@ Future<String?> _requestPreset({
           }),
         )
         .timeout(const Duration(seconds: 25));
-    if (response.statusCode != 200) return null;
+    if (response.statusCode != 200) {
+      debugPrint('EQ: preset lookup HTTP ${response.statusCode}');
+      return null;
+    }
     final decoded = jsonDecode(response.body);
-    if (decoded is! Map) return null;
-    final preset = decoded['preset'];
-    if (preset is! String || preset.trim().isEmpty) return null;
-    return preset.trim().toLowerCase();
+    final preset = _presetName(decoded);
+    if (preset == null) {
+      debugPrint('EQ: preset lookup returned no preset');
+      return null;
+    }
+    return preset;
   } catch (error) {
     debugPrint('EQ preset lookup failed: $error');
     return null;
   }
+}
+
+String? _presetName(Object? decoded) {
+  if (decoded is! Map) return null;
+  final direct = decoded['preset'];
+  if (direct is String && direct.trim().isNotEmpty) return direct.trim().toLowerCase();
+  final data = decoded['data'];
+  if (data is Map) {
+    final nested = data['preset'];
+    if (nested is String && nested.trim().isNotEmpty) return nested.trim().toLowerCase();
+  }
+  return null;
 }
 
 Future<Uint8List?> _bake(Uint8List source, String filter) async {

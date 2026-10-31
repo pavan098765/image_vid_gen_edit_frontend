@@ -25,6 +25,8 @@ class FrameFeatures {
     required this.rms,
   });
 
+  static final FrameFeatures preview = _previewFeatures();
+
   static final FrameFeatures silent = FrameFeatures(
     waveform: Float64List(kWaveformPoints),
     bins: Float64List(kFeatureBins),
@@ -55,6 +57,30 @@ class AudioFeatureTable {
     if (index >= frames.length) return frames.last;
     return frames[index];
   }
+}
+
+FrameFeatures _previewFeatures() {
+  final wave = Float64List(kWaveformPoints);
+  final bins = Float64List(kFeatureBins);
+  for (var i = 0; i < wave.length; i++) {
+    final t = i / (wave.length - 1);
+    wave[i] = 0.62 * math.sin(t * math.pi * 3.5) * math.sin(t * math.pi);
+  }
+  for (var i = 0; i < bins.length; i++) {
+    final t = i / (bins.length - 1);
+    final shape = 0.22 + 0.78 * math.sin(t * math.pi);
+    final ripple = 0.55 + 0.45 * math.sin(i * 0.85).abs();
+    final value = shape * ripple;
+    bins[i] = value > 1 ? 1 : value;
+  }
+  return FrameFeatures(
+    waveform: wave,
+    bins: bins,
+    bass: 0.74,
+    mid: 0.5,
+    high: 0.32,
+    rms: 0.42,
+  );
 }
 
 AudioFeatureTable audioFeatureTableFromPcm(
