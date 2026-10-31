@@ -176,6 +176,35 @@ Every follow-up is a new `POST /submit` with `model: "suno_v6"`. Copy `task_id` 
 
 `author` and `domain_name` are optional watermarks, 50 characters each. The file is `music.video_url`. `result_url` is the short download link.
 
+### Timed lyrics — no user charge
+
+Word times are not in the song callback. After a song is complete, the app asks for them with the same submit path. The server proxies KIE model `ai-music-api/timeStamped-lyrics` (`task_id` + `audio_id`) and does not call the song price. KIE lists this lookup at about 0.5 credits. Instrumental tracks return no words.
+
+```json
+{
+  "model": "suno_v6",
+  "prompt": "",
+  "params": {
+    "action": "timestamped_lyrics",
+    "source_task_id": "<music.task_id>",
+    "audio_id": "<tracks[n].id>"
+  }
+}
+```
+
+The words can be on the submit body or on a later `job_status`. Either place, this shape:
+
+```json
+{
+  "alignedWords": [
+    {"word": "[Verse]\nWaggin'", "success": true, "startS": 1.36, "endS": 1.79, "palign": 0}
+  ],
+  "hootCer": 0.38
+}
+```
+
+Snake case (`aligned_words`, `start_s`, `end_s`, `p_align`, `hoot_cer`) is accepted too. The app stores them on that track as `aligned_words` and `hoot_cer`. Section tags such as `[Verse]` stay in `word` and are stripped before they are drawn. `success: false` is skipped. A low `hootCer` (under 0.2) falls back to line-at-a-time lyrics. If most words failed, the video ships without lyrics.
+
 ### More covers — 40
 
 ```json

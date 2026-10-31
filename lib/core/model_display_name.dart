@@ -55,6 +55,7 @@ const Map<String, String> kFallbackModelDisplayNames = {
   'sdxl_inpaint': 'Imagia Inpaint',
   'suno_music': 'Kala Song',
   'suno_sfx': 'Kala Sound',
+  'kala_music_video': 'Kala HitMaker',
   'suno_v6': 'Kala HitMaker',
   'twinflow_z_image': 'Kala Glimpse',
   'video_upscaler': 'Video Enhancer',

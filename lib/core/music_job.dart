@@ -1,6 +1,8 @@
 /// Suno V6 job types. Matches docs/suno_v6_frontend.md.
 library;
 
+import 'dart:convert';
+
 const String kSunoV6ModelId = 'suno_v6';
 
 const List<String> kSunoV6SoundKeys = [
@@ -148,6 +150,8 @@ int sunoV6CreditCost({required String action, String? stemType}) {
       if (stemType == 'split_stem') return 160;
       if (stemType == 'split_stem_advanced') return 120;
       return 80;
+    case 'timestamped_lyrics':
+      return 0;
     case 'sounds':
       return 15;
     case 'extend':
@@ -309,6 +313,129 @@ class MusicPersona {
       };
 }
 
+/// One sung word from KIE `ai-music-api/timeStamped-lyrics`.
+class AlignedWord {
+  final String word;
+  final bool success;
+  final double startS;
+  final double endS;
+  final int palign;
+
+  const AlignedWord({
+    required this.word,
+    required this.success,
+    required this.startS,
+    required this.endS,
+    this.palign = 0,
+  });
+
+  factory AlignedWord.fromJson(Map<String, dynamic> json) {
+    final start = json['startS'] ?? json['start_s'];
+    final end = json['endS'] ?? json['end_s'];
+    final align = json['palign'] ?? json['p_align'];
+    return AlignedWord(
+      word: (json['word'] ?? '').toString(),
+      success: json['success'] != false,
+      startS: start is num ? start.toDouble() : 0,
+      endS: end is num ? end.toDouble() : (start is num ? start.toDouble() : 0),
+      palign: align is num ? align.toInt() : 0,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'word': word,
+        'success': success,
+        'start_s': startS,
+        'end_s': endS,
+        'palign': palign,
+      };
+}
+
+class TimestampedLyrics {
+  final List<AlignedWord> words;
+  final double? confidence;
+
+  const TimestampedLyrics({required this.words, this.confidence});
+}
+
+/// Walks a submit or job-status payload for `alignedWords` / `aligned_words`.
+TimestampedLyrics? timestampedLyricsFromJson(dynamic raw) {
+  return _findTimestampedLyrics(raw, 0);
+}
+
+TimestampedLyrics? _findTimestampedLyrics(dynamic raw, int depth) {
+  if (raw == null || depth > 8) return null;
+  if (raw is String) {
+    final trimmed = raw.trim();
+    if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return null;
+    try {
+      return _findTimestampedLyrics(jsonDecode(trimmed), depth + 1);
+    } catch (_) {
+      return null;
+    }
+  }
+  if (raw is List) {
+    final words = _alignedWordsFromList(raw);
+    if (words != null && words.isNotEmpty) {
+      return TimestampedLyrics(words: words);
+    }
+    for (final item in raw) {
+      final nested = _findTimestampedLyrics(item, depth + 1);
+      if (nested != null) return nested;
+    }
+    return null;
+  }
+  if (raw is Map) {
+    final map = Map<String, dynamic>.from(raw);
+    final list = map['alignedWords'] ?? map['aligned_words'];
+    final confidence = _doubleOrNull(map['hootCer'] ?? map['hoot_cer']);
+    if (list is List) {
+      final words = _alignedWordsFromList(list);
+      if (words != null && words.isNotEmpty) {
+        return TimestampedLyrics(words: words, confidence: confidence);
+      }
+    }
+    TimestampedLyrics? nested;
+    for (final value in map.values) {
+      nested = _findTimestampedLyrics(value, depth + 1);
+      if (nested != null) break;
+    }
+    if (nested == null) return null;
+    return TimestampedLyrics(
+      words: nested.words,
+      confidence: nested.confidence ?? confidence,
+    );
+  }
+  return null;
+}
+
+List<AlignedWord> _alignedWordsOnTrack(Map<String, dynamic> json) {
+  final raw = json['alignedWords'] ?? json['aligned_words'];
+  if (raw is! List) return const [];
+  final words = _alignedWordsFromList(raw);
+  return words ?? const [];
+}
+
+List<AlignedWord>? _alignedWordsFromList(List<dynamic> raw) {
+  if (raw.isEmpty) return null;
+  final words = <AlignedWord>[];
+  for (final item in raw) {
+    if (item is! Map) return null;
+    final map = Map<String, dynamic>.from(item);
+    if (!map.containsKey('word')) return null;
+    final start = map['startS'] ?? map['start_s'];
+    if (start is! num) return null;
+    words.add(AlignedWord.fromJson(map));
+  }
+  return words;
+}
+
+double? _doubleOrNull(dynamic raw) {
+  if (raw is num) return raw.toDouble();
+  if (raw is String) return double.tryParse(raw.trim());
+  return null;
+}
+
 class MusicTrack {
   final String id;
   final String title;
@@ -319,6 +446,8 @@ class MusicTrack {
   final String? streamUrl;
   final String? coverUrl;
   final String? downloadUrl;
+  final List<AlignedWord> alignedWords;
+  final double? lyricConfidence;
 
   const MusicTrack({
     required this.id,
@@ -330,6 +459,8 @@ class MusicTrack {
     this.streamUrl,
     this.coverUrl,
     this.downloadUrl,
+    this.alignedWords = const [],
+    this.lyricConfidence,
   });
 
   factory MusicTrack.fromJson(Map<String, dynamic> json) {
@@ -351,6 +482,8 @@ class MusicTrack {
           _urlFrom(json['cover']) ??
           _urlFrom(json['image']),
       downloadUrl: _stringOrNull(json['download_url']),
+      alignedWords: _alignedWordsOnTrack(json),
+      lyricConfidence: _doubleOrNull(json['hootCer'] ?? json['hoot_cer']),
     );
   }
 
@@ -417,6 +550,9 @@ class MusicTrack {
       streamUrl: streamUrl ?? next.streamUrl,
       coverUrl: next.coverUrl ?? coverUrl,
       downloadUrl: next.downloadUrl ?? downloadUrl,
+      alignedWords:
+          next.alignedWords.isNotEmpty ? next.alignedWords : alignedWords,
+      lyricConfidence: next.lyricConfidence ?? lyricConfidence,
     );
   }
 
@@ -430,6 +566,9 @@ class MusicTrack {
         if (streamUrl != null) 'stream_url': streamUrl,
         if (coverUrl != null) 'cover_url': coverUrl,
         if (downloadUrl != null) 'download_url': downloadUrl,
+        if (alignedWords.isNotEmpty)
+          'aligned_words': alignedWords.map((word) => word.toJson()).toList(),
+        if (lyricConfidence != null) 'hoot_cer': lyricConfidence,
       };
 }
 
@@ -515,6 +654,71 @@ class MusicResult {
 
   bool get canFollowUp =>
       isComplete && taskId != null && taskId!.isNotEmpty && tracks.isNotEmpty;
+
+  TimestampedLyrics? alignedLyricsFor(String audioId) {
+    MusicTrack? fallback;
+    for (final track in tracks) {
+      if (track.alignedWords.isEmpty) continue;
+      if (track.id == audioId) {
+        return TimestampedLyrics(
+          words: track.alignedWords,
+          confidence: track.lyricConfidence,
+        );
+      }
+      fallback ??= track;
+    }
+    if (fallback == null) return null;
+    return TimestampedLyrics(
+      words: fallback.alignedWords,
+      confidence: fallback.lyricConfidence,
+    );
+  }
+
+  MusicResult withAlignedLyrics({
+    required String audioId,
+    required List<AlignedWord> words,
+    double? confidence,
+  }) {
+    return MusicResult(
+      action: action,
+      phase: phase,
+      label: label,
+      variant: variant,
+      easy: easy,
+      instrumental: instrumental,
+      commercialRights: commercialRights,
+      taskId: taskId,
+      sourceTaskId: sourceTaskId,
+      audioId: audioId,
+      tracks: [
+        for (final track in tracks)
+          if (track.id == audioId)
+            MusicTrack(
+              id: track.id,
+              title: track.title,
+              lyrics: track.lyrics,
+              tags: track.tags,
+              duration: track.duration,
+              audioUrl: track.audioUrl,
+              streamUrl: track.streamUrl,
+              coverUrl: track.coverUrl,
+              downloadUrl: track.downloadUrl,
+              alignedWords: words,
+              lyricConfidence: confidence,
+            )
+          else
+            track,
+      ],
+      lyrics: lyrics,
+      lyricsUsed: lyricsUsed,
+      covers: covers,
+      stems: stems,
+      videoUrl: videoUrl,
+      persona: persona,
+      voiceId: voiceId,
+      note: note,
+    );
+  }
 
   bool get anyStreaming =>
       tracks.any((track) => track.streamsDuring(phase) || track.isStreaming);

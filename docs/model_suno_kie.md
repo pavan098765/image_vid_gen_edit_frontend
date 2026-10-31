@@ -4696,3 +4696,25 @@ security:
           BearerAuth: []
 
 ```
+
+# Get Timestamped Lyrics
+
+Song generation does not return word times. After the track exists, call KIE model `ai-music-api/timeStamped-lyrics`. The app sends this through `POST /submit` with `action: timestamped_lyrics` and does not call KIE itself.
+
+Official reference: https://docs.kie.ai/suno-api/get-timestamped-lyrics
+
+Request `input`:
+
+- `task_id` — music generation task id
+- `audio_id` — the track `id` from the song callback
+
+The call is synchronous. A hit is `code` 200 and a nested `data.code` 200. Words:
+
+- `alignedWords[].word` — lyric token, often with a section tag glued on (`[Verse]\nWaggin'`)
+- `alignedWords[].success` — skip when false
+- `alignedWords[].startS` / `endS` — seconds
+- `alignedWords[].palign`
+- `hootCer` — alignment confidence
+- `waveformData` — coarse preview only, not a per-frame spectrum
+
+Instrumental tracks return no lyrics. A callback `resultJson` uses snake case: `aligned_words`, `start_s`, `end_s`, `p_align`.

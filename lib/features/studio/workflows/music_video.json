@@ -1,0 +1,18 @@
+{
+  "id": "music_video",
+  "title": "Music video",
+  "blurb": "Your song, a cover, and a style. Made on this phone.",
+  "research": "none",
+  "skip": ["research", "outline", "angles", "generating"],
+  "lengths": [0],
+  "defaultLength": 0,
+  "aspects": ["16:9", "1:1", "4:5", "9:16"],
+  "defaultAspect": "16:9",
+  "speech": "none",
+  "music": false,
+  "sfx": 0,
+  "clipAudioIsMain": true,
+  "requiresFiles": true,
+  "minFindings": 0,
+  "rubric": "The user brings the song and an optional cover. Do not write a new song or generate scenes."
+}

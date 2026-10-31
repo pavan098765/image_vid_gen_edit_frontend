@@ -277,3 +277,55 @@ String guessAudioMime(String path) {
 }
 
 Future<Uint8List> readFileBytes(String path) => File(path).readAsBytes();
+
+/// Asks the controller to proxy KIE `ai-music-api/timeStamped-lyrics`.
+/// The phone never calls KIE. The lookup is not a song charge.
+Future<TimestampedLyrics> fetchTimestampedLyrics({
+  required String taskId,
+  required String audioId,
+}) async {
+  if (taskId.trim().isEmpty || audioId.trim().isEmpty) {
+    throw const SunoFormException('This version has no timed lyrics yet.');
+  }
+  final submitted = await submitSunoV6(
+    prompt: '',
+    params: {
+      'action': 'timestamped_lyrics',
+      'source_task_id': taskId,
+      'audio_id': audioId,
+    },
+  );
+  final immediate = timestampedLyricsFromJson(submitted.raw);
+  if (immediate != null && immediate.words.isNotEmpty) return immediate;
+
+  Object? lastError;
+  for (var attempt = 0; attempt < 10; attempt++) {
+    await Future<void>.delayed(
+      Duration(milliseconds: attempt == 0 ? 400 : 1000),
+    );
+    try {
+      final status = await pollSunoV6Job(submitted.jobId);
+      final parsed = timestampedLyricsFromJson(status.raw) ??
+          status.music?.alignedLyricsFor(audioId);
+      if (parsed != null && parsed.words.isNotEmpty) return parsed;
+      if (status.status == 'failed') {
+        throw SunoFormException(
+          status.error ?? 'Timed lyrics are not available for this version.',
+        );
+      }
+      if (status.status == 'completed') break;
+    } on SunoFormException catch (error) {
+      lastError = error;
+      if (error.message.contains('not available') ||
+          error.message.contains('Timed lyrics')) {
+        rethrow;
+      }
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  if (lastError is SunoFormException) throw lastError;
+  throw const SunoFormException(
+    'Timed lyrics are not available for this version.',
+  );
+}

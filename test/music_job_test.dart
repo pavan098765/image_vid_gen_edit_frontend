@@ -67,6 +67,49 @@ void main() {
     expect(ready.lyrics, contains('line two'));
   });
 
+  test('timestamped lyrics parse and stay on the track', () {
+    final parsed = timestampedLyricsFromJson({
+      'code': 200,
+      'data': {
+        'data': {
+          'alignedWords': [
+            {
+              'word': '[Verse]\nWaggin\'',
+              'success': true,
+              'startS': 1.36,
+              'endS': 1.79,
+              'palign': 0,
+            },
+            {
+              'word': 'tail',
+              'success': false,
+              'startS': 1.8,
+              'endS': 2.1,
+              'palign': 0,
+            },
+          ],
+          'hootCer': 0.38,
+          'waveformData': [0, 1, 0.5],
+        },
+      },
+    });
+    expect(parsed, isNotNull);
+    expect(parsed!.words, hasLength(2));
+    expect(parsed.confidence, 0.38);
+    expect(parsed.words.first.startS, 1.36);
+
+    final music = MusicResult.fromJson(sample).withAlignedLyrics(
+      audioId: 'audio-1',
+      words: parsed.words,
+      confidence: parsed.confidence,
+    );
+    final restored = MusicResult.fromJson(music.toJson());
+    expect(restored.tracks.single.alignedWords, hasLength(2));
+    expect(restored.tracks.single.lyricConfidence, 0.38);
+    expect(restored.alignedLyricsFor('audio-1')!.words.first.word, contains('Waggin'));
+    expect(sunoV6CreditCost(action: 'timestamped_lyrics'), 0);
+  });
+
   test('credit table matches the studio spec', () {
     expect(sunoV6CreditCost(action: 'song'), 65);
     expect(sunoV6CreditCost(action: 'sounds'), 15);

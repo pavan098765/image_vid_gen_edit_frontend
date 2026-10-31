@@ -15,6 +15,7 @@ import 'package:kala_ai_create_images_videos_with_ai/core/tool_launch.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/user_template_store.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/audio_result_player.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/media_editor/editor_tab_launch.dart';
+import 'package:kala_ai_create_images_videos_with_ai/features/music_video/music_video_page.dart';
 
 class JobNextActions extends StatefulWidget {
   final JobModel job;
@@ -396,6 +397,60 @@ class _JobNextActionsState extends State<JobNextActions> {
     }
   }
 
+  Future<void> _openMusicVideo(
+    ({String taskId, String audioId, String title, int index}) target,
+  ) async {
+    final tracks = audioTracksFromJob(widget.job);
+    AudioTrackDetails? details;
+    for (final track in tracks) {
+      if (track.sourceTrackId == target.audioId) details = track;
+    }
+    if (details == null && target.index >= 0 && target.index < tracks.length) {
+      details = tracks[target.index];
+    }
+    final music = widget.job.music == null
+        ? null
+        : MusicResult.fromJson(widget.job.music!);
+    MusicTrack? sung;
+    for (final track in music?.tracks ?? const <MusicTrack>[]) {
+      if (track.id == target.audioId) sung = track;
+    }
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => MusicVideoPage(
+          parentJobId: widget.job.jobId,
+          title: target.title,
+          artist: details?.artist ?? 'Kala HitMaker',
+          audioPath: details?.filePath ?? '',
+          networkAudioUrl: details?.networkUrl ?? sung?.playUrl,
+          coverUrl: details?.coverUrl ?? sung?.coverUrl,
+          durationSeconds: sung?.duration ??
+              (details?.knownDuration == null
+                  ? null
+                  : details!.knownDuration!.inMilliseconds / 1000),
+          taskId: target.taskId,
+          audioId: target.audioId,
+          instrumental: music?.instrumental == true,
+          words: sung?.alignedWords ?? const [],
+          lyricConfidence: sung?.lyricConfidence,
+          cloudGems: _musicVideoGems(),
+          onCloudVideo: () => _createMusicVideo(target),
+          onLyrics: (lyrics) async {
+            final current = widget.job.music;
+            if (current == null) return;
+            final next = MusicResult.fromJson(current).withAlignedLyrics(
+              audioId: target.audioId,
+              words: lyrics.words,
+              confidence: lyrics.confidence,
+            );
+            await addOrUpdateJob(widget.job.copyWith(music: next.toJson()));
+          },
+        ),
+      ),
+    );
+  }
+
   Future<void> _createMusicVideo(
     ({String taskId, String audioId, String title, int index}) target,
   ) async {
@@ -571,7 +626,7 @@ class _JobNextActionsState extends State<JobNextActions> {
           versions: [for (final target in videos) audioVersionLabel(target.index)],
           versionIndex: picked,
           onVersion: (index) => setState(() => _videoVersion = index),
-          onTap: () => _guard(() => _createMusicVideo(videos[picked])),
+          onTap: () => _guard(() => _openMusicVideo(videos[picked])),
         ));
       }
       final extensions = _hitMakerExtendTargets();

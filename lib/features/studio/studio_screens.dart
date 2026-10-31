@@ -12,6 +12,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'asset_use.dart';
 import 'studio_assembler.dart';
 import 'studio_intake.dart';
+import 'studio_music_video_page.dart';
 import 'studio_session.dart';
 import 'studio_store.dart';
 import 'workflow_models.dart';
@@ -62,6 +63,12 @@ class StudioShelf extends StatelessWidget {
 
 Future<void> _openFilm(BuildContext context, WorkflowSpec film) async {
   HapticFeedback.selectionClick();
+  if (film.id == 'music_video') {
+    await Navigator.of(context).push(
+      sharedAxisRoute((_) => const StudioMusicVideoPage()),
+    );
+    return;
+  }
   final session = StudioScope.of(context);
   session.open(film);
   final saved = await StudioDraftStore().latestFor(film.id);
@@ -154,7 +161,9 @@ class _FilmRow extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      '$length · ${film.defaultAspect}',
+                      film.id == 'music_video'
+                          ? 'Your audio · on this phone'
+                          : '$length · ${film.defaultAspect}',
                       style: TextStyle(
                         color: cs.primary,
                         fontSize: 12,
@@ -197,6 +206,8 @@ IconData _filmIcon(String id) {
       return LucideIcons.listOrdered;
     case 'song_video':
       return LucideIcons.music;
+    case 'music_video':
+      return LucideIcons.disc3;
     default:
       return LucideIcons.clapperboard;
   }

@@ -122,6 +122,7 @@ const kWorkflowIds = [
   'cut_my_clips',
   'countdown',
   'song_video',
+  'music_video',
 ];
 
 Future<List<WorkflowSpec>> loadWorkflows() async {
