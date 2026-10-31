@@ -1,21 +1,30 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/music_job.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/services/song_equalizer.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/thumbnail_service.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:crypto/crypto.dart';
 import 'package:uuid/uuid.dart';
 import 'package:gal/gal.dart';
+import 'package:device_info_plus/device_info_plus.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/audio_result_player.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/safe_video_view.dart';
 import 'package:video_player/video_player.dart';
 
 class FileService {
   static bool _isSaving = false;
+
+  /// Opens Music with this track attached. Set from app startup.
+  static AudioRemixHandler? remixAudio;
   static String? _lastSavedHash;
   static String? _lastSavedPath;
   static bool _cleanupStarted = false;
@@ -30,65 +39,144 @@ class FileService {
   static const int _maxQueuedDownloads = 10; // Prevent excessive queueing
   static int _activeDownloads = 0;
   static final List<_DownloadTask> _downloadQueue = [];
-  
+
   // Snackbar debouncing to prevent spam
   static DateTime? _lastErrorSnackbarTime;
   static String? _lastErrorMessage;
   static const Duration _snackbarDebounceTime = Duration(seconds: 3);
-  
+
   /// Queue a download with concurrency control
   /// This prevents multiple large files from being downloaded simultaneously
   static Future<String?> queueDownload(
     BuildContext context,
     String url, {
     String? suggestedFileName,
+    String? jobId,
     String subfolder = 'Kala_AI',
     void Function(double progress)? onProgress,
     int maxRetries = 3,
     String? outputType,
+    bool showPreview = true,
   }) async {
     // Prevent excessive queueing
     if (_downloadQueue.length >= _maxQueuedDownloads) {
       _showDebouncedSnackbar(
-        context, 
+        context,
         'Download queue full. Please wait for current downloads to complete.',
       );
       return null;
     }
-    
+
     final completer = Completer<String?>();
-    
+
     final task = _DownloadTask(
       context: context,
       url: url,
       suggestedFileName: suggestedFileName,
+      jobId: jobId,
       subfolder: subfolder,
       onProgress: onProgress,
       maxRetries: maxRetries,
       outputType: outputType,
+      showPreview: showPreview,
       completer: completer,
     );
-    
+
     _downloadQueue.add(task);
     _processQueue();
-    
+
     return completer.future;
   }
-  
+
+  /// Saves each HitMaker version as "Title - Version A" and "Title - Version B".
+  /// Returns true when this job has more than one finished audio file.
+  static Future<bool> saveHitMakerVersions(
+    BuildContext context,
+    JobModel job,
+  ) async {
+    final raw = job.music;
+    if (raw == null) return false;
+    final music = MusicResult.fromJson(raw);
+    if (music.action == 'sounds' ||
+        music.action == 'stems' ||
+        music.action == 'video') {
+      return false;
+    }
+    final playable = [
+      for (final track in music.tracks)
+        if (track.fileUrl != null && track.fileUrl!.isNotEmpty) track,
+    ];
+    if (playable.length < 2) return false;
+
+    final paths = <String, String>{};
+    final stored = job.settingsSnapshot?['audioVersionPaths'];
+    if (stored is Map) {
+      for (final entry in stored.entries) {
+        final key = entry.key?.toString() ?? '';
+        final value = entry.value?.toString() ?? '';
+        if (key.isNotEmpty && value.isNotEmpty && File(value).existsSync()) {
+          paths[key] = value;
+        }
+      }
+    }
+
+    for (var i = 0; i < playable.length; i++) {
+      final track = playable[i];
+      final key = track.id.isEmpty ? '$i' : track.id;
+      final have = paths[key];
+      if (have != null && File(have).existsSync()) continue;
+      final saved = await queueDownload(
+        context,
+        track.fileUrl!,
+        suggestedFileName: savedAudioFileBaseName(job, versionIndex: i),
+        jobId: job.jobId,
+        maxRetries: 2,
+        outputType: 'audio',
+        showPreview: false,
+      );
+      if (saved != null && saved.isNotEmpty) paths[key] = saved;
+    }
+    if (paths.isEmpty) return false;
+
+    final jobs = List<JobModel>.from(jobListNotifier.value);
+    final idx = jobs.indexWhere((item) => item.jobId == job.jobId);
+    if (idx != -1) {
+      final current = jobs[idx];
+      final snap = Map<String, dynamic>.from(current.settingsSnapshot ?? {});
+      snap['audioVersionPaths'] = paths;
+      current.settingsSnapshot = snap;
+      final firstKey = playable.first.id.isEmpty ? '0' : playable.first.id;
+      final first = paths[firstKey] ?? paths.values.first;
+      current.localFilePath = first;
+      current.autoDownloaded = true;
+      jobs[idx] = current;
+      jobListNotifier.value = jobs;
+      await saveJobsToPrefs();
+      job.localFilePath = first;
+      job.settingsSnapshot = snap;
+      job.autoDownloaded = true;
+    }
+    return true;
+  }
+
   /// Show snackbar with debouncing to prevent spam
-  static void _showDebouncedSnackbar(BuildContext context, String message, {Duration? duration}) {
+  static void _showDebouncedSnackbar(
+    BuildContext context,
+    String message, {
+    Duration? duration,
+  }) {
     final now = DateTime.now();
-    
+
     // Skip if same message shown recently
-    if (_lastErrorMessage == message && 
+    if (_lastErrorMessage == message &&
         _lastErrorSnackbarTime != null &&
         now.difference(_lastErrorSnackbarTime!) < _snackbarDebounceTime) {
       return;
     }
-    
+
     _lastErrorMessage = message;
     _lastErrorSnackbarTime = now;
-    
+
     if (context.mounted) {
       // Clear any existing snackbars first
       ScaffoldMessenger.of(context).clearSnackBars();
@@ -103,38 +191,43 @@ class FileService {
   }
 
   static void _processQueue() async {
-    while (_activeDownloads < _maxConcurrentDownloads && _downloadQueue.isNotEmpty) {
+    while (_activeDownloads < _maxConcurrentDownloads &&
+        _downloadQueue.isNotEmpty) {
       final task = _downloadQueue.removeAt(0);
       _activeDownloads++;
-      
+
       // Execute download and handle completion
       downloadFromUrl(
-        task.context,
-        task.url,
-        suggestedFileName: task.suggestedFileName,
-        subfolder: task.subfolder,
-        onProgress: task.onProgress,
-        maxRetries: task.maxRetries,
-        outputType: task.outputType,
-      ).then((result) async {
-        task.completer.complete(result);
-        _activeDownloads--;
-        
-        // Small delay between downloads to prevent UI jank
-        if (_downloadQueue.isNotEmpty) {
-          await Future.delayed(const Duration(milliseconds: 300));
-        }
-        _processQueue(); // Process next in queue
-      }).catchError((error) async {
-        task.completer.complete(null);
-        _activeDownloads--;
-        
-        // Small delay between downloads
-        if (_downloadQueue.isNotEmpty) {
-          await Future.delayed(const Duration(milliseconds: 300));
-        }
-        _processQueue(); // Process next in queue
-      });
+            task.context,
+            task.url,
+            suggestedFileName: task.suggestedFileName,
+            jobId: task.jobId,
+            subfolder: task.subfolder,
+            onProgress: task.onProgress,
+            maxRetries: task.maxRetries,
+            outputType: task.outputType,
+            showPreview: task.showPreview,
+          )
+          .then((result) async {
+            task.completer.complete(result);
+            _activeDownloads--;
+
+            // Small delay between downloads to prevent UI jank
+            if (_downloadQueue.isNotEmpty) {
+              await Future.delayed(const Duration(milliseconds: 300));
+            }
+            _processQueue(); // Process next in queue
+          })
+          .catchError((error) async {
+            task.completer.complete(null);
+            _activeDownloads--;
+
+            // Small delay between downloads
+            if (_downloadQueue.isNotEmpty) {
+              await Future.delayed(const Duration(milliseconds: 300));
+            }
+            _processQueue(); // Process next in queue
+          });
     }
   }
 
@@ -175,6 +268,7 @@ class FileService {
     bool showPreview = true,
     Uint8List? previewBytes,
     bool documentsFallback = false,
+    String? jobId,
   }) async {
     final currentHash = sha1.convert(bytes).toString();
 
@@ -182,11 +276,13 @@ class FileService {
     if (currentHash == _lastSavedHash &&
         _lastSavedPath != null &&
         File(_lastSavedPath!).existsSync()) {
-      debugPrint('⚠️ Skipping duplicate save (same content, file still exists at $_lastSavedPath)');
+      debugPrint(
+        '⚠️ Skipping duplicate save (same content, file still exists at $_lastSavedPath)',
+      );
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('File already saved!')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('File already saved!')));
       }
       return null;
     }
@@ -200,11 +296,14 @@ class FileService {
     _lastSavedHash = currentHash;
 
     try {
-      String fileName = (customFileName != null &&
+      String fileName =
+          (customFileName != null &&
               customFileName.toLowerCase().endsWith('.$extension'))
           ? customFileName
-          : _normalizeFileName(customFileName ?? const Uuid().v4(),
-              defaultExt: extension);
+          : _normalizeFileName(
+              customFileName ?? const Uuid().v4(),
+              defaultExt: extension,
+            );
 
       // 🧩 Final sanity cleanup: if ".png.png" slipped in, fix it
       fileName = fileName.replaceAll('.$extension.$extension', '.$extension');
@@ -238,6 +337,47 @@ class FileService {
         debugPrint('✅ Saved text file: $resolvedPath');
         _lastSavedPath = resolvedPath;
         return resolvedPath;
+      }
+
+      // Speech and music go to Music/Kala_AI, next to Pictures and Movies.
+      if (_isAudioExtension(extension)) {
+        try {
+          try {
+            debugPrint(
+              'EQ: saved download "$fileName" job=$jobId bytes=${bytes.length}',
+            );
+            bytes = await equalizeHitMakerDownload(
+              bytes: bytes,
+              extension: extension,
+              jobId: jobId,
+            );
+            debugPrint('EQ: file ready "$fileName" bytes=${bytes.length}');
+          } catch (error) {
+            debugPrint('EQ: bake skipped, saving original: $error');
+          }
+          final publicPath = await _savePublicAudio(bytes, fileName);
+          final localPath = (publicPath != null && File(publicPath).existsSync())
+              ? publicPath
+              : await _writeAppDocumentsFile(bytes, fileName);
+          if (localPath == null) return null;
+          _lastSavedPath = localPath;
+          debugPrint('📦 Audio saved: $localPath');
+          if (context.mounted && showPreview) {
+            _showMediaPreviewDialog(
+              context,
+              localPath,
+              audioTracks: _tracksForSavedAudio(
+                localPath,
+                fileName,
+                jobId: jobId,
+              ),
+            );
+          }
+          return localPath;
+        } catch (e) {
+          debugPrint('❌ Failed to save audio file: $e');
+          return null;
+        }
       }
 
       // =====================================================================
@@ -290,11 +430,7 @@ class FileService {
         }
       } else {
         // For images: pass name WITHOUT extension, Gal will append the extension itself
-        await Gal.putImageBytes(
-          bytes,
-          album: subfolder,
-          name: galName,
-        );
+        await Gal.putImageBytes(bytes, album: subfolder, name: galName);
       }
 
       // ✅ Resolve saved file path.
@@ -302,17 +438,17 @@ class FileService {
       // FALLBACK: Create app-documents copy only when gallery path is inaccessible
       //           (e.g. Android 11+ scoped storage edge cases).
       String resolvedPath;
-      
+
       // Wait briefly for gallery filesystem sync
       await Future.delayed(const Duration(milliseconds: 300));
-      
+
       // Try candidate gallery paths
       final candidatePaths = [
         '/storage/emulated/0/Pictures/$subfolder/$fileName',
         '/storage/emulated/0/DCIM/$subfolder/$fileName',
         '/storage/emulated/0/Movies/$subfolder/$fileName',
       ];
-      
+
       String? galleryPath;
       for (final candidate in candidatePaths) {
         if (File(candidate).existsSync()) {
@@ -320,7 +456,7 @@ class FileService {
           break;
         }
       }
-      
+
       if (galleryPath != null) {
         // Gallery path is accessible — use it directly.
         // When user deletes from gallery, File.existsSync() will return false
@@ -339,7 +475,9 @@ class FileService {
           final localFile = File(localPath);
           await localFile.writeAsBytes(bytes, flush: true);
           resolvedPath = localPath;
-          debugPrint('📦 Gallery path inaccessible, using app-documents copy: $resolvedPath');
+          debugPrint(
+            '📦 Gallery path inaccessible, using app-documents copy: $resolvedPath',
+          );
         } catch (e) {
           debugPrint('⚠️ Failed to create local saved copy: $e');
           // Last resort: computed gallery path (may not be accessible)
@@ -350,29 +488,31 @@ class FileService {
       if (context.mounted && showPreview) {
         // For video files, generate thumbnail if not provided
         Uint8List? finalPreviewBytes = previewBytes;
-        final isVideoExt = extension.toLowerCase() == 'mp4' || 
-                           extension.toLowerCase() == 'mov' ||
-                           extension.toLowerCase() == 'avi';
+        final isVideoExt =
+            extension.toLowerCase() == 'mp4' ||
+            extension.toLowerCase() == 'mov' ||
+            extension.toLowerCase() == 'avi';
         if (isVideoExt && finalPreviewBytes == null) {
           try {
             // Write to temp file first to generate thumbnail
             final tempDir = await getTemporaryDirectory();
-            final tempPath = '${tempDir.path}/thumb_${DateTime.now().millisecondsSinceEpoch}.$extension';
+            final tempPath =
+                '${tempDir.path}/thumb_${DateTime.now().millisecondsSinceEpoch}.$extension';
             final tempFile = File(tempPath);
             await tempFile.writeAsBytes(bytes, flush: true);
-            
+
             // Generate thumbnail using ThumbnailService
             final thumbnail = await ThumbnailService.instance.getThumbnail(
               tempPath,
               size: 200, // Good size for preview
               quality: 85,
             );
-            
+
             if (thumbnail != null) {
               finalPreviewBytes = thumbnail;
               debugPrint('✅ Generated video thumbnail for saved popup');
             }
-            
+
             // Clean up temp file
             try {
               if (await tempFile.exists()) {
@@ -383,11 +523,16 @@ class FileService {
             debugPrint('⚠️ Failed to generate video thumbnail for popup: $e');
           }
         }
-        
+
         // Only show preview if context is still mounted
         if (context.mounted && showPreview) {
           try {
-            _showSavedBottomSheet(context, bytes, resolvedPath, finalPreviewBytes);
+            _showSavedBottomSheet(
+              context,
+              bytes,
+              resolvedPath,
+              finalPreviewBytes,
+            );
           } catch (e) {
             // Context may have become invalid - file is still saved successfully
             debugPrint('⚠️ Could not show save preview (context invalid): $e');
@@ -422,13 +567,16 @@ class FileService {
     return null;
   }
 
-// ✅ Internal preview download
+  // ✅ Internal preview download
   static Future<File?> _downloadPreviewFile(
-      String url, String uniqueKey) async {
+    String url,
+    String uniqueKey,
+  ) async {
     final response = await http.get(Uri.parse(url));
     if (response.statusCode != 200) return null;
     final fileName = _normalizeFileName(
-        'preview_${DateTime.now().millisecondsSinceEpoch}.png');
+      'preview_${DateTime.now().millisecondsSinceEpoch}.png',
+    );
 
     final file = await writeTempFile(response.bodyBytes, fileName);
     _previewCache[uniqueKey] = file.path;
@@ -436,17 +584,24 @@ class FileService {
     return file;
   }
 
-// ✅ Save an already-downloaded file to gallery (no re-download)
-  static Future<bool> saveExistingToGallery(
+  // ✅ Save an already-downloaded file to gallery (no re-download).
+  // Returns the saved path, or null when the copy failed.
+  static Future<String?> saveExistingToGallery(
     BuildContext context,
-    String path,
-  ) async {
+    String path, {
+    String? customFileName,
+    String? jobId,
+  }) async {
     try {
+      if (_isAudioPath(path) && path.contains('/Music/Kala_AI/')) {
+        return path;
+      }
       final bytes = await File(path).readAsBytes();
-      final isVideo = path.toLowerCase().endsWith('.mp4') || 
-                      path.toLowerCase().endsWith('.mov') ||
-                      path.toLowerCase().endsWith('.avi');
-      
+      final isVideo =
+          path.toLowerCase().endsWith('.mp4') ||
+          path.toLowerCase().endsWith('.mov') ||
+          path.toLowerCase().endsWith('.avi');
+
       // Generate thumbnail for videos
       Uint8List? previewBytes;
       if (isVideo) {
@@ -464,18 +619,85 @@ class FileService {
           debugPrint('⚠️ Failed to generate video thumbnail: $e');
         }
       }
-      
+
       final extension = path.split('.').last.toLowerCase();
-      final saved = await saveFile(
-        context, 
+      return saveFile(
+        context,
         bytes,
         extension: extension,
         previewBytes: previewBytes,
+        customFileName: customFileName,
+        jobId: jobId,
       );
-      return saved != null;
     } catch (_) {
-      return false;
+      return null;
     }
+  }
+
+  /// Closes the preview route once. A second call in the same back gesture does not pop the shell.
+  static void _popPreview(BuildContext context) {
+    _isPreviewOpen = false;
+    popRootOnce(context);
+  }
+
+  static const MethodChannel _audioLibrary = MethodChannel('kala_ai/audio_library');
+
+  static String _audioMime(String fileName) {
+    final ext = fileName.split('.').last.toLowerCase();
+    switch (ext) {
+      case 'wav':
+        return 'audio/wav';
+      case 'm4a':
+        return 'audio/mp4';
+      case 'aac':
+        return 'audio/aac';
+      case 'ogg':
+        return 'audio/ogg';
+      case 'flac':
+        return 'audio/flac';
+      default:
+        return 'audio/mpeg';
+    }
+  }
+
+  /// Writes speech or music into Music/Kala_AI. Returns a path the app can read.
+  static Future<String?> _savePublicAudio(Uint8List bytes, String fileName) async {
+    if (!Platform.isAndroid) return null;
+    try {
+      final sdk = (await DeviceInfoPlugin().androidInfo).version.sdkInt;
+      if (sdk < 29) {
+        final status = await Permission.storage.request();
+        if (!status.isGranted) return null;
+      }
+      final path = await _audioLibrary.invokeMethod<String>('saveAudio', {
+        'name': fileName,
+        'mime': _audioMime(fileName),
+        'bytes': bytes,
+      });
+      if (path != null && path.isNotEmpty && File(path).existsSync()) {
+        return path;
+      }
+      final probe = '/storage/emulated/0/Music/Kala_AI/$fileName';
+      if (File(probe).existsSync()) return probe;
+      return null;
+    } catch (e) {
+      debugPrint('Public audio save failed: $e');
+      return null;
+    }
+  }
+
+  static Future<String?> _writeAppDocumentsFile(
+    Uint8List bytes,
+    String fileName,
+  ) async {
+    final appDir = await getApplicationDocumentsDirectory();
+    final cacheDir = Directory('${appDir.path}/saved_results');
+    if (!await cacheDir.exists()) {
+      await cacheDir.create(recursive: true);
+    }
+    final localPath = '${cacheDir.path}/$fileName';
+    await File(localPath).writeAsBytes(bytes, flush: true);
+    return localPath;
   }
 
   /// 🖼️ Displays the preview image in a fullscreen dialog with zoom and close button
@@ -483,8 +705,9 @@ class FileService {
   static void _showImageDialog(BuildContext context, String filePath) {
     if (!File(filePath).existsSync()) {
       debugPrint("⚠️ File not found for preview: $filePath");
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('File not found.')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('File not found.')));
       return;
     }
 
@@ -502,15 +725,7 @@ class FileService {
             parent: animation,
             curve: Curves.easeOutCubic,
           ),
-          child: ScaleTransition(
-            scale: Tween<double>(begin: 0.92, end: 1.0).animate(
-              CurvedAnimation(
-                parent: animation,
-                curve: Curves.easeOutCubic,
-              ),
-            ),
-            child: child,
-          ),
+          child: child,
         );
       },
       pageBuilder: (_, __, ___) {
@@ -521,10 +736,7 @@ class FileService {
           },
           child: _ProgressiveImagePreview(
             filePath: filePath,
-            onClose: () {
-              _isPreviewOpen = false;
-              Navigator.of(context, rootNavigator: true).pop();
-            },
+            onClose: () => _popPreview(context),
           ),
         );
       },
@@ -534,6 +746,30 @@ class FileService {
     });
   }
 
+  /// The saved audio belongs to [jobId], or to a job whose old file name was the id.
+  static List<AudioTrackDetails>? _tracksForSavedAudio(
+    String path,
+    String fileName, {
+    String? jobId,
+  }) {
+    final bare = fileName.replaceFirst(RegExp(r'\.[^.]+$'), '');
+    for (final job in jobListNotifier.value) {
+      if (jobId != null && jobId.isNotEmpty) {
+        if (job.jobId != jobId) continue;
+      } else if (job.jobId != bare && job.localFilePath != path) {
+        continue;
+      }
+      final tracks = audioTracksFromJob(job);
+      if (tracks.isNotEmpty) return tracks;
+      if (job.isAudioOutput ||
+          job.music != null ||
+          job.capabilityId == 'create_music') {
+        return [AudioTrackDetails.fromJob(job)];
+      }
+    }
+    return null;
+  }
+
   /// 🖼️ Displays media preview with optional swipe navigation
   /// Supports both images and videos
   static void _showMediaPreviewDialog(
@@ -541,30 +777,38 @@ class FileService {
     String filePath, {
     List<String>? allPaths,
     int currentIndex = 0,
+    List<AudioTrackDetails>? audioTracks,
   }) {
     if (!File(filePath).existsSync()) {
       debugPrint("⚠️ File not found for preview: $filePath");
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('File not found.')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('File not found.')));
       return;
     }
 
     if (_isPreviewOpen) return; // 🚫 prevent double openings
     _isPreviewOpen = true;
 
+    final lowerPath = filePath.toLowerCase();
     // Check if file is a text file
-    final isTextFile = filePath.toLowerCase().endsWith('.txt') || 
-                       filePath.toLowerCase().endsWith('.json') ||
-                       filePath.toLowerCase().endsWith('.text');
+    final isTextFile =
+        lowerPath.endsWith('.txt') ||
+        lowerPath.endsWith('.json') ||
+        lowerPath.endsWith('.text');
+    final isAudioFile = _isAudioPath(lowerPath);
 
     // Filter allPaths to only include existing files
-    final List<String> validPaths = allPaths?.where((p) => File(p).existsSync()).toList() ?? [];
+    final List<String> validPaths =
+        allPaths?.where((p) => File(p).existsSync()).toList() ?? [];
     final hasMultiple = validPaths.length > 1;
-    
+
     // Recalculate current index if paths were filtered
     int adjustedIndex = currentIndex;
     if (hasMultiple && allPaths != null && allPaths.isNotEmpty) {
-      final originalPath = allPaths.length > currentIndex ? allPaths[currentIndex] : filePath;
+      final originalPath = allPaths.length > currentIndex
+          ? allPaths[currentIndex]
+          : filePath;
       adjustedIndex = validPaths.indexOf(originalPath);
       if (adjustedIndex < 0) adjustedIndex = 0;
     }
@@ -580,47 +824,39 @@ class FileService {
             parent: animation,
             curve: Curves.easeOutCubic,
           ),
-          child: ScaleTransition(
-            scale: Tween<double>(begin: 0.92, end: 1.0).animate(
-              CurvedAnimation(
-                parent: animation,
-                curve: Curves.easeOutCubic,
-              ),
-            ),
-            child: child,
-          ),
+          child: child,
         );
       },
       pageBuilder: (_, __, ___) {
         return WillPopScope(
           onWillPop: () async {
+            // The player pops itself. A second pop here would close the app.
+            if (isAudioFile) return false;
             _isPreviewOpen = false;
             return true;
           },
-          child: isTextFile
+          child: isAudioFile
+              ? AudioResultPlayer(
+                  tracks: _audioTracksFor(filePath, audioTracks),
+                  initialIndex: _audioIndexFor(filePath, audioTracks),
+                  onRemix: remixAudio,
+                  onClose: () => _popPreview(context),
+                )
+              : isTextFile
               ? _TextFilePreview(
                   filePath: filePath,
-                  onClose: () {
-                    _isPreviewOpen = false;
-                    Navigator.of(context, rootNavigator: true).pop();
-                  },
+                  onClose: () => _popPreview(context),
                 )
               : hasMultiple
-                  ? _SwipeableMediaPreview(
-                      filePaths: validPaths,
-                      initialIndex: adjustedIndex,
-                      onClose: () {
-                        _isPreviewOpen = false;
-                        Navigator.of(context, rootNavigator: true).pop();
-                      },
-                    )
-                  : _ProgressiveImagePreview(
-                      filePath: filePath,
-                      onClose: () {
-                        _isPreviewOpen = false;
-                        Navigator.of(context, rootNavigator: true).pop();
-                      },
-                    ),
+              ? _SwipeableMediaPreview(
+                  filePaths: validPaths,
+                  initialIndex: adjustedIndex,
+                  onClose: () => _popPreview(context),
+                )
+              : _ProgressiveImagePreview(
+                  filePath: filePath,
+                  onClose: () => _popPreview(context),
+                ),
         );
       },
     ).then((_) {
@@ -629,8 +865,11 @@ class FileService {
     });
   }
 
-  static Future<void> previewFile(BuildContext context, String url,
-      {required String uniqueKey}) async {
+  static Future<void> previewFile(
+    BuildContext context,
+    String url, {
+    required String uniqueKey,
+  }) async {
     try {
       // ✅ Step 1: Use unique cache key (prefer jobId)
       final cacheKey = uniqueKey;
@@ -652,7 +891,8 @@ class FileService {
 
       // ✅ Step 4: Create unique filename per job
       final fileName = _normalizeFileName(
-          'preview_${DateTime.now().millisecondsSinceEpoch}.png');
+        'preview_${DateTime.now().millisecondsSinceEpoch}.png',
+      );
 
       // ✅ Step 5: Save to temp folder
       final tempFile = await writeTempFile(response.bodyBytes, fileName);
@@ -664,22 +904,27 @@ class FileService {
     } catch (e) {
       debugPrint('❌ Preview failed: $e');
       if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Preview failed: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Preview failed: $e')));
       }
     }
   }
 
   // ✅ Utility: sanitize and normalize file names
-  static String _normalizeFileName(String rawName,
-      {String defaultExt = "png"}) {
+  static String _normalizeFileName(
+    String rawName, {
+    String defaultExt = "png",
+  }) {
     if (rawName.isEmpty) return "${const Uuid().v4()}.$defaultExt";
 
     var name = rawName.trim().replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
 
     // Remove duplicate extensions like .png.png or .jpg.png
-    final repeatedExt = RegExp('(\\.' + RegExp.escape(defaultExt) + r')+$',
-        caseSensitive: false);
+    final repeatedExt = RegExp(
+      '(\\.' + RegExp.escape(defaultExt) + r')+$',
+      caseSensitive: false,
+    );
     name = name.replaceAll(repeatedExt, '');
 
     // If it already has some extension (e.g., .jpg), remove it and replace with .png
@@ -699,7 +944,8 @@ class FileService {
         final map = Map<String, String>.from(jsonDecode(stored));
         _previewCache.addAll(map);
         debugPrint(
-            "🗂️ Restored ${_previewCache.length} preview cache entries.");
+          "🗂️ Restored ${_previewCache.length} preview cache entries.",
+        );
       }
     } catch (e) {
       debugPrint("⚠️ Failed to load preview cache: $e");
@@ -729,17 +975,49 @@ class FileService {
           debugPrint("⚠️ Failed to delete preview file: $e");
         }
       }
-      
+
       // Clear memory cache
       _previewCache.clear();
-      
+
       // Persist empty cache
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('preview_cache');
-      
+
       debugPrint("🗑️ Preview cache cleared");
     } catch (e) {
       debugPrint("❌ Failed to clear preview cache: $e");
+    }
+  }
+
+  /// Play audio that may only exist as a network URL (Suno V6 studio tracks).
+  static Future<void> openAudioTracks(
+    BuildContext context, {
+    required List<AudioTrackDetails> tracks,
+    int initialIndex = 0,
+  }) async {
+    if (tracks.isEmpty) return;
+    if (_isPreviewOpen) return;
+    _isPreviewOpen = true;
+    final resume = audioNowPlaying.matches(tracks);
+    audioNowPlaying.markSheet(true);
+    try {
+      await showGeneralDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        barrierColor: Colors.transparent,
+        transitionDuration: const Duration(milliseconds: 300),
+        pageBuilder: (_, __, ___) {
+          return AudioResultPlayer(
+            tracks: resume ? audioNowPlaying.tracks : tracks,
+            initialIndex: initialIndex.clamp(0, tracks.length - 1),
+            onRemix: remixAudio,
+            onClose: () => _popPreview(context),
+          );
+        },
+      );
+    } finally {
+      _isPreviewOpen = false;
+      audioNowPlaying.markSheet(false);
     }
   }
 
@@ -752,20 +1030,47 @@ class FileService {
     String path, {
     List<String>? allPaths,
     int currentIndex = 0,
+    List<AudioTrackDetails>? audioTracks,
   }) async {
     if (!File(path).existsSync()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("File not found")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("File not found")));
       return;
     }
 
-    _showMediaPreviewDialog(context, path, allPaths: allPaths, currentIndex: currentIndex);
+    _showMediaPreviewDialog(
+      context,
+      path,
+      allPaths: allPaths,
+      currentIndex: currentIndex,
+      audioTracks: audioTracks,
+    );
+  }
+
+  static List<AudioTrackDetails> _audioTracksFor(
+    String filePath,
+    List<AudioTrackDetails>? tracks,
+  ) {
+    if (tracks != null && tracks.isNotEmpty) return tracks;
+    final saved = _tracksForSavedAudio(
+      filePath,
+      filePath.split(RegExp(r'[\\/]')).last,
+    );
+    if (saved != null && saved.isNotEmpty) return saved;
+    return [AudioTrackDetails.fromPath(filePath)];
+  }
+
+  static int _audioIndexFor(String filePath, List<AudioTrackDetails>? tracks) {
+    if (tracks == null || tracks.isEmpty) return 0;
+    final index = tracks.indexWhere((track) => track.filePath == filePath);
+    return index < 0 ? 0 : index;
   }
 
   static String generateTimestampFilename(String prefix, String ext) {
     final now = DateTime.now();
-    final formatted = "${now.year}${now.month.toString().padLeft(2, '0')}"
+    final formatted =
+        "${now.year}${now.month.toString().padLeft(2, '0')}"
         "${now.day.toString().padLeft(2, '0')}_"
         "${now.hour.toString().padLeft(2, '0')}"
         "${now.minute.toString().padLeft(2, '0')}"
@@ -781,10 +1086,15 @@ class FileService {
     if (ext.contains('png')) return 'png';
     if (ext.contains('jpg') || ext.contains('jpeg')) return 'jpg';
     if (ext.contains('mp4')) return 'mp4';
+    if (ext.contains('mp3')) return 'mp3';
+    if (ext.contains('wav')) return 'wav';
+    if (ext.contains('ogg')) return 'ogg';
+    if (ext.contains('flac')) return 'flac';
+    if (ext.contains('m4a')) return 'm4a';
     if (ext.contains('webp')) return 'webp';
     if (ext.contains('txt') || ext.contains('text')) return 'txt';
     if (ext.contains('json')) return 'json';
-    
+
     // Fallback: use outputType from job metadata when URL extension is ambiguous
     if (outputType != null) {
       final ot = outputType.toLowerCase();
@@ -792,7 +1102,7 @@ class FileService {
       if (ot == 'video') return 'mp4';
       if (ot == 'audio') return 'mp3';
     }
-    
+
     return 'png';
   }
 
@@ -800,6 +1110,25 @@ class FileService {
   static bool _isOldDownloadEndpoint(String? url) {
     if (url == null || url.isEmpty) return false;
     return url.contains('/download/') && !url.contains('workers.dev');
+  }
+
+  static bool _isAudioExtension(String ext) {
+    switch (ext.toLowerCase()) {
+      case 'mp3':
+      case 'wav':
+      case 'ogg':
+      case 'flac':
+      case 'm4a':
+      case 'aac':
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  static bool _isAudioPath(String path) {
+    final ext = path.split('.').last;
+    return _isAudioExtension(ext);
   }
 
   /// 🔍 Check if extension is a text file type
@@ -826,6 +1155,10 @@ class FileService {
       }
     }
 
+    if (_isAudioExtension(extension)) {
+      return bytes.length > 100;
+    }
+
     // Minimum file size check (blank/black images are usually very small)
     if (bytes.length < 100) {
       debugPrint('❌ Downloaded file too small: ${bytes.length} bytes');
@@ -840,7 +1173,8 @@ class FileService {
       for (int i = 0; i < 8; i++) {
         if (bytes[i] != pngSignature[i]) return false;
       }
-    } else if (extension.toLowerCase() == 'jpg' || extension.toLowerCase() == 'jpeg') {
+    } else if (extension.toLowerCase() == 'jpg' ||
+        extension.toLowerCase() == 'jpeg') {
       // JPEG signature: FF D8 FF
       if (bytes.length < 3) return false;
       if (bytes[0] != 0xFF || bytes[1] != 0xD8 || bytes[2] != 0xFF) {
@@ -851,31 +1185,34 @@ class FileService {
       // Common box types: 'ftyp' (file type), 'moov' (movie header), 'mdat' (media data)
       // Some MP4s might have 'mdat' first (fast start), or 'moov' first
       if (bytes.length < 12) return false;
-      
+
       // Check for MP4 box signature at offset 4 (after 4-byte size)
       final boxType = String.fromCharCodes(bytes.sublist(4, 8));
       final validBoxTypes = ['ftyp', 'moov', 'mdat', 'free', 'skip', 'wide'];
-      
+
       // Also check if it's a valid MP4 by looking for common patterns
       // Some MP4s might have 'mdat' at the start (fast start encoding)
       bool isValidMp4 = validBoxTypes.contains(boxType);
-      
+
       // If not found at offset 4, check offset 0 (some files might not have size prefix)
       if (!isValidMp4 && bytes.length >= 8) {
         final altBoxType = String.fromCharCodes(bytes.sublist(0, 4));
         isValidMp4 = validBoxTypes.contains(altBoxType);
       }
-      
+
       // Additional check: look for 'mp4' string anywhere in first 100 bytes
       if (!isValidMp4 && bytes.length >= 100) {
         final headerString = String.fromCharCodes(bytes.sublist(0, 100));
-        isValidMp4 = headerString.contains('mp4') || 
-                     headerString.contains('isom') || 
-                     headerString.contains('avc1');
+        isValidMp4 =
+            headerString.contains('mp4') ||
+            headerString.contains('isom') ||
+            headerString.contains('avc1');
       }
-      
+
       if (!isValidMp4) {
-        debugPrint('❌ MP4 validation failed: boxType=$boxType, first 20 bytes: ${bytes.sublist(0, bytes.length < 20 ? bytes.length : 20).map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
+        debugPrint(
+          '❌ MP4 validation failed: boxType=$boxType, first 20 bytes: ${bytes.sublist(0, bytes.length < 20 ? bytes.length : 20).map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}',
+        );
         return false;
       }
     }
@@ -889,6 +1226,7 @@ class FileService {
     BuildContext context,
     String url, {
     String? suggestedFileName,
+    String? jobId,
     String subfolder = 'Kala_AI',
     void Function(double progress)? onProgress, // progress: 0.0 → 1.0
     int maxRetries = 3,
@@ -901,7 +1239,9 @@ class FileService {
       debugPrint('❌ Rejected old download endpoint URL: $url');
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Invalid download URL. Please refresh the job.')),
+          const SnackBar(
+            content: Text('Invalid download URL. Please refresh the job.'),
+          ),
         );
       }
       return null;
@@ -916,20 +1256,24 @@ class FileService {
         if (attempt > 0) {
           // Exponential backoff: 1s, 2s, 4s
           final delay = Duration(seconds: 1 << (attempt - 1));
-          debugPrint('⏳ Retrying download in ${delay.inSeconds}s (attempt ${attempt + 1}/$maxRetries)');
+          debugPrint(
+            '⏳ Retrying download in ${delay.inSeconds}s (attempt ${attempt + 1}/$maxRetries)',
+          );
           await Future.delayed(delay);
         }
 
         client = http.Client();
         final request = http.Request('GET', uri);
-        
+
         // Add timeout: 30 seconds for connection, 60 seconds total
-        final response = await client.send(request).timeout(
-          const Duration(seconds: 60),
-          onTimeout: () {
-            throw Exception('Download timeout after 60 seconds');
-          },
-        );
+        final response = await client
+            .send(request)
+            .timeout(
+              const Duration(seconds: 60),
+              onTimeout: () {
+                throw Exception('Download timeout after 60 seconds');
+              },
+            );
 
         if (response.statusCode == 403) {
           // URL expired or invalid signature
@@ -966,7 +1310,9 @@ class FileService {
             client.close();
             continue; // Retry
           } else {
-            throw Exception('Downloaded file appears to be invalid or corrupted');
+            throw Exception(
+              'Downloaded file appears to be invalid or corrupted',
+            );
           }
         }
 
@@ -975,7 +1321,7 @@ class FileService {
             ? suggestedFileName!
             : uuid;
         final cleanName = _normalizeFileName(baseName, defaultExt: safeExt);
-        
+
         final savedPath = await saveFile(
           context,
           fileData,
@@ -983,19 +1329,28 @@ class FileService {
           showPreview: showPreview,
           customFileName: cleanName,
           documentsFallback: documentsFallback,
+          jobId: jobId,
         );
 
         if (savedPath != null) {
           final jobs = List<JobModel>.from(jobListNotifier.value);
-          // Try matching by downloadUrl first, then fall back to jobId (suggestedFileName).
-          // Signed URLs change frequently (refreshes, FCM updates), so URL matching
-          // can silently fail — causing the saved file to never link to its job.
-          var idx = jobs.indexWhere((j) => j.downloadUrl == url);
-          if (idx == -1 && suggestedFileName != null && suggestedFileName.isNotEmpty) {
-            // suggestedFileName is typically the jobId
+          // Signed URLs change, so match the job id first, then the URL.
+          // Older saves used the job id as the file name.
+          var idx = -1;
+          if (jobId != null && jobId.isNotEmpty) {
+            idx = jobs.indexWhere((j) => j.jobId == jobId);
+          }
+          if (idx == -1) {
+            idx = jobs.indexWhere((j) => j.downloadUrl == url);
+          }
+          if (idx == -1 &&
+              suggestedFileName != null &&
+              suggestedFileName.isNotEmpty) {
             idx = jobs.indexWhere((j) => j.jobId == suggestedFileName);
             if (idx != -1) {
-              debugPrint("📸 URL match failed, matched by jobId instead: $suggestedFileName");
+              debugPrint(
+                "📸 URL match failed, matched by jobId instead: $suggestedFileName",
+              );
             }
           }
           if (idx != -1) {
@@ -1007,14 +1362,16 @@ class FileService {
             await saveJobsToPrefs();
             debugPrint("📸 Linked downloaded file to job ${job.jobId}");
           } else {
-            debugPrint("⚠️ Could not link downloaded file to any job (url: $url, suggested: $suggestedFileName)");
+            debugPrint(
+              "⚠️ Could not link downloaded file to any job (url: $url, suggested: $suggestedFileName)",
+            );
           }
           return savedPath;
         }
         return null;
       } catch (e) {
         debugPrint('❌ Download attempt ${attempt + 1} failed: $e');
-        
+
         if (client != null) {
           try {
             client.close();
@@ -1026,14 +1383,20 @@ class FileService {
           String errorMsg = 'Download failed';
           if (e.toString().contains('timeout')) {
             errorMsg = 'Download timed out. Please try again.';
-          } else if (e.toString().contains('expired') || e.toString().contains('403')) {
+          } else if (e.toString().contains('expired') ||
+              e.toString().contains('403')) {
             errorMsg = 'Download URL expired. Refreshing...';
-          } else if (e.toString().contains('invalid') || e.toString().contains('corrupted')) {
+          } else if (e.toString().contains('invalid') ||
+              e.toString().contains('corrupted')) {
             errorMsg = 'Downloaded file is invalid. Please try again.';
           }
-          
+
           // Use debounced snackbar to prevent spam
-          _showDebouncedSnackbar(context, errorMsg, duration: const Duration(seconds: 4));
+          _showDebouncedSnackbar(
+            context,
+            errorMsg,
+            duration: const Duration(seconds: 4),
+          );
           return null;
         }
         // Otherwise, continue to next retry
@@ -1105,7 +1468,8 @@ class FileService {
       }
 
       debugPrint(
-          '✅ Job cleanup done (deleteGalleryFile=$deleteGalleryFile) for ${job.jobId}');
+        '✅ Job cleanup done (deleteGalleryFile=$deleteGalleryFile) for ${job.jobId}',
+      );
     } catch (e) {
       debugPrint('⚠️ Failed to delete files for ${job.jobId}: $e');
     }
@@ -1124,7 +1488,7 @@ class FileService {
       debugPrint('⚠️ Context not mounted, skipping save preview');
       return;
     }
-    
+
     try {
       final cs = Theme.of(context).colorScheme;
       final isVideo = filePath.toLowerCase().endsWith(".mp4");
@@ -1138,189 +1502,186 @@ class FileService {
       // Show a premium styled snackbar with preview
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        duration: const Duration(seconds: 5),
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-        padding: EdgeInsets.zero,
-        content: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                cs.surfaceContainerHighest,
-                cs.surfaceContainerHigh,
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: cs.outlineVariant.withValues(alpha: 0.3),
-              width: 1,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.15),
-                blurRadius: 20,
-                offset: const Offset(0, 8),
+        SnackBar(
+          duration: const Duration(seconds: 5),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          padding: EdgeInsets.zero,
+          content: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [cs.surfaceContainerHighest, cs.surfaceContainerHigh],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
-              BoxShadow(
-                color: cs.primary.withValues(alpha: 0.08),
-                blurRadius: 30,
-                offset: const Offset(0, 4),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: cs.outlineVariant.withValues(alpha: 0.3),
+                width: 1,
               ),
-            ],
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Row(
-              children: [
-                // Preview thumbnail with border
-                Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: Colors.green.withValues(alpha: 0.4),
-                      width: 2,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.green.withValues(alpha: 0.2),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: isVideo
-                        ? (previewBytes != null
-                            ? Image.memory(
-                                previewBytes,
-                                width: 56,
-                                height: 56,
-                                fit: BoxFit.cover,
-                                filterQuality: FilterQuality.medium,
-                              )
-                            : Container(
-                                width: 56,
-                                height: 56,
-                                color: cs.surfaceContainerHighest,
-                                child: Icon(
-                                  Icons.videocam_rounded,
-                                  color: cs.onSurfaceVariant,
-                                  size: 28,
-                                ),
-                              ))
-                        : Image.memory(
-                            bytes,
-                            width: 56,
-                            height: 56,
-                            fit: BoxFit.cover,
-                            filterQuality: FilterQuality.medium,
-                          ),
-                  ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.15),
+                  blurRadius: 20,
+                  offset: const Offset(0, 8),
                 ),
-                const SizedBox(width: 14),
-                
-                // Text content
-                Expanded(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Success badge
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
+                BoxShadow(
+                  color: cs.primary.withValues(alpha: 0.08),
+                  blurRadius: 30,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Row(
+                children: [
+                  // Preview thumbnail with border
+                  Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: Colors.green.withValues(alpha: 0.4),
+                        width: 2,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.green.withValues(alpha: 0.2),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
                         ),
-                        decoration: BoxDecoration(
-                          color: Colors.green.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: Colors.green.withValues(alpha: 0.3),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: isVideo
+                          ? (previewBytes != null
+                                ? Image.memory(
+                                    previewBytes,
+                                    width: 56,
+                                    height: 56,
+                                    fit: BoxFit.cover,
+                                    filterQuality: FilterQuality.medium,
+                                  )
+                                : Container(
+                                    width: 56,
+                                    height: 56,
+                                    color: cs.surfaceContainerHighest,
+                                    child: Icon(
+                                      Icons.videocam_rounded,
+                                      color: cs.onSurfaceVariant,
+                                      size: 28,
+                                    ),
+                                  ))
+                          : Image.memory(
+                              bytes,
+                              width: 56,
+                              height: 56,
+                              fit: BoxFit.cover,
+                              filterQuality: FilterQuality.medium,
+                            ),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+
+                  // Text content
+                  Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Success badge
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
                           ),
+                          decoration: BoxDecoration(
+                            color: Colors.green.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: Colors.green.withValues(alpha: 0.3),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.check_circle_rounded,
+                                size: 14,
+                                color: Colors.green.shade400,
+                              ),
+                              const SizedBox(width: 5),
+                              Text(
+                                'Saved to Gallery',
+                                style: TextStyle(
+                                  color: Colors.green.shade400,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        // File name
+                        Text(
+                          fileName,
+                          style: TextStyle(
+                            color: cs.onSurface,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+
+                  // Open button
+                  Material(
+                    color: cs.primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                    child: InkWell(
+                      onTap: () async => await OpenFilex.open(filePath),
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 10,
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(
-                              Icons.check_circle_rounded,
-                              size: 14,
-                              color: Colors.green.shade400,
+                              Icons.folder_open_rounded,
+                              size: 18,
+                              color: cs.primary,
                             ),
-                            const SizedBox(width: 5),
+                            const SizedBox(width: 6),
                             Text(
-                              'Saved to Gallery',
+                              'Open',
                               style: TextStyle(
-                                color: Colors.green.shade400,
+                                color: cs.primary,
                                 fontWeight: FontWeight.w600,
-                                fontSize: 12,
+                                fontSize: 13,
                               ),
                             ),
                           ],
                         ),
                       ),
-                      const SizedBox(height: 6),
-                      // File name
-                      Text(
-                        fileName,
-                        style: TextStyle(
-                          color: cs.onSurface,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 10),
-                
-                // Open button
-                Material(
-                  color: cs.primary.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
-                  child: InkWell(
-                    onTap: () async => await OpenFilex.open(filePath),
-                    borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 10,
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.folder_open_rounded,
-                            size: 18,
-                            color: cs.primary,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Open',
-                            style: TextStyle(
-                              color: cs.primary,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ],
-                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
-      ),
-    );
+      );
     } catch (e) {
       // Context may have become invalid - this is OK, file is still saved
       debugPrint('⚠️ Could not show save preview: $e');
@@ -1330,6 +1691,22 @@ class FileService {
 
 /// Progressive image preview widget
 /// Shows a low-res thumbnail first, then loads full resolution in background
+double? _finitePreviewExtent(double value) {
+  if (value <= 0 || !value.isFinite) return null;
+  return value;
+}
+
+/// One decode edge, in pixels. Null until the viewport has a real width.
+int? _previewDecodeEdge(double logicalWidth, double devicePixelRatio) {
+  if (logicalWidth <= 0 || !logicalWidth.isFinite) return null;
+  if (devicePixelRatio <= 0 || !devicePixelRatio.isFinite) return null;
+  final scale = AppSettings.highQualityPreviews ? 1.5 : 1.0;
+  final cap = AppSettings.highQualityPreviews ? 4096 : 2048;
+  final edge = (logicalWidth * devicePixelRatio * scale).round();
+  if (edge <= 0) return null;
+  return edge > cap ? cap : edge;
+}
+
 class _ProgressiveImagePreview extends StatefulWidget {
   final String filePath;
   final VoidCallback onClose;
@@ -1340,10 +1717,11 @@ class _ProgressiveImagePreview extends StatefulWidget {
   });
 
   @override
-  State<_ProgressiveImagePreview> createState() => _ProgressiveImagePreviewState();
+  State<_ProgressiveImagePreview> createState() =>
+      _ProgressiveImagePreviewState();
 }
 
-class _ProgressiveImagePreviewState extends State<_ProgressiveImagePreview> 
+class _ProgressiveImagePreviewState extends State<_ProgressiveImagePreview>
     with SingleTickerProviderStateMixin {
   Uint8List? _thumbnailBytes;
   bool _isFullResLoaded = false;
@@ -1352,10 +1730,6 @@ class _ProgressiveImagePreviewState extends State<_ProgressiveImagePreview>
   String? _fileSize;
   String? _resolution;
 
-  // Screen-aware cache dimensions for full res
-  int? _cacheWidth;
-  int? _cacheHeight;
-  
   late AnimationController _controlsAnimController;
   late Animation<double> _controlsAnimation;
 
@@ -1364,7 +1738,7 @@ class _ProgressiveImagePreviewState extends State<_ProgressiveImagePreview>
     super.initState();
     _loadThumbnail();
     _loadFileInfo();
-    
+
     _controlsAnimController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 200),
@@ -1375,28 +1749,30 @@ class _ProgressiveImagePreviewState extends State<_ProgressiveImagePreview>
       curve: Curves.easeOutCubic,
     );
   }
-  
+
   @override
   void dispose() {
     _controlsAnimController.dispose();
     super.dispose();
   }
-  
+
   Future<void> _loadFileInfo() async {
     try {
       final file = File(widget.filePath);
       if (file.existsSync()) {
         final size = await file.length();
         final sizeStr = _formatFileSize(size);
-        
+
         // Get image dimensions
         final bytes = await file.readAsBytes();
         final decoded = await decodeImageFromList(bytes);
-        
+        final resolution = '${decoded.width} × ${decoded.height}';
+        decoded.dispose();
+
         if (mounted) {
           setState(() {
             _fileSize = sizeStr;
-            _resolution = '${decoded.width} × ${decoded.height}';
+            _resolution = resolution;
           });
         }
       }
@@ -1404,7 +1780,7 @@ class _ProgressiveImagePreviewState extends State<_ProgressiveImagePreview>
       debugPrint('⚠️ Failed to load file info: $e');
     }
   }
-  
+
   String _formatFileSize(int bytes) {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
@@ -1419,7 +1795,7 @@ class _ProgressiveImagePreviewState extends State<_ProgressiveImagePreview>
         size: 400, // Larger thumbnail for preview placeholder
         quality: 70,
       );
-      
+
       if (mounted) {
         setState(() {
           _thumbnailBytes = thumb;
@@ -1434,24 +1810,6 @@ class _ProgressiveImagePreviewState extends State<_ProgressiveImagePreview>
     }
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // Calculate cache dimensions based on screen size and quality setting
-    final size = MediaQuery.of(context).size;
-    final dpr = MediaQuery.of(context).devicePixelRatio;
-    
-    if (AppSettings.highQualityPreviews) {
-      // High quality: 1.5x screen resolution, up to 4K
-      _cacheWidth = (size.width * dpr * 1.5).toInt().clamp(0, 4096);
-      _cacheHeight = (size.height * dpr * 1.5).toInt().clamp(0, 4096);
-    } else {
-      // Low quality: 1x screen resolution, max 2K - uses less memory/data
-      _cacheWidth = (size.width * dpr).toInt().clamp(0, 2048);
-      _cacheHeight = (size.height * dpr).toInt().clamp(0, 2048);
-    }
-  }
-  
   void _toggleControls() {
     setState(() {
       _showControls = !_showControls;
@@ -1462,7 +1820,7 @@ class _ProgressiveImagePreviewState extends State<_ProgressiveImagePreview>
       }
     });
   }
-  
+
   String get _fileName {
     final path = widget.filePath;
     return path.split('/').last.split('\\').last;
@@ -1472,7 +1830,7 @@ class _ProgressiveImagePreviewState extends State<_ProgressiveImagePreview>
   Widget build(BuildContext context) {
     final topPadding = MediaQuery.of(context).padding.top;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
-    
+
     return Material(
       color: Colors.transparent,
       child: Stack(
@@ -1484,25 +1842,23 @@ class _ProgressiveImagePreviewState extends State<_ProgressiveImagePreview>
               gradient: RadialGradient(
                 center: Alignment.center,
                 radius: 1.2,
-                colors: [
-                  Color(0xFF1a1a2e),
-                  Color(0xFF0d0d14),
-                  Colors.black,
-                ],
+                colors: [Color(0xFF1a1a2e), Color(0xFF0d0d14), Colors.black],
                 stops: [0.0, 0.6, 1.0],
               ),
             ),
           ),
-          
+
           // 🖼️ Zoomable Image with progressive loading
           GestureDetector(
             onTap: _toggleControls,
-            child: Center(
-              child: InteractiveViewer(
-                maxScale: 5,
-                minScale: 0.7,
-                child: _buildImage(),
-              ),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return InteractiveViewer(
+                  maxScale: 5,
+                  minScale: 0.7,
+                  child: _buildImage(constraints),
+                );
+              },
             ),
           ),
 
@@ -1568,7 +1924,7 @@ class _ProgressiveImagePreviewState extends State<_ProgressiveImagePreview>
               ),
             ),
           ),
-          
+
           // 📊 Bottom info bar
           Positioned(
             bottom: 0,
@@ -1639,7 +1995,7 @@ class _ProgressiveImagePreviewState extends State<_ProgressiveImagePreview>
               ),
             ),
           ),
-          
+
           // Tap hint (shows briefly)
           if (_showControls && !_isLoading)
             Positioned(
@@ -1650,17 +2006,17 @@ class _ProgressiveImagePreviewState extends State<_ProgressiveImagePreview>
                 opacity: _controlsAnimation,
                 child: Center(
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.black38,
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: const Text(
                       'Tap to hide controls • Pinch to zoom',
-                      style: TextStyle(
-                        color: Colors.white54,
-                        fontSize: 11,
-                      ),
+                      style: TextStyle(color: Colors.white54, fontSize: 11),
                     ),
                   ),
                 ),
@@ -1670,7 +2026,7 @@ class _ProgressiveImagePreviewState extends State<_ProgressiveImagePreview>
       ),
     );
   }
-  
+
   Widget _buildActionButton({
     required IconData icon,
     required VoidCallback onTap,
@@ -1693,73 +2049,75 @@ class _ProgressiveImagePreviewState extends State<_ProgressiveImagePreview>
                 width: 1,
               ),
             ),
-            child: Icon(
-              icon,
-              color: Colors.white,
-              size: 24,
-            ),
+            child: Icon(icon, color: Colors.white, size: 24),
           ),
         ),
       ),
     );
   }
-  
+
   Widget _buildInfoChip({required IconData icon, required String label}) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(
-          icon,
-          color: Colors.white54,
-          size: 14,
-        ),
+        Icon(icon, color: Colors.white54, size: 14),
         const SizedBox(width: 4),
         Text(
           label,
-          style: const TextStyle(
-            color: Colors.white54,
-            fontSize: 12,
-          ),
+          style: const TextStyle(color: Colors.white54, fontSize: 12),
         ),
       ],
     );
   }
 
-  Widget _buildImage() {
+  Widget _buildImage(BoxConstraints constraints) {
+    final width = _finitePreviewExtent(constraints.maxWidth);
+    final height = _finitePreviewExtent(constraints.maxHeight);
+    if (width == null || height == null) return const SizedBox.shrink();
+
+    Widget bounded(Widget child) {
+      return SizedBox(width: width, height: height, child: child);
+    }
+
     final file = File(widget.filePath);
-    
+
     if (!file.existsSync()) {
-      return Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.1),
-              shape: BoxShape.circle,
+      return bounded(
+        Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.broken_image_rounded,
+                color: Colors.white38,
+                size: 48,
+              ),
             ),
-            child: const Icon(
-              Icons.broken_image_rounded,
-              color: Colors.white38,
-              size: 48,
+            const SizedBox(height: 16),
+            const Text(
+              'Image not found',
+              style: TextStyle(color: Colors.white54, fontSize: 14),
             ),
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'Image not found',
-            style: TextStyle(color: Colors.white54, fontSize: 14),
-          ),
-        ],
+          ],
+        ),
       );
     }
 
-    // Use Image.file with cacheWidth/cacheHeight for memory efficiency
-    // This prevents loading 20MB images at full resolution
+    // One cache edge keeps the decode finite without forcing a second axis.
     return Image.file(
       file,
       fit: BoxFit.contain,
-      cacheWidth: _cacheWidth,
-      cacheHeight: _cacheHeight,
+      width: width,
+      height: height,
+      cacheWidth: _previewDecodeEdge(
+        width,
+        MediaQuery.devicePixelRatioOf(context),
+      ),
       filterQuality: FilterQuality.medium,
       gaplessPlayback: true,
       frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
@@ -1773,99 +2131,110 @@ class _ProgressiveImagePreviewState extends State<_ProgressiveImagePreview>
           }
           return child;
         }
-        
+
         // Show thumbnail while full image loads
         if (_thumbnailBytes != null) {
-          return Stack(
-            alignment: Alignment.center,
-            children: [
-              // Blurred thumbnail as placeholder
-              Image.memory(
-                _thumbnailBytes!,
-                fit: BoxFit.contain,
-                filterQuality: FilterQuality.low,
-              ),
-              // Subtle loading indicator
-              Positioned(
-                bottom: 20,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.6),
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.1),
+          return bounded(
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                // Blurred thumbnail as placeholder
+                Image.memory(
+                  _thumbnailBytes!,
+                  width: width,
+                  height: height,
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.low,
+                ),
+                // Subtle loading indicator
+                Positioned(
+                  bottom: 20,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.6),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.1),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white.withValues(alpha: 0.8),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          'Loading full resolution...',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.8),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white.withValues(alpha: 0.8),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Text(
-                        'Loading full resolution...',
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.8),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           );
         }
-        
+
         // Fallback loading state
-        return Center(
-          child: Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.black45,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: const CircularProgressIndicator(
-              color: Colors.white70,
-              strokeWidth: 3,
+        return bounded(
+          Center(
+            child: Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.black45,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const CircularProgressIndicator(
+                color: Colors.white70,
+                strokeWidth: 3,
+              ),
             ),
           ),
         );
       },
       errorBuilder: (context, error, stackTrace) {
         debugPrint('❌ Preview image error: $error');
-        return Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: Colors.red.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
+        return bounded(
+          Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.red.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.error_outline_rounded,
+                  color: Colors.red,
+                  size: 48,
+                ),
               ),
-              child: const Icon(
-                Icons.error_outline_rounded,
-                color: Colors.red,
-                size: 48,
+              const SizedBox(height: 16),
+              Text(
+                'Failed to load image',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.7),
+                  fontSize: 14,
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Failed to load image',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.7),
-                fontSize: 14,
-              ),
-            ),
-          ],
+            ],
+          ),
         );
       },
     );
@@ -1893,7 +2262,7 @@ class _SwipeableMediaPreviewState extends State<_SwipeableMediaPreview>
   late PageController _pageController;
   late int _currentIndex;
   bool _showControls = true;
-  
+
   late AnimationController _controlsAnimController;
   late Animation<double> _controlsAnimation;
 
@@ -1902,7 +2271,7 @@ class _SwipeableMediaPreviewState extends State<_SwipeableMediaPreview>
     super.initState();
     _currentIndex = widget.initialIndex;
     _pageController = PageController(initialPage: widget.initialIndex);
-    
+
     _controlsAnimController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 200),
@@ -1934,17 +2303,17 @@ class _SwipeableMediaPreviewState extends State<_SwipeableMediaPreview>
 
   bool _isVideo(String path) {
     final lower = path.toLowerCase();
-    return lower.endsWith('.mp4') || 
-           lower.endsWith('.mov') || 
-           lower.endsWith('.avi') ||
-           lower.endsWith('.webm');
+    return lower.endsWith('.mp4') ||
+        lower.endsWith('.mov') ||
+        lower.endsWith('.avi') ||
+        lower.endsWith('.webm');
   }
 
   @override
   Widget build(BuildContext context) {
     final topPadding = MediaQuery.of(context).padding.top;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
-    
+
     return Material(
       color: Colors.transparent,
       child: Stack(
@@ -1956,16 +2325,12 @@ class _SwipeableMediaPreviewState extends State<_SwipeableMediaPreview>
               gradient: RadialGradient(
                 center: Alignment.center,
                 radius: 1.2,
-                colors: [
-                  Color(0xFF1a1a2e),
-                  Color(0xFF0d0d14),
-                  Colors.black,
-                ],
+                colors: [Color(0xFF1a1a2e), Color(0xFF0d0d14), Colors.black],
                 stops: [0.0, 0.6, 1.0],
               ),
             ),
           ),
-          
+
           // 🖼️ PageView for swipe navigation
           GestureDetector(
             onTap: _toggleControls,
@@ -2021,7 +2386,10 @@ class _SwipeableMediaPreviewState extends State<_SwipeableMediaPreview>
                     children: [
                       // Page indicator
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.white.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(16),
@@ -2048,7 +2416,7 @@ class _SwipeableMediaPreviewState extends State<_SwipeableMediaPreview>
               ),
             ),
           ),
-          
+
           // 📍 Page dots indicator at bottom
           Positioned(
             bottom: bottomPadding + 16,
@@ -2058,7 +2426,10 @@ class _SwipeableMediaPreviewState extends State<_SwipeableMediaPreview>
               opacity: _controlsAnimation,
               child: Center(
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.black.withValues(alpha: 0.5),
                     borderRadius: BorderRadius.circular(24),
@@ -2091,14 +2462,19 @@ class _SwipeableMediaPreviewState extends State<_SwipeableMediaPreview>
                           widget.filePaths.length.clamp(0, 10), // Max 10 dots
                           (index) {
                             final isActive = index == _currentIndex;
-                            final showDots = widget.filePaths.length <= 10 ||
-                                (index >= _currentIndex - 4 && index <= _currentIndex + 4);
+                            final showDots =
+                                widget.filePaths.length <= 10 ||
+                                (index >= _currentIndex - 4 &&
+                                    index <= _currentIndex + 4);
                             if (!showDots && widget.filePaths.length > 10) {
-                              if (index == 0 || index == widget.filePaths.length - 1) {
+                              if (index == 0 ||
+                                  index == widget.filePaths.length - 1) {
                                 return Container(
                                   width: 6,
                                   height: 6,
-                                  margin: const EdgeInsets.symmetric(horizontal: 3),
+                                  margin: const EdgeInsets.symmetric(
+                                    horizontal: 3,
+                                  ),
                                   decoration: BoxDecoration(
                                     shape: BoxShape.circle,
                                     color: Colors.white.withValues(alpha: 0.3),
@@ -2146,7 +2522,7 @@ class _SwipeableMediaPreviewState extends State<_SwipeableMediaPreview>
               ),
             ),
           ),
-          
+
           // Swipe hint
           if (_showControls && widget.filePaths.length > 1)
             Positioned(
@@ -2157,17 +2533,17 @@ class _SwipeableMediaPreviewState extends State<_SwipeableMediaPreview>
                 opacity: _controlsAnimation,
                 child: Center(
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.black38,
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: const Text(
                       'Swipe to browse • Pinch to zoom',
-                      style: TextStyle(
-                        color: Colors.white54,
-                        fontSize: 11,
-                      ),
+                      style: TextStyle(color: Colors.white54, fontSize: 11),
                     ),
                   ),
                 ),
@@ -2200,11 +2576,7 @@ class _SwipeableMediaPreviewState extends State<_SwipeableMediaPreview>
                 width: 1,
               ),
             ),
-            child: Icon(
-              icon,
-              color: Colors.white,
-              size: 24,
-            ),
+            child: Icon(icon, color: Colors.white, size: 24),
           ),
         ),
       ),
@@ -2213,38 +2585,15 @@ class _SwipeableMediaPreviewState extends State<_SwipeableMediaPreview>
 }
 
 /// Individual image preview item for PageView
-class _ImagePreviewItem extends StatefulWidget {
+class _ImagePreviewItem extends StatelessWidget {
   final String filePath;
 
   const _ImagePreviewItem({required this.filePath});
 
   @override
-  State<_ImagePreviewItem> createState() => _ImagePreviewItemState();
-}
-
-class _ImagePreviewItemState extends State<_ImagePreviewItem> {
-  int? _cacheWidth;
-  int? _cacheHeight;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final size = MediaQuery.of(context).size;
-    final dpr = MediaQuery.of(context).devicePixelRatio;
-    
-    if (AppSettings.highQualityPreviews) {
-      _cacheWidth = (size.width * dpr * 1.5).toInt().clamp(0, 4096);
-      _cacheHeight = (size.height * dpr * 1.5).toInt().clamp(0, 4096);
-    } else {
-      _cacheWidth = (size.width * dpr).toInt().clamp(0, 2048);
-      _cacheHeight = (size.height * dpr).toInt().clamp(0, 2048);
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final file = File(widget.filePath);
-    
+    final file = File(filePath);
+
     if (!file.existsSync()) {
       return const Center(
         child: Icon(
@@ -2255,28 +2604,41 @@ class _ImagePreviewItemState extends State<_ImagePreviewItem> {
       );
     }
 
-    return Center(
-      child: InteractiveViewer(
-        maxScale: 5,
-        minScale: 0.7,
-        child: Image.file(
-          file,
-          fit: BoxFit.contain,
-          cacheWidth: _cacheWidth,
-          cacheHeight: _cacheHeight,
-          filterQuality: FilterQuality.medium,
-          gaplessPlayback: true,
-          errorBuilder: (context, error, stackTrace) {
-            return const Center(
-              child: Icon(
-                Icons.error_outline_rounded,
-                color: Colors.red,
-                size: 48,
-              ),
-            );
-          },
-        ),
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = _finitePreviewExtent(constraints.maxWidth);
+        final height = _finitePreviewExtent(constraints.maxHeight);
+        if (width == null || height == null) return const SizedBox.shrink();
+        return InteractiveViewer(
+          maxScale: 5,
+          minScale: 0.7,
+          child: Image.file(
+            file,
+            fit: BoxFit.contain,
+            width: width,
+            height: height,
+            cacheWidth: _previewDecodeEdge(
+              width,
+              MediaQuery.devicePixelRatioOf(context),
+            ),
+            filterQuality: FilterQuality.medium,
+            gaplessPlayback: true,
+            errorBuilder: (context, error, stackTrace) {
+              return SizedBox(
+                width: width,
+                height: height,
+                child: const Center(
+                  child: Icon(
+                    Icons.broken_image_rounded,
+                    color: Colors.white38,
+                    size: 48,
+                  ),
+                ),
+              );
+            },
+          ),
+        );
+      },
     );
   }
 }
@@ -2291,7 +2653,9 @@ class _VideoPreviewItem extends StatefulWidget {
   State<_VideoPreviewItem> createState() => _VideoPreviewItemState();
 }
 
-class _VideoPreviewItemState extends State<_VideoPreviewItem> {
+class _VideoPreviewItemState extends State<_VideoPreviewItem>
+    with WidgetsBindingObserver {
+  var _playOnResume = false;
   VideoPlayerController? _controller;
   bool _isInitialized = false;
   bool _isPlaying = false;
@@ -2301,12 +2665,55 @@ class _VideoPreviewItemState extends State<_VideoPreviewItem> {
   String? _fileSize;
   String? _dimensions;
   String? _format;
-  
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadVideoInfo();
     _initializeVideo();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final current = _controller;
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      if (current != null &&
+          videoFrameIsReady(current) &&
+          current.value.isPlaying) {
+        _playOnResume = true;
+      }
+      unawaited(pauseVideoController(current));
+      return;
+    }
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_recoverVideo());
+    }
+  }
+
+  Future<void> _recoverVideo() async {
+    final current = _controller;
+    final play = _playOnResume;
+    _playOnResume = false;
+    if (mounted) {
+      setState(() => _isInitialized = videoFrameIsReady(current));
+    }
+    final next = await replaceDeadVideo(current, play: play);
+    if (!mounted) {
+      if (next != null && !identical(next, current)) await next.dispose();
+      return;
+    }
+    if (next != null && !identical(next, current)) {
+      current?.removeListener(_updatePosition);
+      _controller = next;
+      next.addListener(_updatePosition);
+      try {
+        await current?.dispose();
+      } catch (_) {}
+    }
+    if (!mounted) return;
+    setState(() => _isInitialized = videoFrameIsReady(_controller));
   }
 
   Future<void> _loadVideoInfo() async {
@@ -2339,19 +2746,21 @@ class _VideoPreviewItemState extends State<_VideoPreviewItem> {
       _controller = VideoPlayerController.file(file);
       await _controller!.initialize();
       await _controller!.setLooping(true);
-      
+
       // Get dimensions
-      if (_controller!.value.size.width > 0 && _controller!.value.size.height > 0) {
-        _dimensions = '${_controller!.value.size.width.toInt()} × ${_controller!.value.size.height.toInt()}';
+      if (_controller!.value.size.width > 0 &&
+          _controller!.value.size.height > 0) {
+        _dimensions =
+            '${_controller!.value.size.width.toInt()} × ${_controller!.value.size.height.toInt()}';
       }
-      
+
       // Listen to position changes
       _controller!.addListener(_updatePosition);
       _duration = _controller!.value.duration;
-      
+
       // Auto-hide controls after 3 seconds
       _hideControlsAfterDelay();
-      
+
       if (mounted) {
         setState(() {
           _isInitialized = true;
@@ -2421,6 +2830,7 @@ class _VideoPreviewItemState extends State<_VideoPreviewItem> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _controller?.removeListener(_updatePosition);
     _controller?.dispose();
     super.dispose();
@@ -2428,7 +2838,7 @@ class _VideoPreviewItemState extends State<_VideoPreviewItem> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_isInitialized) {
+    if (!videoFrameIsReady(_controller)) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -2461,12 +2871,14 @@ class _VideoPreviewItemState extends State<_VideoPreviewItem> {
         children: [
           // Video player
           Center(
-            child: AspectRatio(
-              aspectRatio: _controller!.value.aspectRatio,
-              child: VideoPlayer(_controller!),
+            child: SafeVideoView(
+              controller: _controller,
+              layout: SafeVideoLayout.aspect,
+              fit: BoxFit.contain,
+              fallback: const SizedBox.shrink(),
             ),
           ),
-          
+
           // Controls overlay
           AnimatedOpacity(
             opacity: _showControls ? 1.0 : 0.0,
@@ -2499,7 +2911,7 @@ class _VideoPreviewItemState extends State<_VideoPreviewItem> {
                       ),
                     ),
                   ),
-                  
+
                   // Centered play/pause button (like standard video players)
                   // Only show when controls are visible and video is paused, or when tapping to pause
                   if (_showControls || !_isPlaying)
@@ -2520,7 +2932,9 @@ class _VideoPreviewItemState extends State<_VideoPreviewItem> {
                               ),
                             ),
                             child: Icon(
-                              _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                              _isPlaying
+                                  ? Icons.pause_rounded
+                                  : Icons.play_arrow_rounded,
                               color: Colors.white,
                               size: 48,
                             ),
@@ -2528,10 +2942,12 @@ class _VideoPreviewItemState extends State<_VideoPreviewItem> {
                         ),
                       ),
                     ),
-                  
+
                   // Bottom controls - seek bar and time positioned above "Swipe to browse" label
                   Positioned(
-                    bottom: MediaQuery.of(context).padding.bottom + 100, // Above the "Swipe to browse" label
+                    bottom:
+                        MediaQuery.of(context).padding.bottom +
+                        100, // Above the "Swipe to browse" label
                     left: 0,
                     right: 0,
                     child: Padding(
@@ -2559,9 +2975,7 @@ class _VideoPreviewItemState extends State<_VideoPreviewItem> {
                               ),
                               const SizedBox(width: 12),
                               // Seek bar (expanded)
-                              Expanded(
-                                child: _buildSeekBar(),
-                              ),
+                              Expanded(child: _buildSeekBar()),
                               const SizedBox(width: 12),
                               // Total duration (right side)
                               Text(
@@ -2606,7 +3020,8 @@ class _VideoPreviewItemState extends State<_VideoPreviewItem> {
             if (_controller == null || _duration.inMilliseconds == 0) return;
             final x = details.localPosition.dx;
             final width = constraints.maxWidth;
-            final newPosition = (x / width).clamp(0.0, 1.0) * _duration.inMilliseconds;
+            final newPosition =
+                (x / width).clamp(0.0, 1.0) * _duration.inMilliseconds;
             _seekTo(Duration(milliseconds: newPosition.toInt()));
           },
           child: Container(
@@ -2682,15 +3097,9 @@ class _VideoPreviewItemState extends State<_VideoPreviewItem> {
               label: _dimensions!,
             ),
           if (_fileSize != null)
-            _buildInfoChip(
-              icon: Icons.storage_rounded,
-              label: '$_fileSize MB',
-            ),
+            _buildInfoChip(icon: Icons.storage_rounded, label: '$_fileSize MB'),
           if (_format != null)
-            _buildInfoChip(
-              icon: Icons.video_file_rounded,
-              label: _format!,
-            ),
+            _buildInfoChip(icon: Icons.video_file_rounded, label: _format!),
           if (_duration.inSeconds > 0)
             _buildInfoChip(
               icon: Icons.timer_rounded,
@@ -2705,11 +3114,7 @@ class _VideoPreviewItemState extends State<_VideoPreviewItem> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(
-          icon,
-          size: 14,
-          color: Colors.white.withValues(alpha: 0.8),
-        ),
+        Icon(icon, size: 14, color: Colors.white.withValues(alpha: 0.8)),
         const SizedBox(width: 6),
         Text(
           label,
@@ -2718,10 +3123,7 @@ class _VideoPreviewItemState extends State<_VideoPreviewItem> {
             fontSize: 12,
             fontWeight: FontWeight.w500,
             shadows: [
-              Shadow(
-                color: Colors.black.withValues(alpha: 0.5),
-                blurRadius: 2,
-              ),
+              Shadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 2),
             ],
           ),
         ),
@@ -2735,10 +3137,7 @@ class _TextFilePreview extends StatefulWidget {
   final String filePath;
   final VoidCallback onClose;
 
-  const _TextFilePreview({
-    required this.filePath,
-    required this.onClose,
-  });
+  const _TextFilePreview({required this.filePath, required this.onClose});
 
   @override
   State<_TextFilePreview> createState() => _TextFilePreviewState();
@@ -2803,11 +3202,7 @@ class _TextFilePreviewState extends State<_TextFilePreview> {
           gradient: RadialGradient(
             center: Alignment.center,
             radius: 1.2,
-            colors: [
-              Color(0xFF1a1a2e),
-              Color(0xFF0d0d14),
-              Colors.black,
-            ],
+            colors: [Color(0xFF1a1a2e), Color(0xFF0d0d14), Colors.black],
             stops: [0.0, 0.6, 1.0],
           ),
         ),
@@ -2820,7 +3215,10 @@ class _TextFilePreviewState extends State<_TextFilePreview> {
               right: 0,
               child: SafeArea(
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
@@ -2844,7 +3242,10 @@ class _TextFilePreviewState extends State<_TextFilePreview> {
                         ),
                       ),
                       IconButton(
-                        icon: const Icon(Icons.close_rounded, color: Colors.white),
+                        icon: const Icon(
+                          Icons.close_rounded,
+                          color: Colors.white,
+                        ),
                         onPressed: widget.onClose,
                       ),
                     ],
@@ -2861,41 +3262,41 @@ class _TextFilePreviewState extends State<_TextFilePreview> {
                 padding: const EdgeInsets.all(16.0),
                 child: _isLoading
                     ? const Center(
-                        child: CircularProgressIndicator(
-                          color: Colors.white70,
-                        ),
+                        child: CircularProgressIndicator(color: Colors.white70),
                       )
                     : _error != null
-                        ? Center(
-                            child: Text(
-                              _error!,
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 14,
-                              ),
-                            ),
-                          )
-                        : Container(
-                            decoration: BoxDecoration(
-                              color: cs.surfaceContainerHighest.withValues(alpha: 0.3),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: Colors.white.withValues(alpha: 0.1),
-                              ),
-                            ),
-                            padding: const EdgeInsets.all(16),
-                            child: SingleChildScrollView(
-                              child: SelectableText(
-                                _content ?? '',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 14,
-                                  fontFamily: 'monospace',
-                                  height: 1.5,
-                                ),
-                              ),
+                    ? Center(
+                        child: Text(
+                          _error!,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 14,
+                          ),
+                        ),
+                      )
+                    : Container(
+                        decoration: BoxDecoration(
+                          color: cs.surfaceContainerHighest.withValues(
+                            alpha: 0.3,
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.1),
+                          ),
+                        ),
+                        padding: const EdgeInsets.all(16),
+                        child: SingleChildScrollView(
+                          child: SelectableText(
+                            _content ?? '',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontFamily: 'monospace',
+                              height: 1.5,
                             ),
                           ),
+                        ),
+                      ),
               ),
             ),
 
@@ -2906,7 +3307,10 @@ class _TextFilePreviewState extends State<_TextFilePreview> {
               right: 0,
               child: SafeArea(
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.bottomCenter,
@@ -2971,20 +3375,24 @@ class _DownloadTask {
   final BuildContext context;
   final String url;
   final String? suggestedFileName;
+  final String? jobId;
   final String subfolder;
   final void Function(double progress)? onProgress;
   final int maxRetries;
   final String? outputType;
+  final bool showPreview;
   final Completer<String?> completer;
 
   _DownloadTask({
     required this.context,
     required this.url,
     this.suggestedFileName,
+    this.jobId,
     required this.subfolder,
     this.onProgress,
     required this.maxRetries,
     this.outputType,
+    this.showPreview = true,
     required this.completer,
   });
 }

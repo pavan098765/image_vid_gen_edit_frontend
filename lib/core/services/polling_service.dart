@@ -18,6 +18,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/music_job.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/auth_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/file_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -188,6 +189,38 @@ class PollingService {
     debugPrint("PollingService stopped");
   }
 
+  Future<void> refreshJob(String jobId) async {
+    if (jobId.isEmpty) return;
+    try {
+      final token = await _authService.getIdToken();
+      if (token == null) return;
+      final resp = await http
+          .get(
+            Uri.parse("$baseUrl/job_status?job_id=$jobId"),
+            headers: {"Authorization": "Bearer $token"},
+          )
+          .timeout(const Duration(seconds: 15));
+      if (resp.statusCode != 200) return;
+      final data = jsonDecode(resp.body);
+      if (data is! Map) return;
+      final body = Map<String, dynamic>.from(data);
+      var status = (body["status"] ?? "").toString().toLowerCase();
+      if (!allowed.contains(status)) status = "processing";
+      String? downloadUrl;
+      if (status == "completed") {
+        downloadUrl = await getValidDownloadUrl(jobId);
+      }
+      await updateJobFields(
+        jobId: jobId,
+        status: status,
+        downloadUrl: downloadUrl,
+        music: musicMapFromStatus(body["music"]),
+      );
+    } catch (err) {
+      debugPrint("PollingService.refreshJob failed for $jobId: $err");
+    }
+  }
+
   Future<void> _tick() async {
     if (_isTicking) return;
     _isTicking = true;
@@ -275,6 +308,7 @@ class PollingService {
           allCompleted: allCompleted,
           enhancedPrompt: enhancedPrompt ?? old.enhancedPrompt,
           promptEnhanced: promptEnhanced || old.promptEnhanced,
+          music: preferRicherMusic(old.music, musicMapFromStatus(data['music'])),
         );
         jobListNotifier.value = jobs;
       }
@@ -290,6 +324,7 @@ class PollingService {
         allCompleted: allCompleted,
         enhancedPrompt: enhancedPrompt,
         promptEnhanced: promptEnhanced,
+        music: musicMapFromStatus(data['music']),
       ));
 
       if (!_onStatus.isClosed) {
@@ -321,8 +356,12 @@ class PollingService {
             final inputThumb = job.inputImagePath;
 
             // If preview not already stored, fetch it
-            if (job.localFilePath == null ||
-                !(File(job.localFilePath!).existsSync())) {
+            final skipImagePreview = job.isAudioOutput ||
+                job.music != null ||
+                job.capabilityId == 'create_music';
+            if (!skipImagePreview &&
+                (job.localFilePath == null ||
+                    !(File(job.localFilePath!).existsSync()))) {
               final tempPath = await FileService.previewFileAndReturnPath(
                 navigatorKey.currentContext!, // ✅ safe global context
                 downloadUrl,
@@ -521,6 +560,7 @@ class PollingService {
             allCompleted: allCompleted,
             enhancedPrompt: enhancedPrompt ?? old.enhancedPrompt,
             promptEnhanced: promptEnhanced || old.promptEnhanced,
+            music: preferRicherMusic(old.music, musicMapFromStatus(data['music'])),
           );
 
           debugPrint("✅ Job $jobId → $finalStatus");
@@ -794,6 +834,7 @@ class PollingService {
             allCompleted: allCompleted,
             enhancedPrompt: enhancedPrompt ?? old.enhancedPrompt,
             promptEnhanced: promptEnhanced || old.promptEnhanced,
+            music: preferRicherMusic(old.music, musicMapFromStatus(data['music'])),
           );
 
           debugPrint("✅ Job $jobId → $finalStatus");

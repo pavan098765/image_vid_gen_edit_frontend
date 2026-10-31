@@ -1,5 +1,8 @@
 import 'dart:io';
 
+import 'package:kala_ai_create_images_videos_with_ai/core/model_display_name.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/music_job.dart';
+
 /// Represents a single variation result from the backend
 class VariationResult {
   final int variationIndex;
@@ -73,6 +76,25 @@ Map<String, dynamic> sanitizeSettingsSnapshot(Map<String, dynamic>? raw) {
     'styleId',
     'inputPaths',
     'mediaPaths',
+    'lyrics',
+    'negativePrompt',
+    'vocals',
+    'musicMode',
+    'trackMode',
+    'musicDuration',
+    'bpm',
+    'keyScale',
+    'style',
+    'vocalGender',
+    'instrumental',
+    'musicAction',
+    'eqPreset',
+    'eqAppliedHashes',
+    'audioVersionPaths',
+    'variant',
+    'sunoTitle',
+    'coverEnabled',
+    'coverPath',
   };
   final out = <String, dynamic>{};
   for (final key in keys) {
@@ -114,6 +136,9 @@ class JobModel {
   String? batchId;
   DateTime? readyAt;
 
+  /// Live Suno V6 payload from /job_status. Present before the job completes.
+  Map<String, dynamic>? music;
+
   /// One automatic gallery save already happened, or the user already kept a copy.
   /// Deleting that file, or a later job update, does not download the result again.
   bool autoDownloaded;
@@ -137,6 +162,7 @@ class JobModel {
     'gemini_tts',
     'suno_music',
     'suno_sfx',
+    'suno_v6',
   };
 
   JobModel({
@@ -165,6 +191,7 @@ class JobModel {
     this.parentJobId,
     this.batchId,
     this.readyAt,
+    this.music,
     this.autoDownloaded = false,
   }) : createdAt = createdAt ?? DateTime.now();
 
@@ -241,6 +268,11 @@ class JobModel {
     return t == 'video' || t == 'studio_video' || t == 'mp4';
   }
 
+  bool get isAudioOutput {
+    final t = outputType.toLowerCase();
+    return t == 'audio' || t == 'mp3' || t == 'wav' || t == 'm4a';
+  }
+
   /// Unsaved completed results with under 6 hours of cloud life left.
   String? get expiryCue {
     if (status != 'completed' || isSavedLocally || usesKieCloud) return null;
@@ -257,6 +289,7 @@ class JobModel {
   /// Keeps launch details when a status update arrives with a thinner record.
   JobModel mergePreservingLaunch(JobModel other) {
     return copyWith(
+      model: preferInternalModelId(other.model, model),
       localFilePath: other.localFilePath ?? localFilePath,
       inputImagePath: other.inputImagePath ?? inputImagePath,
       originalPrompt: originalPrompt ?? other.originalPrompt,
@@ -269,6 +302,7 @@ class JobModel {
       parentJobId: parentJobId ?? other.parentJobId,
       batchId: batchId ?? other.batchId,
       readyAt: readyAt ?? other.readyAt,
+      music: preferRicherMusic(music, other.music),
       autoDownloaded: autoDownloaded || other.autoDownloaded,
     );
   }
@@ -299,6 +333,7 @@ class JobModel {
     String? parentJobId,
     String? batchId,
     DateTime? readyAt,
+    Map<String, dynamic>? music,
     bool? autoDownloaded,
   }) {
     return JobModel(
@@ -327,6 +362,7 @@ class JobModel {
       parentJobId: parentJobId ?? this.parentJobId,
       batchId: batchId ?? this.batchId,
       readyAt: readyAt ?? this.readyAt,
+      music: music ?? this.music,
       autoDownloaded: autoDownloaded ?? this.autoDownloaded,
     );
   }
@@ -357,6 +393,7 @@ class JobModel {
         'parentJobId': parentJobId,
         'batchId': batchId,
         'readyAt': readyAt?.toIso8601String(),
+        'music': music,
         'autoDownloaded': autoDownloaded,
       };
 
@@ -432,6 +469,7 @@ class JobModel {
       parentJobId: json['parentJobId'] ?? json['parent_job_id'],
       batchId: json['batchId'] ?? json['batch_id'],
       readyAt: DateTime.tryParse(json['readyAt']?.toString() ?? ''),
+      music: musicMapFromStatus(json['music']),
       autoDownloaded: json['autoDownloaded'] == true ||
           _keptResultPath(json['localFilePath']?.toString()),
     );

@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart' as material_ui;
 import 'package:kala_ai_create_images_videos_with_ai/core/services/file_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/polling_service.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/audio_result_player.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/thumbnail_service.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -20,6 +21,11 @@ import 'firebase_options.dart';
 // Existing imports
 import 'core/theme/app_theme.dart';
 import 'core/app_state.dart';
+import 'core/model_display_name.dart';
+import 'core/playback_session.dart';
+import 'core/tool_launch.dart';
+import 'core/motion.dart';
+import 'core/widgets/backlit_glass.dart';
 import 'core/services/notification_service.dart';
 import 'core/services/kie_result_saver.dart';
 import 'core/services/user_service.dart';
@@ -41,6 +47,59 @@ import 'package:media_kit/media_kit.dart';
 
 // Global navigator key
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+/// Tracks full-screen routes so the mini player can sit on pages above the tabs.
+class AppRouteStack extends NavigatorObserver with ChangeNotifier {
+  final List<Route<dynamic>> _routes = [];
+
+  bool get pageCoversShell {
+    for (var i = _routes.length - 1; i >= 0; i--) {
+      final route = _routes[i];
+      if (route is PopupRoute) continue;
+      if (route is PageRoute<dynamic>) return !route.isFirst;
+      return false;
+    }
+    return false;
+  }
+
+  void _changed() => notifyListeners();
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _routes.add(route);
+    _changed();
+  }
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _routes.remove(route);
+    _changed();
+  }
+
+  @override
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _routes.remove(route);
+    _changed();
+  }
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
+    if (oldRoute != null) {
+      final index = _routes.indexOf(oldRoute);
+      if (index >= 0 && newRoute != null) {
+        _routes[index] = newRoute;
+      } else {
+        _routes.remove(oldRoute);
+        if (newRoute != null) _routes.add(newRoute);
+      }
+    } else if (newRoute != null) {
+      _routes.add(newRoute);
+    }
+    _changed();
+  }
+}
+
+final appRouteStack = AppRouteStack();
 
 /// Pending navigations queued before UI ready.
 /// Stores tuple-like map {jobId, config}
@@ -87,7 +146,10 @@ Future<void> _mergeAndPersistJobMap(Map<String, dynamic> jobMap) async {
       existing[idx] = {
         ...old,
         'title': old['title'] ?? jobMap['title'] ?? jobId,
-        'model': old['model'] ?? jobMap['model'] ?? 'unknown',
+        'model': preferInternalModelId(
+          old['model']?.toString(),
+          jobMap['model']?.toString(),
+        ),
         'outputType': old['outputType'] ?? jobMap['outputType'] ?? 'image',
         'downloadUrl':
             downloadUrl.isNotEmpty ? downloadUrl : (old['downloadUrl']),
@@ -129,6 +191,10 @@ Future<void> _reloadJobsToNotifier({bool retryOnEmpty = true}) async {
     // 📁 FIRST: Apply any pending FCM updates from file
     // This is the most reliable cross-isolate sync mechanism
     final appliedFromFile = await applyPendingFcmUpdatesFromFile();
+    final refreshIds = takeFcmJobsToRefresh();
+    for (final id in refreshIds) {
+      unawaited(PollingService.instance.refreshJob(id));
+    }
     if (appliedFromFile) {
       debugPrint("✅ Applied FCM updates from file - job list updated");
       final jobs = jobListNotifier.value;
@@ -312,7 +378,7 @@ Future<void> _applyFcmUpdate(Map<String, dynamic> data) async {
       'status': normalizedStatus,
       'downloadUrl': downloadUrl,
       'title': title.isNotEmpty ? title : jobId,
-      'model': model.isNotEmpty ? model : 'unknown',
+      'model': preferInternalModelId(model, 'unknown'),
       'outputType': outputType.isNotEmpty ? outputType : 'image',
       'timestamp': DateTime.now().toIso8601String(),
     });
@@ -333,6 +399,7 @@ Future<void> _applyFcmUpdate(Map<String, dynamic> data) async {
         navigatorKey.currentContext != null) {
       await _reloadJobsToNotifier();
     }
+    unawaited(PollingService.instance.refreshJob(jobId));
   } catch (e, st) {
     debugPrint("⚠️ _applyFcmUpdate failed: $e\n$st");
   }
@@ -402,7 +469,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       existing[idx] = {
         ...old,
         'title': old['title'] ?? title,
-        'model': old['model'] ?? model,
+        'model': preferInternalModelId(old['model']?.toString(), model),
         'outputType': old['outputType'] ?? outputType,
         'downloadUrl':
             downloadUrl.isNotEmpty ? downloadUrl : (old['downloadUrl']),
@@ -421,7 +488,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       existing.insert(0, {
         'jobId': jobId,
         'title': title.isNotEmpty ? title : jobId,
-        'model': model.isNotEmpty ? model : 'unknown',
+        'model': preferInternalModelId(model, 'unknown'),
         'outputType': outputType.isNotEmpty ? outputType : 'image',
         'downloadUrl': downloadUrl.isNotEmpty ? downloadUrl : null,
         'status': normalizedStatus.isNotEmpty ? normalizedStatus : 'processing',
@@ -445,7 +512,10 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       'status': normalizedStatus,
       'downloadUrl': downloadUrl,
       'title': title.isNotEmpty ? title : (idx >= 0 ? existing[idx]['title'] : jobId),
-      'model': model.isNotEmpty ? model : (idx >= 0 ? existing[idx]['model'] : 'unknown'),
+      'model': preferInternalModelId(
+        idx >= 0 ? existing[idx]['model']?.toString() : null,
+        model,
+      ),
       'outputType': outputType.isNotEmpty ? outputType : (idx >= 0 ? existing[idx]['outputType'] : 'image'),
       'timestamp': jobCreatedAt,
     });
@@ -824,7 +894,7 @@ Future<void> initializeApp() async {
       'status': normalizedStatus,
       'downloadUrl': downloadUrl,
       'title': title.isNotEmpty ? title : jobId,
-      'model': model.isNotEmpty ? model : 'unknown',
+      'model': preferInternalModelId(model, 'unknown'),
       'outputType': outputType.isNotEmpty ? outputType : 'image',
       'timestamp': DateTime.now().toIso8601String(),
     });
@@ -896,6 +966,15 @@ Future<void> initializeApp() async {
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
+  FileService.remixAudio = (context, track) {
+    return openMusicRemix(
+      context,
+      filePath: track.filePath,
+      prompt: track.style,
+      lyrics: track.lyrics,
+      modelId: track.modelId,
+    );
+  };
 
   // 🟢 Run the app IMMEDIATELY to show splash screen
   // Heavy initialization happens in the background while splash is visible
@@ -909,6 +988,7 @@ Future<void> main() async {
   );
 
   debugPrint("✅ runApp() executed - splash visible now");
+  unawaited(PlaybackSession.prepare());
 
   // Execute queued navigations after first frame (UI ready)
   WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -997,6 +1077,25 @@ ModalRoute<void>? _openOrReplaceResultManager({String? initialJobId}) {
   return route;
 }
 
+/// Hosts the mini player that floats above a pushed page.
+/// The player is outside the app navigator, so it needs this overlay
+/// for the play and stop tooltips. Safe area is applied by the parent
+/// position, so the bar itself is not padded again.
+class _MiniPlayerLayer extends StatelessWidget {
+  const _MiniPlayerLayer();
+
+  @override
+  Widget build(BuildContext context) {
+    return Overlay(
+      initialEntries: [
+        OverlayEntry(
+          builder: (context) => const NowPlayingBar(),
+        ),
+      ],
+    );
+  }
+}
+
 // ----------------------------------------------------
 // Root App - Kala AI
 // ----------------------------------------------------
@@ -1047,6 +1146,50 @@ class _KalaAIAppState extends State<KalaAIApp> {
           themeMode: themeMode,
 
           navigatorKey: navigatorKey,
+          navigatorObservers: [appRouteStack],
+          builder: (context, child) {
+            return ListenableBuilder(
+              listenable: Listenable.merge([audioNowPlaying, appRouteStack]),
+              builder: (context, _) {
+                final media = MediaQuery.of(context);
+                // The bar sits behind the keyboard, so reserving its height
+                // while typing leaves a blank band above the keyboard. That
+                // band only appears on pushed pages while audio is playing.
+                final keyboardOpen = media.viewInsets.bottom > 0;
+                final showOverlay = appRouteStack.pageCoversShell &&
+                    audioNowPlaying.hasAudio &&
+                    !audioNowPlaying.sheetOpen &&
+                    audioNowPlaying.tracks.isNotEmpty &&
+                    !keyboardOpen;
+                final padded = showOverlay
+                    ? media.copyWith(
+                        padding: media.padding.copyWith(
+                          bottom: media.padding.bottom + kNowPlayingBarHeight,
+                        ),
+                      )
+                    : media;
+                return Stack(
+                  children: [
+                    MediaQuery(
+                      data: padded,
+                      child: child ?? const SizedBox.shrink(),
+                    ),
+                    if (showOverlay)
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: media.padding.bottom,
+                        height: kNowPlayingBarHeight,
+                        // This bar sits above the navigator. Its buttons need
+                        // their own overlay, or the tooltips throw and the row
+                        // paints the red error screen over every tab.
+                        child: const _MiniPlayerLayer(),
+                      ),
+                  ],
+                );
+              },
+            );
+          },
           debugShowCheckedModeBanner: false,
 
           home: AnimatedSwitcher(
@@ -1080,11 +1223,13 @@ class _MainAppScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    bindMiniPlayerNavigator(context);
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
-    return Scaffold(
+    final shell = Scaffold(
       key: appShellKey,
+      backgroundColor: Colors.transparent,
       drawer: Drawer(
         width: MediaQuery.sizeOf(context).width * 0.88,
         child: const SettingsPage(inDrawer: true),
@@ -1093,24 +1238,52 @@ class _MainAppScaffold extends StatelessWidget {
         child: ValueListenableBuilder<int>(
           valueListenable: selectedIndexNotifier,
           builder: (_, currentIndex, __) {
-            return IndexedStack(
+            return ShellFadeThrough(
               index: currentIndex,
-              children: pages,
+              child: IndexedStack(
+                index: currentIndex,
+                children: pages,
+              ),
             );
           },
         ),
       ),
-      bottomNavigationBar: ValueListenableBuilder<int>(
-        valueListenable: selectedIndexNotifier,
-        builder: (_, currentIndex, __) {
-          return _ModernBottomNav(
-            currentIndex: currentIndex,
-            onTap: (i) => selectedIndexNotifier.value = i,
-            colorScheme: cs,
-            isDark: isDark,
-          );
-        },
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListenableBuilder(
+            listenable: Listenable.merge([audioNowPlaying, appRouteStack]),
+            builder: (context, _) {
+              // A pushed page draws its own bar. Keeping this one too
+              // paints a second player through the page into the nav zone.
+              final covered = appRouteStack.pageCoversShell &&
+                  audioNowPlaying.hasAudio &&
+                  !audioNowPlaying.sheetOpen &&
+                  audioNowPlaying.tracks.isNotEmpty;
+              if (covered) return const SizedBox.shrink();
+              return const NowPlayingBar();
+            },
+          ),
+          ValueListenableBuilder<int>(
+            valueListenable: selectedIndexNotifier,
+            builder: (_, currentIndex, __) {
+              return _ModernBottomNav(
+                currentIndex: currentIndex,
+                onTap: (i) => selectedIndexNotifier.value = i,
+                colorScheme: cs,
+                isDark: isDark,
+              );
+            },
+          ),
+        ],
       ),
+    );
+
+    return Stack(
+      children: [
+        const Positioned.fill(child: BacklitWash()),
+        shell,
+      ],
     );
   }
 }
@@ -1142,20 +1315,10 @@ class _ModernBottomNav extends StatelessWidget {
       const _NavItem(icon: LucideIcons.gem, label: 'Store'),
     ];
 
-    return Container(
-      decoration: BoxDecoration(
-        color: cs.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        boxShadow: [
-          BoxShadow(
-            color: isDark 
-                ? Colors.black.withValues(alpha: 0.3)
-                : Colors.black.withValues(alpha: 0.08),
-            blurRadius: 16,
-            offset: const Offset(0, -2),
-          ),
-        ],
-      ),
+    return BacklitGlass(
+      role: BacklitGlassRole.bar,
+      blur: true,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
       child: SafeArea(
         top: false,
         child: Padding(
@@ -1191,19 +1354,26 @@ class _ModernBottomNav extends StatelessWidget {
                           decoration: BoxDecoration(
                             gradient: isSelected
                                 ? LinearGradient(
-                                    colors: [
-                                      cs.primary.withValues(alpha: 0.2),
-                                      cs.secondary.withValues(alpha: 0.15),
-                                    ],
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                    colors: isDark
+                                        ? [
+                                            Colors.white.withValues(alpha: 0.16),
+                                            Colors.white.withValues(alpha: 0.06),
+                                          ]
+                                        : [
+                                            Colors.white.withValues(alpha: 0.92),
+                                            const Color(0xFFE7DEFF)
+                                                .withValues(alpha: 0.72),
+                                          ],
                                   )
                                 : null,
-                            color: isSelected ? null : Colors.transparent,
                             borderRadius: BorderRadius.circular(14),
                             border: isSelected
                                 ? Border.all(
-                                    color: cs.primary.withValues(alpha: 0.3),
+                                    color: isDark
+                                        ? Colors.white.withValues(alpha: 0.22)
+                                        : Colors.white,
                                     width: 1,
                                   )
                                 : null,

@@ -53,7 +53,7 @@ LinearGradient kalaBrandGradient({
 // KALA AI LOGO WIDGET
 // =============================================================================
 /// A reusable widget that displays the Kala AI logo with gradient text.
-/// Matches the brand styling: "Kala" in purple transitioning to "AI" in cyan.
+/// Uses the same purple, magenta, and cyan sweep as the splash title.
 class KalaLogo extends StatelessWidget {
   final double fontSize;
   final bool showTagline;
@@ -86,24 +86,22 @@ class KalaLogo extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         ShaderMask(
-          shaderCallback: (bounds) => const LinearGradient(
-            colors: [
-              KalaColors.purple,
-              KalaColors.purple,
-              KalaColors.cyan,
-            ],
-            stops: [0.0, 0.5, 1.0],
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-          ).createShader(bounds),
           blendMode: BlendMode.srcIn,
+          shaderCallback: (bounds) {
+            return const LinearGradient(
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+              colors: KalaColors.fullGradient,
+            ).createShader(bounds);
+          },
           child: Text(
             'Kala AI',
             style: GoogleFonts.inter(
               fontSize: fontSize,
               fontWeight: FontWeight.w700,
-              letterSpacing: -0.5,
-              height: 1.1,
+              letterSpacing: -0.6,
+              height: 1.05,
+              color: Colors.white,
             ),
           ),
         ),
@@ -153,23 +151,22 @@ class KalaLogoWithIcon extends StatelessWidget {
         const SizedBox(width: 10),
         // Gradient text
         ShaderMask(
-          shaderCallback: (bounds) => const LinearGradient(
-            colors: [
-              KalaColors.purple,
-              KalaColors.purple,
-              KalaColors.cyan,
-            ],
-            stops: [0.0, 0.55, 1.0],
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-          ).createShader(bounds),
           blendMode: BlendMode.srcIn,
+          shaderCallback: (bounds) {
+            return const LinearGradient(
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+              colors: KalaColors.fullGradient,
+            ).createShader(bounds);
+          },
           child: Text(
             'Kala AI',
             style: GoogleFonts.inter(
               fontSize: fontSize,
               fontWeight: FontWeight.w700,
-              letterSpacing: -0.3,
+              letterSpacing: -0.6,
+              height: 1.05,
+              color: Colors.white,
             ),
           ),
         ),

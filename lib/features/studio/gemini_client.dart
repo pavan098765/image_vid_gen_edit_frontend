@@ -34,9 +34,15 @@ class GeminiDirector {
     required String instruction,
     Map<String, dynamic>? schema,
     bool search = false,
+    String? systemInstruction,
   }) async {
     if (override != null) {
-      return override!(step: step, instruction: instruction, schema: schema, search: search);
+      return override!(
+        step: step,
+        instruction: instruction,
+        schema: schema,
+        search: search,
+      );
     }
     final user = FirebaseAuth.instance.currentUser;
     final token = await user?.getIdToken();
@@ -55,6 +61,8 @@ class GeminiDirector {
         },
       ],
       if (schema != null) 'responseSchema': schema,
+      if (systemInstruction != null && systemInstruction.trim().isNotEmpty)
+        'systemInstruction': systemInstruction.trim(),
       if (search) 'tools': [
         {'google_search': <String, dynamic>{}},
       ],

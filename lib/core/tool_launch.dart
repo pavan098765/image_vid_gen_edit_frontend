@@ -256,6 +256,48 @@ Future<void> openJobForContinue(BuildContext context, JobModel job) async {
   );
 }
 
+const Set<String> _musicModelIds = {
+  'ace_step_music',
+  'minimax_music_26',
+  'suno_v6',
+};
+
+/// Opens Music with an existing track attached as a remix source.
+Future<void> openMusicRemix(
+  BuildContext context, {
+  required String filePath,
+  String? prompt,
+  String? lyrics,
+  String? modelId,
+}) async {
+  final preferred =
+      modelId != null && _musicModelIds.contains(modelId) ? modelId : null;
+  final resolved = await resolveRecipeLaunch(
+    capabilityId: 'create_music',
+    modelId: preferred,
+  );
+  if (!context.mounted) return;
+  if (resolved == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Music is not available right now.')),
+    );
+    return;
+  }
+  await openGenericTool(
+    context,
+    config: resolved.config,
+    initialLocalPaths: [filePath],
+    initialPrompt: prompt,
+    initialSettings: {
+      if (prompt != null && prompt.isNotEmpty) 'prompt': prompt,
+      'musicMode': 'easy',
+      'trackMode': 'remix',
+      if (lyrics != null && lyrics.isNotEmpty) 'lyrics': lyrics,
+      if (preferred != null) 'modelId': preferred,
+    },
+  );
+}
+
 Future<void> openGenericTool(
   BuildContext context, {
   required GenericToolConfig config,
@@ -266,6 +308,7 @@ Future<void> openGenericTool(
   String? launchTemplateId,
   String? launchTemplateTitle,
   bool emptyPrompt = false,
+  Future<String?>? pendingPrompt,
 }) {
   return Navigator.push(
     context,
@@ -279,6 +322,7 @@ Future<void> openGenericTool(
         launchTemplateId: launchTemplateId,
         launchTemplateTitle: launchTemplateTitle,
         focusPrompt: emptyPrompt,
+        pendingPrompt: pendingPrompt,
       ),
     ),
   );

@@ -93,6 +93,7 @@ class StudioSession extends ChangeNotifier {
     String musicNote = '',
     String voiceHint = '',
     String lyrics = '',
+    String finish = 'balanced',
   }) async {
     final current = spec;
     if (current == null) return;
@@ -127,6 +128,7 @@ class StudioSession extends ChangeNotifier {
       lyrics: lyrics.trim(),
       voiceLock: voice,
       voicePinned: voice.isNotEmpty,
+      finish: finish,
     );
     await _readAssets();
     message = null;
@@ -914,7 +916,7 @@ class StudioSession extends ChangeNotifier {
         'A pinned upload already has its role. Do not rename a character, set, object, or reference. '
         'Use a character, set, or product across the film. Do not turn an uploaded image into the only shot. '
         'If no character sheet or set was uploaded, describe both in the picture lock. They are created from that lock and used on every generated shot. '
-        'Copy the lock unchanged. A shot is at most 15 seconds, or 20 when it must land on an end frame. '
+        'Copy the lock unchanged. ${craftBrief(spec.id)} '
         'Do not invent a replacement for a file the user attached.';
   }
 

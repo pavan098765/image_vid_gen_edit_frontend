@@ -230,4 +230,88 @@ class MediaUploadService {
       return (null, 'Network error: $e');
     }
   }
+
+  /// POST `/suggest_prompt`.
+  ///
+  /// Returns `(prompt, null, related)` or `(null, errorMessage, {})`.
+  /// [context] is text the user already wrote. [also] names empty sibling
+  /// boxes that should be written for the same piece.
+  static Future<(String?, String?, Map<String, String>)> suggestPrompt({
+    required String baseUrl,
+    required String authToken,
+    required String modelId,
+    required String field,
+    String text = '',
+    String? caption,
+    Map<String, String> context = const {},
+    List<String> also = const [],
+  }) async {
+    final root = baseUrl.replaceAll(RegExp(r'/$'), '');
+    final body = <String, dynamic>{
+      'model_id': modelId,
+      'field': field,
+      'text': text,
+    };
+    final picture = caption?.trim();
+    if (picture != null && picture.isNotEmpty) {
+      body['caption'] = picture;
+    }
+    if (context.isNotEmpty) {
+      body['context'] = context;
+    }
+    if (also.isNotEmpty) {
+      body['also'] = also;
+    }
+    try {
+      final resp = await http
+          .post(
+            Uri.parse('$root/suggest_prompt'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $authToken',
+            },
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 45));
+
+      if (resp.statusCode != 200) {
+        debugPrint('⚠️ suggest_prompt: ${resp.statusCode} ${resp.body}');
+        return (
+          null,
+          _errorFromBody(resp.body) ?? 'Auto-prompt failed (${resp.statusCode})',
+          <String, String>{},
+        );
+      }
+
+      final data = jsonDecode(resp.body) as Map<String, dynamic>?;
+      final prompt = data?['prompt'] as String?;
+      if (prompt == null || prompt.trim().isEmpty) {
+        return (null, 'Empty prompt in response', <String, String>{});
+      }
+      final related = <String, String>{};
+      final rawRelated = data?['related'];
+      if (rawRelated is Map) {
+        for (final entry in rawRelated.entries) {
+          final value = entry.value;
+          if (value is String && value.trim().isNotEmpty) {
+            related[entry.key.toString()] = value.trim();
+          }
+        }
+      }
+      return (prompt.trim(), null, related);
+    } catch (e) {
+      debugPrint('⚠️ suggest_prompt error: $e');
+      return (null, 'Network error: $e', <String, String>{});
+    }
+  }
+
+  static String? _errorFromBody(String body) {
+    try {
+      final decoded = jsonDecode(body) as Map<String, dynamic>?;
+      final detail = decoded?['detail'];
+      if (detail is String && detail.trim().isNotEmpty) return detail.trim();
+      if (detail is List && detail.isNotEmpty) return detail.first.toString();
+    } catch (_) {}
+    return null;
+  }
 }

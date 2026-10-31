@@ -1,5 +1,6 @@
 // lib/features/result_manager/result_manager_page.dart
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
@@ -10,15 +11,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/model_display_name.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/motion.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/ad_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/file_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/polling_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/thumbnail_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/app_menu_button.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/music_job.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/audio_result_player.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/backlit_glass.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/exit_app_dialog.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_button.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/studio/studio_job_page.dart';
-import 'package:kala_ai_create_images_videos_with_ai/features/studio/studio_page.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/studio/studio_storyboard_page.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/result_manager/before_after_preview.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/result_manager/job_next_actions.dart';
@@ -29,66 +35,30 @@ bool isResultManagerOpen = false;
 /// =============================================================================
 /// MODEL NAME HELPER
 /// =============================================================================
-/// Cache for model ID to friendly name mapping
-final Map<String, String> _modelNameCache = {};
-bool _modelNameCacheLoaded = false;
-
-/// Load model name cache from tool_config.json
+/// Load catalogue names saved with the tool config.
 Future<void> _loadModelNameCache() async {
-  if (_modelNameCacheLoaded) return;
-
   try {
     final prefs = await SharedPreferences.getInstance();
     final configStr = prefs.getString('cached_tool_config_v3');
-    if (configStr == null || configStr.isEmpty) {
-      _modelNameCacheLoaded =
-          true; // Mark as loaded even if empty to avoid retries
-      return;
-    }
+    if (configStr == null || configStr.isEmpty) return;
 
     final config = jsonDecode(configStr) as Map<String, dynamic>;
-    final capabilities = config['capabilities'] as List<dynamic>?;
-
-    if (capabilities == null) {
-      _modelNameCacheLoaded = true;
-      return;
-    }
-
-    // Search through all capabilities and their models
-    for (final cap in capabilities) {
-      final models = cap['models'] as List<dynamic>?;
-      if (models == null) continue;
-
-      for (final model in models) {
-        final id = model['id'] as String?;
-        final name = model['name'] as String?;
-        // First occurrence wins so duplicate model ids (e.g. basic_utils on
-        // inpaint vs remove background) keep a stable, capability-ordered name.
-        if (id != null &&
-            name != null &&
-            name.isNotEmpty &&
-            !_modelNameCache.containsKey(id)) {
-          _modelNameCache[id] = name;
-        }
-      }
-    }
-
-    _modelNameCacheLoaded = true;
-    debugPrint('✅ Loaded ${_modelNameCache.length} model names from config');
+    if (config['capabilities'] is! List) return;
+    indexModelDisplayNames(config);
   } catch (e) {
     debugPrint('⚠️ Failed to load model name cache: $e');
-    _modelNameCacheLoaded = true; // Mark as loaded to avoid infinite retries
   }
 }
 
-/// Get friendly model name from model ID (uses cache)
-String _getFriendlyModelName(String modelId) {
-  if (modelId.isEmpty || modelId == 'unknown') {
-    return modelId;
-  }
+/// The name stored on the job, or the one kept in its launch snapshot.
+String? modelNameForJob(JobModel job) {
+  return friendlyModelName(job.model) ??
+      friendlyModelName(job.settingsSnapshot?['modelId']?.toString());
+}
 
-  // Return cached name if available
-  return _modelNameCache[modelId] ?? modelId;
+String _jobTitle(JobModel job) {
+  final raw = job.title.trim();
+  return raw.isEmpty ? 'Untitled' : raw;
 }
 
 /// =============================================================================
@@ -226,7 +196,9 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
     _refreshJobs();
     _markAllCompletedAsSeen();
     _prefetchDownloadUrls(); // Pre-fetch URLs in background
-    _loadModelNameCache(); // Load model name cache for friendly names
+    _loadModelNameCache().then((_) {
+      if (mounted) setState(() {});
+    });
 
     SharedPreferences.getInstance().then((prefs) async {
       await prefs.reload();
@@ -309,6 +281,10 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
       // CRITICAL: Background FCM handler writes to this file, and SharedPreferences
       // might not sync across isolates on some platforms!
       final appliedFromFile = await applyPendingFcmUpdatesFromFile();
+      final refreshIds = takeFcmJobsToRefresh();
+      for (final id in refreshIds) {
+        unawaited(PollingService.instance.refreshJob(id));
+      }
       if (appliedFromFile) {
         debugPrint("✅ [ResultManager] Applied FCM updates from file");
         final jobs = jobListNotifier.value;
@@ -498,7 +474,10 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
     // Filter by search query
     if (_searchQuery.isNotEmpty) {
       jobs = jobs.where((job) {
-        return job.title.toLowerCase().contains(_searchQuery) ||
+        final modelName = modelNameForJob(job)?.toLowerCase() ?? '';
+        return _jobTitle(job).toLowerCase().contains(_searchQuery) ||
+            modelName.contains(_searchQuery) ||
+            job.title.toLowerCase().contains(_searchQuery) ||
             job.jobId.toLowerCase().contains(_searchQuery) ||
             job.model.toLowerCase().contains(_searchQuery) ||
             job.status.toLowerCase().contains(_searchQuery);
@@ -633,14 +612,13 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
   }
 
   Widget _buildCloudStorageInfoBanner(ColorScheme cs) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withValues(alpha: 0.45),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      child: BacklitGlass(
+        role: BacklitGlassRole.chip,
+        borderRadius: BorderRadius.circular(14),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(
         children: [
           Icon(
             Icons.cloud_off_outlined,
@@ -664,27 +642,16 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
             ),
           ),
         ],
+        ),
       ),
     );
   }
 
   Future<bool> _handleSystemBack() async {
+    if (popShellOverlay(context)) return false;
     final leave = await showDialog<bool>(
           context: context,
-          builder: (dialogContext) => AlertDialog(
-            title: const Text('Leave Kala AI?'),
-            content: const Text('Your creations stay saved on this device.'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext, false),
-                child: const Text('Stay'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext, true),
-                child: const Text('Leave'),
-              ),
-            ],
-          ),
+          builder: (_) => const ConfirmExitAppDialog(),
         ) ??
         false;
     if (leave) SystemNavigator.pop();
@@ -695,14 +662,15 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return PopScope(
+    final page = PopScope(
       canPop: !widget.asTab,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop || !widget.asTab) return;
+        if (selectedIndexNotifier.value != AppTabs.creations) return;
         _handleSystemBack();
       },
       child: Scaffold(
-      backgroundColor: cs.surface,
+      backgroundColor: backlitScaffoldColor(context, cs),
       appBar: AppBar(
         leading: widget.asTab ? const AppMenuButton() : null,
         automaticallyImplyLeading: !widget.asTab,
@@ -727,7 +695,7 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
                       color: cs.onSurface,
                     ),
                   ),
-        backgroundColor: cs.surface,
+        backgroundColor: backlitScaffoldColor(context, cs),
         elevation: 0,
         actions: _isSelectionMode
             ? [
@@ -842,7 +810,12 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
                 ),
               ],
       ),
-      body: Column(
+      body: Padding(
+        // Pushed Creations has no bottom safe area of its own. This keeps
+        // the last job above the system nav and the floating mini player.
+        // On the tab the shell already consumed this padding, so it is zero.
+        padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom),
+        child: Column(
         children: [
           if (widget.asTab && !_isSelectionMode)
             Padding(
@@ -866,21 +839,43 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
           // Search bar - uses consistent AppStyles
           Padding(
             padding: const EdgeInsets.all(AppStyles.spacing12),
-            child: TextField(
-              controller: _searchController,
-              decoration: AppStyles.inputDecoration(
-                cs,
-                hintText: 'Search creations...',
-                prefixIcon: Icons.search,
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: Icon(Icons.clear,
-                            color: cs.onSurfaceVariant, size: 20),
-                        onPressed: () {
-                          _searchController.clear();
-                        },
-                      )
-                    : null,
+            child: BacklitGlass(
+              role: BacklitGlassRole.chip,
+              borderRadius: BorderRadius.circular(AppStyles.radiusMd),
+              child: TextField(
+                controller: _searchController,
+                decoration: AppStyles.inputDecoration(
+                  cs,
+                  hintText: 'Search creations...',
+                  prefixIcon: Icons.search,
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: Icon(Icons.clear,
+                              color: cs.onSurfaceVariant, size: 20),
+                          onPressed: () {
+                            _searchController.clear();
+                          },
+                        )
+                      : null,
+                ).copyWith(
+                  filled: true,
+                  fillColor: Colors.transparent,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppStyles.radiusMd),
+                    borderSide: BorderSide.none,
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppStyles.radiusMd),
+                    borderSide: BorderSide.none,
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppStyles.radiusMd),
+                    borderSide: BorderSide(
+                      color: cs.primary.withValues(alpha: 0.55),
+                      width: 1.5,
+                    ),
+                  ),
+                ),
               ),
             ),
           ),
@@ -896,14 +891,20 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
                   final filteredJobs = _getFilteredAndSortedJobs();
 
                   if (filteredJobs.isEmpty) {
+                    final emptyLabel = _searchQuery.isNotEmpty
+                        ? 'No creations found matching "$_searchQuery"'
+                        : 'No creations yet.';
                     return Center(
-                      child: Text(
-                        _searchQuery.isNotEmpty
-                            ? 'No creations found matching "$_searchQuery"'
-                            : 'No creations yet.',
-                        style: TextStyle(
-                          color: cs.onSurfaceVariant,
-                          fontSize: 15,
+                      child: OnceFadeRise(
+                        token: _searchQuery.isNotEmpty
+                            ? 'creations-empty-search'
+                            : 'creations-empty',
+                        child: Text(
+                          emptyLabel,
+                          style: TextStyle(
+                            color: cs.onSurfaceVariant,
+                            fontSize: 15,
+                          ),
                         ),
                       ),
                     );
@@ -966,25 +967,32 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
                                 }
                               },
                       );
-                      if (isBatchStart) {
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                              child: Text(
-                                '$batchCount from one run',
-                                style: TextStyle(
-                                  color: cs.onSurfaceVariant,
-                                  fontSize: 12,
+                      final tile = isBatchStart
+                          ? Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Padding(
+                                  padding:
+                                      const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                                  child: Text(
+                                    '$batchCount from one run',
+                                    style: TextStyle(
+                                      color: cs.onSurfaceVariant,
+                                      fontSize: 12,
+                                    ),
+                                  ),
                                 ),
-                              ),
-                            ),
-                            card,
-                          ],
-                        );
-                      }
-                      return card;
+                                card,
+                              ],
+                            )
+                          : card;
+                      if (i >= 6) return tile;
+                      return OnceFadeRise(
+                        key: ValueKey(job.jobId),
+                        token: job.jobId,
+                        order: i,
+                        child: tile,
+                      );
                     },
                   );
                 },
@@ -992,8 +1000,71 @@ class _ResultManagerPageState extends State<ResultManagerPage> {
             ),
           ),
         ],
+        ),
       ),
     ),
+    );
+
+    if (widget.asTab) return page;
+    return Stack(
+      children: [
+        const Positioned.fill(child: BacklitWash()),
+        page,
+      ],
+    );
+  }
+}
+
+/// Owns the text field so it is released only after the dialog route unmounts.
+class _RenameJobDialog extends StatefulWidget {
+  const _RenameJobDialog({required this.initialName});
+
+  final String initialName;
+
+  @override
+  State<_RenameJobDialog> createState() => _RenameJobDialogState();
+}
+
+class _RenameJobDialogState extends State<_RenameJobDialog> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialName);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _close([String? value]) {
+    Navigator.pop(context, value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Rename'),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        textInputAction: TextInputAction.done,
+        decoration: const InputDecoration(labelText: 'Name'),
+        onSubmitted: (_) => _close(_controller.text),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _close,
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () => _close(_controller.text),
+          child: const Text('Save'),
+        ),
+      ],
     );
   }
 }
@@ -1028,12 +1099,31 @@ class _JobCardState extends State<JobCard> {
       widget.job.localFilePath != null &&
       File(widget.job.localFilePath!).existsSync();
 
+  bool _jobHasAudio(JobModel job, String path) {
+    if (job.isAudioOutput) return true;
+    final ext = path.split('.').last.toLowerCase();
+    return ext == 'mp3' ||
+        ext == 'wav' ||
+        ext == 'm4a' ||
+        ext == 'aac' ||
+        ext == 'ogg' ||
+        ext == 'flac';
+  }
+
   Future<void> _openPreview(BuildContext context) async {
     if (_openingPreview) return;
     _openingPreview = true;
 
     try {
       String? path = widget.job.localFilePath;
+      final liveTracks = audioTracksFromJob(widget.job);
+      if (liveTracks.isNotEmpty &&
+          (path == null || !File(path).existsSync())) {
+        if (context.mounted) {
+          await FileService.openAudioTracks(context, tracks: liveTracks);
+        }
+        return;
+      }
 
       // If file doesn't exist locally, trigger download first (same as download button)
       if (path == null || !File(path).existsSync()) {
@@ -1086,6 +1176,11 @@ class _JobCardState extends State<JobCard> {
             resultFile: File(path),
             originalFile: File(source),
           );
+        } else if (_jobHasAudio(widget.job, path)) {
+          final tracks = liveTracks.isNotEmpty
+              ? liveTracks
+              : <AudioTrackDetails>[AudioTrackDetails.fromJob(widget.job)];
+          await FileService.openAudioTracks(context, tracks: tracks);
         } else {
           FileService.openLocalPreview(
             context,
@@ -1103,16 +1198,55 @@ class _JobCardState extends State<JobCard> {
   Future<void> _download(BuildContext context, {bool fromCloud = false}) async {
     if (_isDownloading) return;
 
+    final rawMusic = widget.job.music;
+    if (rawMusic != null) {
+      final music = MusicResult.fromJson(rawMusic);
+      final finished = music.tracks
+          .where((track) => track.fileUrl != null && track.fileUrl!.isNotEmpty)
+          .length;
+      if (finished > 1 &&
+          music.action != 'sounds' &&
+          music.action != 'stems' &&
+          music.action != 'video') {
+        setState(() {
+          _isDownloading = true;
+          _downloadProgress = 0.0;
+        });
+        var savedBoth = false;
+        try {
+          savedBoth = await FileService.saveHitMakerVersions(context, widget.job);
+        } finally {
+          if (mounted) {
+            setState(() {
+              _isDownloading = false;
+              _downloadProgress = 0.0;
+            });
+          }
+        }
+        if (savedBoth) return;
+      }
+    }
+
     // A file already on the phone can be copied into the gallery.
     // Download again skips that and fetches a fresh cloud link.
     if (!fromCloud &&
         widget.job.localFilePath != null &&
         File(widget.job.localFilePath!).existsSync()) {
-      final success = await FileService.saveExistingToGallery(
+      final saved = await FileService.saveExistingToGallery(
         context,
         widget.job.localFilePath!,
+        customFileName: widget.job.isAudioOutput
+            ? savedAudioFileBaseName(widget.job)
+            : null,
+        jobId: widget.job.jobId,
       );
-      if (success) return;
+      if (saved != null && saved.isNotEmpty) {
+        if (saved != widget.job.localFilePath) {
+          widget.job.localFilePath = saved;
+          await addOrUpdateJob(widget.job);
+        }
+        return;
+      }
     }
 
     // Check queue status before starting
@@ -1227,9 +1361,13 @@ class _JobCardState extends State<JobCard> {
       savedPath = await FileService.queueDownload(
         context,
         downloadUrl,
-        suggestedFileName: widget.job.jobId,
+        suggestedFileName: widget.job.isAudioOutput
+            ? savedAudioFileBaseName(widget.job)
+            : widget.job.jobId,
+        jobId: widget.job.jobId,
         maxRetries: 2,
         outputType: widget.job.outputType,
+        showPreview: !_isMusicDownload,
         onProgress: (progress) {
           if (mounted) {
             setState(() => _downloadProgress = progress);
@@ -1312,14 +1450,7 @@ class _JobCardState extends State<JobCard> {
     // after the cloud link times out.
     final isExpired = job.showsCloudExpiry;
     final isSaved = job.isSavedLocally;
-
-    final canDownloadAgain = isSaved || job.autoDownloaded;
-    final downloadColor = isExpired
-        ? cs.outline
-        : cs.primary;
-    final downloadIcon = isExpired
-        ? Icons.cloud_off_rounded
-        : Icons.download;
+    final playMusic = _canPlayMusic;
 
     return InkWell(
       onTap: widget.isSelectionMode
@@ -1329,7 +1460,9 @@ class _JobCardState extends State<JobCard> {
                 widget.onTap?.call();
                 return;
               }
-              if (job.status == 'completed' && !isExpired && isSaved) {
+              if (_canPlayMusic) {
+                _openPreview(context);
+              } else if (job.status == 'completed' && !isExpired && isSaved) {
                 _openPreview(context);
               }
             },
@@ -1367,19 +1500,32 @@ class _JobCardState extends State<JobCard> {
                 // ✅ Thumbnail (always visible, including in selection mode)
                 leading: _buildThumbnail(cs),
 
-                // ✅ Title: "FriendlyModelName Job-MMDDMMSS"
-                title: Text(
-                  job.model.isNotEmpty && job.model != 'unknown'
-                      ? '${_getFriendlyModelName(job.model)} ${job.title}'
-                      : job.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    height: 1.15,
-                    color: isExpired
-                        ? cs.onSurface.withValues(alpha: 0.7)
-                        : cs.onSurface,
+                title: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _renameJob,
+                  child: Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          _jobTitle(job),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            height: 1.15,
+                            color: isExpired
+                                ? cs.onSurface.withValues(alpha: 0.7)
+                                : cs.onSurface,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Icon(
+                        Icons.edit_outlined,
+                        size: 14,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ],
                   ),
                 ),
 
@@ -1392,7 +1538,25 @@ class _JobCardState extends State<JobCard> {
                       child: currentChild,
                     );
                   },
-                  child: _buildStatus(cs),
+                  child: widget.isSelectionMode
+                      ? Column(
+                          key: ValueKey('select-${job.jobId}'),
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (modelNameForJob(job) case final modelName?)
+                              Text(
+                                modelName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: textTheme.bodySmall?.copyWith(
+                                  color: cs.onSurfaceVariant,
+                                ),
+                              ),
+                            _buildStatus(cs),
+                          ],
+                        )
+                      : _buildStatus(cs),
                 ),
 
                 // ✅ Trailing: Checkbox in selection mode, or action buttons in normal mode
@@ -1405,25 +1569,6 @@ class _JobCardState extends State<JobCard> {
                     : Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          if (job.status == 'completed' &&
-                              (job.outputType == 'video' ||
-                                  job.outputType == 'studio_video'))
-                            IconButton(
-                              icon: Icon(Icons.movie_creation_outlined,
-                                  color: cs.primary),
-                              tooltip: 'Use this clip as scene 1 in Studio',
-                              onPressed: () {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (_) => StudioPage(
-                                      initialExploreJobId: job.jobId,
-                                      initialSceneIndex: 1,
-                                      initialLocalPath: job.localFilePath,
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
                           if (job.status == 'completed')
                             IconButton(
                               icon: _isDownloading
@@ -1433,20 +1578,34 @@ class _JobCardState extends State<JobCard> {
                                       child: CircularProgressIndicator(
                                           strokeWidth: 2),
                                     )
-                                  : Icon(downloadIcon, color: downloadColor),
+                                  : Icon(
+                                      isExpired
+                                          ? Icons.cloud_off_rounded
+                                          : (playMusic || isSaved)
+                                              ? (playMusic ||
+                                                      job.isAudioOutput ||
+                                                      job.isVideoOutput
+                                                  ? Icons.play_arrow_rounded
+                                                  : Icons.visibility_outlined)
+                                              : Icons.download,
+                                      color: isExpired ? cs.outline : cs.primary,
+                                    ),
                               tooltip: isExpired
                                   ? 'Cloud result expired'
-                                  : canDownloadAgain
-                                      ? 'Download again'
-                                      : 'Save to device',
-                              onPressed: _isDownloading || isExpired
-                                  ? (isExpired
+                                  : playMusic
+                                      ? 'Play'
+                                      : isSaved
+                                          ? (job.isAudioOutput || job.isVideoOutput
+                                              ? 'Play'
+                                              : 'View')
+                                          : 'Save to device',
+                              onPressed: _isDownloading
+                                  ? null
+                                  : isExpired
                                       ? () => _showExpiredDialog(context, cs)
-                                      : null)
-                                  : () => _download(
-                                        context,
-                                        fromCloud: canDownloadAgain,
-                                      ),
+                                      : (playMusic || isSaved)
+                                          ? () => _openPreview(context)
+                                          : () => _download(context),
                             ),
                           IconButton(
                             icon: Icon(Icons.delete_outline,
@@ -1457,6 +1616,15 @@ class _JobCardState extends State<JobCard> {
                         ],
                       ),
               ),
+              if (_versionCount > 0) _versionRow(cs),
+              if (_musicResult?.anyStreaming == true)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: Text(
+                    'Streaming now. The time updates when the full song is ready.',
+                    style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
+                  ),
+                ),
 
               // ✅ Small linear progress bar
               if (_isDownloading)
@@ -1674,6 +1842,351 @@ class _JobCardState extends State<JobCard> {
     );
   }
 
+  MusicResult? get _musicResult {
+    final raw = widget.job.music;
+    if (raw == null) return null;
+    return MusicResult.fromJson(raw);
+  }
+
+  String get _musicModelId {
+    final snap = widget.job.settingsSnapshot?['modelId'];
+    if (snap is String && snap.isNotEmpty) return snap;
+    return widget.job.model;
+  }
+
+  String get _musicAction {
+    final snap = widget.job.settingsSnapshot?['musicAction'];
+    if (snap == 'video' || snap == 'sounds' || snap == 'stems') {
+      return snap as String;
+    }
+    final fromMusic = _musicResult?.action;
+    if (fromMusic != null && fromMusic.isNotEmpty) return fromMusic;
+    if (snap is String && snap.isNotEmpty) return snap;
+    return 'song';
+  }
+
+  bool get _isHitMaker => _musicModelId == kSunoV6ModelId;
+
+  bool get _hitMakerSong =>
+      _isHitMaker &&
+      !widget.job.isVideoOutput &&
+      (_musicAction == 'song' || _musicAction.isEmpty);
+
+  /// Song, extend, and mashup each come back as two audio versions.
+  bool get _hitMakerPair =>
+      _hitMakerSong ||
+      (_isHitMaker &&
+          !widget.job.isVideoOutput &&
+          (_musicAction == 'extend' ||
+              _musicAction == 'upload_extend' ||
+              _musicAction == 'mashup'));
+
+  bool get _isMusicDownload =>
+      widget.job.isAudioOutput || _isHitMaker || widget.job.music != null;
+
+  /// Play only after the song file is on the phone. Until then the card shows Save.
+  bool get _canPlayMusic {
+    final musicJob = widget.job.isAudioOutput ||
+        _isHitMaker ||
+        widget.job.capabilityId == 'create_music' ||
+        widget.job.music != null;
+    if (!musicJob || widget.job.status != 'completed') return false;
+    final path = widget.job.localFilePath;
+    return path != null && path.isNotEmpty && File(path).existsSync();
+  }
+
+  /// Both versions already have a finished file, so the cloud countdown is not
+  /// the status of the song.
+  bool get _musicFullyPlayable {
+    final music = _musicResult;
+    if (music == null || widget.job.status != 'completed') return false;
+    if (music.anyStreaming || music.tracks.isEmpty) return false;
+    return music.tracks.every((track) => track.fileUrl != null);
+  }
+
+  /// Stored versions. A finished HitMaker song with only the job file still
+  /// shows that one version. The second slot is only a placeholder while it runs.
+  List<MusicTrack> get _cardTracks {
+    final tracks = _musicResult?.tracks ?? const <MusicTrack>[];
+    if (tracks.isNotEmpty) return tracks;
+    if (!_hitMakerSong || widget.job.status != 'completed') return tracks;
+    final url = widget.job.downloadUrl;
+    if (url == null || url.isEmpty) return tracks;
+    return [
+      MusicTrack(
+        id: widget.job.jobId,
+        title: widget.job.title.trim().isEmpty ? 'Version A' : widget.job.title,
+        audioUrl: url,
+        downloadUrl: url,
+      ),
+    ];
+  }
+
+  /// HitMaker songs return two versions. Keep the second slot while the job
+  /// is still running, including the stretch where only the first has streamed.
+  int get _versionCount {
+    if (widget.job.isVideoOutput) return 0;
+    final tracks = _musicResult?.tracks.length ?? 0;
+    if (_hitMakerPair) {
+      final stillMaking =
+          widget.job.status != 'completed' && widget.job.status != 'failed';
+      // A running song keeps two slots. After it finishes, only real versions stay.
+      if (stillMaking) return tracks < 2 ? 2 : tracks;
+      if (tracks > 0) return tracks;
+      return _cardTracks.length;
+    }
+    return tracks > 1 ? tracks : 0;
+  }
+
+  Future<void> _renameJob() async {
+    final saved = await showDialog<String>(
+      context: context,
+      builder: (_) => _RenameJobDialog(initialName: widget.job.title),
+    );
+    final name = saved?.trim() ?? '';
+    if (!mounted || name.isEmpty || name == widget.job.title) return;
+    await addOrUpdateJob(widget.job.copyWith(title: name));
+  }
+
+  bool get _coverGenerationOn {
+    if (!_isHitMaker) return false;
+    if (_musicAction == 'sounds' ||
+        _musicAction == 'video' ||
+        _musicAction == 'stems' ||
+        _musicAction == 'extend' ||
+        _musicAction == 'upload_extend' ||
+        _musicAction == 'mashup') {
+      return false;
+    }
+    if (widget.job.settingsSnapshot?['coverEnabled'] == true) return true;
+    final music = _musicResult;
+    if (music == null) return false;
+    if (music.covers.isNotEmpty) return true;
+    if (music.tracks.any((track) => (track.coverUrl ?? '').isNotEmpty)) {
+      return true;
+    }
+    return music.easy && _hitMakerSong;
+  }
+
+  String? _coverUrlFor(MusicTrack? track, {bool allowShared = true}) {
+    if (!_coverGenerationOn) return null;
+    final fromTrack = track?.coverUrl;
+    if (fromTrack != null && fromTrack.isNotEmpty) return fromTrack;
+    if (!allowShared) return null;
+    final covers = _musicResult?.covers ?? const <String>[];
+    if (covers.isNotEmpty) return covers.first;
+    return null;
+  }
+
+  String? get _localCoverPath {
+    if (widget.job.settingsSnapshot?['coverEnabled'] != true) return null;
+    final path = widget.job.settingsSnapshot?['coverPath'];
+    if (path is! String || path.isEmpty) return null;
+    return File(path).existsSync() ? path : null;
+  }
+
+  Future<void> _openMusicVersion(int index) async {
+    final tracks = audioTracksFromJob(widget.job);
+    if (tracks.isEmpty || !mounted) return;
+    final phase = _musicResult?.phase ?? '';
+    final playable = <int>[];
+    final musicTracks = _cardTracks;
+    for (var i = 0; i < tracks.length; i++) {
+      if (i < musicTracks.length && musicTracks[i].urlDuring(phase) != null) {
+        playable.add(i);
+      }
+    }
+    if (playable.isEmpty) return;
+    final start = playable.contains(index) ? index : playable.first;
+    await FileService.openAudioTracks(
+      context,
+      tracks: tracks,
+      initialIndex: start,
+    );
+  }
+
+  Widget _versionRow(ColorScheme cs) {
+    const names = ['A', 'B', 'C', 'D'];
+    final tracks = _cardTracks;
+    final count = _versionCount;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Row(
+        children: [
+          for (var i = 0; i < count; i++) ...[
+            if (i > 0) const SizedBox(width: 8),
+            Expanded(
+              child: _versionChip(
+                cs,
+                i < tracks.length ? tracks[i] : null,
+                i,
+                names,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  String _versionState(MusicTrack? track) {
+    final phase = _musicResult?.phase ?? '';
+    if (track == null || track.urlDuring(phase) == null) return 'Generating..';
+    if (track.streamsDuring(phase)) return 'Streaming';
+    final length = track.knownDuration;
+    if (length == null) return 'Ready';
+    final minutes = length.inMinutes;
+    final seconds = (length.inSeconds % 60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
+
+  Widget _versionChip(
+    ColorScheme cs,
+    MusicTrack? track,
+    int index,
+    List<String> names,
+  ) {
+    final phase = _musicResult?.phase ?? '';
+    final label = index < names.length ? 'Version ${names[index]}' : 'Version ${index + 1}';
+    final playable = track != null && track.urlDuring(phase) != null;
+    final streaming = track?.streamsDuring(phase) == true;
+    return Material(
+      color: cs.surfaceContainerHighest.withValues(alpha: 0.45),
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: playable ? () => _openMusicVersion(index) : null,
+        child: Padding(
+          padding: const EdgeInsets.all(6),
+          child: Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: SizedBox(
+                  width: 36,
+                  height: 36,
+                  child: _coverArt(
+                    _coverUrlFor(track, allowShared: track != null),
+                    (track?.id ?? '${widget.job.jobId}-$index').hashCode,
+                    cs,
+                    filePath: index == 0 ? _localCoverPath : null,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: cs.onSurface,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      _versionState(track),
+                      style: TextStyle(
+                        color: streaming ? cs.primary : cs.onSurfaceVariant,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _audioThumb(ColorScheme cs, MusicResult? music) {
+    final tracks = music?.tracks ?? const <MusicTrack>[];
+    final cover = _coverUrlFor(tracks.isEmpty ? null : tracks.first);
+    final count = _versionCount;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        _coverArt(
+          cover,
+          widget.job.jobId.hashCode,
+          cs,
+          filePath: _localCoverPath,
+        ),
+        if (count > 1)
+          Positioned(
+            right: 3,
+            bottom: 3,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.72),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                '$count',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _coverArt(String? url, int seed, ColorScheme cs, {String? filePath}) {
+    final palette = CoverPalette.of(seed);
+    final placeholder = Container(
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [palette.glow, palette.warm],
+        ),
+      ),
+      child: Icon(
+        Icons.music_note_rounded,
+        color: Colors.white.withValues(alpha: 0.92),
+        size: 22,
+      ),
+    );
+    if (url != null && url.isNotEmpty) {
+      return Image.network(
+        url,
+        fit: BoxFit.cover,
+        width: 58,
+        height: 58,
+        errorBuilder: (_, __, ___) => _coverFile(filePath) ?? placeholder,
+        loadingBuilder: (context, child, progress) {
+          if (progress == null) return child;
+          return _coverFile(filePath) ?? placeholder;
+        },
+      );
+    }
+    return _coverFile(filePath) ?? placeholder;
+  }
+
+  Widget? _coverFile(String? filePath) {
+    if (filePath == null || !File(filePath).existsSync()) return null;
+    return Image.file(
+      File(filePath),
+      fit: BoxFit.cover,
+      width: 58,
+      height: 58,
+      cacheWidth: 174,
+      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+    );
+  }
+
   // ✅ Thumbnail widget - uses cached thumbnails for large images
   //
   // Three visual states:
@@ -1690,6 +2203,7 @@ class _JobCardState extends State<JobCard> {
         File(widget.job.localFilePath!).existsSync();
     final isProcessing = widget.job.status == 'processing';
     final jobCategory = _getJobCategory(widget.job);
+    final music = _musicResult;
 
     // Check if file is a text file (text output type or text file extension)
     final isTextFile = jobCategory == 'text' ||
@@ -1703,7 +2217,12 @@ class _JobCardState extends State<JobCard> {
             widget.job.localFilePath!.toLowerCase().endsWith('.mov') ||
             widget.job.localFilePath!.toLowerCase().endsWith('.avi'));
 
-    if (isDownloaded && !isTextFile) {
+    if (widget.job.isAudioOutput ||
+        (music != null &&
+            !widget.job.isVideoOutput &&
+            !widget.job.isImageOutput)) {
+      thumbnailContent = _audioThumb(cs, music);
+    } else if (isDownloaded && !isTextFile) {
       if (!isVideoFile) {
         // Image file on disk → use Flutter's native Image.file for reliable decoding
         thumbnailContent = Stack(
@@ -2024,6 +2543,12 @@ class _JobCardState extends State<JobCard> {
         job.status == 'reviewing') {
       String statusText = "${job.status.toUpperCase()}…";
       if (job.status == 'reviewing') statusText = 'REVIEW SCENES';
+      final music = _musicResult;
+      if (music != null) {
+        statusText = music.anyStreaming
+            ? 'STREAMING…'
+            : music.statusLine.toUpperCase();
+      }
       if (job.hasMultipleVariations && job.variationResults != null) {
         final completed = job.variationResults!
             .where((v) => v.status == 'completed' || v.status == 'failed')
@@ -2147,9 +2672,11 @@ class _JobCardState extends State<JobCard> {
 
     // Countdown until the cloud copy times out. Kie jobs are downloaded
     // automatically, so after that timeout they stay a normal result.
+    // A finished song whose versions can already play is a completed result.
     if (job.status == 'completed' &&
         !isExpired &&
         !isSaved &&
+        !_musicFullyPlayable &&
         !(job.usesKieCloud && job.isCloudExpired)) {
       final timeLeft = job.expiryTimeFormatted;
       return Row(

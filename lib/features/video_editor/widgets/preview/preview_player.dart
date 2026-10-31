@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/safe_video_view.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:video_player/video_player.dart';
 
@@ -43,7 +44,7 @@ class _PreviewPlayerState extends ConsumerState<PreviewPlayer> {
     final playback = ref.watch(playbackProvider);
     final controller = widget.controller;
 
-    if (controller == null || !controller.value.isInitialized) {
+    if (controller == null || !videoFrameIsReady(controller)) {
       return Container(
         color: Colors.black,
         child: const Center(
@@ -74,13 +75,12 @@ class _PreviewPlayerState extends ConsumerState<PreviewPlayer> {
                   Center(
                     child: AspectRatio(
                       aspectRatio: _previewAspect(ref, controller),
-                      child: FittedBox(
+                      child: SafeVideoView(
+                        controller: controller,
                         fit: BoxFit.contain,
-                        child: SizedBox(
-                          width: controller.value.size.width,
-                          height: controller.value.size.height,
-                          child: _buildFilteredVideo(ref, controller),
-                        ),
+                        fallback: const SizedBox.shrink(),
+                        frameBuilder: (ready) =>
+                            _buildFilteredVideo(ref, ready),
                       ),
                     ),
                   ),
@@ -297,15 +297,14 @@ class _PreviewPlayerState extends ConsumerState<PreviewPlayer> {
     if (crop != null) {
       out = ClipRect(
         clipper: _NormCropClipper(crop),
-        child: FittedBox(
-          fit: BoxFit.cover,
-          child: SizedBox(
-            width: controller.value.size.width * crop.width,
-            height: controller.value.size.height * crop.height,
-            child: FractionalTranslation(
-              translation: Offset(-crop.left, -crop.top),
-              child: out,
-            ),
+        child: SafeVideoView(
+          controller: controller,
+          fallback: out,
+          widthFactor: crop.width,
+          heightFactor: crop.height,
+          frameBuilder: (_) => FractionalTranslation(
+            translation: Offset(-crop.left, -crop.top),
+            child: out,
           ),
         ),
       );

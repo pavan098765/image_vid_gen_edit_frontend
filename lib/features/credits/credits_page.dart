@@ -13,6 +13,7 @@ import 'package:kala_ai_create_images_videos_with_ai/core/services/user_service.
     hide userCreditsNotifier, currentUserNotifier, isLoadingUserNotifier, UserData;
 import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/app_menu_button.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/backlit_glass.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_button.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/sign_in_prompt.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/credits/offerwall_screen.dart';
@@ -775,11 +776,12 @@ class _CreditsPageState extends State<CreditsPage> {
     
     showModalBottomSheet(
       context: context,
-      backgroundColor: cs.surface,
+      backgroundColor: Colors.transparent,
+      elevation: 0,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
-      builder: (context) => SafeArea(
+      builder: (context) => glassSheet(SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
@@ -849,6 +851,7 @@ class _CreditsPageState extends State<CreditsPage> {
             ],
           ),
         ),
+        ),
       ),
     );
   }
@@ -858,11 +861,12 @@ class _CreditsPageState extends State<CreditsPage> {
     
     showModalBottomSheet(
       context: context,
-      backgroundColor: cs.surface,
+      backgroundColor: Colors.transparent,
+      elevation: 0,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
-      builder: (context) => SafeArea(
+      builder: (context) => glassSheet(SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
@@ -1057,6 +1061,7 @@ class _CreditsPageState extends State<CreditsPage> {
             ],
           ),
         ),
+        ),
       ),
     );
   }
@@ -1094,6 +1099,8 @@ class _CreditsPageState extends State<CreditsPage> {
   }
 
   Future<bool> _handleSystemBack() async {
+    if (popShellOverlay(context)) return false;
+    if (selectedIndexNotifier.value != AppTabs.credits) return false;
     final ok = await _confirmExitApp();
     if (ok) {
       // User confirmed exit - actually exit the app
@@ -1114,10 +1121,12 @@ class _CreditsPageState extends State<CreditsPage> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isSignedIn = _authService.isSignedIn;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     
     return WillPopScope(
       onWillPop: _handleSystemBack,
       child: Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: KalaTabAppBar(
         actions: [
           if (isSignedIn)
@@ -1964,27 +1973,29 @@ class _CreditsPageState extends State<CreditsPage> {
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: isAdFree 
-                    ? [Colors.green.shade600.withValues(alpha: 0.15), Colors.green.shade700.withValues(alpha: 0.08)]
+                colors: isAdFree
+                    ? (isDark
+                        ? [Colors.green.shade600.withValues(alpha: 0.15), Colors.green.shade700.withValues(alpha: 0.08)]
+                        : const [Color(0xFFDDF6E8), Color(0xFFC8F0DC)])
                     : isDark
                         ? [removeAdColors[0].withValues(alpha: 0.15), removeAdColors[1].withValues(alpha: 0.08)]
-                        : [removeAdColors[0].withValues(alpha: 0.1), removeAdColors[1].withValues(alpha: 0.05)],
+                        : const [Color(0xFFE3D8FF), Color(0xFFD2F3FF)],
               ),
               borderRadius: BorderRadius.circular(14),
             border: Border.all(
               color: isAdFree 
-                    ? Colors.green.withValues(alpha: 0.4)
-                    : removeAdColors[0].withValues(alpha: 0.4),
+                    ? Colors.green.withValues(alpha: isDark ? 0.4 : 0.55)
+                    : removeAdColors[0].withValues(alpha: isDark ? 0.4 : 0.5),
                 width: 1.5,
               ),
               boxShadow: [
                 BoxShadow(
                   color: isAdFree 
-                      ? Colors.green.withValues(alpha: 0.15)
-                      : removeAdColors[0].withValues(alpha: 0.15),
-                  blurRadius: 8,
+                      ? Colors.green.withValues(alpha: isDark ? 0.15 : 0.18)
+                      : removeAdColors[0].withValues(alpha: isDark ? 0.15 : 0.2),
+                  blurRadius: isDark ? 8 : 16,
                   spreadRadius: 0,
-                  offset: const Offset(0, 2),
+                  offset: Offset(0, isDark ? 2 : 7),
             ),
               ],
           ),
@@ -2238,34 +2249,39 @@ class _CreditsPageState extends State<CreditsPage> {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: isSelected
-                ? [
-                    KalaColors.brandGradient[0].withValues(alpha: 0.25),
-                    KalaColors.brandGradient[1].withValues(alpha: 0.15),
-                  ]
+                ? (isDark
+                    ? [
+                        KalaColors.brandGradient[0].withValues(alpha: 0.25),
+                        KalaColors.brandGradient[1].withValues(alpha: 0.15),
+                      ]
+                    : const [Color(0xFFD4C6FF), Color(0xFFC4F0FF)])
                 : isDark
                     ? [cs.surface, cs.surface]
-                    : [Colors.white, cs.surfaceContainerHighest.withValues(alpha: 0.5)],
+                    : const [Color(0xFFFFFFFF), Color(0xFFF3EEFB)],
           ),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: isSelected 
-                ? KalaColors.brandGradient[0]
-                : cs.outlineVariant.withValues(alpha: 0.3),
-            width: isSelected ? 2 : 1,
+            color: isSelected
+                ? (isDark ? KalaColors.brandGradient[0] : const Color(0xFF6A45F5))
+                : (isDark
+                    ? cs.outlineVariant.withValues(alpha: 0.3)
+                    : const Color(0xFFD8CEF0)),
+            width: isSelected ? 1.6 : 1,
           ),
           boxShadow: [
             if (isSelected)
               BoxShadow(
-                color: KalaColors.brandGradient[0].withValues(alpha: 0.3),
-                blurRadius: 16,
+                color: KalaColors.brandGradient[0].withValues(alpha: isDark ? 0.3 : 0.28),
+                blurRadius: isDark ? 16 : 22,
                 spreadRadius: 0,
-                offset: const Offset(0, 4),
+                offset: Offset(0, isDark ? 4 : 8),
               )
             else
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
-                blurRadius: 10,
-                offset: const Offset(0, 2),
+                color: (isDark ? Colors.black : const Color(0xFF3A2A66))
+                    .withValues(alpha: isDark ? 0.05 : 0.1),
+                blurRadius: isDark ? 10 : 18,
+                offset: Offset(0, isDark ? 2 : 8),
               ),
           ],
         ),
@@ -2406,15 +2422,17 @@ class _CreditsPageState extends State<CreditsPage> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   decoration: BoxDecoration(
-                    color: isSelected 
+                    color: isSelected
                         ? KalaColors.brandGradient[0]
-                        : cs.primaryContainer,
+                        : (isDark ? cs.primaryContainer : const Color(0xFFE7DEFF)),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text(
                     isAvailable ? product.price : '...',
                     style: TextStyle(
-                      color: isSelected ? Colors.white : cs.onPrimaryContainer,
+                      color: isSelected
+                          ? Colors.white
+                          : (isDark ? cs.onPrimaryContainer : const Color(0xFF4C2DB5)),
                       fontWeight: FontWeight.bold,
                       fontSize: 15,
                     ),
@@ -2480,23 +2498,43 @@ class _CreditsPageState extends State<CreditsPage> {
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: isSelected
-                ? [tierColors[0].withValues(alpha: 0.2), tierColors[1].withValues(alpha: 0.1)]
+                ? (isDark
+                    ? [tierColors[0].withValues(alpha: 0.2), tierColors[1].withValues(alpha: 0.1)]
+                    : [
+                        Color.alphaBlend(tierColors[0].withValues(alpha: 0.36), Colors.white),
+                        Color.alphaBlend(tierColors[1].withValues(alpha: 0.2), const Color(0xFFF7FBFF)),
+                      ])
                 : isDark
                     ? [cs.surfaceContainerHigh, cs.surface]
-                    : [Colors.white, cs.surfaceContainerHighest.withValues(alpha: 0.5)],
+                    : const [Color(0xFFFFFFFF), Color(0xFFF5F1FB)],
           ),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: isSelected ? tierColors[0] : cs.outlineVariant.withValues(alpha: 0.3),
+            color: isSelected
+                ? tierColors[0]
+                : (isDark
+                    ? cs.outlineVariant.withValues(alpha: 0.3)
+                    : const Color(0xFFE2D9F4)),
             width: isSelected ? 2 : 1,
           ),
-          boxShadow: isSelected ? [
-            BoxShadow(
-              color: tierColors[0].withValues(alpha: 0.25),
-              blurRadius: 8,
-              spreadRadius: 0,
-            ),
-          ] : null,
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: tierColors[0].withValues(alpha: isDark ? 0.25 : 0.28),
+                    blurRadius: isDark ? 8 : 14,
+                    spreadRadius: 0,
+                    offset: Offset(0, isDark ? 0 : 6),
+                  ),
+                ]
+              : (isDark
+                  ? null
+                  : [
+                      BoxShadow(
+                        color: const Color(0xFF3A2A66).withValues(alpha: 0.08),
+                        blurRadius: 12,
+                        offset: const Offset(0, 5),
+                      ),
+                    ]),
         ),
         child: Stack(
           clipBehavior: Clip.none,
@@ -2596,15 +2634,17 @@ class _CreditsPageState extends State<CreditsPage> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: isSelected 
-                        ? tierColors[0].withValues(alpha: 0.15)
-                        : cs.surfaceContainerHighest,
+                    color: isSelected
+                        ? (isDark ? tierColors[0].withValues(alpha: 0.15) : tierColors[0])
+                        : (isDark ? cs.surfaceContainerHighest : const Color(0xFFF0EBF8)),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
                     isAvailable ? product.price : '...',
                     style: TextStyle(
-                      color: isSelected ? tierColors[0] : cs.onSurfaceVariant,
+                      color: isSelected
+                          ? (isDark ? tierColors[0] : Colors.white)
+                          : cs.onSurfaceVariant,
                       fontWeight: FontWeight.w600,
                       fontSize: 10,
                     ),
@@ -2644,6 +2684,7 @@ class _CreditsPageState extends State<CreditsPage> {
   /// Build the purchase button with selected pack summary
   Widget _buildPurchaseButton(ColorScheme cs, GemPackConfig pack, ProductDetails product) {
     final isSignedIn = _authService.isSignedIn;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     
     // Determine tier colors based on pack
     final List<Color> tierColors = pack.isPopular
@@ -2662,13 +2703,29 @@ class _CreditsPageState extends State<CreditsPage> {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            tierColors[0].withValues(alpha: 0.15),
-            tierColors[1].withValues(alpha: 0.08),
-          ],
+          colors: isDark
+              ? [
+                  tierColors[0].withValues(alpha: 0.15),
+                  tierColors[1].withValues(alpha: 0.08),
+                ]
+              : [
+                  Color.alphaBlend(tierColors[0].withValues(alpha: 0.24), Colors.white),
+                  Color.alphaBlend(tierColors[1].withValues(alpha: 0.14), const Color(0xFFF7F3FF)),
+                ],
         ),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: tierColors[0].withValues(alpha: 0.3)),
+        border: Border.all(
+          color: tierColors[0].withValues(alpha: isDark ? 0.3 : 0.42),
+        ),
+        boxShadow: isDark
+            ? null
+            : [
+                BoxShadow(
+                  color: tierColors[0].withValues(alpha: 0.16),
+                  blurRadius: 16,
+                  offset: const Offset(0, 7),
+                ),
+              ],
       ),
       child: Column(
         children: [
@@ -3025,16 +3082,17 @@ class _CreditsPageState extends State<CreditsPage> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: cs.surface,
+      backgroundColor: Colors.transparent,
+      elevation: 0,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
       builder: (context) => DraggableScrollableSheet(
         initialChildSize: 0.85,
         minChildSize: 0.5,
         maxChildSize: 0.95,
         expand: false,
-        builder: (context, scrollController) => Column(
+        builder: (context, scrollController) => glassSheet(Column(
           children: [
             // Handle bar
             Container(
@@ -3149,6 +3207,7 @@ class _CreditsPageState extends State<CreditsPage> {
               ),
             ),
           ],
+          ),
         ),
       ),
     );
@@ -3180,12 +3239,13 @@ class _CreditsPageState extends State<CreditsPage> {
     
     showModalBottomSheet(
       context: context,
-      backgroundColor: cs.surface,
+      backgroundColor: Colors.transparent,
+      elevation: 0,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
-      builder: (context) => StatefulBuilder(
+      builder: (context) => glassSheet(StatefulBuilder(
         builder: (context, setSheetState) {
           return SafeArea(
             child: SingleChildScrollView(
@@ -3298,6 +3358,7 @@ class _CreditsPageState extends State<CreditsPage> {
           );
         },
       ),
+      ),
     );
   }
   
@@ -3336,29 +3397,40 @@ class _CreditsPageState extends State<CreditsPage> {
 
   /// Build card showing active VIP status - premium design
   Widget _buildActiveVipCard(ColorScheme cs, VipStatus status) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [
-            Colors.amber.shade700.withValues(alpha: 0.15),
-            Colors.orange.shade800.withValues(alpha: 0.08),
-            Colors.amber.shade600.withValues(alpha: 0.12),
-          ],
+          colors: isDark
+              ? [
+                  Colors.amber.shade700.withValues(alpha: 0.15),
+                  Colors.orange.shade800.withValues(alpha: 0.08),
+                  Colors.amber.shade600.withValues(alpha: 0.12),
+                ]
+              : const [
+                  Color(0xFFFFF1CC),
+                  Color(0xFFFFDC9E),
+                  Color(0xFFFFF4DC),
+                ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           stops: const [0.0, 0.5, 1.0],
         ),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Colors.amber.shade600.withValues(alpha: 0.4),
+          color: isDark
+              ? Colors.amber.shade600.withValues(alpha: 0.4)
+              : const Color(0xFFD4920A).withValues(alpha: 0.7),
           width: 1.5,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.amber.withValues(alpha: 0.15),
-            blurRadius: 12,
+            color: isDark
+                ? Colors.amber.withValues(alpha: 0.15)
+                : const Color(0xFFC47A08).withValues(alpha: 0.22),
+            blurRadius: isDark ? 12 : 18,
             spreadRadius: 0,
-            offset: const Offset(0, 4),
+            offset: Offset(0, isDark ? 4 : 8),
           ),
         ],
       ),
@@ -3412,7 +3484,9 @@ class _CreditsPageState extends State<CreditsPage> {
                         children: [
                           ShaderMask(
                             shaderCallback: (bounds) => LinearGradient(
-                              colors: [Colors.amber.shade600, Colors.orange.shade700],
+                              colors: isDark
+                                  ? [Colors.amber.shade600, Colors.orange.shade700]
+                                  : const [Color(0xFF8A4B08), Color(0xFFC2410C)],
                             ).createShader(bounds),
                             child: const Text(
                               'VIP Member',
@@ -3523,22 +3597,28 @@ class _CreditsPageState extends State<CreditsPage> {
   }
   
   Widget _buildVipActiveBenefit(IconData icon, String label) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final ink = isDark ? Colors.amber.shade800 : const Color(0xFF8A4B08);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: Colors.amber.withValues(alpha: 0.1),
+        color: isDark ? Colors.amber.withValues(alpha: 0.1) : const Color(0xFFFFE4B5),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
+        border: Border.all(
+          color: isDark
+              ? Colors.amber.withValues(alpha: 0.3)
+              : const Color(0xFFE0A040),
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 13, color: Colors.amber.shade700),
+          Icon(icon, size: 13, color: ink),
           const SizedBox(width: 5),
           Text(
             label,
             style: TextStyle(
-              color: Colors.amber.shade800,
+              color: ink,
               fontSize: 11,
               fontWeight: FontWeight.w600,
             ),
@@ -3568,24 +3648,38 @@ class _CreditsPageState extends State<CreditsPage> {
 
   /// Build card with VIP purchase options - premium design
   Widget _buildVipPurchaseCard(ColorScheme cs) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return ValueListenableBuilder<List<ProductDetails>>(
       valueListenable: _purchaseService.productsNotifier,
       builder: (context, products, _) {
         return Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [
-                Colors.amber.shade700.withValues(alpha: 0.08),
-                Colors.orange.shade800.withValues(alpha: 0.04),
-              ],
+              colors: isDark
+                  ? [
+                      Colors.amber.shade700.withValues(alpha: 0.08),
+                      Colors.orange.shade800.withValues(alpha: 0.04),
+                    ]
+                  : const [Color(0xFFFFF4DC), Color(0xFFFFE7C2)],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: Colors.amber.shade600.withValues(alpha: 0.25),
+              color: isDark
+                  ? Colors.amber.shade600.withValues(alpha: 0.25)
+                  : const Color(0xFFD4920A).withValues(alpha: 0.45),
               width: 1,
             ),
+            boxShadow: isDark
+                ? null
+                : [
+                    BoxShadow(
+                      color: const Color(0xFFC47A08).withValues(alpha: 0.14),
+                      blurRadius: 16,
+                      offset: const Offset(0, 7),
+                    ),
+                  ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -3695,22 +3789,28 @@ class _CreditsPageState extends State<CreditsPage> {
   }
   
   Widget _buildVipBenefitTag(ColorScheme cs, IconData icon, String label) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final ink = isDark ? Colors.amber.shade800 : const Color(0xFF8A4B08);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.amber.withValues(alpha: 0.08),
+        color: isDark ? Colors.amber.withValues(alpha: 0.08) : const Color(0xFFFFE8C4),
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: Colors.amber.withValues(alpha: 0.2)),
+        border: Border.all(
+          color: isDark
+              ? Colors.amber.withValues(alpha: 0.2)
+              : const Color(0xFFE0A040),
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 11, color: Colors.amber.shade700),
+          Icon(icon, size: 11, color: ink),
           const SizedBox(width: 4),
           Text(
             label,
             style: TextStyle(
-              color: Colors.amber.shade800,
+              color: ink,
               fontSize: 10,
               fontWeight: FontWeight.w600,
             ),
@@ -3742,17 +3842,19 @@ class _CreditsPageState extends State<CreditsPage> {
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: isPopular 
-                  ? [vipColors[0].withValues(alpha: 0.15), vipColors[1].withValues(alpha: 0.08)]
+              colors: isPopular
+                  ? (isDark
+                      ? [vipColors[0].withValues(alpha: 0.15), vipColors[1].withValues(alpha: 0.08)]
+                      : const [Color(0xFFFFE7B8), Color(0xFFFFF3D4)])
                   : isDark
                       ? [vipColors[0].withValues(alpha: 0.08), vipColors[1].withValues(alpha: 0.04)]
-                      : [vipColors[0].withValues(alpha: 0.06), vipColors[1].withValues(alpha: 0.03)],
+                      : const [Color(0xFFFFF8EA), Color(0xFFFFF1D6)],
             ),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: isPopular 
-                  ? vipColors[0].withValues(alpha: 0.5)
-                  : vipColors[0].withValues(alpha: 0.25),
+              color: isPopular
+                  ? vipColors[0].withValues(alpha: isDark ? 0.5 : 0.7)
+                  : vipColors[0].withValues(alpha: isDark ? 0.25 : 0.4),
               width: isPopular ? 1.5 : 1,
             ),
             boxShadow: isPopular ? [
@@ -3898,12 +4000,13 @@ class _CreditsPageState extends State<CreditsPage> {
     // Show confirmation bottom sheet
     showModalBottomSheet(
       context: context,
-      backgroundColor: cs.surface,
+      backgroundColor: Colors.transparent,
+      elevation: 0,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
-      builder: (context) => Padding(
+      builder: (context) => glassSheet(Padding(
         padding: EdgeInsets.only(
           left: 20,
           right: 20,
@@ -4020,6 +4123,7 @@ class _CreditsPageState extends State<CreditsPage> {
             ),
           ],
         ),
+        ),
       ),
     );
   }
@@ -4027,12 +4131,13 @@ class _CreditsPageState extends State<CreditsPage> {
   void _showVipPurchaseSheet(ColorScheme cs) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: cs.surface,
+      backgroundColor: Colors.transparent,
+      elevation: 0,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
-      builder: (sheetContext) => Padding(
+      builder: (sheetContext) => glassSheet(Padding(
         padding: EdgeInsets.only(
           left: 20,
           right: 20,
@@ -4073,6 +4178,7 @@ class _CreditsPageState extends State<CreditsPage> {
               ),
             ),
           ],
+        ),
         ),
       ),
     );

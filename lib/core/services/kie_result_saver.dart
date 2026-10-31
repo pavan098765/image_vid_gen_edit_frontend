@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/file_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/polling_service.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/audio_result_player.dart';
 
 /// Saves a Kie result onto the phone once it has been ready for 17 minutes.
 class KieResultSaver {
@@ -64,10 +65,14 @@ class KieResultSaver {
     if (await wasJobDeleted(job.jobId) || !_stillListed(job.jobId)) return;
     final context = _navigatorKey?.currentContext;
     if (context == null || !context.mounted) return;
+    final savedVersions = await FileService.saveHitMakerVersions(context, job);
+    if (savedVersions || !context.mounted) return;
     await FileService.downloadFromUrl(
       context,
       url,
-      suggestedFileName: job.jobId,
+      suggestedFileName:
+          job.isAudioOutput ? savedAudioFileBaseName(job) : job.jobId,
+      jobId: job.jobId,
       maxRetries: 2,
       outputType: job.outputType,
       showPreview: false,

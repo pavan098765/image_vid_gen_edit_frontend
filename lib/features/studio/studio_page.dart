@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/exit_app_dialog.dart';
 
 import 'studio_screens.dart';
 import 'studio_session.dart';
@@ -60,15 +63,33 @@ class _StudioPageState extends State<StudioPage> {
 
   @override
   Widget build(BuildContext context) {
-    return StudioScope(
-      session: _session,
-      child: Navigator(
-        key: _navKey,
-        onGenerateRoute: (settings) {
-          return MaterialPageRoute(
-            builder: (_) => StudioShelf(workflows: _workflows),
-          );
-        },
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        if (popShellOverlay(context)) return;
+        if (selectedIndexNotifier.value != AppTabs.studio) return;
+        final nav = _navKey.currentState;
+        if (nav != null && nav.canPop()) {
+          nav.pop();
+          return;
+        }
+        final leave = await showDialog<bool>(
+          context: context,
+          builder: (_) => const ConfirmExitAppDialog(),
+        );
+        if (leave == true) SystemNavigator.pop();
+      },
+      child: StudioScope(
+        session: _session,
+        child: Navigator(
+          key: _navKey,
+          onGenerateRoute: (settings) {
+            return MaterialPageRoute(
+              builder: (_) => StudioShelf(workflows: _workflows),
+            );
+          },
+        ),
       ),
     );
   }

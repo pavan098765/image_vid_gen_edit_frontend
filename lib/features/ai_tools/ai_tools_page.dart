@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/model_display_name.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/result_manager/result_manager_page.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -140,13 +141,15 @@ class CapabilityConfig {
 
   CapabilityConfig({required this.capabilities});
 
-  factory CapabilityConfig.fromJson(Map<String, dynamic> json) =>
-      CapabilityConfig(
+  factory CapabilityConfig.fromJson(Map<String, dynamic> json) {
+    indexModelDisplayNames(json);
+    return CapabilityConfig(
         capabilities: (json['capabilities'] as List?)
                 ?.map((c) => Capability.fromJson(c))
                 .toList() ??
             [],
       );
+  }
 }
 
 // -------------------- MAIN PAGE --------------------
@@ -572,18 +575,28 @@ class _AiToolsPageState extends State<AiToolsPage>
           const SizedBox(height: 16),
 
           // Capability grid
-          GridView.builder(
-            itemCount: config.capabilities.length,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: 14,
-              mainAxisSpacing: 14,
-              childAspectRatio: 0.85,
-            ),
-            itemBuilder: (_, i) =>
-                _CapabilityCard(capability: config.capabilities[i]),
+          Builder(
+            builder: (context) {
+              const hiddenIds = {'inpaint', 'upscale_video'};
+              final tools = config.capabilities
+                  .where(
+                    (tool) =>
+                        tool.models.isNotEmpty && !hiddenIds.contains(tool.id),
+                  )
+                  .toList();
+              return GridView.builder(
+                itemCount: tools.length,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 14,
+                  mainAxisSpacing: 14,
+                  childAspectRatio: 0.85,
+                ),
+                itemBuilder: (_, i) => _CapabilityCard(capability: tools[i]),
+              );
+            },
           ),
         ],
       ),
@@ -657,6 +670,15 @@ class _CapabilityCardState extends State<_CapabilityCard> {
       // Misc
       case 'zap':
         return LucideIcons.zap;
+      case 'mic':
+        return LucideIcons.mic;
+      case 'music':
+        return LucideIcons.music;
+      case 'file-text':
+      case 'filetext':
+        return LucideIcons.fileText;
+      case 'headphones':
+        return LucideIcons.headphones;
 
       default:
         return LucideIcons.cpu;

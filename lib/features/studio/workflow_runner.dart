@@ -155,7 +155,7 @@ class WorkflowRunner {
           shot.durationSeconds = shot.durationSeconds.clamp(4, 10);
         }
         shot.model = chooseVideoModel(draft, shot, spec);
-        shot.quality = _tierFor(shot, live);
+        shot.quality = draft.finish == 'finest' ? 'full_refine' : _tierFor(shot, live);
         final index = live.indexWhere((card) => card.id == shot.id);
         final previous = index > 0 ? live[index - 1] : null;
         shot.continuesFrom = _continuesFrom(draft, shot, previous);
@@ -171,7 +171,7 @@ class WorkflowRunner {
         shot.videoPrompt = isNarrationLine(shot)
             ? worldVideoPrompt(
                 lock: shot.lock,
-                action: shot.action,
+                action: shot.model.startsWith('ltx') ? 'Camera: ${shot.action.trim()}' : shot.action,
                 sound: sound,
                 speechTrack: speech,
                 reference: reference,

@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/safe_video_view.dart';
 import 'package:video_player/video_player.dart';
 
 class ExploreNewThisWeek extends StatelessWidget {
@@ -78,9 +81,11 @@ class _NewWeekCard extends StatefulWidget {
   State<_NewWeekCard> createState() => _NewWeekCardState();
 }
 
-class _NewWeekCardState extends State<_NewWeekCard> {
+class _NewWeekCardState extends State<_NewWeekCard>
+    with WidgetsBindingObserver {
   VideoPlayerController? _video;
   var _closed = false;
+  var _playOnResume = false;
 
   bool get _isVideo => widget.template['preview_type'] == 'video';
 
@@ -93,9 +98,46 @@ class _NewWeekCardState extends State<_NewWeekCard> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     final url = _previewUrl;
     if (!_isVideo || url == null) return;
     _startVideo(url);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final current = _video;
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      if (current != null &&
+          videoFrameIsReady(current) &&
+          current.value.isPlaying) {
+        _playOnResume = true;
+      }
+      unawaited(pauseVideoController(current));
+      return;
+    }
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_recoverVideo());
+    }
+  }
+
+  Future<void> _recoverVideo() async {
+    final current = _video;
+    final play = _playOnResume;
+    _playOnResume = false;
+    final next = await replaceDeadVideo(current, play: play);
+    if (!mounted || _closed) {
+      if (next != null && !identical(next, current)) await next.dispose();
+      return;
+    }
+    if (next != null && !identical(next, current)) {
+      _video = next;
+      try {
+        await current?.dispose();
+      } catch (_) {}
+    }
+    if (mounted) setState(() {});
   }
 
   Future<void> _startVideo(String url) async {
@@ -116,6 +158,7 @@ class _NewWeekCardState extends State<_NewWeekCard> {
   @override
   void dispose() {
     _closed = true;
+    WidgetsBinding.instance.removeObserver(this);
     _video?.dispose();
     super.dispose();
   }
@@ -125,8 +168,6 @@ class _NewWeekCardState extends State<_NewWeekCard> {
     final cs = Theme.of(context).colorScheme;
     final title = widget.template['title'] as String? ?? 'Template';
     final url = _previewUrl;
-    final videoReady = _video?.value.isInitialized ?? false;
-
     return SizedBox(
       width: 132,
       child: Material(
@@ -138,14 +179,10 @@ class _NewWeekCardState extends State<_NewWeekCard> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              if (url != null && _isVideo && videoReady)
-                FittedBox(
-                  fit: BoxFit.cover,
-                  child: SizedBox(
-                    width: _video!.value.size.width,
-                    height: _video!.value.size.height,
-                    child: VideoPlayer(_video!),
-                  ),
+              if (url != null && _isVideo)
+                SafeVideoView(
+                  controller: _video,
+                  fallback: const SizedBox.expand(),
                 )
               else if (url != null && !_isVideo)
                 Image.network(

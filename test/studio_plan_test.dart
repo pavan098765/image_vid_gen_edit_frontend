@@ -23,8 +23,8 @@ void main() {
     expect(AppTabs.editor, 0);
     expect(AppTabs.explore, 1);
     expect(AppTabs.studio, 2);
-    expect(AppTabs.credits, 3);
-    expect(AppTabs.settings, 4);
+    expect(AppTabs.creations, 3);
+    expect(AppTabs.credits, 4);
   });
 
   test('quote matches still, video, speech, music, and a sting', () {
@@ -510,7 +510,7 @@ void main() {
     expect(pictures[2].transitionIn.type, TransitionType.dissolve);
   });
 
-  test('narration keeps moving shots on the hook, the turn, and the last image', () {
+  test('narration keeps every shot moving, including the spiral', () {
     final shots = [
       ShotCard(id: 'a', chapter: 'Hook', action: 'Opens', durationSeconds: 5),
       ShotCard(id: 'b', chapter: 'Spiral', action: 'Wanders', durationSeconds: 5),
@@ -518,7 +518,7 @@ void main() {
       ShotCard(id: 'd', chapter: 'Last image', action: 'Holds', durationSeconds: 5),
     ];
     applyPicturePolicy(shots, 'narrated_story');
-    expect(shots.map((s) => s.kind).toList(), ['video', 'image', 'video', 'video']);
+    expect(shots.map((s) => s.kind).toList(), ['video', 'video', 'video', 'video']);
   });
 
   test('chained shots animate between keyframes and do not wait on the previous video', () async {

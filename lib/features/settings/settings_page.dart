@@ -4,12 +4,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart' show User;
 import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/cached_tool_config.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/auth_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/file_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/thumbnail_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/user_service.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/backlit_glass.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_button.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -42,6 +45,7 @@ class _SettingsPageState extends State<SettingsPage> {
   // Loading states
   bool _isClearingCache = false;
   bool _isRefreshingCredits = false;
+  bool _isRefreshingToolConfig = false;
 
   @override
   void initState() {
@@ -131,6 +135,28 @@ class _SettingsPageState extends State<SettingsPage> {
       return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
     }
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+  }
+
+  Future<void> _refetchToolConfig() async {
+    if (_isRefreshingToolConfig) return;
+    setState(() => _isRefreshingToolConfig = true);
+    try {
+      await refetchToolConfigFromR2();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Tool config updated from R2.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      final message = error is Exception
+          ? error.toString().replaceFirst('Exception: ', '')
+          : 'Could not refresh tool config.';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    } finally {
+      if (mounted) setState(() => _isRefreshingToolConfig = false);
+    }
   }
 
   Future<void> _clearAllCache() async {
@@ -237,11 +263,12 @@ class _SettingsPageState extends State<SettingsPage> {
     final cs = Theme.of(context).colorScheme;
     showModalBottomSheet(
       context: context,
-      backgroundColor: cs.surface,
+      backgroundColor: Colors.transparent,
+      elevation: 0,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
-      builder: (context) => SafeArea(
+      builder: (context) => glassSheet(SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: Column(
@@ -280,6 +307,7 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ],
           ),
+        ),
         ),
       ),
     );
@@ -347,20 +375,20 @@ class _SettingsPageState extends State<SettingsPage> {
   // ============================================================
 
   void _showAuthSheet() {
-    final cs = Theme.of(context).colorScheme;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: cs.surface,
+      backgroundColor: Colors.transparent,
+      elevation: 0,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
-      builder: (context) => _AuthSheet(
+      builder: (context) => glassSheet(_AuthSheet(
         onSignInWithEmail: _handleEmailSignIn,
         onSignUpWithEmail: _handleEmailSignUp,
         onSignInWithGoogle: _handleGoogleSignIn,
         onForgotPassword: _handleForgotPassword,
-      ),
+      )),
     );
   }
 
@@ -696,16 +724,17 @@ class _SettingsPageState extends State<SettingsPage> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: cs.surface,
+      backgroundColor: Colors.transparent,
+      elevation: 0,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
       builder: (context) => DraggableScrollableSheet(
         initialChildSize: 0.85,
         minChildSize: 0.5,
         maxChildSize: 0.95,
         expand: false,
-        builder: (context, scrollController) => Column(
+        builder: (context, scrollController) => glassSheet(Column(
           children: [
             // Handle bar
             Container(
@@ -820,6 +849,7 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
           ],
+          ),
         ),
       ),
     );
@@ -840,6 +870,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<bool> _handleSystemBack() async {
+    if (popShellOverlay(context)) return false;
     final ok = await _confirmExitApp();
     if (ok) {
       // User confirmed exit - actually exit the app
@@ -1012,6 +1043,30 @@ class _SettingsPageState extends State<SettingsPage> {
                 ],
               ),
               const SizedBox(height: AppStyles.spacing20),
+
+              if (kDebugMode) ...[
+                _buildSectionHeader(context, 'Debug', LucideIcons.bug),
+                _buildCard(
+                  context,
+                  children: [
+                    _buildSettingsTile(
+                      context,
+                      icon: LucideIcons.refreshCw,
+                      title: 'Refetch tool config',
+                      subtitle: 'Download tool_config.json from R2',
+                      onTap: _isRefreshingToolConfig ? null : _refetchToolConfig,
+                      trailing: _isRefreshingToolConfig
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : null,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppStyles.spacing20),
+              ],
 
               // About Section
               _buildSectionHeader(context, 'About', LucideIcons.info),

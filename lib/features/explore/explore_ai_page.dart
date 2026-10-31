@@ -15,7 +15,11 @@ import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/api/submit_payload_helpers.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/cached_tool_config.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/model_display_name.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/motion.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/app_menu_button.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/backlit_glass.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/center_crop.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/explore_favorites.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/tool_launch.dart';
@@ -34,6 +38,7 @@ import 'package:kala_ai_create_images_videos_with_ai/core/services/user_service.
 import 'package:kala_ai_create_images_videos_with_ai/core/theme/app_theme.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/gradient_button.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/sign_in_prompt.dart';
+import 'package:kala_ai_create_images_videos_with_ai/core/widgets/safe_video_view.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/sale_banner.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/widgets/media_source_picker_sheet.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/services/sale_service.dart';
@@ -258,6 +263,7 @@ class _VideoPreviewManager {
   static const int maxConcurrentVideos =
       3; // Increased for better UX with all-video previews
   final Map<String, VideoPlayerController> _activeControllers = {};
+  final Map<String, Future<VideoPlayerController?>> _recovering = {};
   final List<String> _playOrder = []; // Track order for LRU eviction
   Directory? _cacheDir;
 
@@ -397,7 +403,7 @@ class _VideoPreviewManager {
     if (_activeControllers.containsKey(templateId)) {
       _playOrder.remove(templateId);
       _playOrder.add(templateId);
-      return _activeControllers[templateId];
+      return recoverController(templateId);
     }
 
     // If at max capacity, pause and remove oldest
@@ -437,7 +443,44 @@ class _VideoPreviewManager {
   }
 
   void pauseController(String templateId) {
-    _activeControllers[templateId]?.pause();
+    pauseVideoController(_activeControllers[templateId]);
+  }
+
+  Future<void> pauseAll() async {
+    for (final controller in _activeControllers.values) {
+      await pauseVideoController(controller);
+    }
+  }
+
+  /// Reopens a player whose frame was dropped while the app was stopped.
+  Future<VideoPlayerController?> recoverController(
+    String templateId, {
+    bool play = false,
+  }) {
+    final pending = _recovering[templateId];
+    if (pending != null) return pending;
+    final future = _recoverController(templateId, play: play);
+    _recovering[templateId] = future;
+    return future.whenComplete(() => _recovering.remove(templateId));
+  }
+
+  Future<VideoPlayerController?> _recoverController(
+    String templateId, {
+    required bool play,
+  }) async {
+    final current = _activeControllers[templateId];
+    if (current == null) return null;
+    final next = await replaceDeadVideo(current, play: play);
+    if (next == null || identical(next, current)) return current;
+    if (!identical(_activeControllers[templateId], current)) {
+      await next.dispose();
+      return _activeControllers[templateId];
+    }
+    _activeControllers[templateId] = next;
+    try {
+      await current.dispose();
+    } catch (_) {}
+    return next;
   }
 
   void playController(String templateId) {
@@ -577,8 +620,13 @@ class _ExploreAIPageState extends State<ExploreAIPage>
     seenJobIdsNotifier.addListener(_onStateChanged);
     jobListNotifier.addListener(_onStateChanged);
     SaleService().state.addListener(_onStateChanged);
+    toolConfigRevision.addListener(_onToolConfigRefreshed);
     _loadConfig();
     _loadExploreFavoritesAndShortcuts();
+  }
+
+  void _onToolConfigRefreshed() {
+    _loadConfig();
   }
 
   Future<void> _loadExploreFavoritesAndShortcuts() async {
@@ -689,6 +737,7 @@ class _ExploreAIPageState extends State<ExploreAIPage>
     seenJobIdsNotifier.removeListener(_onStateChanged);
     jobListNotifier.removeListener(_onStateChanged);
     SaleService().state.removeListener(_onStateChanged);
+    toolConfigRevision.removeListener(_onToolConfigRefreshed);
     // Dispose all video preview controllers
     _VideoPreviewManager.instance.disposeAll();
     super.dispose();
@@ -1032,6 +1081,7 @@ class _ExploreAIPageState extends State<ExploreAIPage>
       _capabilitiesList =
           parsed['capabilities'] ?? []; // Store raw list for AI tools preview
       _capabilities = _buildCapabilitiesMap(_capabilitiesList);
+      indexModelDisplayNames(parsed);
 
       // Initialize hero slideshow with random templates
       _initHeroSlideUrls();
@@ -1054,6 +1104,7 @@ class _ExploreAIPageState extends State<ExploreAIPage>
         _templates = _exploreConfig?['templates'] ?? {};
         _capabilitiesList = config['capabilities'] ?? [];
         _capabilities = _buildCapabilitiesMap(_capabilitiesList);
+        indexModelDisplayNames(config);
         _initHeroSlideUrls();
         setState(() => _isLoading = false);
         _headerAnimController.forward();
@@ -1093,6 +1144,8 @@ class _ExploreAIPageState extends State<ExploreAIPage>
   }
 
   Future<bool> _handleSystemBack() async {
+    if (popShellOverlay(context)) return false;
+    if (selectedIndexNotifier.value != AppTabs.explore) return false;
     final ok = await _confirmExitApp();
     if (ok) {
       // User confirmed exit - actually exit the app
@@ -1117,7 +1170,7 @@ class _ExploreAIPageState extends State<ExploreAIPage>
     return WillPopScope(
       onWillPop: _handleSystemBack,
       child: Scaffold(
-        backgroundColor: cs.surface,
+        backgroundColor: Colors.transparent,
         appBar: KalaTabAppBar(
           actions: [
             _buildCreditsChip(cs, isDark),
@@ -1692,7 +1745,6 @@ class _ExploreAIPageState extends State<ExploreAIPage>
       'animate_image',
       'upscale',
       'remove_background',
-      'inpaint',
       'expand_scene',
     ];
 
@@ -1714,7 +1766,13 @@ class _ExploreAIPageState extends State<ExploreAIPage>
     }
 
     // Hidden tools (no enabled model) must not keep an empty grid cell.
-    allTools.removeWhere((tool) => !_capabilityHasEnabledModel(tool));
+    // Inpaint and video upscale stay off this list even if a cached config
+    // still marks a model enabled.
+    const hiddenToolIds = {'inpaint', 'upscale_video'};
+    allTools.removeWhere(
+      (tool) =>
+          hiddenToolIds.contains(tool['id']) || !_capabilityHasEnabledModel(tool),
+    );
 
     // Show 6 tools when collapsed (2 rows x 3 cols), all when expanded
     const collapsedCount = 6;
@@ -1881,8 +1939,8 @@ class _ExploreAIPageState extends State<ExploreAIPage>
         HapticFeedback.lightImpact();
         Navigator.push(
           context,
-          MaterialPageRoute(
-            builder: (_) => GenericToolPage(
+          sharedAxisRoute(
+            (_) => GenericToolPage(
               config: GenericToolConfig(
                 title: name,
                 model: defaultModel?.id ?? defaultModelId ?? '',
@@ -1906,10 +1964,10 @@ class _ExploreAIPageState extends State<ExploreAIPage>
       },
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: cs.surfaceContainerHighest.withValues(alpha: 0.4),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: accent.withValues(alpha: 0.2)),
+        decoration: kalaGlassDecoration(isDark: isDark, radius: 14).copyWith(
+          border: Border.all(
+            color: accent.withValues(alpha: isDark ? 0.32 : 0.28),
+          ),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -2020,6 +2078,13 @@ class _ExploreAIPageState extends State<ExploreAIPage>
         return LucideIcons.clapperboard;
       case 'zap':
         return LucideIcons.zap;
+      case 'mic':
+        return LucideIcons.mic;
+      case 'music':
+        return LucideIcons.music;
+      case 'file-text':
+      case 'filetext':
+        return LucideIcons.fileText;
       default:
         return LucideIcons.cpu;
     }
@@ -2792,7 +2857,9 @@ class _ExploreAIPageState extends State<ExploreAIPage>
       final outputType = template['output_type'] as String? ??
           capability['outputType'] as String? ??
           'image';
-      final imageHdUpscaleCharges = upscaleEnabled && outputType != 'video';
+      final imageHdUpscaleCharges = upscaleEnabled &&
+          outputType != 'video' &&
+          template['capability'] != 'upscale';
 
       // Calculate cost (VIP gets free upscale; HD upscale surcharge applies to image jobs only)
       final baseCost = modelConfig['cost'] as int? ?? 10;
@@ -2803,8 +2870,12 @@ class _ExploreAIPageState extends State<ExploreAIPage>
           : modelOffer;
       final effectiveBaseCost =
           offer > 0 ? (baseCost * (1 - offer / 100)).round() : baseCost;
-      final upscaleCost =
-          isUpscaleFree() ? 0 : (modelConfig['costUpscale'] as int? ?? 5);
+      final listedUpscale = modelConfig['costUpscale'] as int? ?? 5;
+      final upscaleCost = isUpscaleFree()
+          ? 0
+          : imageHdUpscaleCharges
+              ? kExploreTemplateHdUpscaleCredits
+              : listedUpscale;
       final videoEnhancementCharges = outputType == 'video' &&
               (enableInterpolate || enableVideoEnhanceUpscale)
           ? upscaleCost
@@ -2982,12 +3053,8 @@ class _ExploreAIPageState extends State<ExploreAIPage>
       context: context,
       backgroundColor: Colors.transparent,
       builder: (ctx) {
-        return Container(
-          decoration: BoxDecoration(
-            color: cs.surface,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-          ),
-          child: SafeArea(
+        return glassSheet(
+          SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(24),
               child: Column(
@@ -3075,6 +3142,10 @@ class _ExploreAIPageState extends State<ExploreAIPage>
   }
 }
 
+/// Optional HD pass on an Explore image template. Dedicated upscale models
+/// already include their own price, so they do not add this.
+const int kExploreTemplateHdUpscaleCredits = 4;
+
 // =============================================================================
 // TEMPLATE CONFIG RESULT
 // =============================================================================
@@ -3132,7 +3203,9 @@ class _TemplateConfigSheet extends StatefulWidget {
   State<_TemplateConfigSheet> createState() => _TemplateConfigSheetState();
 }
 
-class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
+class _TemplateConfigSheetState extends State<_TemplateConfigSheet>
+    with WidgetsBindingObserver {
+  var _playOnResume = false;
   // ── Friendly display names for LoRA adapters ──
   static const Map<String, String> _loraFriendlyNames = {
     'None': 'None',
@@ -3201,11 +3274,13 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _selectedModelId = widget.template['model'] as String?;
     final jobConfig =
         widget.template['job_config'] as Map<String, dynamic>? ?? {};
     final outputType = widget.template['output_type'] as String? ?? 'image';
-    if (outputType == 'video') {
+    if (outputType == 'video' ||
+        widget.template['capability'] == 'upscale') {
       _scaleFactor = jobConfig['scale_factor'] as int? ?? 1;
       _upscaleEnabled = false;
     } else {
@@ -3240,9 +3315,50 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _promptController.dispose();
     _previewVideoController?.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final current = _previewVideoController;
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      if (current != null &&
+          videoFrameIsReady(current) &&
+          current.value.isPlaying) {
+        _playOnResume = true;
+      }
+      pauseVideoController(current);
+      return;
+    }
+    if (state == AppLifecycleState.resumed) {
+      _recoverPreviewVideo();
+    }
+  }
+
+  Future<void> _recoverPreviewVideo() async {
+    final current = _previewVideoController;
+    final play = _playOnResume;
+    _playOnResume = false;
+    if (mounted) {
+      setState(() => _isVideoInitialized = videoFrameIsReady(current));
+    }
+    final next = await replaceDeadVideo(current, play: play);
+    if (!mounted) {
+      if (next != null && !identical(next, current)) await next.dispose();
+      return;
+    }
+    if (next != null && !identical(next, current)) {
+      _previewVideoController = next;
+      try {
+        await current?.dispose();
+      } catch (_) {}
+    }
+    if (!mounted) return;
+    setState(() => _isVideoInitialized = videoFrameIsReady(_previewVideoController));
   }
 
   Map<String, dynamic>? get _capability {
@@ -3264,6 +3380,9 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
 
   bool get _freeUpscale => isUpscaleFree();
 
+  bool get _templateUsesUpscaleModel =>
+      widget.template['capability'] == 'upscale';
+
   int get _baseCost {
     final cost = _selectedModel?['cost'] as int? ?? 10;
     final modelOffer = _selectedModel?['offer'] as int? ?? 0;
@@ -3279,6 +3398,7 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
 
   int get _upscaleCost {
     if (_freeUpscale) return 0;
+    if (!_isVideoOutput) return kExploreTemplateHdUpscaleCredits;
     return _selectedModel?['costUpscale'] as int? ?? 5;
   }
 
@@ -3493,13 +3613,16 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
                     const SizedBox(height: 16),
                   ],
 
-                  // HD Upscale (image templates only — not video output)
-                  if (!_isVideoOutput) ...[
+                  // HD Upscale is an optional pass. Upscale models already do that work.
+                  if (!_isVideoOutput && !_templateUsesUpscaleModel) ...[
                     _buildSettingsRow(cs, isDark),
                   ],
 
-                  // Video enhancement (frame interpolation / video upscale — no extra credit line)
-                  _buildVideoUpscaleSettings(cs),
+                  // Kept for later. Hidden on video templates so the pass stays off.
+                  Offstage(
+                    offstage: true,
+                    child: _buildVideoUpscaleSettings(cs),
+                  ),
 
                   // LoRA Adapter Selector (only for qwen_image_edit_2511_rapid_aio)
                   if (_selectedModelId == 'qwen_image_edit_2511_rapid_aio') ...[
@@ -3556,16 +3679,10 @@ class _TemplateConfigSheetState extends State<_TemplateConfigSheet> {
           fit: StackFit.expand,
           children: [
             // Background video, image, or gradient
-            if (isVideoPreview &&
-                _isVideoInitialized &&
-                _previewVideoController != null)
-              FittedBox(
-                fit: BoxFit.cover,
-                child: SizedBox(
-                  width: _previewVideoController!.value.size.width,
-                  height: _previewVideoController!.value.size.height,
-                  child: VideoPlayer(_previewVideoController!),
-                ),
+            if (isVideoPreview && _previewVideoController != null)
+              SafeVideoView(
+                controller: _previewVideoController,
+                fallback: _buildGradientFallback(baseHue),
               )
             else if (previewUrl != null &&
                 previewUrl.isNotEmpty &&
@@ -4649,7 +4766,11 @@ class _TemplateCard extends StatefulWidget {
 }
 
 class _TemplateCardState extends State<_TemplateCard>
-    with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
+    with
+        SingleTickerProviderStateMixin,
+        AutomaticKeepAliveClientMixin,
+        WidgetsBindingObserver {
+  var _playOnResume = false;
   late AnimationController _pressController;
   late Animation<double> _scaleAnimation;
   bool _isPressed = false;
@@ -4675,6 +4796,7 @@ class _TemplateCardState extends State<_TemplateCard>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _pressController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 150),
@@ -4691,11 +4813,49 @@ class _TemplateCardState extends State<_TemplateCard>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _pressController.dispose();
     if (_isVideoPreview) {
       _VideoPreviewManager.instance.disposeController(_templateId);
     }
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!_isVideoPreview) return;
+    final current = _videoController;
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      if (current != null &&
+          videoFrameIsReady(current) &&
+          current.value.isPlaying) {
+        _playOnResume = true;
+      }
+      _VideoPreviewManager.instance.pauseController(_templateId);
+      return;
+    }
+    if (state == AppLifecycleState.resumed) {
+      _recoverCardVideo();
+    }
+  }
+
+  Future<void> _recoverCardVideo() async {
+    final current = _videoController;
+    final play = _playOnResume && _isVisible;
+    _playOnResume = false;
+    if (mounted) {
+      setState(() => _isVideoInitialized = videoFrameIsReady(current));
+    }
+    final next = await _VideoPreviewManager.instance.recoverController(
+      _templateId,
+      play: play,
+    );
+    if (!mounted) return;
+    setState(() {
+      if (next != null) _videoController = next;
+      _isVideoInitialized = videoFrameIsReady(_videoController);
+    });
   }
 
   void _checkVisibility() {
@@ -4997,13 +5157,9 @@ class _TemplateCardState extends State<_TemplateCard>
   Widget _buildPreviewBackground(double baseHue) {
     // Video preview - show video when loaded
     if (_isVideoPreview && _isVideoInitialized && _videoController != null) {
-      return FittedBox(
-        fit: BoxFit.cover,
-        child: SizedBox(
-          width: _videoController!.value.size.width,
-          height: _videoController!.value.size.height,
-          child: VideoPlayer(_videoController!),
-        ),
+      return SafeVideoView(
+        controller: _videoController,
+        fallback: _buildGradientFallback(baseHue),
       );
     }
 
@@ -5530,7 +5686,9 @@ class _CategoryTemplatesPageState extends State<_CategoryTemplatesPage> {
       final outputType = template['output_type'] as String? ??
           capability['outputType'] as String? ??
           'image';
-      final imageHdUpscaleCharges = upscaleEnabled && outputType != 'video';
+      final imageHdUpscaleCharges = upscaleEnabled &&
+          outputType != 'video' &&
+          template['capability'] != 'upscale';
 
       final baseCost = modelConfig['cost'] as int? ?? 10;
       final modelOffer = modelConfig['offer'] as int? ?? 0;
@@ -5540,8 +5698,12 @@ class _CategoryTemplatesPageState extends State<_CategoryTemplatesPage> {
           : modelOffer;
       final effectiveBaseCost =
           offer > 0 ? (baseCost * (1 - offer / 100)).round() : baseCost;
-      final upscaleCost =
-          isUpscaleFree() ? 0 : (modelConfig['costUpscale'] as int? ?? 5);
+      final listedUpscale = modelConfig['costUpscale'] as int? ?? 5;
+      final upscaleCost = isUpscaleFree()
+          ? 0
+          : imageHdUpscaleCharges
+              ? kExploreTemplateHdUpscaleCredits
+              : listedUpscale;
       final videoEnhancementCharges = outputType == 'video' &&
               (result.enableInterpolate || result.enableUpscale)
           ? upscaleCost
@@ -5714,12 +5876,8 @@ class _CategoryTemplatesPageState extends State<_CategoryTemplatesPage> {
     await showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        decoration: BoxDecoration(
-          color: cs.surface,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-        ),
-        child: SafeArea(
+      builder: (ctx) => glassSheet(
+        SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(24),
             child: Column(
@@ -5792,10 +5950,13 @@ class _CategoryTemplatesPageState extends State<_CategoryTemplatesPage> {
     final color = _parseHexColor(colorHex);
     final iconName = widget.category['icon'] as String? ?? 'grid';
 
-    return Scaffold(
-      backgroundColor: cs.surface,
+    return Stack(
+      children: [
+        const Positioned.fill(child: BacklitWash()),
+        Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        backgroundColor: cs.surface,
+        backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
           icon: Icon(LucideIcons.arrowLeft, color: cs.onSurface),
@@ -5865,6 +6026,8 @@ class _CategoryTemplatesPageState extends State<_CategoryTemplatesPage> {
           ],
         ),
       ),
+        ),
+      ],
     );
   }
 }

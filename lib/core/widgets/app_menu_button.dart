@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:kala_ai_create_images_videos_with_ai/core/app_state.dart';
@@ -30,13 +32,23 @@ class KalaTabAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return AppBar(
       leading: const AppMenuButton(),
       centerTitle: false,
-      backgroundColor: cs.surface,
+      backgroundColor: Colors.transparent,
       elevation: 0,
       surfaceTintColor: Colors.transparent,
+      flexibleSpace: ClipRect(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+          child: Container(
+            color: isDark
+                ? Colors.black.withValues(alpha: 0.12)
+                : Colors.white.withValues(alpha: 0.45),
+          ),
+        ),
+      ),
       title: const FittedBox(
         fit: BoxFit.scaleDown,
         alignment: Alignment.centerLeft,

@@ -322,8 +322,8 @@
           "✨ Popular"
         ],
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "qwen2_1_i2i",
+        "preferred_model": "qwen2_1_i2i",
         "job_config": {
           "prompt": "Professional photo enhancement, soft glowing skin, balanced lighting, subtle retouching, natural look, high quality"
         }
@@ -340,8 +340,8 @@
           "Professional"
         ],
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "qwen2_1_i2i",
+        "preferred_model": "qwen2_1_i2i",
         "job_config": {
           "prompt": "Professional headshot photo, studio lighting, clean background, sharp focus, business attire appearance, LinkedIn profile quality"
         }
@@ -358,8 +358,8 @@
           "🎨 Art"
         ],
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "flux2_klein_9b_edit",
+        "preferred_model": "flux2_klein_9b_edit",
         "job_config": {
           "prompt": "Anime style portrait, detailed eyes, soft shading, studio ghibli inspired, vibrant colors, clean linework, beautiful anime character"
         }
@@ -376,10 +376,10 @@
           "⚡ Quick"
         ],
         "capability": "remove_background",
-        "model": "basic_utils",
-        "preferred_model": "basic_utils",
+        "model": "recraft_remove_background",
+        "preferred_model": "recraft_remove_background",
         "job_config": {
-          "scale_factor": 2
+          "scale_factor": 1
         }
       },
       "hd_upscale": {
@@ -394,10 +394,11 @@
           "HD"
         ],
         "capability": "upscale",
-        "model": "aurasrv2",
-        "preferred_model": "aurasrv2",
+        "model": "realesrgan_upscale",
+        "preferred_model": "realesrgan_upscale",
         "job_config": {
-          "scale_factor": 4
+          "scale_factor": 1,
+          "upscale_factor": 4
         }
       },
       "anime_upscale": {
@@ -413,10 +414,11 @@
           "4K"
         ],
         "capability": "upscale",
-        "model": "aurasrv2",
-        "preferred_model": "aurasrv2",
+        "model": "realesrgan_upscale",
+        "preferred_model": "realesrgan_upscale",
         "job_config": {
-          "scale_factor": 4
+          "scale_factor": 1,
+          "upscale_factor": 4
         }
       },
       "portrait_enhance": {
@@ -432,10 +434,13 @@
           "HD"
         ],
         "capability": "upscale",
-        "model": "face_enhancer",
-        "preferred_model": "face_enhancer",
+        "model": "p_image_upscale",
+        "preferred_model": "p_image_upscale",
         "job_config": {
-          "scale_factor": 4
+          "scale_factor": 1,
+          "upscale_factor": 4,
+          "enhance_details": true,
+          "realism": true
         }
       },
       "face_restore": {
@@ -451,12 +456,13 @@
           "AI Face"
         ],
         "capability": "upscale",
-        "model": "face_enhancer",
-        "preferred_model": "face_enhancer",
+        "model": "p_image_upscale",
+        "preferred_model": "p_image_upscale",
         "job_config": {
-          "scale_factor": 2,
-          "mode": "v1.4",
-          "enhance_faces": true
+          "scale_factor": 1,
+          "upscale_factor": 2,
+          "enhance_details": true,
+          "realism": true
         }
       },
       "photo_restore": {
@@ -472,10 +478,12 @@
           "HD"
         ],
         "capability": "upscale",
-        "model": "aurasrv2",
-        "preferred_model": "aurasrv2",
+        "model": "p_image_upscale",
+        "preferred_model": "p_image_upscale",
         "job_config": {
-          "scale_factor": 4
+          "scale_factor": 1,
+          "upscale_factor": 4,
+          "enhance_details": true
         }
       },
       "cinematic_video": {
@@ -573,8 +581,8 @@
           "🎨 Art"
         ],
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "flux2_klein_9b_edit",
+        "preferred_model": "flux2_klein_9b_edit",
         "job_config": {
           "prompt": "Oil painting style, rich brushstrokes, classical art technique, museum quality, vivid colors, canvas texture, masterpiece painting"
         }
@@ -591,8 +599,8 @@
           "🌆 Sci-Fi"
         ],
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "flux2_klein_9b_edit",
+        "preferred_model": "flux2_klein_9b_edit",
         "job_config": {
           "prompt": "Cyberpunk style, neon lights, futuristic cityscape background, holographic effects, rain-soaked streets, blade runner aesthetic, vibrant pink and blue lighting"
         }
@@ -609,8 +617,8 @@
           "🎭 Fun"
         ],
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "flux2_klein_9b_edit",
+        "preferred_model": "flux2_klein_9b_edit",
         "job_config": {
           "prompt": "3D cartoon style, Pixar animation quality, expressive features, smooth render, vibrant colors, friendly character design, CGI quality"
         }
@@ -627,8 +635,8 @@
           "📷 Retro"
         ],
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "qwen2_1_i2i",
+        "preferred_model": "qwen2_1_i2i",
         "job_config": {
           "prompt": "Vintage film photography, warm color grading, subtle film grain, nostalgic mood, 1970s aesthetic, soft vignette, analog camera look"
         }
@@ -664,8 +672,8 @@
           "🎨 Art"
         ],
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "flux2_klein_9b_edit",
+        "preferred_model": "flux2_klein_9b_edit",
         "job_config": {
           "prompt": "Watercolor painting style, soft washes, flowing colors, delicate brush strokes, artistic paper texture, dreamy atmosphere, professional watercolor art"
         }
@@ -682,8 +690,8 @@
           "✏️ Classic"
         ],
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "flux2_klein_9b_edit",
+        "preferred_model": "flux2_klein_9b_edit",
         "job_config": {
           "prompt": "Pencil sketch portrait, detailed shading, graphite drawing, realistic charcoal art, fine lines, artistic hatching, professional sketch"
         }
@@ -700,8 +708,8 @@
           "🎨 Retro"
         ],
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "flux2_klein_9b_edit",
+        "preferred_model": "flux2_klein_9b_edit",
         "job_config": {
           "prompt": "Pop art style, bold colors, high contrast, Andy Warhol inspired, comic book halftone dots, vibrant artistic poster"
         }
@@ -718,8 +726,8 @@
           "✨ Glow"
         ],
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "flux2_klein_9b_edit",
+        "preferred_model": "flux2_klein_9b_edit",
         "job_config": {
           "prompt": "Neon glow effect, electric light trails, vibrant pink and blue neon, dark background, glowing outlines, synthwave aesthetic, dramatic lighting"
         }
@@ -736,8 +744,8 @@
           "🎮 Retro"
         ],
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "flux2_klein_9b_edit",
+        "preferred_model": "flux2_klein_9b_edit",
         "job_config": {
           "prompt": "Pixel art style, 8-bit retro gaming aesthetic, blocky pixels, limited color palette, nostalgic video game character, sprite art"
         }
@@ -754,8 +762,8 @@
           "😂 Fun"
         ],
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "flux2_klein_9b_edit",
+        "preferred_model": "flux2_klein_9b_edit",
         "job_config": {
           "prompt": "Caricature art style, exaggerated features, humorous portrait, cartoon proportions, expressive face, professional caricature artist quality"
         }
@@ -772,8 +780,8 @@
           "💥 Hero"
         ],
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "flux2_klein_9b_edit",
+        "preferred_model": "flux2_klein_9b_edit",
         "job_config": {
           "prompt": "Comic book style, bold outlines, dramatic shading, superhero aesthetic, action pose, vibrant colors, Marvel DC inspired, dynamic composition"
         }
@@ -787,8 +795,8 @@
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/youtube_thumbnail.jpg",
         "preview_type": "image",
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "muse_image_edit",
+        "preferred_model": "muse_image_edit",
         "job_config": {
           "prompt": "Keep the same person. Strong subject, empty space on one side for a title the user will add later, no letters or readable text in the image, 16:9 framing, cinematic lighting.",
           "aspect_ratio": "16:9"
@@ -803,8 +811,8 @@
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/reel_cover.jpg",
         "preview_type": "image",
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "muse_image_edit",
+        "preferred_model": "muse_image_edit",
         "job_config": {
           "prompt": "Keep the same person. Vertical cover, subject centered, no caption text or letters in the image, 9:16 framing.",
           "aspect_ratio": "9:16"
@@ -819,8 +827,8 @@
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/instagram_post.jpg",
         "preview_type": "image",
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "muse_image_edit",
+        "preferred_model": "muse_image_edit",
         "job_config": {
           "prompt": "Keep the same person or product. Square social still, subject clear and centered, no overlay text or letters in the image, 1:1 framing.",
           "aspect_ratio": "1:1"
@@ -835,8 +843,8 @@
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/cinematic_portrait.jpg",
         "preview_type": "image",
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "qwen2_1_i2i",
+        "preferred_model": "qwen2_1_i2i",
         "job_config": {
           "prompt": "Keep the same person's identity. Cinematic light and color. Do not change clothing beyond what is already visible. No invented text.",
           "aspect_ratio": "3:4"
@@ -851,8 +859,8 @@
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/product_photo.jpg",
         "preview_type": "image",
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "qwen2_1_i2i",
+        "preferred_model": "qwen2_1_i2i",
         "job_config": {
           "prompt": "Keep the product's shape, color, and label as they are. Clean studio background. Do not invent readable packaging text. No extra objects.",
           "aspect_ratio": "1:1"
@@ -867,8 +875,8 @@
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/background_change.jpg",
         "preview_type": "image",
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "qwen2_1_i2i",
+        "preferred_model": "qwen2_1_i2i",
         "show_prompt": true,
         "prompt_placeholder": "Describe the new background",
         "job_config": {
@@ -884,8 +892,8 @@
         "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/explore/outfit_change.jpg",
         "preview_type": "image",
         "capability": "edit_image",
-        "model": "flux_klein",
-        "preferred_model": "flux_klein",
+        "model": "grok_imagine_edit",
+        "preferred_model": "grok_imagine_edit",
         "job_config": {
           "prompt": "Change clothing only. Keep the same face, hair, pose, and background. Do not invent a different person or readable text on the clothes.",
           "aspect_ratio": "3:4"
@@ -908,8 +916,8 @@
           "name": "Kala Imagine",
           "description": "text to image",
           "useExternalApi": true,
-          "cost": 18,
-          "costUpscale": 8,
+          "cost": 15,
+          "costUpscale": 4,
           "offer": 0,
           "enabled": true,
           "params": {
@@ -924,8 +932,115 @@
           "name": "Kala Dream",
           "description": "text to image",
           "useExternalApi": true,
-          "cost": 18,
-          "costUpscale": 8,
+          "cost": 15,
+          "costUpscale": 4,
+          "offer": 0,
+          "enabled": true,
+          "params": {
+            "aspect_ratio": "{{aspect_ratio}}"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        },
+        {
+          "id": "flux2_klein_9b",
+          "name": "Kala Flash",
+          "description": "Fast text to image",
+          "aliases": ["runware:400@2"],
+          "useExternalApi": true,
+          "cost": 10,
+          "costUpscale": 0,
+          "offer": 0,
+          "enabled": true,
+          "params": {
+            "aspect_ratio": "{{aspect_ratio}}"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        },
+        {
+          "id": "muse_image",
+          "name": "Kala Canvas",
+          "description": "Prompt-faithful text to image",
+          "aliases": ["meta:muse@image"],
+          "useExternalApi": true,
+          "cost": 10,
+          "costUpscale": 0,
+          "offer": 0,
+          "enabled": true,
+          "params": {
+            "aspect_ratio": "{{aspect_ratio}}",
+            "thinking_level": "{{thinking_level}}",
+            "web_search": "{{web_search}}",
+            "image_search": "{{image_search}}",
+            "layout_tools": "{{layout_tools}}",
+            "moderation": "{{moderation}}"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        },
+        {
+          "id": "twinflow_z_image",
+          "name": "Kala Glimpse",
+          "description": "Fast text to image",
+          "aliases": ["runware:twinflow-z-image-turbo@0"],
+          "useExternalApi": true,
+          "cost": 6,
+          "costUpscale": 0,
+          "offer": 0,
+          "enabled": true,
+          "params": {
+            "aspect_ratio": "{{aspect_ratio}}"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        },
+        {
+          "id": "juggernaut_lightning",
+          "name": "Kala Vista",
+          "description": "Photoreal text to image",
+          "aliases": ["rundiffusion:110@101"],
+          "useExternalApi": true,
+          "cost": 6,
+          "costUpscale": 0,
+          "offer": 0,
+          "enabled": true,
+          "params": {
+            "aspect_ratio": "{{aspect_ratio}}"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        },
+        {
+          "id": "krea2_turbo",
+          "name": "Kala Mage",
+          "description": "Styled text to image",
+          "aliases": ["krea:krea@2-turbo"],
+          "useExternalApi": true,
+          "cost": 10,
+          "costUpscale": 0,
+          "offer": 0,
+          "enabled": true,
+          "params": {
+            "aspect_ratio": "{{aspect_ratio}}"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        },
+        {
+          "id": "recraft_v41_flash",
+          "name": "Kala Spectra",
+          "description": "Posters, logos, and lettering",
+          "aliases": ["recraft:v4.1@flash"],
+          "useExternalApi": true,
+          "cost": 8,
+          "costUpscale": 0,
           "offer": 0,
           "enabled": true,
           "params": {
@@ -986,8 +1101,8 @@
           "name": "Kala Imagine",
           "description": "image edit",
           "useExternalApi": true,
-          "cost": 18,
-          "costUpscale": 8,
+          "cost": 15,
+          "costUpscale": 4,
           "offer": 0,
           "enabled": true,
           "params": {
@@ -1003,13 +1118,92 @@
           "name": "Kala Dream",
           "description": "image edit",
           "useExternalApi": true,
-          "cost": 18,
-          "costUpscale": 8,
+          "cost": 15,
+          "costUpscale": 4,
           "offer": 0,
           "enabled": true,
           "params": {
             "init_image": "{{init_image}}",
             "aspect_ratio": "auto"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        },
+        {
+          "id": "flux2_klein_9b_edit",
+          "name": "Kala Flash",
+          "description": "Edit with up to 4 references",
+          "aliases": ["runware:400@2"],
+          "useExternalApi": true,
+          "cost": 10,
+          "costUpscale": 4,
+          "offer": 0,
+          "enabled": true,
+          "params": {
+            "init_image": "{{init_image}}",
+            "aspect_ratio": "{{aspect_ratio}}"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        },
+        {
+          "id": "muse_image_edit",
+          "name": "Kala Canvas",
+          "description": "Edit or combine references",
+          "aliases": ["meta:muse@image"],
+          "useExternalApi": true,
+          "cost": 10,
+          "costUpscale": 4,
+          "offer": 0,
+          "enabled": true,
+          "params": {
+            "init_image": "{{init_image}}",
+            "thinking_level": "{{thinking_level}}",
+            "web_search": "{{web_search}}",
+            "image_search": "{{image_search}}",
+            "layout_tools": "{{layout_tools}}",
+            "moderation": "{{moderation}}"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        },
+        {
+          "id": "krea2_turbo_edit",
+          "name": "Kala Mage",
+          "description": "Match a look from up to 4 references",
+          "aliases": ["krea:krea@2-turbo"],
+          "useExternalApi": true,
+          "cost": 10,
+          "costUpscale": 0,
+          "offer": 0,
+          "enabled": true,
+          "params": {
+            "init_image": "{{init_image}}"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        },
+        {
+          "id": "z_image_turbo_edit",
+          "name": "Kala Touch",
+          "description": "Change one photo",
+          "aliases": ["runware:z-image@turbo"],
+          "useExternalApi": true,
+          "cost": 6,
+          "costUpscale": 0,
+          "offer": 0,
+          "enabled": true,
+          "inputOverrides": {
+            "init_image": {
+              "max": 1
+            }
+          },
+          "params": {
+            "init_image": "{{init_image}}"
           },
           "rootParams": {
             "prompt": "{{prompt}}"
@@ -1102,6 +1296,24 @@
           "rootParams": {
             "prompt": "{{prompt}}"
           }
+        },
+        {
+          "id": "z_image_turbo_inpaint",
+          "name": "Kala Touch",
+          "description": "Fill a painted area",
+          "aliases": ["runware:z-image@turbo"],
+          "useExternalApi": true,
+          "cost": 6,
+          "costUpscale": 0,
+          "offer": 0,
+          "enabled": false,
+          "params": {
+            "init_image": "{{init_image}}",
+            "mask_image": "{{mask_image}}"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
         }
       ],
       "inputs": [
@@ -1116,6 +1328,18 @@
           "id": "mask_image",
           "type": "image",
           "label": "Mask (paint area to edit)"
+        },
+        {
+          "id": "prompt",
+          "type": "text",
+          "label": "What to paint (optional)",
+          "optional": true,
+          "hintExamples": [
+            "Leave this blank to fill the painted area so it matches the surrounding image.",
+            "A clear blue sky with the same light as the rest of the photo.",
+            "Continue the brick wall and the shadow already falling across it.",
+            "Remove the object and restore the background behind it."
+          ]
         }
       ],
       "elements": [
@@ -1126,6 +1350,10 @@
         {
           "type": "painter",
           "input_ref": "mask_image"
+        },
+        {
+          "type": "prompt",
+          "input_ref": "prompt"
         },
         {
           "type": "generate_button"
@@ -1245,7 +1473,7 @@
         {
           "id": "suno_music",
           "name": "Music",
-          "description": "Studio instrumental bed. Hidden from Create Video.",
+          "description": "Production quality songs.",
           "cost": 15,
           "costUpscale": 0,
           "offer": 0,
@@ -1253,8 +1481,8 @@
         },
         {
           "id": "suno_sfx",
-          "name": "Sting",
-          "description": "Studio sound effect. Hidden from Create Video.",
+          "name": "Sounds SFX",
+          "description": "Production quality sound effects.",
           "cost": 8,
           "costUpscale": 0,
           "offer": 0,
@@ -1759,15 +1987,15 @@
       "icon": "crop",
       "accent": "#10B981",
       "outputType": "image",
-      "defaultModel": "qwen2_1_i2i",
+      "defaultModel": "z_image_turbo_expand",
       "models": [
         {
           "id": "qwen2_1_i2i",
           "name": "Kala Imagine",
           "description": "image edit",
           "useExternalApi": true,
-          "cost": 18,
-          "costUpscale": 8,
+          "cost": 15,
+          "costUpscale": 4,
           "offer": 0,
           "enabled": true,
           "params": {
@@ -1783,8 +2011,44 @@
           "name": "Kala Dream",
           "description": "image edit",
           "useExternalApi": true,
-          "cost": 18,
-          "costUpscale": 8,
+          "cost": 15,
+          "costUpscale": 4,
+          "offer": 0,
+          "enabled": false,
+          "params": {
+            "init_image": "{{init_image}}",
+            "aspect_ratio": "{{aspect_ratio}}"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        },
+        {
+          "id": "juggernaut_lightning_expand",
+          "name": "Kala Vista",
+          "description": "Extend a photoreal scene",
+          "aliases": ["rundiffusion:110@101"],
+          "useExternalApi": true,
+          "cost": 6,
+          "costUpscale": 0,
+          "offer": 0,
+          "enabled": false,
+          "params": {
+            "init_image": "{{init_image}}",
+            "aspect_ratio": "{{aspect_ratio}}"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        },
+        {
+          "id": "z_image_turbo_expand",
+          "name": "Kala Touch",
+          "description": "Extend a photo",
+          "aliases": ["runware:z-image@turbo"],
+          "useExternalApi": true,
+          "cost": 6,
+          "costUpscale": 0,
           "offer": 0,
           "enabled": true,
           "params": {
@@ -1859,7 +2123,7 @@
           "description": "Clean cutout",
           "useExternalApi": true,
           "cost": 5,
-          "costUpscale": 0,
+          "costUpscale": 4,
           "offer": 0,
           "enabled": true,
           "params": {
@@ -1898,7 +2162,7 @@
         {
           "id": "recraft_crisp_upscale",
           "name": "Crisp Upscale",
-          "description": "Recraft 1x crisp upscale",
+          "description": "Sharper detail, same size",
           "useExternalApi": true,
           "cost": 5,
           "costUpscale": 0,
@@ -1906,6 +2170,36 @@
           "enabled": true,
           "params": {
             "init_image": "{{image}}"
+          }
+        },
+        {
+          "id": "p_image_upscale",
+          "name": "Fine Upscale",
+          "description": "2× or 4× with extra texture",
+          "useExternalApi": true,
+          "cost": 8,
+          "costUpscale": 0,
+          "offer": 0,
+          "enabled": true,
+          "params": {
+            "init_image": "{{image}}",
+            "upscale_factor": "{{upscale_factor}}",
+            "enhance_details": "{{enhance_details}}",
+            "realism": "{{realism}}"
+          }
+        },
+        {
+          "id": "realesrgan_upscale",
+          "name": "General Upscale",
+          "description": "Clean 2× or 4× enlarge",
+          "useExternalApi": true,
+          "cost": 5,
+          "costUpscale": 0,
+          "offer": 0,
+          "enabled": true,
+          "params": {
+            "init_image": "{{image}}",
+            "upscale_factor": "{{upscale_factor}}"
           }
         }
       ],
@@ -1916,6 +2210,33 @@
           "label": "Upload Image",
           "min": 1,
           "max": 1
+        },
+        {
+          "id": "upscale_factor",
+          "type": "dropdown",
+          "label": "Scale",
+          "options": [
+            { "value": "2", "label": "2×" },
+            { "value": "4", "label": "4×" }
+          ],
+          "default": "2",
+          "showForModels": ["p_image_upscale", "realesrgan_upscale"]
+        },
+        {
+          "id": "enhance_details",
+          "type": "toggle",
+          "label": "Enhance details",
+          "description": "Sharpen fine texture. Can raise contrast.",
+          "default": false,
+          "showForModels": ["p_image_upscale"]
+        },
+        {
+          "id": "realism",
+          "type": "toggle",
+          "label": "Realism",
+          "description": "Push a generated image toward a photograph.",
+          "default": false,
+          "showForModels": ["p_image_upscale"]
         }
       ],
       "elements": [
@@ -2077,6 +2398,656 @@
           "type": "generate_button"
         }
       ]
+    },
+    {
+      "id": "create_speech",
+      "name": "Text to Speech",
+      "description": "Speak a script in a chosen, designed, or cloned voice",
+      "icon": "mic",
+      "accent": "#38BDF8",
+      "outputType": "audio",
+      "defaultModel": "xai_tts",
+      "models": [
+        {
+          "id": "xai_tts",
+          "name": "Kala Voice",
+          "description": "Pick a ready-made voice",
+          "aliases": ["xai:tts@0"],
+          "useExternalApi": true,
+          "cost": 15,
+          "costPer60Sec": 15,
+          "speechCharsPerMin": 600,
+          "costUpscale": 0,
+          "offer": 0,
+          "enabled": true,
+          "params": {
+            "voice": "{{voice}}",
+            "language": "{{language}}"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        },
+        {
+          "id": "qwen_voice_design",
+          "name": "Kala Speech",
+          "description": "Describe the voice you want",
+          "aliases": ["alibaba:qwen@3-tts-1.7b-voicedesign"],
+          "useExternalApi": true,
+          "cost": 15,
+          "costPer60Sec": 15,
+          "speechCharsPerMin": 600,
+          "costUpscale": 0,
+          "offer": 0,
+          "enabled": true,
+          "params": {
+            "voice_description": "{{voice_description}}",
+            "language": "{{design_language}}"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        },
+        {
+          "id": "qwen_voice_clone",
+          "name": "Kala Speech Clone",
+          "aliases": ["alibaba:qwen@3-tts-1.7b-base"],
+          "description": "Match a short recording",
+          "useExternalApi": true,
+          "cost": 15,
+          "costPer60Sec": 15,
+          "speechCharsPerMin": 600,
+          "costUpscale": 0,
+          "offer": 0,
+          "enabled": true,
+          "params": {
+            "reference_audio": "{{reference_audio}}",
+            "language": "{{clone_language}}"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        }
+      ],
+      "inputs": [
+        {
+          "id": "prompt",
+          "type": "text",
+          "label": "What should they say?",
+          "hintExamples": [
+            "Write the words to speak. Short sentences sound more natural.",
+            "A calm welcome for a product video, unhurried and warm."
+          ]
+        },
+        {
+          "id": "voice",
+          "type": "dropdown",
+          "label": "Voice",
+          "options": [
+            { "value": "altair", "label": "Altair" },
+            { "value": "ara", "label": "Ara" },
+            { "value": "atlas", "label": "Atlas" },
+            { "value": "carina", "label": "Carina" },
+            { "value": "castor", "label": "Castor" },
+            { "value": "celeste", "label": "Celeste" },
+            { "value": "cosmo", "label": "Cosmo" },
+            { "value": "eve", "label": "Eve" },
+            { "value": "helios", "label": "Helios" },
+            { "value": "helix", "label": "Helix" },
+            { "value": "iris", "label": "Iris" },
+            { "value": "kepler", "label": "Kepler" },
+            { "value": "leo", "label": "Leo" },
+            { "value": "lumen", "label": "Lumen" },
+            { "value": "luna", "label": "Luna" },
+            { "value": "lux", "label": "Lux" },
+            { "value": "naksh", "label": "Naksh" },
+            { "value": "orion", "label": "Orion" },
+            { "value": "perseus", "label": "Perseus" },
+            { "value": "rex", "label": "Rex" },
+            { "value": "rigel", "label": "Rigel" },
+            { "value": "sal", "label": "Sal" },
+            { "value": "sirius", "label": "Sirius" },
+            { "value": "una", "label": "Una" },
+            { "value": "ursa", "label": "Ursa" },
+            { "value": "zagan", "label": "Zagan" },
+            { "value": "zenith", "label": "Zenith" }
+          ],
+          "default": "eve",
+          "showForModels": ["xai_tts"]
+        },
+        {
+          "id": "language",
+          "type": "dropdown",
+          "label": "Language",
+          "options": [
+            { "value": "en", "label": "English" },
+            { "value": "ar-EG", "label": "Arabic (Egypt)" },
+            { "value": "ar-SA", "label": "Arabic (Saudi Arabia)" },
+            { "value": "ar-AE", "label": "Arabic (UAE)" },
+            { "value": "bn", "label": "Bengali" },
+            { "value": "zh", "label": "Chinese" },
+            { "value": "fr", "label": "French" },
+            { "value": "de", "label": "German" },
+            { "value": "hi", "label": "Hindi" },
+            { "value": "id", "label": "Indonesian" },
+            { "value": "it", "label": "Italian" },
+            { "value": "ja", "label": "Japanese" },
+            { "value": "ko", "label": "Korean" },
+            { "value": "pt-BR", "label": "Portuguese (Brazil)" },
+            { "value": "pt-PT", "label": "Portuguese (Portugal)" },
+            { "value": "ru", "label": "Russian" },
+            { "value": "es-MX", "label": "Spanish (Mexico)" },
+            { "value": "es-ES", "label": "Spanish (Spain)" },
+            { "value": "tr", "label": "Turkish" },
+            { "value": "vi", "label": "Vietnamese" }
+          ],
+          "default": "en",
+          "showForModels": ["xai_tts"]
+        },
+        {
+          "id": "voice_description",
+          "type": "text",
+          "label": "Describe the voice",
+          "placeholder": "A warm, cheerful voice with a moderate pace",
+          "multiline": true,
+          "required": true,
+          "showForModels": ["qwen_voice_design"]
+        },
+        {
+          "id": "design_language",
+          "type": "dropdown",
+          "label": "Language",
+          "options": ["Auto", "English", "Chinese", "Japanese", "Korean", "German", "French", "Russian", "Portuguese", "Spanish", "Italian"],
+          "default": "Auto",
+          "showForModels": ["qwen_voice_design"]
+        },
+        {
+          "id": "reference_audio",
+          "type": "audio_upload",
+          "label": "Voice sample",
+          "min": 1,
+          "max": 1,
+          "required": true,
+          "showForModels": ["qwen_voice_clone"]
+        },
+        {
+          "id": "clone_language",
+          "type": "dropdown",
+          "label": "Language",
+          "options": ["Auto", "English", "Chinese", "Japanese", "Korean", "German", "French", "Russian", "Portuguese", "Spanish", "Italian"],
+          "default": "Auto",
+          "showForModels": ["qwen_voice_clone"]
+        }
+      ],
+      "elements": [
+        { "type": "choice_menu", "input_ref": "voice" },
+        { "type": "choice_menu", "input_ref": "language" },
+        { "type": "text_input", "input_ref": "voice_description" },
+        { "type": "choice_menu", "input_ref": "design_language" },
+        { "type": "audio_upload", "input_ref": "reference_audio" },
+        { "type": "choice_menu", "input_ref": "clone_language" },
+        { "type": "prompt", "input_ref": "prompt" },
+        { "type": "generate_button" }
+      ]
+    },
+    {
+      "id": "create_music",
+      "name": "Music",
+      "description": "A track from a description, with optional lyrics",
+      "icon": "music",
+      "accent": "#F472B6",
+      "outputType": "audio",
+      "defaultModel": "suno_v6",
+      "models": [
+        {
+          "id": "suno_v6",
+          "name": "Kala HitMaker",
+          "description": "Polished songs with powerful hooks and a big sound.. Commercial use included.",
+          "useExternalApi": true,
+          "cost": 65,
+          "actionCosts": {
+            "song": 65,
+            "sounds": 15,
+            "video": 20,
+            "extend": 65,
+            "upload_extend": 65,
+            "mashup": 65
+          },
+          "costUpscale": 0,
+          "offer": 0,
+          "enabled": true,
+          "params": {
+            "action": "{{action}}",
+            "mode": "{{mode}}",
+            "variant": "{{variant}}",
+            "style": "{{style}}",
+            "lyrics": "{{lyrics}}",
+            "title": "{{title}}",
+            "instrumental": "{{instrumental}}",
+            "vocal_gender": "{{vocal_gender}}",
+            "duration": "{{suno_length}}",
+            "negative_tags": "{{negative_tags}}",
+            "variety": "{{variety}}",
+            "persona_id": "{{persona_id}}",
+            "persona_model": "{{persona_model}}",
+            "source_task_id": "{{source_task_id}}",
+            "audio_id": "{{audio_id}}",
+            "stem_type": "{{stem_type}}",
+            "stem_name": "{{stem_name}}",
+            "sound_loop": "{{sound_loop}}",
+            "sound_tempo": "{{sound_tempo}}",
+            "sound_key": "{{sound_key}}",
+            "grab_lyrics": "{{grab_lyrics}}",
+            "init_image_r2_keys": "{{init_image_r2_keys}}",
+            "input_video_r2_key": "{{input_video_r2_key}}",
+            "reference_audio_r2_key": "{{reference_audio_r2_key}}"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        },
+        {
+          "id": "ace_step_music",
+          "name": "Kala SongFlow",
+          "description": "Expressive songs from your lyrics and ideas.",
+          "aliases": ["runware:ace-step@v1.5-xl-sft"],
+          "useExternalApi": true,
+          "cost": 15,
+          "costPer60Sec": 15,
+          "maxDuration": 240,
+          "costUpscale": 0,
+          "offer": 0,
+          "enabled": false,
+          "params": {
+            "duration": "{{duration}}",
+            "lyrics": "{{lyrics}}",
+            "negative_prompt": "{{negative_prompt}}",
+            "bpm": "{{bpm}}",
+            "key_scale": "{{key_scale}}",
+            "time_signature": "{{time_signature}}",
+            "vocal_language": "{{vocal_language}}",
+            "source_audio": "{{source_audio}}",
+            "strength": "{{strength}}",
+            "repaint_start": "{{repaint_start}}",
+            "repaint_end": "{{repaint_end}}"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        },
+        {
+          "id": "minimax_music_26",
+          "name": "Kala BeatWave",
+          "description": "Rich vocals, deep bass, and detailed musical control.",
+          "aliases": ["minimax:music@2.6"],
+          "useExternalApi": true,
+          "cost": 100,
+          "costUpscale": 0,
+          "offer": 0,
+          "enabled": false,
+          "params": {
+            "lyrics": "{{lyrics}}",
+            "instrumental": "{{instrumental}}",
+            "lyrics_optimizer": "{{lyrics_optimizer}}"
+          },
+          "rootParams": {
+            "prompt": "{{prompt}}"
+          }
+        }
+      ],
+      "inputs": [
+        {
+          "id": "prompt",
+          "type": "text",
+          "label": "Song idea",
+          "hintExamples": [
+            "A hopeful acoustic song about coming home after a long trip.",
+            "Late-night electronic instrumental, minor key, no vocals."
+          ]
+        },
+        {
+          "id": "vocals",
+          "type": "toggle",
+          "label": "Vocals",
+          "description": "Turn off for an instrumental.",
+          "default": true
+        },
+        {
+          "id": "vocal_gender",
+          "type": "dropdown",
+          "label": "Voice",
+          "description": "A preference. The singer may still vary.",
+          "options": [
+            { "value": "auto", "label": "Auto" },
+            { "value": "female", "label": "Female" },
+            { "value": "male", "label": "Male" }
+          ],
+          "default": "auto",
+          "showForModels": ["suno_v6"]
+        },
+        {
+          "id": "variety",
+          "type": "dropdown",
+          "label": "Variety",
+          "description": "How far the versions may wander from the style.",
+          "options": [
+            { "value": "0", "label": "Exact" },
+            { "value": "1", "label": "Balanced" },
+            { "value": "2", "label": "Distinct" },
+            { "value": "3", "label": "Bold" },
+            { "value": "4", "label": "Maximum" }
+          ],
+          "default": "1",
+          "showForModels": ["suno_v6"]
+        },
+        {
+          "id": "suno_length",
+          "type": "slider",
+          "label": "Length",
+          "description": "How long the song runs.",
+          "min": 10,
+          "max": 360,
+          "step": 10,
+          "default": 120,
+          "showForModels": ["suno_v6"]
+        },
+        {
+          "id": "title",
+          "type": "text",
+          "label": "Title",
+          "showForModels": ["suno_v6"],
+          "showWhen": { "music_mode": "advanced" }
+        },
+        {
+          "id": "cover",
+          "type": "toggle",
+          "label": "Cover photo",
+          "description": "Use one photo as a visual reference.",
+          "default": false,
+          "showForModels": ["suno_v6"]
+        },
+        {
+          "id": "cover_image",
+          "type": "image",
+          "label": "Cover photo",
+          "description": "Up to 5 photos. jpeg, png, webp, or bmp, each under 10 MB.",
+          "min": 1,
+          "max": 5,
+          "showForModels": ["suno_v6"]
+        },
+        {
+          "id": "clip",
+          "type": "video",
+          "label": "Video clip",
+          "description": "One clip, up to 4 minutes and 100 MB.",
+          "min": 1,
+          "max": 1,
+          "showForModels": ["suno_v6"]
+        },
+        {
+          "id": "reference_audio",
+          "type": "audio_upload",
+          "label": "Audio track",
+          "description": "One track, from 6 seconds to 30 minutes.",
+          "min": 1,
+          "max": 1,
+          "showForModels": ["suno_v6"]
+        },
+        {
+          "id": "extend_audio",
+          "type": "audio_upload",
+          "label": "Audio to extend",
+          "description": "One track you own, up to 8 minutes.",
+          "showForModels": ["suno_v6"],
+          "showWhen": { "suno_kind": "extend" }
+        },
+        {
+          "id": "mashup_a",
+          "type": "audio_upload",
+          "label": "First track",
+          "description": "A track you own.",
+          "showForModels": ["suno_v6"],
+          "showWhen": { "suno_kind": "mashup" }
+        },
+        {
+          "id": "mashup_b",
+          "type": "audio_upload",
+          "label": "Second track",
+          "description": "A second track you own.",
+          "showForModels": ["suno_v6"],
+          "showWhen": { "suno_kind": "mashup" }
+        },
+        {
+          "id": "sound_loop",
+          "type": "toggle",
+          "label": "Loop",
+          "description": "Play the sound as a seamless loop.",
+          "default": false,
+          "showForModels": ["suno_v6"]
+        },
+        {
+          "id": "sound_tempo",
+          "type": "dropdown",
+          "label": "Tempo",
+          "options": [
+            { "value": "auto", "label": "Auto" },
+            { "value": "60", "label": "60" },
+            { "value": "72", "label": "72" },
+            { "value": "80", "label": "80" },
+            { "value": "90", "label": "90" },
+            { "value": "100", "label": "100" },
+            { "value": "110", "label": "110" },
+            { "value": "120", "label": "120" },
+            { "value": "128", "label": "128" },
+            { "value": "140", "label": "140" }
+          ],
+          "default": "auto",
+          "showForModels": ["suno_v6"]
+        },
+        {
+          "id": "sound_key",
+          "type": "dropdown",
+          "label": "Key",
+          "options": [
+            { "value": "Any", "label": "Any" },
+            { "value": "C", "label": "C" },
+            { "value": "C#", "label": "C#" },
+            { "value": "D", "label": "D" },
+            { "value": "D#", "label": "D#" },
+            { "value": "E", "label": "E" },
+            { "value": "F", "label": "F" },
+            { "value": "F#", "label": "F#" },
+            { "value": "G", "label": "G" },
+            { "value": "G#", "label": "G#" },
+            { "value": "A", "label": "A" },
+            { "value": "A#", "label": "A#" },
+            { "value": "B", "label": "B" },
+            { "value": "Cm", "label": "Cm" },
+            { "value": "C#m", "label": "C#m" },
+            { "value": "Dm", "label": "Dm" },
+            { "value": "D#m", "label": "D#m" },
+            { "value": "Em", "label": "Em" },
+            { "value": "Fm", "label": "Fm" },
+            { "value": "F#m", "label": "F#m" },
+            { "value": "Gm", "label": "Gm" },
+            { "value": "G#m", "label": "G#m" },
+            { "value": "Am", "label": "Am" },
+            { "value": "A#m", "label": "A#m" },
+            { "value": "Bm", "label": "Bm" }
+          ],
+          "default": "Any",
+          "showForModels": ["suno_v6"]
+        },
+        {
+          "id": "duration",
+          "type": "slider",
+          "label": "Length",
+          "min": 60,
+          "max": 240,
+          "step": 30,
+          "default": 60,
+          "showForModels": ["ace_step_music"]
+        },
+        {
+          "id": "source_audio",
+          "type": "audio_upload",
+          "label": "Track",
+          "min": 1,
+          "max": 1,
+          "required": true,
+          "showForModels": ["ace_step_music"]
+        },
+        {
+          "id": "strength",
+          "type": "slider",
+          "label": "Keep the original",
+          "description": "Higher stays closer to the uploaded track.",
+          "min": 0,
+          "max": 1,
+          "step": 0.05,
+          "default": 0.55,
+          "showForModels": ["ace_step_music"]
+        },
+        {
+          "id": "repaint_start",
+          "type": "slider",
+          "label": "Repaint from",
+          "description": "Where the new passage starts, in seconds.",
+          "min": 0,
+          "max": 180,
+          "step": 1,
+          "default": 8,
+          "showForModels": ["ace_step_music"]
+        },
+        {
+          "id": "repaint_end",
+          "type": "slider",
+          "label": "Repaint until",
+          "description": "Where the new passage ends, in seconds.",
+          "min": 0,
+          "max": 180,
+          "step": 1,
+          "default": 18,
+          "showForModels": ["ace_step_music"]
+        },
+        {
+          "id": "lyrics",
+          "type": "text",
+          "label": "Lyrics",
+          "placeholder": "Section tags such as [Verse] and [Chorus].",
+          "multiline": true,
+          "minLines": 8,
+          "maxLines": 14,
+          "required": true,
+          "showWhen": { "music_mode": "advanced" }
+        },
+        {
+          "id": "negative_prompt",
+          "type": "text",
+          "label": "Avoid",
+          "placeholder": "What should stay out of the track",
+          "multiline": true,
+          "minLines": 3,
+          "maxLines": 5,
+          "required": true,
+          "showForModels": ["ace_step_music"],
+          "showWhen": { "music_mode": "advanced" }
+        },
+        {
+          "id": "bpm",
+          "type": "dropdown",
+          "label": "Tempo",
+          "options": [
+            { "value": "auto", "label": "Auto" },
+            { "value": "70", "label": "70" },
+            { "value": "80", "label": "80" },
+            { "value": "90", "label": "90" },
+            { "value": "100", "label": "100" },
+            { "value": "110", "label": "110" },
+            { "value": "120", "label": "120" },
+            { "value": "128", "label": "128" },
+            { "value": "140", "label": "140" },
+            { "value": "160", "label": "160" }
+          ],
+          "default": "auto",
+          "showForModels": ["ace_step_music"]
+        },
+        {
+          "id": "key_scale",
+          "type": "dropdown",
+          "label": "Key",
+          "options": [
+            { "value": "auto", "label": "Auto" },
+            { "value": "C major", "label": "C major" },
+            { "value": "G major", "label": "G major" },
+            { "value": "D major", "label": "D major" },
+            { "value": "A major", "label": "A major" },
+            { "value": "F major", "label": "F major" },
+            { "value": "Bb major", "label": "B♭ major" },
+            { "value": "A minor", "label": "A minor" },
+            { "value": "E minor", "label": "E minor" },
+            { "value": "D minor", "label": "D minor" },
+            { "value": "B minor", "label": "B minor" },
+            { "value": "F# minor", "label": "F♯ minor" }
+          ],
+          "default": "auto",
+          "showForModels": ["ace_step_music"]
+        },
+        {
+          "id": "time_signature",
+          "type": "dropdown",
+          "label": "Meter",
+          "options": [
+            { "value": "auto", "label": "Auto" },
+            { "value": "3", "label": "3/4" },
+            { "value": "4", "label": "4/4" },
+            { "value": "6", "label": "6/8" },
+            { "value": "2", "label": "2/4" }
+          ],
+          "default": "auto",
+          "showForModels": ["ace_step_music"]
+        },
+        {
+          "id": "vocal_language",
+          "type": "dropdown",
+          "label": "Vocal language",
+          "options": [
+            { "value": "auto", "label": "Auto" },
+            { "value": "en", "label": "English" },
+            { "value": "es", "label": "Spanish" },
+            { "value": "fr", "label": "French" },
+            { "value": "de", "label": "German" },
+            { "value": "hi", "label": "Hindi" },
+            { "value": "ja", "label": "Japanese" },
+            { "value": "ko", "label": "Korean" },
+            { "value": "zh", "label": "Chinese" },
+            { "value": "pt", "label": "Portuguese" },
+            { "value": "it", "label": "Italian" },
+            { "value": "ru", "label": "Russian" },
+            { "value": "ar", "label": "Arabic" }
+          ],
+          "default": "auto",
+          "showForModels": ["ace_step_music"]
+        },
+        {
+          "id": "lyrics_optimizer",
+          "type": "toggle",
+          "label": "Write the lyrics",
+          "description": "Write lyrics from the prompt, or smooth the lyrics you typed.",
+          "default": true,
+          "showForModels": ["minimax_music_26"]
+        }
+      ],
+      "elements": [
+        { "type": "prompt", "input_ref": "prompt" },
+        { "type": "text_input", "input_ref": "lyrics" },
+        { "type": "text_input", "input_ref": "negative_prompt" },
+        { "type": "audio_upload", "input_ref": "source_audio" },
+        { "type": "video_upload", "input_ref": "clip" },
+        { "type": "audio_upload", "input_ref": "reference_audio" },
+        { "type": "image_upload", "input_ref": "cover_image" },
+        { "type": "generate_button" }
+      ]
     }
   ],
   "stylePresets": {
@@ -2087,173 +3058,343 @@
       "Realistic",
       "Artistic",
       "Anime",
-      "Cinematic"
+      "Cinematic",
+      "Motion",
+      "Stylized"
     ],
     "presets": [
       {
         "id": "cartoon_3d",
         "name": "3D Cartoon",
         "category": "Fun",
+        "capabilities": ["create_image", "edit_image"],
         "promptSnippet": "Pixar 3D animation style, colorful, rounded shapes, playful lighting",
-        "icon": "🎪",
-        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/cartoon_3d.jpg",
+        "icon": "",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/cartoon_3d.webp",
         "featured": true
       },
       {
         "id": "comic_book",
         "name": "Comic Book",
         "category": "Fun",
+        "capabilities": ["create_image", "edit_image"],
         "promptSnippet": "comic book style, bold outlines, halftone dots, speech bubbles aesthetic",
-        "icon": "💥",
-        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/comic_book.jpg"
+        "icon": "",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/comic_book.webp"
       },
       {
         "id": "clay_render",
         "name": "Clay Render",
         "category": "Fun",
+        "capabilities": ["create_image", "edit_image"],
         "promptSnippet": "claymation style, soft clay texture, stop motion aesthetic, handcrafted look",
-        "icon": "🎨",
-        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/clay_render.jpg"
+        "icon": "",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/clay_render.webp"
       },
       {
         "id": "sticker",
         "name": "Sticker Style",
         "category": "Fun",
+        "capabilities": ["create_image", "edit_image"],
         "promptSnippet": "cute sticker design, white outline, kawaii aesthetic, glossy finish",
-        "icon": "🏷️",
-        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/sticker.jpg"
+        "icon": "",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/sticker.webp"
       },
       {
         "id": "photo_real",
         "name": "Photorealistic",
         "category": "Realistic",
+        "capabilities": ["create_image", "edit_image"],
         "promptSnippet": "photorealistic, DSLR quality, natural lighting, 8K resolution, sharp details",
-        "icon": "📷",
-        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/photo_real.jpg",
+        "icon": "",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/photo_real.webp",
         "featured": true
       },
       {
         "id": "product_shot",
         "name": "Product Shot",
         "category": "Realistic",
+        "capabilities": ["create_image", "edit_image"],
         "promptSnippet": "professional product photography, studio lighting, clean white background",
-        "icon": "🛍️",
-        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/product_shot.jpg"
+        "icon": "",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/product_shot.webp"
       },
       {
         "id": "fashion",
         "name": "Fashion Editorial",
         "category": "Realistic",
+        "capabilities": ["create_image", "edit_image"],
         "promptSnippet": "high fashion editorial, Vogue magazine quality, dramatic pose, designer aesthetic",
-        "icon": "👗",
-        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/fashion.jpg"
+        "icon": "",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/fashion.webp"
       },
       {
         "id": "documentary",
         "name": "Documentary",
         "category": "Realistic",
+        "capabilities": ["create_image", "edit_image"],
         "promptSnippet": "documentary photography style, candid moment, natural light, authentic",
-        "icon": "🎞️",
-        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/documentary.jpg"
+        "icon": "",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/documentary.webp"
       },
       {
         "id": "oil_classic",
         "name": "Oil Painting",
         "category": "Artistic",
+        "capabilities": ["create_image", "edit_image"],
         "promptSnippet": "classical oil painting, rich brush strokes, Renaissance masters style, museum quality",
-        "icon": "🖼️",
-        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/oil_classic.jpg",
+        "icon": "",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/oil_classic.webp",
         "featured": true
       },
       {
         "id": "watercolor",
         "name": "Watercolor",
         "category": "Artistic",
+        "capabilities": ["create_image", "edit_image"],
         "promptSnippet": "watercolor painting, soft color blends, paper texture, artistic drips",
-        "icon": "💧",
-        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/watercolor.jpg"
+        "icon": "",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/watercolor.webp"
       },
       {
         "id": "impressionist",
         "name": "Impressionist",
         "category": "Artistic",
+        "capabilities": ["create_image", "edit_image"],
         "promptSnippet": "impressionist painting, visible brush strokes, light and color emphasis, Monet style",
-        "icon": "🌸",
-        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/impressionist.jpg"
+        "icon": "",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/impressionist.webp"
       },
       {
         "id": "digital_art",
         "name": "Digital Art",
         "category": "Artistic",
+        "capabilities": ["create_image", "edit_image"],
         "promptSnippet": "professional digital art, trending on ArtStation, concept art quality",
-        "icon": "💻",
-        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/digital_art.jpg"
+        "icon": "",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/digital_art.webp"
       },
       {
         "id": "anime_modern",
         "name": "Modern Anime",
         "category": "Anime",
+        "capabilities": ["create_image", "edit_image"],
         "promptSnippet": "modern anime style, detailed shading, vibrant colors, high quality animation",
-        "icon": "🎌",
-        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/anime_modern.jpg",
+        "icon": "",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/anime_modern.webp",
         "featured": true
       },
       {
         "id": "ghibli",
         "name": "Studio Ghibli",
         "category": "Anime",
+        "capabilities": ["create_image", "edit_image"],
         "promptSnippet": "Studio Ghibli style, Hayao Miyazaki aesthetic, magical realism, detailed backgrounds",
-        "icon": "🏯",
-        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/ghibli.jpg"
+        "icon": "",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/ghibli.webp"
       },
       {
         "id": "manga",
         "name": "Manga Panel",
         "category": "Anime",
+        "capabilities": ["create_image", "edit_image"],
         "promptSnippet": "manga illustration style, black and white, screentones, dynamic composition",
-        "icon": "📖",
-        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/manga.jpg"
+        "icon": "",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/manga.webp"
       },
       {
         "id": "chibi",
         "name": "Chibi",
         "category": "Anime",
+        "capabilities": ["create_image", "edit_image"],
         "promptSnippet": "chibi style, cute proportions, big head small body, kawaii expressions",
-        "icon": "🥰",
-        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/chibi.jpg"
+        "icon": "",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/chibi.webp"
       },
       {
         "id": "film_noir",
         "name": "Film Noir",
         "category": "Cinematic",
+        "capabilities": ["create_image", "edit_image"],
         "promptSnippet": "film noir style, black and white, dramatic shadows, 1940s detective aesthetic",
-        "icon": "🎬",
-        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/film_noir.jpg",
+        "icon": "",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/film_noir.webp",
         "featured": true
       },
       {
         "id": "blockbuster",
         "name": "Blockbuster",
         "category": "Cinematic",
+        "capabilities": ["create_image", "edit_image"],
         "promptSnippet": "Hollywood blockbuster look, epic scale, cinematic color grading, anamorphic lens",
-        "icon": "🎥",
-        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/blockbuster.jpg"
+        "icon": "",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/blockbuster.webp"
       },
       {
         "id": "scifi",
         "name": "Sci-Fi Epic",
         "category": "Cinematic",
+        "capabilities": ["create_image", "edit_image"],
         "promptSnippet": "science fiction aesthetic, futuristic technology, epic space opera, blade runner vibes",
-        "icon": "🚀",
-        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/scifi.jpg"
+        "icon": "",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/scifi.webp"
       },
       {
         "id": "horror",
         "name": "Horror",
         "category": "Cinematic",
+        "capabilities": ["create_image", "edit_image"],
         "promptSnippet": "horror movie aesthetic, unsettling atmosphere, dark shadows, eerie lighting",
-        "icon": "👻",
-        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/styles/horror.jpg"
+        "icon": "",
+        "preview_url": "https://pub-67f874d172874988b5754734cc4fcb7e.r2.dev/style_tags/horror.webp"
+      },
+      {
+        "id": "vid_dolly_in",
+        "name": "Dolly In",
+        "category": "Motion",
+        "capabilities": ["create_video", "animate_image"],
+        "promptSnippet": "slow dolly in toward the subject, smooth push, shallow depth of field",
+        "icon": "🎥",
+        "featured": true
+      },
+      {
+        "id": "vid_orbit",
+        "name": "Orbit",
+        "category": "Motion",
+        "capabilities": ["create_video", "animate_image"],
+        "promptSnippet": "camera slowly orbits the subject, subject stays centered, smooth cinematic move",
+        "icon": "🌀"
+      },
+      {
+        "id": "vid_crane",
+        "name": "Crane Up",
+        "category": "Motion",
+        "capabilities": ["create_video", "animate_image"],
+        "promptSnippet": "crane shot rising from low to high, gentle reveal of the scene",
+        "icon": "🏗️"
+      },
+      {
+        "id": "vid_handheld",
+        "name": "Handheld",
+        "category": "Motion",
+        "capabilities": ["create_video", "animate_image"],
+        "promptSnippet": "subtle handheld camera drift, natural documentary motion",
+        "icon": "📹"
+      },
+      {
+        "id": "vid_crash_zoom",
+        "name": "Crash Zoom",
+        "category": "Motion",
+        "capabilities": ["create_video", "animate_image"],
+        "promptSnippet": "fast crash zoom onto the subject, then hold",
+        "icon": "🔍"
+      },
+      {
+        "id": "vid_aerial",
+        "name": "Aerial",
+        "category": "Motion",
+        "capabilities": ["create_video", "animate_image"],
+        "promptSnippet": "smooth aerial drone move, wide establishing shot",
+        "icon": "🛩️"
+      },
+      {
+        "id": "vid_cinematic",
+        "name": "Cinematic",
+        "category": "Cinematic",
+        "capabilities": ["create_video", "animate_image"],
+        "promptSnippet": "cinematic anamorphic look, film grain, 24fps motion, shallow depth of field",
+        "icon": "🎬",
+        "featured": true
+      },
+      {
+        "id": "vid_slow_mo",
+        "name": "Slow Motion",
+        "category": "Cinematic",
+        "capabilities": ["create_video", "animate_image"],
+        "promptSnippet": "smooth slow motion, fluid high-frame-rate movement",
+        "icon": "⏱️",
+        "featured": true
+      },
+      {
+        "id": "vid_noir",
+        "name": "Noir",
+        "category": "Cinematic",
+        "capabilities": ["create_video", "animate_image"],
+        "promptSnippet": "black and white film noir, hard shadows, slow dramatic camera",
+        "icon": "🕶️"
+      },
+      {
+        "id": "vid_golden",
+        "name": "Golden Hour",
+        "category": "Cinematic",
+        "capabilities": ["create_video", "animate_image"],
+        "promptSnippet": "warm golden hour light, soft slow camera drift",
+        "icon": "🌅"
+      },
+      {
+        "id": "vid_doc",
+        "name": "Nature Doc",
+        "category": "Cinematic",
+        "capabilities": ["create_video", "animate_image"],
+        "promptSnippet": "nature documentary, gentle observational camera, natural motion",
+        "icon": "🦌"
+      },
+      {
+        "id": "vid_anime",
+        "name": "Anime",
+        "category": "Stylized",
+        "capabilities": ["create_video", "animate_image"],
+        "promptSnippet": "anime animation, cel shading, vibrant color, smooth character motion",
+        "icon": "🎌",
+        "featured": true
+      },
+      {
+        "id": "vid_3d",
+        "name": "3D Animated",
+        "category": "Stylized",
+        "capabilities": ["create_video", "animate_image"],
+        "promptSnippet": "3D animated film motion, rounded shapes, playful camera",
+        "icon": "🧸"
+      },
+      {
+        "id": "vid_clay",
+        "name": "Claymation",
+        "category": "Stylized",
+        "capabilities": ["create_video", "animate_image"],
+        "promptSnippet": "stop-motion clay animation, slight frame-by-frame motion",
+        "icon": "🧱"
+      },
+      {
+        "id": "vid_neon",
+        "name": "Neon Night",
+        "category": "Stylized",
+        "capabilities": ["create_video", "animate_image"],
+        "promptSnippet": "neon-lit night, wet reflections, slow cyberpunk camera drift",
+        "icon": "🌃"
+      },
+      {
+        "id": "vid_epic",
+        "name": "Epic",
+        "category": "Stylized",
+        "capabilities": ["create_video", "animate_image"],
+        "promptSnippet": "sweeping blockbuster camera, large scale, dramatic motion",
+        "icon": "🌋"
+      },
+      {
+        "id": "vid_dreamy",
+        "name": "Dreamy",
+        "category": "Stylized",
+        "capabilities": ["create_video", "animate_image"],
+        "promptSnippet": "ethereal glow, slow floating motion, soft focus",
+        "icon": "✨"
+      },
+      {
+        "id": "vid_timelapse",
+        "name": "Time Lapse",
+        "category": "Stylized",
+        "capabilities": ["create_video", "animate_image"],
+        "promptSnippet": "time lapse, clouds and light moving quickly, camera locked off",
+        "icon": "⏩"
       }
     ]
   },

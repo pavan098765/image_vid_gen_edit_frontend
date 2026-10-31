@@ -77,6 +77,18 @@ void main() {
     expect(merged.templateId, 'glow_up_photo');
   });
 
+  test('status merge keeps the app model id over a provider id', () {
+    final fromPing = JobModel(
+      jobId: 'job-1',
+      title: 'Sunset',
+      model: 'runware:400@2',
+      outputType: 'image',
+      status: 'completed',
+    );
+    final merged = fromPing.mergePreservingLaunch(sample());
+    expect(merged.model, 'flux_klein');
+  });
+
   test('copyWith status-only update keeps lineage', () {
     final updated = sample().copyWith(status: 'completed');
     expect(updated.status, 'completed');
@@ -84,5 +96,28 @@ void main() {
     expect(updated.settingsSnapshot?['prompt'], 'softer light');
     expect(updated.parentJobId, 'job-0');
     expect(updated.creditsCharged, 18);
+  });
+
+  test('music snapshot survives json and merge', () {
+    final withMusic = sample().copyWith(
+      music: {
+        'phase': 'complete',
+        'task_id': 't1',
+        'tracks': [
+          {'id': 'a1', 'title': 'Night', 'audio_url': 'https://x'}
+        ],
+      },
+    );
+    final restored = JobModel.fromJson(withMusic.toJson());
+    expect(restored.music?['task_id'], 't1');
+    final thin = JobModel(
+      jobId: 'job-1',
+      title: 'Sunset',
+      model: 'suno_v6',
+      outputType: 'audio',
+      status: 'completed',
+    );
+    final merged = thin.mergePreservingLaunch(withMusic);
+    expect(merged.music?['task_id'], 't1');
   });
 }

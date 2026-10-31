@@ -9,6 +9,108 @@ class ExpandPair {
   const ExpandPair({required this.canvas, required this.mask});
 }
 
+class ExpandRequest {
+  final Uint8List? image;
+  final int top;
+  final int bottom;
+  final int left;
+  final int right;
+  final int width;
+  final int height;
+  final String? error;
+
+  const ExpandRequest({
+    this.image,
+    this.top = 0,
+    this.bottom = 0,
+    this.left = 0,
+    this.right = 0,
+    this.width = 0,
+    this.height = 0,
+    this.error,
+  });
+
+  const ExpandRequest.error(String message)
+      : image = null,
+        top = 0,
+        bottom = 0,
+        left = 0,
+        right = 0,
+        width = 0,
+        height = 0,
+        error = message;
+}
+
+int _down64(int value) => (value ~/ 64) * 64;
+
+int _up64(int value) => ((value + 63) ~/ 64) * 64;
+
+/// Outpaint margins for Kala Vista and Kala Touch.
+/// The photo is cropped onto the 64-pixel grid, then the canvas grows in
+/// steps of 64 so width equals the photo plus the side margins.
+ExpandRequest buildRunwareOutpaint(
+  Uint8List source,
+  Map<String, dynamic> inputs,
+) {
+  final decoded = img.decodeImage(source);
+  if (decoded == null) {
+    return const ExpandRequest.error('Could not read that image.');
+  }
+  final cropW = _down64(decoded.width);
+  final cropH = _down64(decoded.height);
+  if (cropW < 64 || cropH < 64) {
+    return const ExpandRequest.error('This image is too small to expand.');
+  }
+  final cropped = img.copyCrop(
+    decoded,
+    x: 0,
+    y: 0,
+    width: cropW,
+    height: cropH,
+  );
+  final aspect = _ratio(inputs['aspect_ratio']?.toString() ?? '16:9');
+  final srcAspect = cropW / cropH;
+  var canvasW = cropW;
+  var canvasH = cropH;
+  if ((aspect - srcAspect).abs() < 0.02) {
+    if (cropW <= cropH) {
+      canvasW = cropW + 256;
+    } else {
+      canvasH = cropH + 256;
+    }
+  } else if (aspect >= srcAspect) {
+    canvasH = cropH;
+    canvasW = _up64((cropH * aspect).round());
+  } else {
+    canvasW = cropW;
+    canvasH = _up64((cropW / aspect).round());
+  }
+  canvasW = _up64(canvasW);
+  canvasH = _up64(canvasH);
+  if (canvasW > 2048 ||
+      canvasH > 2048 ||
+      canvasW < cropW ||
+      canvasH < cropH ||
+      (canvasW == cropW && canvasH == cropH)) {
+    return const ExpandRequest.error(
+      'This image is too large for that shape.',
+    );
+  }
+  final extraW = canvasW - cropW;
+  final extraH = canvasH - cropH;
+  final left = (extraW ~/ 2) ~/ 64 * 64;
+  final top = (extraH ~/ 2) ~/ 64 * 64;
+  return ExpandRequest(
+    image: Uint8List.fromList(img.encodePng(cropped)),
+    top: top,
+    bottom: extraH - top,
+    left: left,
+    right: extraW - left,
+    width: canvasW,
+    height: canvasH,
+  );
+}
+
 /// Place the photo on a larger canvas and paint a mask for the new border.
 /// White in the mask is the area the model may fill. Black stays the photo.
 ExpandPair? buildExpandPair(Uint8List source, Map<String, dynamic> inputs) {

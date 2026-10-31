@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'dart:ui';
 
-import 'package:flutter/material.dart' show TextAlign;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/image_editor/image_history_store.dart';
 import 'package:kala_ai_create_images_videos_with_ai/features/video_editor/models/clip_model.dart';

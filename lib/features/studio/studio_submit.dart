@@ -105,6 +105,9 @@ class StudioSubmit {
           if (!chained && sheets.isNotEmpty) 'reference_image_r2_keys': sheets,
           if (latent.isNotEmpty) 'continuation_latent_r2_key': latent,
           if (chained && (shot.audioInSeconds > 0 || latent.isNotEmpty)) 'audio_in_seconds': shot.audioInSeconds,
+          if (chained)
+            'negative_prompt':
+                'text, subtitles, watermark, extra limbs, morphing face, flicker, deformed hands',
         },
       );
     }
